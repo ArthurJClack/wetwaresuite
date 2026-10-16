@@ -813,33 +813,31 @@ void testPmtiles(const fs::path& dir) {
 
 using TilePt = std::pair<int, int>;
 
+// One Sutherland-Hodgman pass: keeps the side of the line axis = bound where (v >= bound) == keepAbove.
+// Plain loops, no lambdas: the lambda version clipped far too much on MSVC CI (cause not pinned down).
+std::vector<std::pair<double, double>> clipEdge(const std::vector<std::pair<double, double>>& pts, int axis, double bound, bool keepAbove) {
+    std::vector<std::pair<double, double>> out;
+    const std::size_t n = pts.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::pair<double, double> cur = pts[i];
+        const std::pair<double, double> prev = pts[(i + n - 1) % n];
+        const double cv = axis == 0 ? cur.first : cur.second;
+        const double pv = axis == 0 ? prev.first : prev.second;
+        const bool curIn = keepAbove ? cv >= bound : cv <= bound;
+        const bool prevIn = keepAbove ? pv >= bound : pv <= bound;
+        if (curIn != prevIn) {
+            const double t = (bound - pv) / (cv - pv);
+            out.emplace_back(prev.first + (cur.first - prev.first) * t, prev.second + (cur.second - prev.second) * t);
+        }
+        if (curIn) out.push_back(cur);
+    }
+    return out;
+}
+
 // Sutherland-Hodgman against the tile square plus a buffer, in tile units.
 std::vector<TilePt> clipRing(const std::vector<std::pair<double, double>>& ring, double lo, double hi) {
     std::vector<std::pair<double, double>> pts = ring;
-    for (int edge = 0; edge < 4 && !pts.empty(); ++edge) {
-        auto inside = [&](const std::pair<double, double>& p) {
-            const double v = edge < 2 ? p.first : p.second;
-            return edge % 2 == 0 ? v >= lo : v <= hi;
-        };
-        auto cross = [&](const std::pair<double, double>& a, const std::pair<double, double>& b) {
-            const double edgeV = edge % 2 == 0 ? lo : hi;
-            const double av = edge < 2 ? a.first : a.second, bv = edge < 2 ? b.first : b.second;
-            const double t = (edgeV - av) / (bv - av);
-            return std::pair<double, double>{a.first + (b.first - a.first) * t, a.second + (b.second - a.second) * t};
-        };
-        std::vector<std::pair<double, double>> out;
-        for (std::size_t i = 0; i < pts.size(); ++i) {
-            const auto& cur = pts[i];
-            const auto& prev = pts[(i + pts.size() - 1) % pts.size()];
-            if (inside(cur)) {
-                if (!inside(prev)) out.push_back(cross(prev, cur));
-                out.push_back(cur);
-            } else if (inside(prev)) {
-                out.push_back(cross(prev, cur));
-            }
-        }
-        pts = std::move(out);
-    }
+    for (int edge = 0; edge < 4 && !pts.empty(); ++edge) pts = clipEdge(pts, edge < 2 ? 0 : 1, edge % 2 == 0 ? lo : hi, edge % 2 == 0);
     std::vector<TilePt> q;
     for (const auto& p : pts) {
         const TilePt t{static_cast<int>(std::lround(p.first)), static_cast<int>(std::lround(p.second))};

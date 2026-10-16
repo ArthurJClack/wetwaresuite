@@ -21,6 +21,10 @@ jobs:
         run: cmake --build build --config Release --parallel
       - name: test
         run: ctest --test-dir build -C Release --output-on-failure
+      - name: report failed checks
+        if: failure()
+        shell: bash
+        run: grep -h "FAILED" build/Testing/Temporary/LastTest*.log | head -40 | sed 's/^/::error::/' || true
 
   hub:
     name: hub (${{ matrix.os }})

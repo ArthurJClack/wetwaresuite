@@ -185,7 +185,13 @@ bool layFlat(mesh::Mesh& m) {
     }
     std::vector<std::pair<double, Vec3>> sorted;
     for (const auto& [k, g] : groups) sorted.push_back({g.first, normalize(g.second)});
-    std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+    // biggest face first; faces of (nearly) equal area prefer the one already facing down,
+    // so a part that is already flat stays put instead of flipping onto its twin face
+    std::sort(sorted.begin(), sorted.end(), [](const auto& a, const auto& b) {
+        const auto qa = std::llround(a.first * 1e4), qb = std::llround(b.first * 1e4);  // 0.0001 mm² buckets
+        if (qa != qb) return qa > qb;
+        return a.second.z < b.second.z;
+    });
     for (const auto& [a, n] : sorted) {
         // the face must be on the outside: nothing sticks out further along n
         double far = -1e300, faceD = -1e300;
@@ -197,7 +203,7 @@ bool layFlat(mesh::Mesh& m) {
         if (faceD < far - 0.05) continue;
         const Vec3 down{0, 0, -1};
         const double c = std::clamp(dot(n, down), -1.0, 1.0);
-        if (c > 1 - 1e-9) return false;  // already flat on it
+        if (c > 1 - 1e-7) return false;  // already flat on it
         const mesh::Bounds b = mesh::bounds(m);
         const Vec3 center = b.center();
         Vec3 axis = cross(n, down);

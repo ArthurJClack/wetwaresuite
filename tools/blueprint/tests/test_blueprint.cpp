@@ -617,7 +617,7 @@ void testBatchAndMcp() {
     for (const auto& t : list) {
         if (t["name"] == "blueprint_wall") sawWall = t["inputSchema"]["properties"]["points"]["type"] == "array";
         if (t["name"] == "blueprint_dimension") sawDim = t["inputSchema"]["properties"]["kind"].contains("enum");
-        if (t["name"] == "blueprint_export") sawExport = t["annotations"]["readOnlyHint"] == true;
+        if (t["name"] == "blueprint_export") sawExport = t["annotations"]["readOnlyHint"] == false;  // writes files
     }
     CHECK(sawWall && sawDim && sawExport);
     json req = {{"jsonrpc", "2.0"},

@@ -668,7 +668,7 @@ void registerCommands(Session& session) {
              join({strParam("units", "drawing units", false, std::string("mm"), {"mm", "cm", "m", "in", "ft"})}, join(pageParams(true),
                   {strParam("title", "title block: drawing title"), strParam("author", "title block: drawn by"),
                    strParam("date", "title block: date, e.g. 2026-10-16")})),
-             false},
+             false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     auto doc = std::make_shared<Drawing>();
@@ -691,7 +691,7 @@ void registerCommands(Session& session) {
                     strParam("units", "override the drawing units (default: from the file's $INSUNITS, else mm)", false, {},
                              {"mm", "cm", "m", "in", "ft"})},
                   join(pageParams(false), {boolParamSpec("center", "centre the drawing on the paper")})),
-             false},
+             false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     try {
@@ -800,7 +800,7 @@ void registerCommands(Session& session) {
     reg.add({"blueprint.info", "Blueprint Info",
              "Describe a drawing: units, scale, paper, layers (with colour, weight, line type, visible/locked), entity counts, "
              "extents, grid/snap and title block. Works on an open doc or straight from a .dxf file.",
-             docOrFile(), false},
+             docOrFile(), false, true},
             readCommand(session, [](Drawing& doc, const Params&, const std::string& name) {
                 std::string text = name + ": " + doc.paper + (doc.landscape ? " landscape" : " portrait") + " (" + num(doc.paperWidth()) +
                                    " x " + num(doc.paperHeight()) + " mm), scale " + doc.scaleText() + ", units " + toString(doc.units);
@@ -848,7 +848,7 @@ void registerCommands(Session& session) {
              {docParam(), {"size", ParamType::Int, "longest side in px", false, {}, std::int64_t{1024}},
               strParam("view", "what to show", false, std::string("extents"), {"extents", "sheet"}),
               boolParamSpec("grid", "draw the grid (default: the drawing's grid setting)")},
-             false},
+             false, true},
             drawingCommand(session, [](Drawing& doc, const Params& p) {
                 const int size = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "size", 1024), 64, 4096));
                 const bool sheet = stringParam(p, "view", "extents") == "sheet";
@@ -1024,7 +1024,7 @@ void registerCommands(Session& session) {
                 return Result::success("current layer " + doc.current + (existed ? "" : " (new)"), doc.current).with("layer", doc.current);
             }));
 
-    reg.add({"blueprint.layers", "List Layers", "List the layers with their colour, weight, line type and state.", {docParam()}, false},
+    reg.add({"blueprint.layers", "List Layers", "List the layers with their colour, weight, line type and state.", {docParam()}, false, true},
             drawingCommand(session, [layerText](Drawing& doc, const Params&) {
                 std::string text = std::to_string(doc.layers.size()) + " layers (current " + doc.current + ")";
                 std::string names;
@@ -1662,7 +1662,7 @@ void registerCommands(Session& session) {
              "List entities with their exact geometry (ids, layer, coordinates, lengths, areas, measured dimension values). "
              "Filter with entities=layer:WALLS, type:door, ids... Works on an open doc or straight from a .dxf file.",
              join(docOrFile(), {strParam("entities", "which ones (default all): ids, all, layer:NAME, type:TYPE", false, std::string("all"))}),
-             false},
+             false, true},
             readCommand(session, [](Drawing& doc, const Params& p, const std::string& name) {
                 if (doc.entities.empty()) return Result::success(name + ": no entities").with("count", std::int64_t{0}).with("ids", std::string());
                 std::vector<int> sel;
@@ -1683,7 +1683,7 @@ void registerCommands(Session& session) {
              join(docOrFile(), {strParam("entity", "entity id, or two line ids for an angle"),
                                 {"points", ParamType::NumberList, "x,y,x,y,... to measure between", false},
                                 strParam("kind", "what to measure from points", false, std::string("auto"), {"auto", "distance", "area", "angle"})}),
-             false},
+             false, true},
             readCommand(session, [](Drawing& doc, const Params& p, const std::string&) {
                 std::string error;
                 if (has(p, "entity")) {

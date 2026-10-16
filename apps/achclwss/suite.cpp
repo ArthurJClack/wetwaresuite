@@ -10,7 +10,14 @@
 namespace achclwss::suite {
 
 const std::set<std::string>& toolNames() {
-    static const std::set<std::string> names = {"toolkit", "photo", "paint", "vector", "convert"};
+    static const std::set<std::string> names = {
+        "toolkit",
+        "photo",
+        "paint",
+        "vector",
+        "blueprint",
+        "convert",
+    };
     return names;
 }
 

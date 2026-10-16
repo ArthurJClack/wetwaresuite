@@ -1755,7 +1755,8 @@ static void registerCheckingAndOutput(Session& session) {
              false},
             layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const std::string path = stringParam(p, "path");
-                if (lower(std::filesystem::path(path).extension().string()) != ".pdf") return Result::failure("impose writes a .pdf");
+                const std::string ext = lower(std::filesystem::path(path).extension().string());
+                if (ext != ".pdf") return Result::failure("impose writes a .pdf");
                 ImposeOptions o;
                 auto sheet = findPaper(stringParam(p, "sheet", "A4"));
                 if (!sheet) return Result::failure("unknown sheet size (" + paperList() + ")");

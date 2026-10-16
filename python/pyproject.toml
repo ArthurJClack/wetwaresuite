@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "achclwss"
-version = "0.5.0"
+version = "0.6.0"
 description = "Drive the ACHCLWSS creative suite from Python: every command as a method, previews as bytes"
 readme = "README.md"
 requires-python = ">=3.8"

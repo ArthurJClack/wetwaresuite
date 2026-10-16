@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr const char* kVersion = "0.5.0";
+constexpr const char* kVersion = "0.6.0";
 
 constexpr const char* kInstructions =
     "ACHCLWSS is a creative suite you drive with tools. Workflow: open or create a document (photo_open, photo_new, "
@@ -36,7 +36,14 @@ constexpr const char* kInstructions =
     "scenes and path-traces them (render_new returns scene1; render_render without output returns the image), "
     "animate_* keyframes 2D layers, cels, bone rigs and 3D meshes and exports GIF, sprite sheets or video, "
     "levels_* edits tilemaps and generates caves and dungeons from a seed (Tiled TMX/TMJ, LDtk), and beats_* makes "
-    "music from step patterns, notes and chords (beats_generate makes a starter song; beats_render writes audio).";
+    "music from step patterns, notes and chords (beats_generate makes a starter song; beats_render writes audio). "
+    "Making and organising: circuit_* draws schematics in mm and lays out PCBs (circuit_new returns ckt1; circuit_erc "
+    "and circuit_drc check them; circuit_gerber writes fab files), flash_* finds boards on serial ports and flashes "
+    "Arduino, ESP32 and STM32 firmware (flash_ports first; sim: boards let you try it without hardware), maps_* "
+    "handles GeoJSON/KML/GPX/Shapefile data in lon/lat and renders maps (maps_new returns map1), board_* makes "
+    "whiteboards and diagrams (board_from_mermaid turns Mermaid text into a laid-out diagram), notes_* works on an "
+    "Obsidian-style folder of Markdown notes (notes_search, notes_backlinks, notes_tasks), and type_* designs fonts "
+    "and exports TTF/WOFF (type_new returns font1; type_proof shows a specimen).";
 
 void usage() {
     std::cout << "achclwss " << kVersion << ": the whole suite, headless\n\n"

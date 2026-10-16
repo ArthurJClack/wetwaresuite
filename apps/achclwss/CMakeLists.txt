@@ -21,6 +21,7 @@ target_link_libraries(achclwss_suite PUBLIC achclwss::circuit)
 target_link_libraries(achclwss_suite PUBLIC achclwss::flash)
 target_link_libraries(achclwss_suite PUBLIC achclwss::board)
 target_link_libraries(achclwss_suite PUBLIC achclwss::notes)
+target_link_libraries(achclwss_suite PUBLIC achclwss::maps)
 
 add_executable(achclwss main.cpp)
 target_link_libraries(achclwss PRIVATE achclwss_suite achclwss::mcp)

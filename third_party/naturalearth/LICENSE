@@ -1,0 +1,22 @@
+countries.geojson is derived from Natural Earth's "Admin 0 - Countries"
+dataset at 1:110m scale (ne_110m_admin_0_countries, version 5.1.x, from
+https://github.com/nvkelso/natural-earth-vector). Only the NAME, ISO_A3
+(ADM0_A3 where ISO_A3 is -99), CONTINENT and POP_EST attributes were kept
+and coordinates were rounded to 3 decimals.
+
+Natural Earth is in the public domain:
+
+  "All versions of Natural Earth raster + vector map data found on this
+  website are in the public domain. You may use the maps in any manner,
+  including modifying the content and design, electronic dissemination, and
+  offset printing. The primary authors, Tom Patterson and Nathaniel Vaughn
+  Kelso, and all other contributors renounce all financial claim to the maps
+  and invites you to use them for personal, educational, and commercial
+  purposes. No permission is needed to use Natural Earth. Crediting the
+  authors is unnecessary."
+  -- https://www.naturalearthdata.com/about/terms-of-use/
+
+Made with Natural Earth. Free vector and raster map data @ naturalearthdata.com.
+
+Country borders in this dataset follow Natural Earth's de facto policy and are
+shown for orientation only.

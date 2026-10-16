@@ -15,6 +15,7 @@
 #include "achclwss/forge/forge.hpp"
 #include "achclwss/layout/layout.hpp"
 #include "achclwss/levels/levels.hpp"
+#include "achclwss/maps/maps.hpp"
 #include "achclwss/library/library.hpp"
 #include "achclwss/notes/notes.hpp"
 #include "achclwss/office/office.hpp"
@@ -55,6 +56,7 @@ const std::set<std::string>& toolNames() {
         "flash",
         "board",
         "notes",
+        "maps",
     };
     return names;
 }
@@ -93,6 +95,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("flash")) flash::registerCommands(session);
     if (want("board")) board::registerCommands(session);
     if (want("notes")) notes::registerCommands(session);
+    if (want("maps")) maps::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

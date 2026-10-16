@@ -39,6 +39,7 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 | `tools/flash/` | flash firmware to Arduino (AVR), ESP32/ESP8266 and STM32 headless: list and identify serial ports, detect boards, inspect HEX/BIN/ELF/ESP images, native STK500v1/v2, AVR109, ESP ROM and STM32 USART bootloaders (no external tools) with avrdude/esptool/stm32prog fallbacks, serial monitor and send |
 | `tools/board/` | whiteboards and diagrams: shapes, sticky notes, attached connectors (straight, elbow, curved), freehand ink, layers, themes incl. a sketchy look, auto-layout, Mermaid and outlines in, Excalidraw and draw.io in/out, PNG/SVG/PDF |
 | `tools/notes/` | markdown notes and knowledge base: Obsidian-compatible vaults, wikilinks with rename-safe rewriting, backlinks, tags, frontmatter, templates, daily notes, tasks with due dates, ranked full-text search, link graph (JSON/DOT/PNG/SVG), HTML/PDF render and static site export |
+| `tools/maps/` | offline maps and lightweight GIS: GeoJSON/KML/GPX/CSV/Shapefile in and out, GeoTIFF and world-file rasters, WGS84/Web Mercator/UTM, geodesic measuring, buffer/simplify/clip/filter/joins, heatmaps, GPX track stats, styled PNG/SVG/PDF maps over built-in Natural Earth countries or OSM tiles |
 | `apps/achclwss/` | `achclwss`: one headless binary that runs every command, batch scripts, or an MCP server |
 | `hub/` | `hub`: lists tools, prints the MCP config for Claude |
 

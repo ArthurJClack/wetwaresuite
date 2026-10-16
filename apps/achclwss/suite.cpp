@@ -16,6 +16,7 @@
 #include "achclwss/layout/layout.hpp"
 #include "achclwss/levels/levels.hpp"
 #include "achclwss/library/library.hpp"
+#include "achclwss/notes/notes.hpp"
 #include "achclwss/office/office.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
@@ -53,6 +54,7 @@ const std::set<std::string>& toolNames() {
         "circuit",
         "flash",
         "board",
+        "notes",
     };
     return names;
 }
@@ -90,6 +92,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("circuit")) circuit::registerCommands(session);
     if (want("flash")) flash::registerCommands(session);
     if (want("board")) board::registerCommands(session);
+    if (want("notes")) notes::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

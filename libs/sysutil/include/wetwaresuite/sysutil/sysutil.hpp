@@ -88,7 +88,13 @@ inline std::string trim(const std::string& s) {
 }
 
 inline std::string plural(std::size_t n, const std::string& word) {
-    return std::to_string(n) + " " + word + (n == 1 ? "" : "s");
+    if (n == 1) return "1 " + word;
+    auto endsWith = [&](const char* tail) {
+        const std::string t(tail);
+        return word.size() >= t.size() && word.compare(word.size() - t.size(), t.size(), t) == 0;
+    };
+    const bool es = endsWith("s") || endsWith("x") || endsWith("z") || endsWith("ch") || endsWith("sh");
+    return std::to_string(n) + " " + word + (es ? "es" : "s");
 }
 
 // 1536 -> "1.5 KB" (1024-based, as file managers show it)

@@ -9,6 +9,7 @@
 #include "achclwss/capture/capture.hpp"
 #include "achclwss/convert/convert.hpp"
 #include "achclwss/cut/cut.hpp"
+#include "achclwss/flash/flash.hpp"
 #include "achclwss/forge/forge.hpp"
 #include "achclwss/layout/layout.hpp"
 #include "achclwss/levels/levels.hpp"
@@ -47,6 +48,7 @@ const std::set<std::string>& toolNames() {
         "beats",
         "animate",
         "render",
+        "flash",
     };
     return names;
 }
@@ -81,6 +83,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("beats")) beats::registerCommands(session);
     if (want("animate")) animate::registerCommands(session);
     if (want("render")) render::registerCommands(session);
+    if (want("flash")) flash::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

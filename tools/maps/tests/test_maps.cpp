@@ -814,7 +814,6 @@ void testPmtiles(const fs::path& dir) {
 using TilePt = std::pair<int, int>;
 
 // One Sutherland-Hodgman pass: keeps the side of the line axis = bound where (v >= bound) == keepAbove.
-// Plain loops, no lambdas: the lambda version clipped far too much on MSVC CI (cause not pinned down).
 std::vector<std::pair<double, double>> clipEdge(const std::vector<std::pair<double, double>>& pts, int axis, double bound, bool keepAbove) {
     std::vector<std::pair<double, double>> out;
     const std::size_t n = pts.size();

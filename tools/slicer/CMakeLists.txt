@@ -1,0 +1,10 @@
+add_library(achclwss_slicer src/geometry.cpp src/engine.cpp src/commands.cpp)
+add_library(achclwss::slicer ALIAS achclwss_slicer)
+target_include_directories(achclwss_slicer PUBLIC include)
+target_link_libraries(achclwss_slicer PUBLIC achclwss::core achclwss::mesh achclwss::raster)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_slicer tests/test_slicer.cpp)
+  target_link_libraries(test_slicer PRIVATE achclwss::slicer achclwss::mcp achclwss_check)
+  add_test(NAME slicer COMMAND test_slicer)
+endif()

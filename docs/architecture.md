@@ -11,6 +11,7 @@ tools/<name> (C++)            each tool is a library of commands (+ GUI later)
 mcp/                          JSON-RPC over stdio, exposes a Session's commands
 core/                         commands, registry, undo history, workspace, batch, processes
 libs/raster                   shared 2D engine (stb for codecs, vendored)
+libs/mesh                     shared 3D engine: meshes, primitives, CSG, slicing, mesh formats, preview renders
   │
 external programs             ffmpeg, LibreOffice, pandoc: optional, found on PATH
 ```
@@ -46,5 +47,5 @@ open files live in the session's `Workspace` as documents with short ids (`img1`
 
 1. foundation: core, MCP, hub, toolkit, CI on windows/mac/linux
 2. 2D creative: photo, paint, vector, convert on a shared raster engine, one headless `achclwss` binary
-3. precision and 3D: cad, blueprint, slicer, asset forge
+3. precision and 3D: cad, blueprint, slicer, asset forge on a shared mesh engine (`libs/mesh`)
 4. media, office and the rest

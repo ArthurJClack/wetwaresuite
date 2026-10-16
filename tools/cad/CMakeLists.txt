@@ -1,0 +1,10 @@
+add_library(achclwss_cad src/expr.cpp src/model.cpp src/commands.cpp src/repair.cpp)
+add_library(achclwss::cad ALIAS achclwss_cad)
+target_include_directories(achclwss_cad PUBLIC include)
+target_link_libraries(achclwss_cad PUBLIC achclwss::core achclwss::mesh PRIVATE nlohmann_json::nlohmann_json)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_cad tests/test_cad.cpp)
+  target_link_libraries(test_cad PRIVATE achclwss::cad achclwss::mcp achclwss_check)
+  add_test(NAME cad COMMAND test_cad)
+endif()

@@ -6,18 +6,23 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 - how it fits together: [docs/architecture.md](docs/architecture.md)
 - license: GPL-3.0 (see `LICENSE`)
 
-## what works today (phases 1 and 2)
+## what works today (phases 1 to 3)
 
 | piece | what it is |
 | --- | --- |
 | `core/` | the command system: typed commands, a registry, undo/redo, open documents, batch scripting |
 | `mcp/` | an MCP server that turns any tool's commands into MCP tools, with image previews and resources |
 | `libs/raster/` | the shared 2D image engine: layers, blend modes, brushes, filters, PNG/JPEG/BMP/TGA/PPM/OpenRaster |
+| `libs/mesh/` | the shared 3D engine: meshes, primitives, CSG booleans, slicing, STL/OBJ/PLY/OFF/glTF/3MF, preview renders |
 | `tools/toolkit/` | says what any file is and which tool opens it, hex dumps |
 | `tools/photo/` | photo editing: open, resize, crop, rotate, adjust, levels, effects, batch a whole folder |
 | `tools/paint/` | painting: pressure brushes, eraser, fills, shapes, gradients, layers |
 | `tools/vector/` | vector design: shapes, paths, text, SVG in and out |
-| `tools/convert/` | change a file's type: images built in, audio/video via ffmpeg, docs via LibreOffice/pandoc |
+| `tools/blueprint/` | technical drafting and floor plans: walls, doors, dimensions, layers, DXF in/out, PDF/SVG to scale |
+| `tools/cad/` | parametric CAD: feature tree, expressions, holes, patterns, booleans, measuring, STL/3MF export |
+| `tools/slicer/` | 3D printing: printer/filament presets, perimeters, infill, supports, G-code with time and filament estimates |
+| `tools/forge/` | game assets: mesh cleanup, LODs, UVs, sprite sheets and atlases, normal maps, tileable textures, pixel art |
+| `tools/convert/` | change a file's type: images and 3D meshes built in, audio/video via ffmpeg, docs via LibreOffice/pandoc |
 | `apps/achclwss/` | `achclwss`: one headless binary that runs every command, batch scripts, or an MCP server |
 | `hub/` | `hub`: lists tools, prints the MCP config for Claude |
 

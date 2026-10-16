@@ -1,12 +1,14 @@
 // End-to-end: batch scripts and the MCP server driving the real tools.
 #include <cstdio>
 #include <filesystem>
+#include <set>
 #include <sstream>
 
 #include <nlohmann/json.hpp>
 
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
+#include "apps.hpp"
 #include "check.hpp"
 #include "suite.hpp"
 
@@ -165,6 +167,47 @@ int main() {
         Session p;
         suite::registerAll(p, {"paint"});
         CHECK(p.registry().find("photo.save") != nullptr);  // paint saves through photo
+    }
+
+    // ---- every app's tools are in this binary, and the handoff tables only name real commands ----
+    {
+        Session s;
+        suite::registerAll(s);
+        for (const auto& app : apps::all()) {
+            for (const auto& t : app.tools) CHECK(t == "share" || suite::toolNames().count(t) == 1);
+        }
+        CHECK(suite::toolNames().size() + 1 == [] {
+            std::size_t n = 0;
+            for (const auto& a : apps::all()) n += a.tools.size();
+            return n;
+        }());  // +1: share is its own Rust binary
+        auto onlyNeeds = [&](const std::string& id, std::set<std::string> allowed) {
+            const CommandInfo* info = s.registry().find(id);
+            if (!info) std::printf("missing command %s\n", id.c_str());
+            CHECK(info != nullptr);
+            if (!info) return;
+            for (const auto& p : info->params) {
+                if (p.required && !allowed.count(p.name)) std::printf("%s needs %s\n", id.c_str(), p.name.c_str());
+                if (p.required) CHECK(allowed.count(p.name) == 1);
+            }
+            for (const auto& a : allowed) {
+                bool has = false;
+                for (const auto& p : info->params) has = has || p.name == a;
+                if (!has) std::printf("%s has no %s\n", id.c_str(), a.c_str());
+                CHECK(has);
+            }
+        };
+        for (const auto& r : apps::sendRoutes()) {
+            onlyNeeds(r.save, {r.docParam, r.pathParam});
+            if (!r.open.empty()) onlyNeeds(r.open, {"path"});
+        }
+        for (const char* f : {"a.png", "a.svg", "a.ttf", "a.obj", "a.glb", "a.stl", "a.dxf", "a.tmj", "a.wav",
+                              "a.beats.json", "a.docx", "a.xlsx", "a.pptx", "a.geojson", "a.gpx", "a.achcad", "a.achmap",
+                              "a.board.json", "a.scene.json", "a.anim.json", "a.circuit.json", "a.achcut", "a.achlay"}) {
+            auto route = apps::routeForFile(f);
+            CHECK(!route.command.empty());
+            if (!route.command.empty()) onlyNeeds(route.command, {"path"});
+        }
     }
 
     fs::remove_all(dir);

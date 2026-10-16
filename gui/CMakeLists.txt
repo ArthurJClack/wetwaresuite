@@ -20,7 +20,7 @@ add_library(wetwaresuite_gui_logic src/logic.cpp)
 target_include_directories(wetwaresuite_gui_logic PUBLIC include)
 target_link_libraries(wetwaresuite_gui_logic PUBLIC wetwaresuite::core)
 
-if(WETWARESUITE_BUILD_TESTS)
+if(WETWARESUITE_BUILD_TESTS AND TARGET wetwaresuite_photo AND TARGET wetwaresuite_paint)
   add_executable(test_gui_logic tests/test_logic.cpp)
   target_link_libraries(test_gui_logic PRIVATE wetwaresuite_gui_logic wetwaresuite::photo wetwaresuite::paint wetwaresuite_check)
   add_test(NAME gui_logic COMMAND test_gui_logic)
@@ -154,6 +154,8 @@ else()
 endif()
 add_library(wetwaresuite::gui ALIAS wetwaresuite_gui)
 
+# the all-in-one launcher needs every tool, so it only builds with the all-in-one suite
+if(TARGET wetwaresuite_suite)
 add_executable(wetwaresuite-gui app/main.cpp)
 target_compile_options(wetwaresuite-gui PRIVATE ${WETWARESUITE_GUI_WARNINGS})
 target_link_libraries(wetwaresuite-gui PRIVATE wetwaresuite_gui wetwaresuite_suite wetwaresuite::mcp)
@@ -163,4 +165,5 @@ if(WETWARESUITE_BUILD_TESTS)
   # the launcher must start and answer without a screen
   add_test(NAME gui_launcher_help COMMAND wetwaresuite-gui --help)
   add_test(NAME gui_launcher_apps COMMAND wetwaresuite-gui --list-apps)
+endif()
 endif()

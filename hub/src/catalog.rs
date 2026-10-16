@@ -1,87 +1,105 @@
-//! The list of tools the hub knows about. Sizes are estimates from the plan
-//! until real release packages exist.
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Status {
-    /// Built from this repo today.
-    Available,
-    /// On the roadmap, not built yet.
-    Planned,
-}
+//! The tools and the apps that group them. Tool sizes are early plan
+//! estimates; app sizes are measured release binaries.
 
 #[derive(Debug, Clone, Copy)]
 pub struct Tool {
     pub id: &'static str,
     pub name: &'static str,
     pub summary: &'static str,
-    pub phase: u8,
     pub approx_mb: u32,
-    pub status: Status,
-    /// Executable that serves MCP with `<binary> mcp`, if the tool has one yet.
-    pub mcp_binary: Option<&'static str>,
 }
 
-#[allow(dead_code)] // every catalog tool is built now; kept for the next ones
-const fn planned(id: &'static str, name: &'static str, summary: &'static str, phase: u8, approx_mb: u32) -> Tool {
-    Tool { id, name, summary, phase, approx_mb, status: Status::Planned, mcp_binary: None }
-}
-
-/// The `wetwaresuite` binary serves every built tool over MCP with `wetwaresuite mcp`.
+/// The all-in-one binary: every tool, `wetwaresuite mcp` serves them all.
 pub const SUITE: &str = "wetwaresuite";
 
 /// `share` is its own small Rust binary (no C++ core), with its own MCP server.
 pub const SHARE: &str = "wetwaresuite-share";
 
-const fn available(id: &'static str, name: &'static str, summary: &'static str, phase: u8, approx_mb: u32) -> Tool {
-    Tool { id, name, summary, phase, approx_mb, status: Status::Available, mcp_binary: Some(SUITE) }
+const fn tool(id: &'static str, name: &'static str, summary: &'static str, approx_mb: u32) -> Tool {
+    Tool { id, name, summary, approx_mb }
 }
 
 pub const TOOLS: &[Tool] = &[
-    Tool {
-        id: "toolkit",
-        name: "toolkit",
-        summary: "open anything: inspect, hex, archives, code",
-        phase: 1,
-        approx_mb: 10,
-        status: Status::Available,
-        mcp_binary: Some(SUITE),
-    },
-    available("photo", "photo", "photo editing: adjust, crop, resize, effects, batch", 2, 4),
-    available("paint", "paint", "digital painting with pen pressure and layers", 2, 4),
-    available("convert", "convert", "change any file's type: images, audio, video, docs", 2, 2),
-    available("vector", "vector", "vector design, SVG/AI/EPS", 2, 10),
-    Tool {
-        id: "share",
-        name: "share",
-        summary: "share and live-sync folders over LAN or internet",
-        phase: 2,
-        approx_mb: 1,
-        status: Status::Available,
-        mcp_binary: Some(SHARE),
-    },
-    available("cad", "cad", "precision parametric CAD: feature tree, expressions, holes, patterns, STL/3MF", 3, 3),
-    available("blueprint", "blueprint", "technical drafting and floor plans: DXF, PDF to scale", 3, 2),
-    available("slicer", "slicer", "3D printing slicer: STL/3MF to G-code", 3, 20),
-    available("forge", "asset forge", "game assets: meshes, textures, sprites", 3, 25),
-    available("audio", "audio", "multitrack and spectral audio editing", 4, 12),
-    available("cut", "cut", "video editing", 4, 20),
-    available("capture", "capture", "screen recording and screenshots", 4, 5),
-    available("office", "office", "documents, spreadsheets, slides, PDF", 4, 5),
-    available("layout", "layout", "print layout and publishing", 4, 10),
-    available("library", "library", "asset browser for every format", 4, 3),
-    available("automate", "automate", "Python scripting across tools", 4, 20),
-    available("sculpt", "sculpt", "digital sculpting and retopology", 5, 15),
-    available("render", "render", "3D scenes and path-traced renders", 5, 20),
-    available("animate", "animate", "2D and 3D animation", 5, 15),
-    available("levels", "levels", "game level and tilemap editor", 5, 10),
-    available("beats", "beats", "music making: sequencer, synths, samples", 5, 15),
-    available("circuit", "circuit", "schematics and PCB layout", 6, 25),
-    available("flash", "flash", "flash firmware to Arduino, ESP32 and STM32", 6, 5),
-    available("maps", "maps", "offline maps and GIS", 6, 15),
-    available("board", "board", "whiteboard and diagrams", 6, 5),
-    available("notes", "notes", "markdown notes and knowledge base", 6, 5),
-    available("type", "type", "font design", 6, 8),
+    tool("toolkit", "toolkit", "open anything: inspect, hex, archives, code", 10),
+    tool("photo", "photo", "photo editing: adjust, crop, resize, effects, batch", 4),
+    tool("paint", "paint", "digital painting with pen pressure and layers", 4),
+    tool("convert", "convert", "change any file's type: images, audio, video, docs", 2),
+    tool("vector", "vector", "vector design, SVG/AI/EPS", 10),
+    tool("share", "share", "share and live-sync folders over LAN or internet", 1),
+    tool("cad", "cad", "precision parametric CAD: feature tree, expressions, holes, patterns, STL/3MF", 3),
+    tool("blueprint", "blueprint", "technical drafting and floor plans: DXF, PDF to scale", 2),
+    tool("slicer", "slicer", "3D printing slicer: STL/3MF to G-code", 20),
+    tool("forge", "asset forge", "game assets: meshes, textures, sprites", 25),
+    tool("audio", "audio", "multitrack and spectral audio editing", 12),
+    tool("cut", "cut", "video editing", 20),
+    tool("capture", "capture", "screen recording and screenshots", 5),
+    tool("office", "office", "documents, spreadsheets, slides, PDF", 5),
+    tool("layout", "layout", "print layout and publishing", 10),
+    tool("library", "library", "asset browser for every format", 3),
+    tool("automate", "automate", "Python scripting across tools", 20),
+    tool("sculpt", "sculpt", "digital sculpting and retopology", 15),
+    tool("render", "render", "3D scenes and path-traced renders", 20),
+    tool("animate", "animate", "2D and 3D animation", 15),
+    tool("levels", "levels", "game level and tilemap editor", 10),
+    tool("beats", "beats", "music making: sequencer, synths, samples", 15),
+    tool("circuit", "circuit", "schematics and PCB layout", 25),
+    tool("flash", "flash", "flash firmware to Arduino, ESP32 and STM32", 5),
+    tool("maps", "maps", "offline maps and GIS", 15),
+    tool("board", "board", "whiteboard and diagrams", 5),
+    tool("notes", "notes", "markdown notes and knowledge base", 5),
+    tool("type", "type", "font design", 8),
 ];
+
+/// An app: what people install. Each is its own binary `wetwaresuite-<id>` that
+/// carries a few related tools; `files` is small and always installed.
+#[derive(Debug, Clone, Copy)]
+pub struct App {
+    pub id: &'static str,
+    pub summary: &'static str,
+    pub tools: &'static [&'static str],
+    /// Size of the release binary (Linux x86-64, rounded up).
+    pub approx_mb: u32,
+    /// Installed with every other app (opening, converting and finding files).
+    pub always: bool,
+}
+
+/// One row per app, in the order `hub list` shows them. Keep in step with
+/// `apps/apps.hpp` on the C++ side (a test there checks the same grouping).
+pub const APPS: &[App] = &[
+    App { id: "image", summary: "edit photos, paint pictures and make textures", tools: &["photo", "paint"], approx_mb: 2, always: false },
+    App { id: "draw", summary: "vector art and logos, fonts, whiteboards and diagrams", tools: &["vector", "type", "board"], approx_mb: 5, always: false },
+    App { id: "model", summary: "3D modeling and sculpting, rendered pictures, animation", tools: &["sculpt", "render", "animate"], approx_mb: 4, always: false },
+    App { id: "game", summary: "game assets (meshes, sprites, textures) and game levels", tools: &["forge", "levels"], approx_mb: 4, always: false },
+    App { id: "cad", summary: "precise parts, technical drawings and floor plans, 3D printing", tools: &["cad", "blueprint", "slicer"], approx_mb: 4, always: false },
+    App { id: "electronics", summary: "circuit diagrams, circuit boards and flashing microcontrollers", tools: &["circuit", "flash"], approx_mb: 4, always: false },
+    App { id: "sound", summary: "record and clean up audio, make music", tools: &["audio", "beats"], approx_mb: 4, always: false },
+    App { id: "video", summary: "edit videos, take screenshots and record the screen", tools: &["cut", "capture"], approx_mb: 3, always: false },
+    App { id: "office", summary: "documents, spreadsheets, slides, PDFs, print layouts and notes", tools: &["office", "layout", "notes"], approx_mb: 7, always: false },
+    App { id: "maps", summary: "offline maps, GPS tracks and map data", tools: &["maps"], approx_mb: 4, always: false },
+    App { id: "files", summary: "open, convert, find and batch-process any file (always installed)", tools: &["toolkit", "convert", "library", "automate"], approx_mb: 4, always: true },
+    App { id: "share", summary: "share and live-sync folders with other devices", tools: &["share"], approx_mb: 1, always: false },
+];
+
+impl App {
+    /// The executable name, without `.exe`.
+    pub fn binary(&self) -> String {
+        if self.id == "share" {
+            SHARE.to_string()
+        } else {
+            format!("{SUITE}-{}", self.id)
+        }
+    }
+}
+
+/// Finds an app by its id, or by the id of a tool it contains ("photo" -> image).
+pub fn find_app(id: &str) -> Option<&'static App> {
+    let id = id.to_ascii_lowercase();
+    if let Some(app) = APPS.iter().find(|a| a.id == id) {
+        return Some(app);
+    }
+    let tool = find(&id)?;
+    APPS.iter().find(|a| a.tools.contains(&tool.id))
+}
 
 pub fn find(id: &str) -> Option<&'static Tool> {
     let id = id.to_ascii_lowercase();
@@ -109,9 +127,28 @@ mod tests {
     }
 
     #[test]
-    fn available_tools_have_mcp() {
-        for t in TOOLS.iter().filter(|t| t.status == Status::Available) {
-            assert!(t.mcp_binary.is_some(), "{} has no MCP server", t.id);
+    fn every_tool_is_in_exactly_one_app() {
+        for t in TOOLS {
+            let n = APPS.iter().filter(|a| a.tools.contains(&t.id)).count();
+            assert_eq!(n, 1, "{} is in {n} apps", t.id);
         }
+        for a in APPS {
+            for t in a.tools {
+                assert!(find(t).is_some(), "app {} lists unknown tool {t}", a.id);
+            }
+        }
+    }
+
+    #[test]
+    fn apps_by_id_or_tool_alias() {
+        assert_eq!(find_app("image").unwrap().id, "image");
+        assert_eq!(find_app("Paint").unwrap().id, "image");
+        assert_eq!(find_app("slicer").unwrap().id, "cad");
+        assert_eq!(find_app("cad").unwrap().id, "cad");
+        assert_eq!(find_app("asset forge").unwrap().id, "game");
+        assert!(find_app("photoshop").is_none());
+        assert_eq!(find_app("model").unwrap().binary(), "wetwaresuite-model");
+        assert_eq!(find_app("share").unwrap().binary(), "wetwaresuite-share");
+        assert!(APPS.iter().all(|a| a.approx_mb > 0));
     }
 }

@@ -8,11 +8,13 @@
 
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
+#include "app_commands.hpp"
+#include "wetwaresuite/mcp/transport.hpp"
 #include "suite.hpp"
 
 namespace {
 
-constexpr const char* kVersion = "0.6.0";
+constexpr const char* kVersion = "0.7.0";
 
 constexpr const char* kInstructions =
     "wetwaresuite is a creative suite you drive with tools. Workflow: open or create a document (photo_open, photo_new, "
@@ -54,6 +56,7 @@ void usage() {
                  "  wetwaresuite <command> key=value      same as run\n"
                  "  wetwaresuite batch [file] [--keep-going]  run a script of commands (stdin if no file)\n"
                  "  wetwaresuite mcp [--tools a,b]        serve all (or some) tools to Claude over MCP on stdin/stdout\n"
+                 "  wetwaresuite mcp --http [--port N] [--host H] [--token T]  serve MCP over HTTP instead\n"
                  "  wetwaresuite --version\n";
 }
 
@@ -110,9 +113,12 @@ int main(int argc, char** argv) {
         return args.empty() ? 2 : 0;
     }
 
+    apps::setSelfPath(argv[0]);
     Session session;
     suite::registerAll(session);
+    apps::registerCommands(session, "suite");
     const std::string cmd = args[0];
+    const std::string instructions = std::string(kInstructions) + apps::handoffInstructions("suite");
 
     try {
         if (cmd == "--version") {
@@ -120,7 +126,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (cmd == "list") {
-            if (args.size() > 1 && !suite::toolNames().count(args[1])) {
+            if (args.size() > 1 && args[1] != "app" && !suite::toolNames().count(args[1])) {
                 std::cerr << "no tool called " << args[1] << "; tools: " << joinedTools() << "\n";
                 return 2;
             }
@@ -132,14 +138,29 @@ int main(int argc, char** argv) {
             return args.size() == 1 ? 0 : 2;
         }
         if (cmd == "mcp") {
-            if (args.size() != 1 && (args.size() != 3 || args[1] != "--tools")) {
-                std::cerr << "usage: wetwaresuite mcp [--tools a,b]  (tools: " << joinedTools() << ")\n";
+            // --tools picks what to serve; everything else picks the transport (see mcp/transport.hpp)
+            std::vector<std::string> rest;
+            std::string toolList;
+            bool hasTools = false;
+            for (std::size_t i = 1; i < args.size(); ++i) {
+                if (args[i] == "--tools" && i + 1 < args.size()) {
+                    toolList = args[++i];
+                    hasTools = true;
+                } else {
+                    rest.push_back(args[i]);
+                }
+            }
+            mcp::TransportOptions transport;
+            std::string error;
+            if (!mcp::parseTransportArgs(rest, transport, error)) {
+                std::cerr << "error: " << error << "\nusage: wetwaresuite mcp [--tools a,b] [--http ...]  (tools: " << joinedTools()
+                          << ")\n" << mcp::transportUsage();
                 return 2;
             }
-            if (args.size() == 3) {
+            if (hasTools) {
                 std::set<std::string> keep;
                 std::string item;
-                for (char c : args[2] + ",") {
+                for (char c : toolList + ",") {
                     if (c == ',') {
                         if (!item.empty()) keep.insert(item);
                         item.clear();
@@ -159,13 +180,12 @@ int main(int argc, char** argv) {
                 }
                 Session filtered;
                 suite::registerAll(filtered, keep);
-                mcp::Server server(filtered, {"wetwaresuite", kVersion, kInstructions});
-                server.run(std::cin, std::cout);
-                return 0;
+                apps::registerCommands(filtered, "suite");
+                mcp::Server server(filtered, {"wetwaresuite", kVersion, instructions});
+                return mcp::serve(server, transport, std::cin, std::cout, std::cerr);
             }
-            mcp::Server server(session, {"wetwaresuite", kVersion, kInstructions});
-            server.run(std::cin, std::cout);
-            return 0;
+            mcp::Server server(session, {"wetwaresuite", kVersion, instructions});
+            return mcp::serve(server, transport, std::cin, std::cout, std::cerr);
         }
         if (cmd == "batch") {
             bool keepGoing = false;

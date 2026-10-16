@@ -172,12 +172,13 @@ std::optional<fs::path> catalogFile(const State& st, const Params& p, std::strin
     std::error_code ec;
     if (!lib.empty()) {
         fs::path f(lib);
-        if (fs::is_directory(f, ec) || lib.back() == '/' || lib.back() == '\\') return f / kCatalogName;
+        if (fs::is_directory(f, ec) || lib.back() == '/' || lib.back() == '\\') return catalogIn(f);
         return f;
     }
     if (!st.current.empty()) return fs::path(st.current);
     for (fs::path dir = fs::current_path(ec); !dir.empty(); dir = dir.parent_path()) {
-        if (fs::exists(dir / kCatalogName, ec)) return dir / kCatalogName;
+        const fs::path found = catalogIn(dir);
+        if (fs::exists(found, ec)) return found;
         if (dir == dir.parent_path()) break;
     }
     error = "no library found: run library.index root=<folder> first, or pass library=<catalog file or folder>";
@@ -407,6 +408,7 @@ struct IndexStats {
 
 bool skipName(const std::string& name, const IndexOptions& o) {
     if (name == kCatalogName || name == kThumbDir || name.rfind(std::string(kCatalogName), 0) == 0) return true;
+    if (name == kOldThumbDir || name.rfind(std::string(kOldCatalogName), 0) == 0) return true;
     if (!o.hidden && !name.empty() && name[0] == '.') return true;
     for (const auto& x : o.exclude) {
         if (globMatch(x, name)) return true;
@@ -779,8 +781,8 @@ void registerCommands(Session& session) {
                         std::error_code ec;
                         if (!fs::is_directory(root, ec)) return Result::failure("no folder at " + root.string());
                         std::string lib = stringParam(p, "library");
-                        fs::path file = lib.empty() ? root / kCatalogName : fs::path(lib);
-                        if (!lib.empty() && (fs::is_directory(file, ec) || lib.back() == '/')) file /= kCatalogName;
+                        fs::path file = lib.empty() ? catalogIn(root) : fs::path(lib);
+                        if (!lib.empty() && (fs::is_directory(file, ec) || lib.back() == '/')) file = catalogIn(file);
                         auto t0 = std::chrono::steady_clock::now();
                         try {
                             Catalog& cat = st->open(file);

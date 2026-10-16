@@ -535,9 +535,18 @@ void testCommands(const fs::path& dir) {
     CHECK(run(s, "maps.render doc=" + id + " path=" + q(dir / "map.svg") + " crs=wgs84 graticule=true").ok);
     r = run(s, "maps.preview doc=" + id);
     CHECK(r.ok && r.attachments.size() == 1 && r.attachments[0].mime == "image/png");
-    r = run(s, "maps.save doc=" + id + " path=" + q(dir / "cafes.achmap"));
+    r = run(s, "maps.save doc=" + id + " path=" + q(dir / "cafes.wwmap"));
     CHECK(r.ok);
-    r = run(s, "maps.open path=" + q(dir / "cafes.achmap"));
+    {
+        // a project from before the rename: .achmap with the "achclwss-map" id
+        std::string old = readAll(dir / "cafes.wwmap");
+        const std::string fresh = "\"wetwaresuite-map\"";
+        CHECK(old.find(fresh) != std::string::npos);
+        if (old.find(fresh) != std::string::npos) old.replace(old.find(fresh), fresh.size(), "\"achclwss-map\"");
+        writeText(dir / "old.achmap", old);
+        CHECK(run(s, "maps.open path=" + q(dir / "old.achmap")).ok);
+    }
+    r = run(s, "maps.open path=" + q(dir / "cafes.wwmap"));
     CHECK(r.ok);
     const std::string id2 = toText(r.value);
     CHECK(mapOf(s, id2).layers.size() == mapOf(s, id).layers.size());

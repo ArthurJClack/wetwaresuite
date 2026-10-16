@@ -152,7 +152,7 @@ pub const SAMPLES: &[(&str, &str)] = &[
          levels.gen_caves doc=$l wall=1 floor=2 seed=7\n\
          levels.save doc=$l path=\"@OUT@/game/cave.tmj\"\n",
     ),
-    ("maps", "maps.new title=World -> m\nmaps.add_countries doc=$m\nmaps.save doc=$m path=\"@OUT@/maps/world.achmap\"\n"),
+    ("maps", "maps.new title=World -> m\nmaps.add_countries doc=$m\nmaps.save doc=$m path=\"@OUT@/maps/world.wwmap\"\n"),
 ];
 
 fn generate_samples(out: &Path, dir: &Path) -> Result<(), String> {

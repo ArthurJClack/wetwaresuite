@@ -167,6 +167,23 @@ int main() {
         std::string all((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
         CHECK(all.find("\"photos/sunset.png\"") != std::string::npos);
     }
+    // a catalog from before the rename (old file name and header key) is still found and read
+    {
+        std::ifstream in(assets / library::kCatalogName, std::ios::binary);
+        std::string all((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+        const std::string key = "wetwaresuite_library";
+        CHECK(all.find(key) != std::string::npos);
+        if (all.find(key) != std::string::npos) all.replace(all.find(key), key.size(), "achclwss_library");
+        const fs::path oldDir = assets.parent_path() / (assets.filename().string() + "_old");
+        fs::create_directories(oldDir);
+        writeText(oldDir / library::kOldCatalogName, all);
+        CHECK(library::catalogIn(oldDir) == oldDir / library::kOldCatalogName);
+        CHECK(library::Catalog::load(library::catalogIn(oldDir)).items.size() == cat.items.size());
+        Session old;
+        library::registerCommands(old);
+        CHECK(old.run("library.search", {{"query", std::string("")}, {"library", oldDir.string()}}).ok);
+        fs::remove_all(oldDir);
+    }
 
     // ---- search ----
     auto count = [&](const std::string& q) { return intField(s.run("library.search", {{"query", q}}), "total"); };

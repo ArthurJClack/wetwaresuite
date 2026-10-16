@@ -133,7 +133,7 @@ layout
 
 - **CLI**: `wetwaresuite <command> key=value ...` runs one command in a fresh
   process. Documents live only inside one process, so a single command can
-  create or inspect a layout (`wetwaresuite layout.open path=poster.achlay`) but
+  create or inspect a layout (`wetwaresuite layout.open path=poster.wwlay`) but
   can't keep editing it. For a few steps from the shell, pipe lines into
   `wetwaresuite batch` (shown in every task).
 - **Batch script**: a text file with one command per line, run with
@@ -198,7 +198,7 @@ layout.frame_add doc=$doc type=rect x=-3 y=560 w=426 h=37 fill=night name=footer
 layout.frame_add doc=$doc type=text x=20 y=568 w=380 h=20 text="riversidejazz.example  ·  free for under-12s" size=20 align=center color=white valign=middle
 
 layout.preflight doc=$doc min_dpi=150
-layout.save doc=$doc path=poster.achlay
+layout.save doc=$doc path=poster.wwlay
 layout.export doc=$doc path=poster.pdf bleed=true marks=true
 layout.export doc=$doc path=poster-preview.png dpi=30
 ```
@@ -258,11 +258,11 @@ How it works:
 One command can open and describe a saved layout:
 
 ```sh
-wetwaresuite layout.open path=poster.achlay
+wetwaresuite layout.open path=poster.wwlay
 ```
 
 ```
-opened lay1 ("Summer Jazz Night", 1 page 420 x 594 mm, 6 frames, poster.achlay)
+opened lay1 ("Summer Jazz Night", 1 page 420 x 594 mm, 6 frames, poster.wwlay)
 lay1
 doc: lay1
 pages: 1
@@ -272,7 +272,7 @@ size: 420,594
 To change and re-export it in one go, pipe lines into `batch`:
 
 ```sh
-printf 'layout.open path=poster.achlay -> p\nlayout.export doc=$p path=poster-small.png dpi=20\n' | wetwaresuite batch
+printf 'layout.open path=poster.wwlay -> p\nlayout.export doc=$p path=poster-small.png dpi=20\n' | wetwaresuite batch
 ```
 
 ```
@@ -351,7 +351,7 @@ layout.place_image doc=$fly path=small.png x=208 y=135 w=79 h=50 fit=fill name=p
 layout.place_image doc=$fly path=logo.svg x=228 y=10 w=40 h=40 fit=fit
 layout.preflight doc=$fly
 layout.export doc=$fly path=flyer.pdf bleed=true marks=true
-layout.save doc=$fly path=flyer.achlay
+layout.save doc=$fly path=flyer.wwlay
 layout.export doc=$fly path=flyer.png dpi=60 guides=true
 ```
 
@@ -383,7 +383,7 @@ preflight: 1 error(s), 0 warning(s), 1 note(s)
 
 ```sh
 wetwaresuite batch < flyer.txt
-wetwaresuite layout.open path=flyer.achlay
+wetwaresuite layout.open path=flyer.wwlay
 ```
 
 ### asking Claude
@@ -567,7 +567,7 @@ images at 300 dpi. Open the flyer from task 2, check it, fix it, export.
 ```
 # Get the flyer ready for a print shop that asked for: 3 mm bleed, crop marks,
 # embedded fonts, CMYK colours, images at 300 dpi.
-layout.open path=flyer.achlay -> fly
+layout.open path=flyer.wwlay -> fly
 layout.preflight doc=$fly
 # fix what preflight found: the photo is too small for its frame at 300 dpi
 layout.place_image doc=$fly frame=photo path=hills.jpg fit=fill
@@ -578,7 +578,7 @@ layout.export doc=$fly path=flyer-proof.jpg dpi=100 quality=85
 ```
 
 ```
-opened lay1 ("Green Valley Walking Club", 1 page 297 x 210 mm, 3 frames, flyer.achlay)
+opened lay1 ("Green Valley Walking Club", 1 page 297 x 210 mm, 3 frames, flyer.wwlay)
 preflight: 1 error(s), 0 warning(s), 1 note(s)
   error [low_res] page 1, f2 (photo): small.png prints at 129 dpi (400 x 300 px); 300 dpi needs it at most 33.9 mm wide
   ...
@@ -622,7 +622,7 @@ pdfinfo -box flyer-print.pdf     # MediaBox, BleedBox and TrimBox
 
 ### asking Claude
 
-> Get flyer.achlay ready for the print shop: they want 3 mm bleed, crop marks,
+> Get flyer.wwlay ready for the print shop: they want 3 mm bleed, crop marks,
 > embedded fonts and 300 dpi images. Fix anything preflight complains about
 > (use hills.jpg for the photo if it's too small) and export flyer-print.pdf.
 
@@ -744,20 +744,20 @@ Create a print layout and return its id (e.g. lay1). Sizes are mm; pick a preset
 
 #### `layout.open`: Open Layout
 
-Open an .achlay layout file and return its id.
+Open a .wwlay layout file (older .achlay files open too) and return its id.
 
 | param | type | required | default | meaning |
 |---|---|---|---|---|
-| `path` | string | yes |  | path to an .achlay file |
+| `path` | string | yes |  | path to a .wwlay file |
 
 #### `layout.save`: Save Layout
 
-Save the layout as .achlay (JSON: pages, frames, stories, styles, colours; pictures stay linked by path). For print files use layout.export.
+Save the layout as .wwlay (JSON: pages, frames, stories, styles, colours; pictures stay linked by path). For print files use layout.export.
 
 | param | type | required | default | meaning |
 |---|---|---|---|---|
 | `doc` | string | yes |  | id of an open layout, e.g. lay1 |
-| `path` | string | yes |  | output .achlay file |
+| `path` | string | yes |  | output .wwlay file |
 
 #### `layout.close`: Close Layout
 
@@ -1225,7 +1225,8 @@ Render a page to PNG so you can see it, with margins (magenta), column gutters (
   polyline, polygon, path, groups, transforms, fill/stroke/opacity); no text,
   gradients, patterns or clip paths in SVGs. Curves are flattened to short
   lines in the PDF.
-- Pictures are linked by path, not stored in the `.achlay` file; moving the
+- Layouts saved before the rename (`.achlay`) still open with `layout.open`.
+- Pictures are linked by path, not stored in the `.wwlay` file; moving the
   pictures breaks the links (preflight reports `missing_file`).
 - Imposition places whole pages in a grid; there is no booklet (saddle-stitch)
   page reordering or creep. Print the booklet PDF with your printer's or

@@ -1,6 +1,7 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 
 #include "wetwaresuite/audio/analysis.hpp"
 #include "wetwaresuite/audio/dsp.hpp"
@@ -384,6 +385,16 @@ int main() {
         CHECK(q.tracks.size() == 2 && q.tracks[0].clips.size() == 1 && q.tracks[1].clips[0].at == 2.0 && q.tracks[0].duckUnder == 1);
         CHECK(q.tracks[0].envelope.size() == 2 && q.tracks[0].pan == 1 && q.tracks[1].mute);
         CHECK(q.tracks[0].clips[0].audio->frames() == 48000);
+        {
+            // projects saved before the rename (key "achclwss_audio_project") still load
+            std::ifstream in(dir / "show.json", std::ios::binary);
+            std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+            const std::string key = "wetwaresuite_audio_project";
+            CHECK(text.find(key) != std::string::npos);
+            if (text.find(key) != std::string::npos) text.replace(text.find(key), key.size(), "achclwss_audio_project");
+            std::ofstream(dir / "show_old.json", std::ios::binary) << text;
+            CHECK(loadProject(dir / "show_old.json").tracks.size() == 2);
+        }
     }
 
     fs::remove_all(dir);

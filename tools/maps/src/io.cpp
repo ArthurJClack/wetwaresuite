@@ -1,5 +1,5 @@
 // Vector files: GeoJSON, WKT, KML, GPX and CSV, the import/export dispatch,
-// and .achmap project files. Shapefiles live in shapefile.cpp, rasters in raster_io.cpp.
+// and .wwmap project files. Shapefiles live in shapefile.cpp, rasters in raster_io.cpp.
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -1626,7 +1626,9 @@ Map fromProject(const std::string& text, const fs::path&) {
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not a map project (bad JSON): ") + e.what());
     }
-    if (j.value("format", "") != "wetwaresuite-map") throw std::runtime_error("not an wetwaresuite map project (.achmap)");
+    const std::string format = j.is_object() ? j.value("format", "") : std::string();
+    // "achclwss-map": projects saved before the rename still open
+    if (format != "wetwaresuite-map" && format != "achclwss-map") throw std::runtime_error("not a wetwaresuite map project (.wwmap)");
     Map m;
     m.title = j.value("title", "");
     for (const auto& lj : j.value("layers", json::array())) {

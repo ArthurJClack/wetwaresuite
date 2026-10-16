@@ -2,7 +2,7 @@
 
 `notes` works on a folder of Markdown files the way Obsidian does, without a window: it creates and edits notes, fills in templates, keeps daily notes, reads and writes YAML frontmatter, lists and renames tags, searches everything with ranked results and snippets, follows `[[wikilinks]]` both ways (and rewrites them when you rename or move a note), finds unresolved links and orphans, collects `- [ ]` tasks with due dates from every note, draws the link graph, and publishes notes as HTML, PDF or a whole static website.
 
-The folder is the source of truth. You can keep editing it in Obsidian, VS Code, vim or a phone app at the same time: every command checks the files' sizes and modification times first and re-reads what changed. What `notes` learns from the files (links, tags, headings, tasks, search terms) is cached in a hidden `.achnotes/` folder inside the vault; delete it whenever you like and it is rebuilt.
+The folder is the source of truth. You can keep editing it in Obsidian, VS Code, vim or a phone app at the same time: every command checks the files' sizes and modification times first and re-reads what changed. What `notes` learns from the files (links, tags, headings, tasks, search terms) is cached in a hidden `.wwnotes/` folder inside the vault; delete it whenever you like and it is rebuilt (an old `.achnotes/` cache from before the rename is replaced the same way).
 
 There is no GUI yet; the GUI that comes later will call these same commands. Each task below is shown three ways:
 
@@ -14,9 +14,9 @@ Every example was run against the real binary on the sample vault below; outputs
 
 ## How notes works
 
-**Vaults.** A vault is any folder of `.md` files, nested as deep as you like. Files that aren't Markdown (images, PDFs, audio) are *attachments*: they can be linked and embedded. Hidden folders (`.obsidian`, `.trash`, `.git`, `.achnotes`) and `node_modules` are skipped.
+**Vaults.** A vault is any folder of `.md` files, nested as deep as you like. Files that aren't Markdown (images, PDFs, audio) are *attachments*: they can be linked and embedded. Hidden folders (`.obsidian`, `.trash`, `.git`, `.wwnotes`) and `node_modules` are skipped.
 
-**Which vault a command uses.** Every command takes `vault=`: either an id from `notes.vault.open` (`vault1`) or a folder path, which is opened on the spot. Without it, a command uses the vault used last in this session, else looks for a folder holding `.obsidian/` or `.achnotes/` in the current folder and its parents, the way git finds a repository. So the easy way to work is to `cd` into the vault; scripts and Claude can pass `vault=` or open it first.
+**Which vault a command uses.** Every command takes `vault=`: either an id from `notes.vault.open` (`vault1`) or a folder path, which is opened on the spot. Without it, a command uses the vault used last in this session, else looks for a folder holding `.obsidian/` or `.wwnotes/` in the current folder and its parents, the way git finds a repository. So the easy way to work is to `cd` into the vault; scripts and Claude can pass `vault=` or open it first.
 
 **Naming notes.** Wherever a command takes `note=`, you can give a path (`Projects/Garden Redesign.md`, with or without `.md`), a bare name (`Garden Redesign`), a frontmatter title or an alias. Names are resolved like Obsidian resolves `[[links]]`: exact path first, then a path relative to the linking note, then the file name anywhere in the vault (preferring the same folder, then the shortest path), then aliases. Case doesn't matter.
 
@@ -689,7 +689,7 @@ Every command takes `vault=` (an id or folder; default: the last used, or the va
 | `notes.vault.create` | make a vault folder with `.obsidian/` | `path`, `daily_folder`, `templates_folder` |
 | `notes.vault.info` | counts, most linked, settings | `preview` |
 | `notes.vault.configure` | daily note and template settings (in `.obsidian/`) | `daily_folder`, `daily_format`, `daily_template`, `templates_folder`, `date_format`, `time_format` |
-| `notes.vault.reindex` | delete the `.achnotes` cache and read everything again | |
+| `notes.vault.reindex` | delete the `.wwnotes` cache and read everything again | |
 | `notes.list` | notes with words, tags, dates | `folder`, `tag`, `sort` (path, name, title, modified, -modified, words, -words), `limit`, `json` |
 | `notes.read` | a note's text | `note`, `heading`, `frontmatter`, `lines` |
 | `notes.create` | new note, optionally from a template | `note`, `folder`, `template`, `vars`, `content`/`content_file`, `overwrite`, `today` |

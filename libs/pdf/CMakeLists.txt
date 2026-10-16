@@ -1,0 +1,10 @@
+add_library(achclwss_pdf src/fonts.cpp src/glyphs.cpp src/writer.cpp src/render.cpp src/reader.cpp)
+add_library(achclwss::pdf ALIAS achclwss_pdf)
+target_include_directories(achclwss_pdf PUBLIC include PRIVATE ${PROJECT_SOURCE_DIR}/third_party/stb)
+target_link_libraries(achclwss_pdf PUBLIC achclwss::core achclwss::raster)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_pdf tests/test_pdf.cpp)
+  target_link_libraries(test_pdf PRIVATE achclwss::pdf achclwss_check)
+  add_test(NAME pdf COMMAND test_pdf)
+endif()

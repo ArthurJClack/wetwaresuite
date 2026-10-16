@@ -1,0 +1,10 @@
+add_library(achclwss_layout src/model.cpp src/text.cpp src/render.cpp src/pdf.cpp src/preflight.cpp src/commands.cpp)
+add_library(achclwss::layout ALIAS achclwss_layout)
+target_include_directories(achclwss_layout PUBLIC include)
+target_link_libraries(achclwss_layout PUBLIC achclwss::core achclwss::raster PRIVATE achclwss::pdfdoc achclwss::vector nlohmann_json::nlohmann_json)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_layout tests/test_layout.cpp)
+  target_link_libraries(test_layout PRIVATE achclwss::layout achclwss::pdfdoc achclwss::mcp achclwss_check)
+  add_test(NAME layout COMMAND test_layout)
+endif()

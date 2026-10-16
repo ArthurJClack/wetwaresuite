@@ -1,4 +1,4 @@
-#include "achclwss/raster/ops.hpp"
+#include "wetwaresuite/raster/ops.hpp"
 
 #include <algorithm>
 #include <array>
@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <random>
 
-namespace achclwss::raster {
+namespace wetwaresuite::raster {
 
 namespace {
 
@@ -458,4 +458,4 @@ void applyEffect(Image& img, Effect kind, double amount) {
     }
 }
 
-}  // namespace achclwss::raster
+}  // namespace wetwaresuite::raster

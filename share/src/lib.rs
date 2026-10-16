@@ -1,4 +1,4 @@
-//! achclwss-share: share a folder with a browser, live-sync folders between
+//! wetwaresuite-share: share a folder with a browser, live-sync folders between
 //! machines, and send one-off files, over the LAN or the internet. Standard
 //! library only.
 

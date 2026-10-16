@@ -4,14 +4,14 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/cad/cad.hpp"
-#include "achclwss/core/cli.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/mesh/io.hpp"
+#include "wetwaresuite/cad/cad.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/mesh/io.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::cad;
+using namespace wetwaresuite;
+using namespace wetwaresuite::cad;
 
 namespace {
 
@@ -360,7 +360,7 @@ void testUndoRedo() {
 }
 
 void testFiles() {
-    const auto dir = std::filesystem::temp_directory_path() / "achclwss_cad_test";
+    const auto dir = std::filesystem::temp_directory_path() / "wetwaresuite_cad_test";
     std::filesystem::create_directories(dir);
     const std::string part = (dir / "part.achcad").string(), stl = (dir / "part.stl").string(), png = (dir / "part.png").string();
     Session s;

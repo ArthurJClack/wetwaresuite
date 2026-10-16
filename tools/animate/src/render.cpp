@@ -9,13 +9,13 @@
 #include <list>
 #include <tuple>
 
-#include "achclwss/animate/animate.hpp"
-#include "achclwss/mesh/render.hpp"
-#include "achclwss/raster/ops.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/animate/animate.hpp"
+#include "wetwaresuite/mesh/render.hpp"
+#include "wetwaresuite/raster/ops.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 #include "internal.hpp"
 
-namespace achclwss::animate {
+namespace wetwaresuite::animate {
 
 namespace {
 
@@ -417,4 +417,4 @@ Image renderFrame(const AnimDoc& doc, int frame, const FrameOptions& o) {
     return out;
 }
 
-}  // namespace achclwss::animate
+}  // namespace wetwaresuite::animate

@@ -1,17 +1,17 @@
 [package]
-name = "achclwss-share"
+name = "wetwaresuite-share"
 version = "0.1.0"
 edition = "2021"
 rust-version = "1.87"
 license = "GPL-3.0-or-later"
-description = "Share and live-sync folders over LAN or internet, for the ACHCLWSS suite"
+description = "Share and live-sync folders over LAN or internet, for the wetwaresuite suite"
 
 [lib]
 name = "share"
 path = "src/lib.rs"
 
 [[bin]]
-name = "achclwss-share"
+name = "wetwaresuite-share"
 path = "src/main.rs"
 
 [profile.release]

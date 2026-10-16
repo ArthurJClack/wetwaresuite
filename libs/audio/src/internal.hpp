@@ -6,9 +6,9 @@
 #include <functional>
 #include <vector>
 
-#include "achclwss/audio/buffer.hpp"
+#include "wetwaresuite/audio/buffer.hpp"
 
-namespace achclwss::audio::detail {
+namespace wetwaresuite::audio::detail {
 
 constexpr double kPi = 3.14159265358979323846;
 
@@ -42,4 +42,4 @@ Buffer resampleBy(const Buffer& b, double ratio, int quality = 1);
 void processRegionMulti(Buffer& b, Range r, const std::vector<int>& channels,
                         const std::function<void(std::vector<std::vector<float>>&)>& fn, std::size_t fadeFrames);
 
-}  // namespace achclwss::audio::detail
+}  // namespace wetwaresuite::audio::detail

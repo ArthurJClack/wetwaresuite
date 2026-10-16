@@ -639,14 +639,14 @@ mod tests {
 
     #[test]
     fn parses_request() {
-        let raw = b"GET /f/a%20b.txt?k=tok&x=1 HTTP/1.1\r\nHost: h\r\nCookie: a=1; achclwss_share=zz\r\n\r\nGET / HTTP/1.0\r\n\r\n";
+        let raw = b"GET /f/a%20b.txt?k=tok&x=1 HTTP/1.1\r\nHost: h\r\nCookie: a=1; wetwaresuite_share=zz\r\n\r\nGET / HTTP/1.0\r\n\r\n";
         let mut r = BufReader::new(&raw[..]);
         let req = read_request(&mut r, peer()).unwrap().unwrap();
         assert_eq!(req.method, "GET");
         assert_eq!(req.path, "/f/a b.txt");
         assert_eq!(req.query("k"), Some("tok"));
         assert_eq!(req.header("host"), Some("h"));
-        assert_eq!(req.cookie("achclwss_share"), Some("zz"));
+        assert_eq!(req.cookie("wetwaresuite_share"), Some("zz"));
         assert!(req.wants_keep_alive());
         let req2 = read_request(&mut r, peer()).unwrap().unwrap();
         assert!(req2.http10 && !req2.wants_keep_alive());

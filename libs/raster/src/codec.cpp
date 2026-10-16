@@ -1,4 +1,4 @@
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -6,7 +6,7 @@
 #include <fstream>
 #include <stdexcept>
 
-#include "achclwss/raster/ops.hpp"
+#include "wetwaresuite/raster/ops.hpp"
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
@@ -31,7 +31,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace achclwss::raster {
+namespace wetwaresuite::raster {
 
 namespace {
 
@@ -160,4 +160,4 @@ std::string previewPng(const Image& img, int maxSize) {
     return encodePng(resize(img, w, h, Filter::Bilinear));
 }
 
-}  // namespace achclwss::raster
+}  // namespace wetwaresuite::raster

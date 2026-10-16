@@ -9,11 +9,11 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/board/board.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/board/board.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 
-namespace achclwss::board {
+namespace wetwaresuite::board {
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -550,7 +550,7 @@ double number(const json& j, const char* key, double fallback = 0) {
 
 std::string toJson(const Board& b) {
     json j;
-    j["format"] = "achclwss-board";
+    j["format"] = "wetwaresuite-board";
     j["version"] = 1;
     j["title"] = b.title;
     j["theme"] = b.theme;
@@ -733,7 +733,7 @@ Board loadBoard(const fs::path& path) {
     std::string fmt = formatFor(path);
     if (fmt == "board") {
         // a .json may be an Excalidraw scene
-        if (bytes.find("\"excalidraw\"") != std::string::npos && bytes.find("achclwss-board") == std::string::npos) fmt = "excalidraw";
+        if (bytes.find("\"excalidraw\"") != std::string::npos && bytes.find("wetwaresuite-board") == std::string::npos) fmt = "excalidraw";
     }
     if (fmt.empty()) {
         if (bytes.find("<mxfile") != std::string::npos || bytes.find("<mxGraphModel") != std::string::npos) fmt = "drawio";
@@ -786,4 +786,4 @@ void saveBoard(const Board& board, const fs::path& path, const std::string& form
     throw std::runtime_error("unknown format: " + fmt);
 }
 
-}  // namespace achclwss::board
+}  // namespace wetwaresuite::board

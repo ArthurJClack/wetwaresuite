@@ -1,9 +1,9 @@
 #include <nlohmann/json.hpp>
 
-#include "achclwss/mcp/server.hpp"
+#include "wetwaresuite/mcp/server.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 using nlohmann::json;
 
 namespace {

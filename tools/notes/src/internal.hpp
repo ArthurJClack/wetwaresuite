@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/notes/notes.hpp"
+#include "wetwaresuite/notes/notes.hpp"
 
-namespace achclwss::notes::detail {
+namespace wetwaresuite::notes::detail {
 
 // An open vault in the session workspace ("vault1").
 class VaultDoc : public Document {
@@ -120,4 +120,4 @@ void registerTaskCommands(CommandRegistry& reg, const StatePtr& st);
 void registerLinkCommands(CommandRegistry& reg, const StatePtr& st);
 void registerExportCommands(CommandRegistry& reg, const StatePtr& st);
 
-}  // namespace achclwss::notes::detail
+}  // namespace wetwaresuite::notes::detail

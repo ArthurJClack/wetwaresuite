@@ -9,9 +9,9 @@ Scenes save as JSON (`.scene.json`) that you can read and edit by hand. Turntabl
 
 Each task below is shown three ways:
 
-- **CLI**: single `achclwss` commands. A scene only lives inside one process, so one-shot commands either work on files (`render.model path=part.stl`) or read a saved scene with `scene=file.scene.json`.
+- **CLI**: single `wetwaresuite` commands. A scene only lives inside one process, so one-shot commands either work on files (`render.model path=part.stl`) or read a saved scene with `scene=file.scene.json`.
 - **Batch**: a script for multi-step work with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools render` serves render plus forge (so Claude can open model files with `forge_mesh_open`) and photo.
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools render` serves render plus forge (so Claude can open model files with `forge_mesh_open`) and photo.
 
 Every example below was run against the real binary in an empty folder holding `plate.stl` (a 60 x 40 x 8 mm plate with four holes, made with [cad](cad.md)) and `tiles.png` (a 256 x 256 checkerboard). Outputs are copied from those runs; repeated fields are cut where marked `...`.
 
@@ -36,7 +36,7 @@ You have `plate.stl` and want a presentable image of it.
 **CLI.** `render.model` puts the model on a ground plane under a sun and sky, gives it a material, frames it and renders:
 
 ```sh
-$ achclwss render.model path=plate.stl output=plate.png preset=brushed
+$ wetwaresuite render.model path=plate.stl output=plate.png preset=brushed
 rendered plate.stl (640x480 path, 16 spp, 4 bounces) in 2.39s to plate.png
 path: plate.png
 bytes: 106797
@@ -55,7 +55,7 @@ bounces: 4
 A quick look from straight above, rasterized, as a JPEG:
 
 ```sh
-$ achclwss render.model path=plate.stl output=plate_quick.jpg mode=preview view=top width=400
+$ wetwaresuite render.model path=plate.stl output=plate_quick.jpg mode=preview view=top width=400
 rendered plate.stl (400x300 preview) in 0.1282s to plate_quick.jpg
 ...
 ```
@@ -96,7 +96,7 @@ render.render doc=$s output=stilllife_hq.jpg samples=128 bounces=6
 ```
 
 ```sh
-$ achclwss batch stilllife.txt
+$ wetwaresuite batch stilllife.txt
 new scene scene1: 1 objects (1 visible), 1 lights, 800x500, camera auto
 ...
 added ball: sphere r0.6 at 0,0,0; colour #ffdb93, roughness 0.2, metallic 1
@@ -132,11 +132,11 @@ Things to notice:
 **CLI.** A saved scene renders in one command, with any setting overridden:
 
 ```sh
-$ achclwss render.render scene=stilllife.scene.json output=stilllife_bright.jpg exposure=0.5 width=400
+$ wetwaresuite render.render scene=stilllife.scene.json output=stilllife_bright.jpg exposure=0.5 width=400
 rendered stilllife.scene.json (400x250 path, 16 spp, 4 bounces) in 0.4792s to stilllife_bright.jpg
 ...
 
-$ achclwss render.info scene=stilllife.scene.json
+$ wetwaresuite render.info scene=stilllife.scene.json
 6 objects (6 visible), 1 lights, 800x500, camera auto, stilllife.scene.json
 6926 triangles, bounds -1.65,-1.87,0 to 2.141,1.15,1.6
 camera at 4.491,-6.021,3.984 looking at 0.2454,-0.36,0.8, fov 40 (auto)
@@ -167,7 +167,7 @@ render.render doc=$s output=plate_studio.png samples=32
 ```
 
 ```sh
-$ achclwss batch studio.txt
+$ wetwaresuite batch studio.txt
 new scene scene1: 0 objects (0 visible), 0 lights, 800x600, camera auto
 ...
 added plate: mesh (1052 triangles, plate.stl) at 0,0,0; colour #2f6fb5, roughness 0.35
@@ -211,7 +211,7 @@ render.render doc=$s output=sunset.png samples=32
 ```
 
 ```sh
-$ achclwss batch sunset.txt
+$ wetwaresuite batch sunset.txt
 opened stilllife.scene.json as scene1: 6 objects (6 visible), 1 lights, 800x500, camera auto, stilllife.scene.json
 ...
 changed sun: sun light at -8,6,1.2 towards 0,0,0, #ff9a50 x5, 1 deg
@@ -235,7 +235,7 @@ rendered scene1 (800x500 path, 32 spp, 4 bounces) in 4.386s to sunset.png
 
 ```json
 {
-  "format": "achclwss-scene",
+  "format": "wetwaresuite-scene",
   "version": 1,
   "camera": {
     "position": [6.0, -8.0, 5.0],
@@ -267,7 +267,7 @@ rendered scene1 (800x500 path, 32 spp, 4 bounces) in 4.386s to sunset.png
 }
 ```
 
-(shortened: the real file lists every object, one field per line). Paths to textures and meshes are relative to the scene file. Missing fields take their defaults, a material may say `"preset": "glass"`, a light may give `"direction": [x, y, z]` instead of a target, and `"auto": true` on the camera means "frame everything", ignoring position and target. Edit, then `achclwss render.render scene=sunset.scene.json output=sunset.png`.
+(shortened: the real file lists every object, one field per line). Paths to textures and meshes are relative to the scene file. Missing fields take their defaults, a material may say `"preset": "glass"`, a light may give `"direction": [x, y, z]` instead of a target, and `"auto": true` on the camera means "frame everything", ignoring position and target. Edit, then `wetwaresuite render.render scene=sunset.scene.json output=sunset.png`.
 
 **Claude.** *"Open stilllife.scene.json and make it a warm sunset with a low sun and a small lamp; keep the materials. Save it as sunset.scene.json."* Claude calls `render_open`, `render_light` (twice), `render_sky`, `render_camera` with `view=low`, `render_preview` to check, then `render_save` and `render_render`.
 
@@ -292,7 +292,7 @@ render.render doc=$s output=cadshot.png
 ```
 
 ```sh
-$ achclwss batch cadshot.txt
+$ wetwaresuite batch cadshot.txt
 ...
 added bushing: mesh (512 triangles) at 0,0,8; colour #f9d1c2, roughness 0.25, metallic 1
 ...
@@ -314,7 +314,7 @@ The scene keeps a copy of each mesh as it was when added (change the part in cad
 **CLI.** The camera circles the scene about the vertical axis through what it's looking at; frames go to a folder, and `video=` encodes them with ffmpeg:
 
 ```sh
-$ achclwss render.turntable scene=stilllife.scene.json output_dir=spin frames=24 width=400 video=spin.gif
+$ wetwaresuite render.turntable scene=stilllife.scene.json output_dir=spin frames=24 width=400 video=spin.gif
 rendered 24 frames (400x250 preview) to spin in 6.092s, video spin.gif
 doc: stilllife.scene.json
 output_dir: spin
@@ -323,7 +323,7 @@ video: spin.gif
 bytes: 262474
 ...
 
-$ achclwss render.turntable scene=stilllife.scene.json output_dir=spin_hq frames=48 mode=path samples=8 width=480 video=spin.mp4 fps=24
+$ wetwaresuite render.turntable scene=stilllife.scene.json output_dir=spin_hq frames=48 mode=path samples=8 width=480 video=spin.mp4 fps=24
 rendered 48 frames (480x300 path, 8 spp, 4 bounces) to spin_hq in 37.53s, video spin.mp4
 ...
 ```
@@ -508,7 +508,7 @@ Defaults stored in the scene for `render.render`: `width`, `height`, `samples` (
 
 ## MCP
 
-`achclwss mcp --tools render` serves the render tools (`render_new`, `render_add`, ..., `render_render`) plus forge and photo. Every edit takes `preview=true`, and `render_preview` returns a picture without writing anything, so Claude can check its work after each step. Open scenes are MCP resources too (`achclwss://doc/scene1`), with a rasterized preview.
+`wetwaresuite mcp --tools render` serves the render tools (`render_new`, `render_add`, ..., `render_render`) plus forge and photo. Every edit takes `preview=true`, and `render_preview` returns a picture without writing anything, so Claude can check its work after each step. Open scenes are MCP resources too (`wetwaresuite://doc/scene1`), with a rasterized preview.
 
 Example prompts:
 

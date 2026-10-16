@@ -3,12 +3,12 @@
 #include <cctype>
 #include <fstream>
 
-#include "achclwss/office/doc.hpp"
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/office/doc.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::notes::detail {
+namespace wetwaresuite::notes::detail {
 
 namespace {
 
@@ -574,4 +574,4 @@ void registerExportCommands(CommandRegistry& reg, const StatePtr& st) {
     registerSite(reg, st);
 }
 
-}  // namespace achclwss::notes::detail
+}  // namespace wetwaresuite::notes::detail

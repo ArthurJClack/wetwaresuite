@@ -4,7 +4,7 @@
 
 #include "cmdutil.hpp"
 
-namespace achclwss::typeface::cmd {
+namespace wetwaresuite::typeface::cmd {
 
 namespace {
 
@@ -305,4 +305,4 @@ void registerFileCommands(Session& session) {
             }));
 }
 
-}  // namespace achclwss::typeface::cmd
+}  // namespace wetwaresuite::typeface::cmd

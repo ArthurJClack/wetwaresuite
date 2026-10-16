@@ -6,14 +6,14 @@
 #include <sstream>
 #include <string>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/maps/maps.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/maps/maps.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::maps;
+using namespace wetwaresuite;
+using namespace wetwaresuite::maps;
 namespace fs = std::filesystem;
 
 namespace {
@@ -21,7 +21,7 @@ namespace {
 fs::path tempDir() {
     std::random_device rd;
     const auto stamp = static_cast<unsigned long long>(std::chrono::high_resolution_clock::now().time_since_epoch().count()) ^ rd();
-    fs::path d = fs::temp_directory_path() / ("achclwss_maps_" + std::to_string(stamp));
+    fs::path d = fs::temp_directory_path() / ("wetwaresuite_maps_" + std::to_string(stamp));
     fs::remove_all(d);
     fs::create_directories(d);
     return d;

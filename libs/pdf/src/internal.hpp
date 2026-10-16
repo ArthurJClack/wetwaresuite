@@ -3,7 +3,7 @@
 
 #include <string>
 
-namespace achclwss::pdf::detail {
+namespace wetwaresuite::pdf::detail {
 
 double stdWidth(int fontIndex, unsigned char winAnsiByte);  // 1/1000 em
 
@@ -18,4 +18,4 @@ Glyph glyph(int rasterFont, unsigned char winAnsiByte);
 // Compact number text for PDF syntax: up to three decimals, no trailing zeros.
 std::string num(double v);
 
-}  // namespace achclwss::pdf::detail
+}  // namespace wetwaresuite::pdf::detail

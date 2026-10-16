@@ -10,7 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
-namespace achclwss::cad {
+namespace wetwaresuite::cad {
 
 using mesh::Mesh;
 using mesh::Vec2;
@@ -360,4 +360,4 @@ std::optional<Mesh> mergeCoplanar(const Mesh& in) {
     return std::nullopt;
 }
 
-}  // namespace achclwss::cad
+}  // namespace wetwaresuite::cad

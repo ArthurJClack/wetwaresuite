@@ -8,16 +8,16 @@
 #include <nlohmann/json.hpp>
 #include <set>
 
-#include "achclwss/animate/animate.hpp"
-#include "achclwss/core/process.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/ops.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/animate/animate.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/ops.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 #include "internal.hpp"
 
-namespace achclwss::animate {
+namespace wetwaresuite::animate {
 
 namespace fs = std::filesystem;
 using detail::lower;
@@ -1315,7 +1315,7 @@ void registerExports(Session& session) {
                     raster::save(sheet, out);
                     json j = {{"frames", jf},
                               {"animations", {{name, anim}}},
-                              {"meta", {{"app", "achclwss animate"},
+                              {"meta", {{"app", "wetwaresuite animate"},
                                         {"version", "1"},
                                         {"image", out.filename().string()},
                                         {"format", "RGBA8888"},
@@ -1456,4 +1456,4 @@ void registerCommands(Session& session) {
     registerExports(session);
 }
 
-}  // namespace achclwss::animate
+}  // namespace wetwaresuite::animate

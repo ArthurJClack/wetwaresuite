@@ -5,7 +5,7 @@
 
 #include "cmdutil.hpp"
 
-namespace achclwss::typeface::cmd {
+namespace wetwaresuite::typeface::cmd {
 
 void registerSpacingCommands(Session& session) {
     auto& reg = session.registry();
@@ -230,4 +230,4 @@ void registerSpacingCommands(Session& session) {
             }));
 }
 
-}  // namespace achclwss::typeface::cmd
+}  // namespace wetwaresuite::typeface::cmd

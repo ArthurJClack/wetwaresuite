@@ -6,9 +6,9 @@
 #include <cstdio>
 #include <mutex>
 
-#include "achclwss/circuit/circuit.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 namespace {
 
@@ -400,4 +400,4 @@ std::shared_ptr<const Footprint> findFootprint(const std::string& name) {
     return f;
 }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

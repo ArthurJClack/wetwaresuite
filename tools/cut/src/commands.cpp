@@ -8,10 +8,10 @@
 #include <cstdlib>
 #include <fstream>
 
-#include "achclwss/cut/cut.hpp"
+#include "wetwaresuite/cut/cut.hpp"
 #include "media.hpp"
 
-namespace achclwss::cut {
+namespace wetwaresuite::cut {
 
 namespace fs = std::filesystem;
 
@@ -1280,4 +1280,4 @@ void registerCommands(Session& session) {
             }));
 }
 
-}  // namespace achclwss::cut
+}  // namespace wetwaresuite::cut

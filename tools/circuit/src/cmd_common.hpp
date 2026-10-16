@@ -13,10 +13,10 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/circuit/circuit.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
-namespace achclwss::circuit::cmd {
+namespace wetwaresuite::circuit::cmd {
 
 namespace fs = std::filesystem;
 using Edit = std::function<Result(CircuitDoc&, const Params&)>;
@@ -160,4 +160,4 @@ void registerSchematicQueryCommands(Session& session);
 void registerPcbCommands(Session& session);
 void registerPcbOutputCommands(Session& session);
 
-}  // namespace achclwss::circuit::cmd
+}  // namespace wetwaresuite::circuit::cmd

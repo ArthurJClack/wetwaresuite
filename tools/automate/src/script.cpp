@@ -6,9 +6,9 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/automate/automate.hpp"
+#include "wetwaresuite/automate/automate.hpp"
 
-namespace achclwss::automate {
+namespace wetwaresuite::automate {
 
 using nlohmann::json;
 
@@ -513,4 +513,4 @@ bool evalCondition(const std::string& condition, const Vars& vars) {
     return true;
 }
 
-}  // namespace achclwss::automate
+}  // namespace wetwaresuite::automate

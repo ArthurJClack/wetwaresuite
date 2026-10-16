@@ -6,14 +6,14 @@
 #include <fstream>
 #include <sstream>
 
-#include "achclwss/audio/analysis.hpp"
-#include "achclwss/audio/document.hpp"
-#include "achclwss/audio/io.hpp"
-#include "achclwss/beats/beats.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/audio/analysis.hpp"
+#include "wetwaresuite/audio/document.hpp"
+#include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/beats/beats.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "common.hpp"
 
-namespace achclwss::beats {
+namespace wetwaresuite::beats {
 
 namespace fs = std::filesystem;
 
@@ -836,4 +836,4 @@ void registerOutputCommands(Session& session) {
 }
 
 }  // namespace tool
-}  // namespace achclwss::beats
+}  // namespace wetwaresuite::beats

@@ -1,4 +1,4 @@
-#include "achclwss/forge/texture.hpp"
+#include "wetwaresuite/forge/texture.hpp"
 
 #include <algorithm>
 #include <array>
@@ -9,7 +9,7 @@
 #include <set>
 #include <stdexcept>
 
-namespace achclwss::forge {
+namespace wetwaresuite::forge {
 
 namespace {
 
@@ -538,4 +538,4 @@ bool naturalLess(const std::string& a, const std::string& b) {
     return a < b;
 }
 
-}  // namespace achclwss::forge
+}  // namespace wetwaresuite::forge

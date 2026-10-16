@@ -4,10 +4,10 @@
 #include <cstdio>
 #include <map>
 
-#include "achclwss/flash/protocol.hpp"
+#include "wetwaresuite/flash/protocol.hpp"
 #include "internal.hpp"
 
-namespace achclwss::flash {
+namespace wetwaresuite::flash {
 
 namespace {
 std::string lower(std::string s) {
@@ -512,4 +512,4 @@ AvrFlashResult flashAvr(AvrProgrammer& prog, const Firmware& fw, bool verify, st
     return res;
 }
 
-}  // namespace achclwss::flash
+}  // namespace wetwaresuite::flash

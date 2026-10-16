@@ -1,9 +1,9 @@
-#include "achclwss/pdfdoc/fonts.hpp"
-#include "achclwss/pdfdoc/writer.hpp"
+#include "wetwaresuite/pdfdoc/fonts.hpp"
+#include "wetwaresuite/pdfdoc/writer.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::pdfdoc;
+using namespace wetwaresuite;
+using namespace wetwaresuite::pdfdoc;
 
 int main() {
     // encoding

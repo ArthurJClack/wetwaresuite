@@ -9,10 +9,10 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/circuit/circuit.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 namespace {
 
@@ -488,4 +488,4 @@ raster::Image plotSeries(const SimResult& r, int width, int height) {
     return img;
 }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

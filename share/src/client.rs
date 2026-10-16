@@ -52,7 +52,7 @@ pub fn resolve(spec: &str, code: Option<&str>) -> io::Result<(Target, Json)> {
                     io::ErrorKind::NotFound,
                     format!(
                         "no share answered on this network within {}s. Check both machines are on the same Wi-Fi/LAN \
-                         and the firewall allows achclwss-share, or use the full http:// link instead of the code",
+                         and the firewall allows wetwaresuite-share, or use the full http:// link instead of the code",
                         DISCOVERY_WAIT.as_secs()
                     ),
                 ))

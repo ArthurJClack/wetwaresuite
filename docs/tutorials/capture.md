@@ -3,7 +3,7 @@
 `capture` takes screenshots (the whole desktop, one monitor or a region, optionally after a delay), records the screen to MP4, WebM or GIF with or without a microphone, and takes webcam pictures. It also lets Claude look at your screen: a screenshot without an output file comes back as an image Claude can see.
 
 ```sh
-achclwss capture.screenshot output=region.png x=100 y=50 width=400 height=300
+wetwaresuite capture.screenshot output=region.png x=100 y=50 width=400 height=300
 ```
 
 There is no GUI yet; the GUI that comes later will call these same commands. Each task below shows the CLI way, the batch-script way and the "ask Claude" way. Every CLI and batch example here was run against the real binary, on Linux with a virtual 800x600 screen (that's why the sizes below are small; your desktop gives your screen's size).
@@ -21,12 +21,12 @@ How each system is captured (`backend=auto` picks it):
 | Windows | `gdigrab` (all monitors), or `backend=ddagrab` (Desktop Duplication, one monitor, faster) | same | DirectShow (`dshow`) | DirectShow |
 | macOS | `avfoundation` ("Capture screen N") | same | avfoundation | avfoundation |
 
-On macOS, the first capture asks for **Screen Recording** permission (and Microphone/Camera for those) for the terminal or app that runs `achclwss`; grant it in System Settings > Privacy & Security and run the command again.
+On macOS, the first capture asks for **Screen Recording** permission (and Microphone/Camera for those) for the terminal or app that runs `wetwaresuite`; grant it in System Settings > Privacy & Security and run the command again.
 
 ## Where am I? List displays and devices
 
 ```sh
-$ achclwss capture.list_displays
+$ wetwaresuite capture.list_displays
 platform: Linux
 ffmpeg: installed
 DISPLAY: :91
@@ -46,7 +46,7 @@ height: 600
 - Region coordinates are pixels from the top-left of the monitor you name (or of the whole desktop without `monitor`).
 
 ```sh
-$ achclwss capture.list_devices
+$ wetwaresuite capture.list_devices
 cameras: none found
 sound inputs:
   default
@@ -61,7 +61,7 @@ On Linux, cameras are the `/dev/video*` devices and sound inputs are `default` p
 **CLI.**
 
 ```sh
-$ achclwss capture.screenshot output=region.png x=100 y=50 width=400 height=300
+$ wetwaresuite capture.screenshot output=region.png x=100 y=50 width=400 height=300
 saved a screenshot to region.png
 region.png
 width: 400
@@ -73,15 +73,15 @@ output: region.png
 More ways to aim it:
 
 ```sh
-$ achclwss capture.screenshot output=desktop.png
+$ wetwaresuite capture.screenshot output=desktop.png
 saved a screenshot to desktop.png
 ...
 width: 800
 height: 600
-$ achclwss capture.screenshot monitor=0 output=monitor0.png
+$ wetwaresuite capture.screenshot monitor=0 output=monitor0.png
 saved a screenshot to monitor0.png
 ...
-$ achclwss capture.screenshot output=menu.jpg delay=3 cursor=true
+$ wetwaresuite capture.screenshot output=menu.jpg delay=3 cursor=true
 saved a screenshot to menu.jpg
 ...
 ```
@@ -101,7 +101,7 @@ capture.screenshot output=step3.png x=0 y=0 width=400 height=300 delay=5
 ```
 
 ```sh
-$ achclwss batch shots.txt
+$ wetwaresuite batch shots.txt
 saved a screenshot to step1.png
 step1.png
 width: 400
@@ -127,7 +127,7 @@ Claude calls `capture_screenshot` with `output`, `x`, `y`, `width` and `height`.
 **CLI.**
 
 ```sh
-$ achclwss capture.record output=demo.mp4 duration=30 audio=true
+$ wetwaresuite capture.record output=demo.mp4 duration=30 audio=true
 ```
 
 On a desktop this records the whole screen and the default microphone for 30 seconds into an H.264 + AAC MP4 and returns when it's done:
@@ -141,7 +141,7 @@ output: demo.mp4
 The machine these examples ran on has no sound server, which shows what happens then: nothing is half-written, and the message says what to check:
 
 ```sh
-$ achclwss capture.record output=demo-mic.mp4 duration=30 audio=true
+$ wetwaresuite capture.record output=demo-mic.mp4 duration=30 audio=true
 ffmpeg failed (exit 253): [in#1 @ 0x5632b38c0640] Error opening input: No such process
 Error opening input file default.
 Error opening input files: No such process
@@ -151,7 +151,7 @@ Error opening input files: No such process
 Without sound:
 
 ```sh
-$ achclwss capture.record output=demo.mp4 duration=30
+$ wetwaresuite capture.record output=demo.mp4 duration=30
 recorded 30s of the screen to demo.mp4
 demo.mp4
 output: demo.mp4
@@ -166,7 +166,7 @@ backend: x11grab
 - `.webm` records VP9 + Opus, `.mkv` and `.mov` work too, and `.gif` makes an animated GIF (no sound, at most 15 frames per second):
 
 ```sh
-$ achclwss capture.record output=clip.gif duration=4 fps=10 x=0 y=0 width=640 height=360
+$ wetwaresuite capture.record output=clip.gif duration=4 fps=10 x=0 y=0 width=640 height=360
 recorded 4s of the screen to clip.gif
 ...
 ```
@@ -182,7 +182,7 @@ cut.thumbnails input=raw.mp4 output=demo-sheet.jpg columns=4 rows=2 width=200
 ```
 
 ```sh
-$ achclwss batch demo.txt
+$ wetwaresuite batch demo.txt
 recorded 10s of the screen to raw.mp4
 ...
 trimmed 2-8s of raw.mp4 into demo-short.mp4
@@ -226,7 +226,7 @@ Claude calls `capture_screenshot` (with `monitor=1` for the second monitor, or a
 **CLI.** From the command line the attachment is only reported (`attachment: screenshot.png (5154 bytes)`), so give an `output` to keep the picture:
 
 ```sh
-$ achclwss capture.screenshot max_size=400
+$ wetwaresuite capture.screenshot max_size=400
 took a screenshot
 width: 800
 height: 600
@@ -241,7 +241,7 @@ attachment: screenshot.png (5154 bytes)
 **CLI.**
 
 ```sh
-$ achclwss capture.webcam output=me.jpg
+$ wetwaresuite capture.webcam output=me.jpg
 ```
 
 - `device` picks the camera (`/dev/video2` on Linux, a name on Windows, a number on macOS); `width` and `height` ask the camera for a size it supports, e.g. `width=1280 height=720`.
@@ -249,7 +249,7 @@ $ achclwss capture.webcam output=me.jpg
 - Without a camera it says so:
 
 ```sh
-$ achclwss capture.webcam output=me.jpg
+$ wetwaresuite capture.webcam output=me.jpg
 no webcam found (/dev/video0 doesn't exist; capture.list_devices lists cameras)
 ```
 
@@ -271,7 +271,7 @@ Claude calls `capture_webcam` with `preview=true` and looks at the picture.
 On a server, in a container or over SSH there's no screen. Capture commands fail straight away with an explanation instead of hanging:
 
 ```sh
-$ achclwss capture.screenshot output=x.png
+$ wetwaresuite capture.screenshot output=x.png
 there's no screen to capture here: DISPLAY and WAYLAND_DISPLAY aren't set, so this looks like a server, container or SSH session. Run it from a terminal inside your desktop session, or give a headless machine a virtual screen: `Xvfb :99 -screen 0 1920x1080x24 &` and pass display=:99
 ```
 
@@ -280,7 +280,7 @@ To capture a program running on a virtual screen (e.g. to make screenshots of a 
 ```sh
 Xvfb :91 -screen 0 800x600x24 &
 DISPLAY=:91 my-app &
-$ achclwss capture.screenshot display=:91 output=virtual.png
+$ wetwaresuite capture.screenshot display=:91 output=virtual.png
 saved a screenshot to virtual.png
 virtual.png
 width: 800

@@ -4,9 +4,9 @@
 
 Each task below is shown three ways:
 
-- **CLI**: `achclwss <command> key=value` runs one command in a fresh process. A board only lives as long as the process, so one-shot commands are for opening and inspecting files. For edits, pipe a few lines into `achclwss batch` from the shell.
-- **Batch**: a script file run with `achclwss batch file.txt`. `-> name` at the end of a line saves the result (the board id) and `$name` reuses it; `#` starts a comment; `undo` and `redo` work as lines (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools board` serves just this tool.
+- **CLI**: `wetwaresuite <command> key=value` runs one command in a fresh process. A board only lives as long as the process, so one-shot commands are for opening and inspecting files. For edits, pipe a few lines into `wetwaresuite batch` from the shell.
+- **Batch**: a script file run with `wetwaresuite batch file.txt`. `-> name` at the end of a line saves the result (the board id) and `$name` reuses it; `#` starts a comment; `undo` and `redo` work as lines (see [headless and batch](headless-and-batch.md)).
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools board` serves just this tool.
 
 Every example was run against the real binary, in an empty folder holding only the input files shown. Outputs are copied from those runs; long ones are shortened where marked with `...`, and the `key: value` data lines that follow each message are left out unless they matter.
 
@@ -82,7 +82,7 @@ board.save doc=$f path=out/flow.drawio
 ```
 
 ```sh
-$ achclwss batch flowchart.txt
+$ wetwaresuite batch flowchart.txt
 made a flowchart with 7 nodes, 7 connectors, 1 frame on board1
 ...
 changed e8 rect 'E' "Back-order from supplier" at 255,430 195x50
@@ -114,10 +114,10 @@ What happened:
 
 ### CLI
 
-Every edit needs the board to stay alive between commands, so pipe the lines into `achclwss batch`:
+Every edit needs the board to stay alive between commands, so pipe the lines into `wetwaresuite batch`:
 
 ```sh
-$ printf 'board.from_mermaid path=flow.mmd -> f\nboard.export doc=$f path=out/flow.svg\n' | achclwss batch
+$ printf 'board.from_mermaid path=flow.mmd -> f\nboard.export doc=$f path=out/flow.svg\n' | wetwaresuite batch
 made a flowchart with 7 nodes, 7 connectors, 1 frame on board1
 board1
 doc: board1
@@ -175,7 +175,7 @@ board.save doc=$b path=out/system.drawio
 ```
 
 ```sh
-$ achclwss batch system.txt
+$ wetwaresuite batch system.txt
 created board1: "Checkout service": 0 shapes, 0 connectors, 0 ink strokes, 1 layer, theme sketchy
 ...
 added e1 rounded 'web' "Web shop" at 0,0 120x60
@@ -227,7 +227,7 @@ Things to notice:
 ### CLI
 
 ```sh
-$ printf 'board.new theme=sketchy -> b\nboard.add doc=$b text=Client name=c\nboard.add doc=$b text=Server near=c\nboard.connect doc=$b from=c to=s label=HTTP\n' | achclwss batch
+$ printf 'board.new theme=sketchy -> b\nboard.add doc=$b text=Client name=c\nboard.add doc=$b text=Server near=c\nboard.connect doc=$b from=c to=s label=HTTP\n' | wetwaresuite batch
 ```
 
 fails on the last line with `no element 's'` because the server box has no name. Names make scripts readable; ids (`e2`) always work.
@@ -272,7 +272,7 @@ board.export doc=$s path=out/login.svg
 ```
 
 ```sh
-$ achclwss batch sequence.txt
+$ wetwaresuite batch sequence.txt
 made a sequence with 4 nodes, 7 messages, 1 frame on board1
 ...
 "Login": 16 shapes, 11 connectors, 0 ink strokes, 1 layer, theme default
@@ -338,7 +338,7 @@ board.export doc=$m path=out/plan-tree.png
 ```
 
 ```sh
-$ achclwss batch mindmap.txt
+$ wetwaresuite batch mindmap.txt
 made a mind map from the outline with 14 nodes, 13 connectors on board1
 board1
 ...
@@ -354,7 +354,7 @@ The first heading is the centre (an ellipse); each `##` branch gets its own colo
 ### CLI
 
 ```sh
-$ printf 'board.from_outline text="- Trip\\n  - Packing\\n  - Route" -> m\nboard.export doc=$m path=out/trip.png\n' | achclwss batch
+$ printf 'board.from_outline text="- Trip\\n  - Packing\\n  - Route" -> m\nboard.export doc=$m path=out/trip.png\n' | wetwaresuite batch
 made a mind map from the outline with 3 nodes, 2 connectors on board1
 ...
 ```
@@ -401,7 +401,7 @@ board.export doc=$r path=out/retro-clean.png
 ```
 
 ```sh
-$ achclwss batch retro.txt
+$ wetwaresuite batch retro.txt
 created board1: "Sprint 14 retro": 0 shapes, 0 connectors, 0 ink strokes, 1 layer, theme pastel
 ...
 added e4 note 'w1' "Release went out on time" at 0,70 160x160
@@ -437,13 +437,13 @@ The goal: take the Excalidraw file from task 3, give it a clean look, relabel th
 ### CLI: look inside a file
 
 ```sh
-$ achclwss board.open path=out/system.excalidraw
+$ wetwaresuite board.open path=out/system.excalidraw
 opened out/system.excalidraw as board1: "Checkout service": 8 shapes, 6 connectors, 1 ink stroke, 1 layer, theme sketchy, out/system.excalidraw
 board1
 doc: board1
 elements: 15
 theme: sketchy
-$ achclwss board.open path=out/system.drawio
+$ wetwaresuite board.open path=out/system.drawio
 opened out/system.drawio as board1: "Checkout service": 8 shapes, 7 connectors, 0 ink strokes, 1 layer, theme sketchy, out/system.drawio
 ...
 ```
@@ -465,7 +465,7 @@ board.export doc=$x path=out/system-v2.png
 ```
 
 ```sh
-$ achclwss batch interop.txt
+$ wetwaresuite batch interop.txt
 opened out/system.excalidraw as board1: "Checkout service": 8 shapes, 6 connectors, 1 ink stroke, 1 layer, theme sketchy, out/system.excalidraw
 board1
 theme is now default (14 elements back to theme colours)
@@ -622,7 +622,7 @@ A ```` ```mermaid ```` fence and `---` front matter around the text are skipped.
 | `board.info` | describe the board or one element | `id`, `limit` |
 | `board.preview` | PNG without changing anything | `scale` or `max_size`, `region`, `only`, `layers` |
 
-`achclwss help board.<command>` prints every parameter with its type and default. Over MCP the tools are named `board_new`, `board_add`, ... and also `undo`, `redo`, `history` and `documents`; open boards are MCP resources with live previews.
+`wetwaresuite help board.<command>` prints every parameter with its type and default. Over MCP the tools are named `board_new`, `board_add`, ... and also `undo`, `redo`, `history` and `documents`; open boards are MCP resources with live previews.
 
 ## 13. Limitations
 

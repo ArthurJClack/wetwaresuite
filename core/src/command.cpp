@@ -1,8 +1,8 @@
-#include "achclwss/core/command.hpp"
+#include "wetwaresuite/core/command.hpp"
 
 #include <sstream>
 
-namespace achclwss {
+namespace wetwaresuite {
 
 const char* toString(ParamType type) {
     switch (type) {
@@ -181,4 +181,4 @@ std::string toText(const Value& value) {
     return {};
 }
 
-}  // namespace achclwss
+}  // namespace wetwaresuite

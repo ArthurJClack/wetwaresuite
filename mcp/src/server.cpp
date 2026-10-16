@@ -1,5 +1,5 @@
 #include <cmath>
-#include "achclwss/mcp/server.hpp"
+#include "wetwaresuite/mcp/server.hpp"
 
 #include <array>
 #include <cstdio>
@@ -9,16 +9,16 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/core/cli.hpp"
+#include "wetwaresuite/core/cli.hpp"
 
-namespace achclwss::mcp {
+namespace wetwaresuite::mcp {
 
 using nlohmann::json;
 
 namespace {
 
 constexpr std::array kProtocolVersions = {"2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"};
-constexpr const char* kDocScheme = "achclwss://doc/";
+constexpr const char* kDocScheme = "wetwaresuite://doc/";
 
 json rpcResult(const json& id, json result) {
     return {{"jsonrpc", "2.0"}, {"id", id}, {"result", std::move(result)}};
@@ -50,7 +50,7 @@ json toolResult(const Result& result) {
             content.push_back({{"type", "image"}, {"data", base64(a.bytes)}, {"mimeType", a.mime}});
         } else {
             content.push_back({{"type", "resource"},
-                               {"resource", {{"uri", "achclwss://attachment/" + a.name},
+                               {"resource", {{"uri", "wetwaresuite://attachment/" + a.name},
                                              {"mimeType", a.mime},
                                              {"blob", base64(a.bytes)}}}});
         }
@@ -315,4 +315,4 @@ void Server::run(std::istream& in, std::ostream& out) {
     }
 }
 
-}  // namespace achclwss::mcp
+}  // namespace wetwaresuite::mcp

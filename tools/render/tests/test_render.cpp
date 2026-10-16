@@ -4,16 +4,16 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/mesh/document.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/render/render.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/mesh/document.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/render/render.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 using json = nlohmann::ordered_json;
 namespace fs = std::filesystem;
 
@@ -60,7 +60,7 @@ render::RenderOptions small(const std::string& mode, int w = 48, int h = 36) {
 }  // namespace
 
 int main() {
-    const fs::path dir = fs::temp_directory_path() / "achclwss_render_test";
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_render_test";
     fs::remove_all(dir);
     fs::create_directories(dir);
 
@@ -314,7 +314,7 @@ int main() {
     {
         Session ms;
         render::registerCommands(ms);
-        mcp::Server server(ms, {"achclwss", "test", "render"});
+        mcp::Server server(ms, {"wetwaresuite", "test", "render"});
         json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
         bool sawRender = false;
         for (const auto& t : list) {

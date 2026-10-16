@@ -6,7 +6,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::layout {
+namespace wetwaresuite::layout {
 
 // ---- faces ---------------------------------------------------------------------
 
@@ -484,4 +484,4 @@ double textWidth(const Layout& doc, const std::string& text, const std::string& 
     return w / 1000.0 * sizePt * kPtToMm;
 }
 
-}  // namespace achclwss::layout
+}  // namespace wetwaresuite::layout

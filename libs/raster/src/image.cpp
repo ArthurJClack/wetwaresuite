@@ -1,4 +1,4 @@
-#include "achclwss/raster/image.hpp"
+#include "wetwaresuite/raster/image.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <map>
 
-namespace achclwss::raster {
+namespace wetwaresuite::raster {
 
 namespace {
 
@@ -176,4 +176,4 @@ Image composite(const std::vector<Layer>& layers, int width, int height) {
     return out;
 }
 
-}  // namespace achclwss::raster
+}  // namespace wetwaresuite::raster

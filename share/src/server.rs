@@ -134,7 +134,7 @@ impl Shared {
 
     pub fn cookie_name(&self) -> String {
         // per-share name so a cookie from an earlier share isn't mistaken for a bad guess
-        format!("achclwss_share_{}", &sha256::digest_hex(self.token.as_bytes())[..8])
+        format!("wetwaresuite_share_{}", &sha256::digest_hex(self.token.as_bytes())[..8])
     }
 
     /// The shared folder, or the shared file.
@@ -611,7 +611,7 @@ fn handle(shared: &Arc<Shared>, req: &Request, body: &mut dyn Read) -> Response 
 
 fn info(shared: &Shared) -> Json {
     Json::obj()
-        .with("app", "achclwss-share")
+        .with("app", "wetwaresuite-share")
         .with("version", crate::VERSION)
         .with("host", shared.host.as_str())
         .with("folder", shared.folder_name())

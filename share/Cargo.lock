@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "achclwss-share"
+name = "wetwaresuite-share"
 version = "0.1.0"

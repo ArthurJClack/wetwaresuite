@@ -7,7 +7,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::notes::detail {
+namespace wetwaresuite::notes::detail {
 
 using nlohmann::json;
 
@@ -327,4 +327,4 @@ void registerMetaCommands(CommandRegistry& reg, const StatePtr& st) {
     registerOutline(reg, st);
 }
 
-}  // namespace achclwss::notes::detail
+}  // namespace wetwaresuite::notes::detail

@@ -1,6 +1,6 @@
 // BSP-tree CSG. Trees live in flat vectors (indices, not pointers) and every
 // traversal uses an explicit stack, so deep trees never overflow the call stack.
-#include "achclwss/mesh/csg.hpp"
+#include "wetwaresuite/mesh/csg.hpp"
 
 #include <algorithm>
 #include <unordered_map>
@@ -8,7 +8,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 namespace {
 
@@ -422,4 +422,4 @@ Mesh booleanOp(const Mesh& a, const Mesh& b, BooleanOp op) {
     return toMesh(reassemble(std::move(result), originals), eps);
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

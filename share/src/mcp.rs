@@ -1,4 +1,4 @@
-//! `achclwss-share mcp`: MCP over stdio (newline-delimited JSON-RPC 2.0).
+//! `wetwaresuite-share mcp`: MCP over stdio (newline-delimited JSON-RPC 2.0).
 //! Shares and syncs run on background threads inside this process and stop
 //! when Claude calls the matching stop tool or the session ends.
 
@@ -18,7 +18,7 @@ use crate::util;
 
 const PROTOCOL_VERSIONS: [&str; 4] = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"];
 
-const INSTRUCTIONS: &str = "achclwss-share shares folders over the LAN or internet and live-syncs folders between \
+const INSTRUCTIONS: &str = "wetwaresuite-share shares folders over the LAN or internet and live-syncs folders between \
 machines. share_start serves a folder to browsers (read-only unless write=true) and returns a link with an access \
 token plus a 6-character pairing code; give the person the link or code. sync_start without a peer hosts a folder \
 for live two-way sync; sync_start with peer (a code or link from the other machine) joins one. send_file serves one \
@@ -94,7 +94,7 @@ pub fn tools() -> Vec<Json> {
         tool(
             "share_peers",
             "Find shares nearby",
-            "Listen for ACHCLWSS shares announced on the local network.",
+            "Listen for wetwaresuite shares announced on the local network.",
             vec![("seconds", prop("number", "how long to listen (default 3)"))],
             &[],
             true,
@@ -120,7 +120,7 @@ pub fn tools() -> Vec<Json> {
             "send_file",
             "Send a file or folder",
             "Without `to`: serve the file or folder read-only for download and return its link and code. With \
-             `to` (code or link of a writable share, e.g. one started by `achclwss-share receive`): upload it there.",
+             `to` (code or link of a writable share, e.g. one started by `wetwaresuite-share receive`): upload it there.",
             vec![
                 ("path", prop("string", "file or folder to send")),
                 ("to", prop("string", "code or link of a writable share to upload into")),
@@ -169,7 +169,7 @@ fn err_result(msg: impl std::fmt::Display) -> Json {
 }
 
 fn stderr_logger() -> crate::server::Logger {
-    Arc::new(|m: &str| eprintln!("achclwss-share: {m}"))
+    Arc::new(|m: &str| eprintln!("wetwaresuite-share: {m}"))
 }
 
 fn share_json(r: &RunningShare) -> Json {
@@ -346,7 +346,7 @@ impl State {
                         match self.start_share(cfg, false) {
                             Ok(r) => text_result(
                                 &format!(
-                                    "hosting {folder} for sync. On the other machine run:\n  achclwss-share sync <folder> {}\nor with the link:\n  achclwss-share sync <folder> \"{}\"\n",
+                                    "hosting {folder} for sync. On the other machine run:\n  wetwaresuite-share sync <folder> {}\nor with the link:\n  wetwaresuite-share sync <folder> \"{}\"\n",
                                     r.share.code(),
                                     r.share.urls().first().cloned().unwrap_or_else(|| r.share.local_url())
                                 ),
@@ -429,7 +429,7 @@ impl State {
                             Ok((t, _)) => t,
                             Err(e) => return err_result(format!("can't reach {to}: {e}")),
                         };
-                        match client::send_to(&target, std::path::Path::new(&path), &|m| eprintln!("achclwss-share: {m}")) {
+                        match client::send_to(&target, std::path::Path::new(&path), &|m| eprintln!("wetwaresuite-share: {m}")) {
                             Ok(t) => text_result(
                                 &format!("sent {} file(s), {}", t.files, util::human_size(t.bytes)),
                                 Some(Json::obj().with("files", t.files).with("bytes", t.bytes)),
@@ -444,7 +444,7 @@ impl State {
                         match self.start_share(cfg, false) {
                             Ok(r) => text_result(
                                 &format!(
-                                    "serving {path} for download\n{}On the other machine: open the link, or run `achclwss-share receive {}`\n",
+                                    "serving {path} for download\n{}On the other machine: open the link, or run `wetwaresuite-share receive {}`\n",
                                     describe_share(r),
                                     r.share.code()
                                 ),
@@ -490,7 +490,7 @@ impl State {
                     Ok((t, _)) => t,
                     Err(e) => return err_result(format!("can't reach {url}: {e}")),
                 };
-                match client::fetch(&target, &path, &dest, &|m| eprintln!("achclwss-share: {m}")) {
+                match client::fetch(&target, &path, &dest, &|m| eprintln!("wetwaresuite-share: {m}")) {
                     Ok(t) => text_result(
                         &format!("downloaded {} file(s), {} into {}", t.files, util::human_size(t.bytes), t.saved_to.display()),
                         Some(
@@ -562,7 +562,7 @@ pub fn handle_line(state: &mut State, line: &str) -> Option<String> {
             Json::obj()
                 .with("protocolVersion", *version)
                 .with("capabilities", Json::obj().with("tools", Json::obj().with("listChanged", false)))
-                .with("serverInfo", Json::obj().with("name", "achclwss-share").with("version", crate::VERSION))
+                .with("serverInfo", Json::obj().with("name", "wetwaresuite-share").with("version", crate::VERSION))
                 .with("instructions", INSTRUCTIONS)
         }
         "ping" => Json::obj(),
@@ -653,7 +653,7 @@ mod tests {
 
     #[test]
     fn share_start_status_stop() {
-        let dir = std::env::temp_dir().join(format!("achclwss-share-mcp-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("wetwaresuite-share-mcp-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("a.txt"), "hi").unwrap();
         let mut st = State::default();

@@ -6,12 +6,12 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/notes/notes.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/notes/notes.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 namespace fs = std::filesystem;
 using nlohmann::json;
 
@@ -150,7 +150,7 @@ int main() {
     unitTests();
 
     std::mt19937_64 rng(static_cast<std::uint64_t>(std::chrono::steady_clock::now().time_since_epoch().count()));
-    const fs::path dir = fs::temp_directory_path() / ("achclwss_notes_" + std::to_string(rng() % 1000000000));
+    const fs::path dir = fs::temp_directory_path() / ("wetwaresuite_notes_" + std::to_string(rng() % 1000000000));
     fs::remove_all(dir);
     const fs::path vault = dir / "vault";
     writeText(vault / "Home.md",
@@ -378,7 +378,7 @@ int main() {
     {
         Session ms;
         notes::registerCommands(ms);
-        mcp::Server server(ms, {"achclwss", "test", "notes"});
+        mcp::Server server(ms, {"wetwaresuite", "test", "notes"});
         json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
         int seen = 0;
         for (const auto& t : list) {

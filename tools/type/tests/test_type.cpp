@@ -9,10 +9,10 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/type/type.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/type/type.hpp"
 #include "check.hpp"
 
 // A private stb_truetype to check exported fonts with an independent reader.
@@ -36,8 +36,8 @@
 #pragma GCC diagnostic pop
 #endif
 
-using namespace achclwss;
-using namespace achclwss::typeface;
+using namespace wetwaresuite;
+using namespace wetwaresuite::typeface;
 namespace fs = std::filesystem;
 
 namespace {
@@ -45,7 +45,7 @@ namespace {
 fs::path tempDir() {
     std::random_device rd;
     const auto stamp = static_cast<unsigned long long>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-    fs::path d = fs::temp_directory_path() / ("achclwss_type_" + std::to_string(stamp) + "_" + std::to_string(rd() % 100000));
+    fs::path d = fs::temp_directory_path() / ("wetwaresuite_type_" + std::to_string(stamp) + "_" + std::to_string(rd() % 100000));
     fs::remove_all(d);
     fs::create_directories(d);
     return d;

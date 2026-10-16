@@ -1,4 +1,4 @@
-#include "achclwss/mesh/ops.hpp"
+#include "wetwaresuite/mesh/ops.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -6,7 +6,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 Mesh clusterVertices(const Mesh& mesh, double cellSize) {
     if (cellSize <= 0 || mesh.empty()) return mesh;
@@ -180,4 +180,4 @@ std::vector<std::vector<Loop>> sliceLayers(const Mesh& mesh, const std::vector<d
 
 std::vector<Loop> slice(const Mesh& mesh, double z) { return sliceLayers(mesh, {z}).front(); }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

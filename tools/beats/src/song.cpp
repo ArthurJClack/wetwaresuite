@@ -9,11 +9,11 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/audio/dsp.hpp"
-#include "achclwss/audio/io.hpp"
-#include "achclwss/beats/song.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
+#include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/beats/song.hpp"
 
-namespace achclwss::beats {
+namespace wetwaresuite::beats {
 
 namespace fs = std::filesystem;
 using json = nlohmann::ordered_json;
@@ -501,7 +501,7 @@ SynthSettings synthFrom(const json& j, SynthSettings s) {
 
 std::string toJson(const Song& s, const fs::path& songFile) {
     json j;
-    j["format"] = "achclwss-beats";
+    j["format"] = "wetwaresuite-beats";
     j["version"] = 1;
     j["name"] = s.name;
     j["bpm"] = s.bpm;
@@ -558,7 +558,7 @@ Song fromJson(const std::string& text, const fs::path& songFile) {
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not a valid .beats.json file: ") + e.what());
     }
-    if (!j.is_object() || j.value("format", std::string()) != "achclwss-beats") throw std::runtime_error("not a beats song (no \"format\": \"achclwss-beats\")");
+    if (!j.is_object() || j.value("format", std::string()) != "wetwaresuite-beats") throw std::runtime_error("not a beats song (no \"format\": \"wetwaresuite-beats\")");
     const fs::path dir = songFile.empty() ? fs::path() : songFile.parent_path();
     try {
         Song s;
@@ -667,4 +667,4 @@ Song loadSong(const fs::path& path) {
     return fromJson(ss.str(), path);
 }
 
-}  // namespace achclwss::beats
+}  // namespace wetwaresuite::beats

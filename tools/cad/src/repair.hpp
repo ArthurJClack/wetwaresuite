@@ -3,9 +3,9 @@
 
 #include <optional>
 
-#include "achclwss/mesh/mesh.hpp"
+#include "wetwaresuite/mesh/mesh.hpp"
 
-namespace achclwss::cad {
+namespace wetwaresuite::cad {
 
 // Merges every flat region of a closed mesh (triangles lying in one plane,
 // connected by edges) and re-triangulates it from its outline, dropping
@@ -15,4 +15,4 @@ namespace achclwss::cad {
 // result wouldn't be a clean closed mesh with the same volume.
 std::optional<mesh::Mesh> mergeCoplanar(const mesh::Mesh& m);
 
-}  // namespace achclwss::cad
+}  // namespace wetwaresuite::cad

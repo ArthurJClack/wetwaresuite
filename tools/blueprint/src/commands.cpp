@@ -8,11 +8,11 @@
 #include <map>
 #include <set>
 
-#include "achclwss/blueprint/blueprint.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/blueprint/blueprint.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::blueprint {
+namespace wetwaresuite::blueprint {
 
 using detail::num;
 
@@ -1786,4 +1786,4 @@ void registerCommands(Session& session) {
             }));
 }
 
-}  // namespace achclwss::blueprint
+}  // namespace wetwaresuite::blueprint

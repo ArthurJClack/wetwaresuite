@@ -1,4 +1,4 @@
-#include "achclwss/pdfdoc/writer.hpp"
+#include "wetwaresuite/pdfdoc/writer.hpp"
 
 #include <cmath>
 #include <cstdio>
@@ -26,7 +26,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace achclwss::pdfdoc {
+namespace wetwaresuite::pdfdoc {
 
 int Writer::reserve() {
     objects_.emplace_back();
@@ -196,4 +196,4 @@ int addTrueTypeFont(Writer& w, const TrueType& font, const std::function<double(
                  "] /Encoding /WinAnsiEncoding /FontDescriptor " + std::to_string(desc) + " 0 R >>");
 }
 
-}  // namespace achclwss::pdfdoc
+}  // namespace wetwaresuite::pdfdoc

@@ -1,8 +1,8 @@
-#include "achclwss/pdf/fonts.hpp"
+#include "wetwaresuite/pdf/fonts.hpp"
 
 #include "internal.hpp"
 
-namespace achclwss::pdf {
+namespace wetwaresuite::pdf {
 
 namespace {
 
@@ -114,4 +114,4 @@ double textWidth(Font font, const std::string& utf8, double size) {
     return em / 1000.0 * size;
 }
 
-}  // namespace achclwss::pdf
+}  // namespace wetwaresuite::pdf

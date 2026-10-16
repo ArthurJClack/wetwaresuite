@@ -1,14 +1,14 @@
 # Automate: scripts, pipelines and watch folders
 
-`automate` runs work across every tool in the suite without you typing each command: a **script** is a batch file with variables you fill in when you run it, a **pipeline** is a YAML or JSON file with loops over folders, conditions and captured results, and a **watch** runs a script or pipeline for every file that lands in a folder. On top of that, the **Python client** (`python/achclwss`) turns every command into a Python method, for when you want real code around the suite.
+`automate` runs work across every tool in the suite without you typing each command: a **script** is a batch file with variables you fill in when you run it, a **pipeline** is a YAML or JSON file with loops over folders, conditions and captured results, and a **watch** runs a script or pipeline for every file that lands in a folder. On top of that, the **Python client** (`python/wetwaresuite`) turns every command into a Python method, for when you want real code around the suite.
 
 There is deliberately no `automate.shell`: scripts and pipelines can only run suite commands, so a pipeline you got from someone else (or one Claude wrote) can't delete your home folder.
 
 Each task below is shown three ways:
 
-- **CLI**: single `achclwss automate.*` commands.
-- **Batch**: a batch file run with `achclwss batch file.txt`, which is also how cron and Task Scheduler run things (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp` serves `automate_*` next to every other tool.
+- **CLI**: single `wetwaresuite automate.*` commands.
+- **Batch**: a batch file run with `wetwaresuite batch file.txt`, which is also how cron and Task Scheduler run things (see [headless and batch](headless-and-batch.md)).
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp` serves `automate_*` next to every other tool.
 
 Every example was run against the real binary in a scratch folder; outputs are copied from those runs (the folder is shown as `~/work`; long outputs are shortened where marked).
 
@@ -44,7 +44,7 @@ Scripts and pipelines use `$name` for variables. They come from `vars=` (`vars=i
 A variable name is letters, digits, `_` and dots, so **`$stem_x` means the variable `stem_x`**, not `$stem` followed by `_x`. Write `${stem}_x` when text follows straight after a name:
 
 ```sh
-$ achclwss automate.pipeline 'text=steps:
+$ wetwaresuite automate.pipeline 'text=steps:
   - echo: "[$stem_x] [${stem}_x] [$file.stem] [$file.ext] [\$5]"' vars=file=photos/big.png,stem_x=hello
 ran pipeline: 0 commands, 0 failed
 [hello] [big_x] [big] [png] [$5]
@@ -66,11 +66,11 @@ photo.resize doc=$img width=$width
 photo.save doc=$img path=$out
 ```
 
-**CLI.** `automate.list_scripts` shows what's in `./scripts` (or `folder=`, or `$ACHCLWSS_SCRIPTS`), with each one's description and the variables it needs:
+**CLI.** `automate.list_scripts` shows what's in `./scripts` (or `folder=`, or `$WETWARESUITE_SCRIPTS`), with each one's description and the variables it needs:
 
 ```sh
 $ cd ~/work
-$ achclwss automate.list_scripts
+$ wetwaresuite automate.list_scripts
 4 scripts in scripts
   logos.json (pipeline): The same pipeline as logos.yaml, in JSON.
   logos.yaml (pipeline): Every SVG in a folder as PNGs at 64, 128, 256 and 512 px, plus a contact sheet.
@@ -84,10 +84,10 @@ count: 4
 Missing variables are reported before anything runs:
 
 ```sh
-$ achclwss automate.run_script path=scripts/thumb.txt vars=input=photos/big.png
+$ wetwaresuite automate.run_script path=scripts/thumb.txt vars=input=photos/big.png
 the script needs out, width: pass vars=out=...
 
-$ achclwss automate.run_script path=scripts/thumb.txt vars=input=photos/big.png,width=400,out=big_400.png
+$ wetwaresuite automate.run_script path=scripts/thumb.txt vars=input=photos/big.png,width=400,out=big_400.png
 ran scripts/thumb.txt: 3 commands, 0 failed
 opened photos/big.png as img1 ...
 resized to 400x267 ...
@@ -99,7 +99,7 @@ failed: 0
 Each command's output is cut to its first line (the `...`); `verbose=true` shows everything. `dry_run=true` prints each line with the variables filled in and runs nothing (captures like `$img` only exist once the script really runs, so they stay as they are):
 
 ```sh
-$ achclwss automate.run_script path=scripts/thumb.txt vars=input=photos/big.png,width=400,out=big_400.png dry_run=true
+$ wetwaresuite automate.run_script path=scripts/thumb.txt vars=input=photos/big.png,width=400,out=big_400.png dry_run=true
 dry run of scripts/thumb.txt: 3 commands, 0 failed
 would run: photo.open path=photos/big.png -> img
 would run: photo.resize doc=$img width=400
@@ -109,7 +109,7 @@ would run: photo.save doc=$img path=big_400.png
 A script stops at the first failing line unless `keep_going=true`. Values with spaces are passed through safely: `vars=out=my photos/a.png` becomes one argument. `text=` runs a script given inline instead of a file, and `vars=` also takes JSON:
 
 ```sh
-$ achclwss automate.run_script 'text=photo.open path=$input -> img' 'vars={"input": "photos/medium.jpg"}'
+$ wetwaresuite automate.run_script 'text=photo.open path=$input -> img' 'vars={"input": "photos/medium.jpg"}'
 ran script: 1 command, 0 failed
 opened photos/medium.jpg as img1 ...
 ```
@@ -154,7 +154,7 @@ steps:
 **CLI.** Look first, then run:
 
 ```sh
-$ achclwss automate.pipeline path=scripts/logos.yaml dry_run=true
+$ wetwaresuite automate.pipeline path=scripts/logos.yaml dry_run=true
 dry run of logo exports: 14 commands, 0 failed
 would create build/logos/png
 for_each logos/*.svg: 3 files
@@ -166,7 +166,7 @@ would run: library.index root=build/logos/png
 would run: library.thumbnails library=build/logos/png query="ext:png sort:name" sheet=build/logos/contact-sheet.png columns=4 size=128
 wrote build/logos/contact-sheet.png
 
-$ achclwss automate.pipeline path=scripts/logos.yaml
+$ wetwaresuite automate.pipeline path=scripts/logos.yaml
 ran logo exports: 14 commands, 0 failed
 for_each logos/*.svg: 3 files
 converted logos/acme.svg to build/logos/png/acme_64.png ...
@@ -203,7 +203,7 @@ The same pipeline in JSON, `scripts/logos.json`, using the structured `command:`
 ```
 
 ```sh
-$ achclwss automate.pipeline path=scripts/logos.json vars=src=logos,out=build/json
+$ wetwaresuite automate.pipeline path=scripts/logos.json vars=src=logos,out=build/json
 ran logo exports: 14 commands, 0 failed
 for_each logos/*.svg: 3 files
 converted logos/acme.svg to build/json/png/acme_64.png ...
@@ -230,7 +230,7 @@ steps:
 ```
 
 ```sh
-$ achclwss automate.pipeline path=scripts/sort.yaml dry_run=true
+$ wetwaresuite automate.pipeline path=scripts/sort.yaml dry_run=true
 dry run of sort.yaml: 8 commands, 0 failed
 for_each photos/*: 2 files
 would run: convert.file input=photos/big.png output=sorted/lossless/big.png overwrite=true
@@ -241,7 +241,7 @@ would run: photo.close doc=<img>
 would run: convert.file input=photos/medium.jpg output=sorted/jpeg/medium.jpg overwrite=true
 ...
 
-$ achclwss automate.pipeline path=scripts/sort.yaml
+$ wetwaresuite automate.pipeline path=scripts/sort.yaml
 ran sort.yaml: 7 commands, 0 failed
 for_each photos/*: 2 files
 converted photos/big.png to sorted/lossless/big.png ...
@@ -283,10 +283,10 @@ steps:
 ```
 
 ```sh
-$ achclwss automate.pipeline path=scripts/web.yaml
+$ wetwaresuite automate.pipeline path=scripts/web.yaml
 scripts/web.yaml runs once per file: pass vars=file=<path>, or run it with automate.watch
 
-$ achclwss automate.pipeline path=scripts/web.yaml vars=file=photos/big.png,out=web-test
+$ wetwaresuite automate.pipeline path=scripts/web.yaml vars=file=photos/big.png,out=web-test
 ran web.yaml: 6 commands, 0 failed
 opened photos/big.png as img1 ...
 resized to 1600x1067 ...
@@ -299,7 +299,7 @@ closed img1
 **CLI: a foreground watch.** `automate.watch` polls the folder (every `interval` seconds) and runs the pipeline for each new or changed file once it has stopped changing for `settle` seconds, so half-copied files wait. It blocks and prints a line per file on stderr; stop it with Ctrl+C, or give `duration=` (seconds) or `max_runs=`. Here two files were copied into `drop/` while it ran:
 
 ```sh
-$ achclwss automate.watch folder=drop pipeline=scripts/web.yaml pattern=*.png,*.jpg vars=out=web-drop interval=0.5 settle=0.5 duration=6 log=watch.log
+$ wetwaresuite automate.watch folder=drop pipeline=scripts/web.yaml pattern=*.png,*.jpg vars=out=web-drop interval=0.5 settle=0.5 duration=6 log=watch.log
 watching drop every 0.5 s
 ok   drop/holiday.png: ran web.yaml: 6 commands, 0 failed
 ok   drop/fractal.jpg: ran web.yaml: 5 commands, 0 failed
@@ -327,7 +327,7 @@ $ cat watch.log
 **`once=true`** processes every matching file that's there now and stops, which is what cron and Task Scheduler want:
 
 ```sh
-$ achclwss automate.watch folder=photos pipeline=scripts/web.yaml pattern=*.png,*.jpg once=true vars=out=web
+$ wetwaresuite automate.watch folder=photos pipeline=scripts/web.yaml pattern=*.png,*.jpg once=true vars=out=web
 ok   photos/big.png: ran web.yaml: 6 commands, 0 failed
 ok   photos/medium.jpg: ran web.yaml: 5 commands, 0 failed
 processed 2 files, 0 failed
@@ -349,22 +349,22 @@ stopped 1 watch
 
 ## Task 4: from Python
 
-The client in [`python/`](../../python/README.md) is plain Python 3.8+ with no dependencies. It starts `achclwss mcp` and gives you every command as a method, built from the server's own tool list, so new tools appear without updating the client.
+The client in [`python/`](../../python/README.md) is plain Python 3.8+ with no dependencies. It starts `wetwaresuite mcp` and gives you every command as a method, built from the server's own tool list, so new tools appear without updating the client.
 
 ```sh
-pip install ./python          # or: export PYTHONPATH=/path/to/achclwss/python
+pip install ./python          # or: export PYTHONPATH=/path/to/wetwaresuite/python
 ```
 
-It finds the binary through `$ACHCLWSS_BIN`, then `PATH`, then the repository's `build/` folder. This script was run in `~/work`:
+It finds the binary through `$WETWARESUITE_BIN`, then `PATH`, then the repository's `build/` folder. This script was run in `~/work`:
 
 ```python
 import shutil
 import time
 from pathlib import Path
 
-import achclwss
+import wetwaresuite
 
-with achclwss.Suite() as suite:
+with wetwaresuite.Suite() as suite:
     # every command is a method; its docstring lists the parameters
     print(len(suite.commands()), "commands, e.g.", suite.commands()[:3])
     print(suite.photo.resize.__doc__.splitlines()[0])
@@ -379,7 +379,7 @@ with achclwss.Suite() as suite:
     # a failed command raises CommandError with the suite's message
     try:
         suite.photo.open(path="nope.png")
-    except achclwss.CommandError as e:
+    except wetwaresuite.CommandError as e:
         print("error:", e)
 
     # pipelines from Python: vars can be a dict
@@ -404,7 +404,7 @@ with achclwss.Suite() as suite:
         print(script["kind"], script["path"], "needs:", script["needs"])
 
 # one-off batch text in its own process
-out = achclwss.run_batch("photo.open path=photos/medium.jpg -> a\nphoto.info doc=$a\n")
+out = wetwaresuite.run_batch("photo.open path=photos/medium.jpg -> a\nphoto.info doc=$a\n")
 print(out.output.splitlines()[0])
 ```
 
@@ -434,11 +434,11 @@ opened photos/medium.jpg as img1
 - A `Result` has `ok`, `message` (what a person reads), `text` (the message plus every field, as the CLI prints it), `data` (the fields; `r["width"]` works too, and JSON list fields are decoded), `doc`, `images` / `image` (previews as PNG bytes), `save_image()` and `attachments`.
 - `Suite(raise_errors=False)` returns failed results with `ok == False` instead of raising; `Suite(tools=["photo", "convert"])` serves fewer tools; `timeout=` limits each command.
 - `suite.undo()`, `suite.redo()`, `suite.history()` and `suite.documents()` work on the session's documents, which stay open between calls, like under Claude.
-- `achclwss.run_batch(text)` runs batch text in a fresh `achclwss batch` process and returns `ok`, `output` and `errors`.
+- `wetwaresuite.run_batch(text)` runs batch text in a fresh `wetwaresuite batch` process and returns `ok`, `output` and `errors`.
 
 ## Task 5: on a schedule: cron and Task Scheduler
 
-There's no daemon: a scheduler runs `achclwss batch` (or a single command) and it exits when it's done. `once=true` and `state=` turn a watch into a scheduled job.
+There's no daemon: a scheduler runs `wetwaresuite batch` (or a single command) and it exits when it's done. `once=true` and `state=` turn a watch into a scheduled job.
 
 **Batch.** `nightly.txt`:
 
@@ -449,7 +449,7 @@ automate.pipeline path=scripts/logos.yaml
 ```
 
 ```sh
-$ achclwss batch nightly.txt
+$ wetwaresuite batch nightly.txt
 processed 2 files, 0 failed
   ok   drop/fractal.jpg: ran web.yaml: 5 commands, 0 failed
   ok   drop/holiday.png: ran web.yaml: 6 commands, 0 failed
@@ -458,39 +458,39 @@ failed: 0
 ran logo exports: 14 commands, 0 failed
 ...
 
-$ achclwss batch nightly.txt          # the next night, nothing new
+$ wetwaresuite batch nightly.txt          # the next night, nothing new
 processed 0 files, 0 failed
 runs: 0
 ...
 ```
 
-`quiet=true` drops the per-file lines on stderr (the summary is still printed). A failing line makes `achclwss batch` exit with a non-zero code, which cron mails to you and Task Scheduler shows as the last run result; add `--keep-going` to run the remaining lines anyway.
+`quiet=true` drops the per-file lines on stderr (the summary is still printed). A failing line makes `wetwaresuite batch` exit with a non-zero code, which cron mails to you and Task Scheduler shows as the last run result; add `--keep-going` to run the remaining lines anyway.
 
 **cron** (Linux, macOS): `crontab -e`, then
 
 ```
 # every night at 02:30
-30 2 * * * cd $HOME/work && achclwss batch nightly.txt >> $HOME/work/nightly.log 2>&1
+30 2 * * * cd $HOME/work && wetwaresuite batch nightly.txt >> $HOME/work/nightly.log 2>&1
 # every 10 minutes, just the drop folder
-*/10 * * * * cd $HOME/work && achclwss automate.watch folder=drop pipeline=scripts/web.yaml pattern=*.png,*.jpg vars=out=web-drop state=drop-done.txt once=true quiet=true
+*/10 * * * * cd $HOME/work && wetwaresuite automate.watch folder=drop pipeline=scripts/web.yaml pattern=*.png,*.jpg vars=out=web-drop state=drop-done.txt once=true quiet=true
 ```
 
-cron runs with a minimal `PATH`: use the full path to `achclwss` if it isn't in `/usr/bin` or `/usr/local/bin`.
+cron runs with a minimal `PATH`: use the full path to `wetwaresuite` if it isn't in `/usr/bin` or `/usr/local/bin`.
 
 **Task Scheduler** (Windows), from a Command Prompt:
 
 ```bat
-schtasks /Create /TN "achclwss nightly" /SC DAILY /ST 02:30 ^
-  /TR "cmd /c cd /d C:\work && C:\Tools\achclwss\achclwss.exe batch nightly.txt >> nightly.log 2>&1"
+schtasks /Create /TN "wetwaresuite nightly" /SC DAILY /ST 02:30 ^
+  /TR "cmd /c cd /d C:\work && C:\Tools\wetwaresuite\wetwaresuite.exe batch nightly.txt >> nightly.log 2>&1"
 
-schtasks /Create /TN "achclwss drop folder" /SC MINUTE /MO 10 ^
-  /TR "cmd /c cd /d C:\work && C:\Tools\achclwss\achclwss.exe automate.watch folder=drop pipeline=scripts/web.yaml pattern=*.png,*.jpg vars=out=web-drop state=drop-done.txt once=true quiet=true"
+schtasks /Create /TN "wetwaresuite drop folder" /SC MINUTE /MO 10 ^
+  /TR "cmd /c cd /d C:\work && C:\Tools\wetwaresuite\wetwaresuite.exe automate.watch folder=drop pipeline=scripts/web.yaml pattern=*.png,*.jpg vars=out=web-drop state=drop-done.txt once=true quiet=true"
 
-schtasks /Run /TN "achclwss nightly"      &:: try it now
-schtasks /Delete /TN "achclwss nightly"   &:: remove it
+schtasks /Run /TN "wetwaresuite nightly"      &:: try it now
+schtasks /Delete /TN "wetwaresuite nightly"   &:: remove it
 ```
 
-Or keep a watch running all the time: `achclwss automate.watch folder=drop pipeline=scripts/web.yaml state=drop-done.txt` as a systemd user service, a launchd agent, or a Task Scheduler task triggered "At log on". With `state=`, files dropped while it was stopped are picked up when it starts again.
+Or keep a watch running all the time: `wetwaresuite automate.watch folder=drop pipeline=scripts/web.yaml state=drop-done.txt` as a systemd user service, a launchd agent, or a Task Scheduler task triggered "At log on". With `state=`, files dropped while it was stopped are picked up when it starts again.
 
 **Claude.** *"Set up the drop folder to be processed every 10 minutes."* Claude can't edit your crontab (there's no shell command), so it writes `nightly.txt` or the command line, runs it once with `automate_watch` and `once: true` to show it works, and gives you the `crontab` or `schtasks` line to add.
 
@@ -546,7 +546,7 @@ A step is a command line string (`- photo.new width=10 height=10`) or a mapping 
 | `automate.watch_start` | watch in the background (MCP, Python) | the watch parameters; returns `id` |
 | `automate.watch_status` | runs, failures and recent lines | `id` (default: all) |
 | `automate.watch_stop` | stop a background watch | `id` (default: all) |
-| `automate.list_scripts` | scripts and pipelines in a folder | `folder` (`$ACHCLWSS_SCRIPTS`, else `./scripts`), `recursive` (false), `json` (false: a `scripts` field with path, kind, description, needs, problem) |
+| `automate.list_scripts` | scripts and pipelines in a folder | `folder` (`$WETWARESUITE_SCRIPTS`, else `./scripts`), `recursive` (false), `json` (false: a `scripts` field with path, kind, description, needs, problem) |
 
 The watch parameters: `folder` (required); `script` or `pipeline` (one of them); `pattern` (`*.png,*.jpg`; default every file); `exclude` (wildcards for files or subfolders); `recursive` (false); `interval` (2 s); `settle` (1 s); `existing` (false: also process files there at the start); `vars`; `log` (append a line per file); `state` (remember processed files; implies `existing=true`); `keep_going` (false).
 
@@ -554,7 +554,7 @@ Results carry `ran` and `failed` counts (watches: `runs` and `failed`). Over MCP
 
 ## Limitations
 
-- No shell step, by design: scripts and pipelines can only run suite commands. To call other programs, run them from a shell script that calls `achclwss` (or from Python).
+- No shell step, by design: scripts and pipelines can only run suite commands. To call other programs, run them from a shell script that calls `wetwaresuite` (or from Python).
 - Watching is by polling (every `interval` seconds), not OS file events: simple and the same on every platform, but a 2 s interval means up to a few seconds' delay, and huge folders with `recursive=true` cost a scan each time. Files are processed one at a time, in name order.
 - A file is processed when its size and modification time stop changing for `settle` seconds; a program that pauses for longer while writing can get its file processed half-written. Raise `settle` for slow network copies.
 - Background watches (`watch_start`) live in the process that started them: they end when the MCP session or the Python `Suite` closes. For a permanent watch, run `automate.watch` as a service or from a scheduler with `once=true state=...`.
@@ -562,4 +562,4 @@ Results carry `ran` and `failed` counts (watches: `runs` and `failed`). Over MCP
 - Pipeline paths are relative to the current folder, not the pipeline file (use `$pipeline_dir`). The check for missing variables is made from the text before anything runs: a `$name` set only by a nested script or pipeline counts as missing, and one that's still undefined when its step runs is left as it is. `dry_run` and `list_scripts` show what's needed. A value containing `$` followed by the name of an earlier capture in the same script is substituted again by the batch runner.
 - Documents opened by a script stay open in the session afterwards (useful in a Claude session, where you can carry on with them); close them in the script if it runs many times. Watches use a fresh session per file, so they don't accumulate.
 - Nesting (scripts calling scripts or pipelines) stops at 8 levels.
-- The Python client talks to one `achclwss mcp` process; commands run one at a time. Use several `Suite`s (each its own process) for parallel work.
+- The Python client talks to one `wetwaresuite mcp` process; commands run one at a time. Use several `Suite`s (each its own process) for parallel work.

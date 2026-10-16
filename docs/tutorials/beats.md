@@ -17,9 +17,9 @@
 
 There is no live playback. You render and listen to the file. Each task below is shown three ways:
 
-- **CLI**: single `achclwss` commands. Songs only live inside one process, so the one-shot commands that read a song take `input=song.beats.json` (or `input=song.mid`) in place of `song=`, and `beats.generate` can `save=` straight to a file.
+- **CLI**: single `wetwaresuite` commands. Songs only live inside one process, so the one-shot commands that read a song take `input=song.beats.json` (or `input=song.mid`) in place of `song=`, and `beats.generate` can `save=` straight to a file.
 - **Batch**: a script for step-by-step building, with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools beats` serves just these tools, plus the audio tools so bounced mixes can be edited.
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools beats` serves just these tools, plus the audio tools so bounced mixes can be edited.
 
 Every example was run against the real binary and the outputs are copied from those runs. Long outputs are shortened where marked with `...`; batch outputs show only the first line of each result.
 
@@ -44,20 +44,20 @@ Make a house track in A minor and get an MP3.
 **CLI:**
 
 ```sh
-$ achclwss beats.generate genre=house key="A minor" seed=7 save=house.beats.json
+$ wetwaresuite beats.generate genre=house key="A minor" seed=7 save=house.beats.json
 made song1: house in A minor at 124 bpm, 8 bars: drums (4 lanes), bass, chords, melody; chords Am7 (i) - Fmaj7 (VI) - Cmaj7 (III) - G7 (VII); saved house.beats.json
 song: song1
 tracks: 4
 patterns: 6
 bars: 8
 seconds: 15.4839
-$ achclwss beats.render input=house.beats.json path=house.mp3
+$ wetwaresuite beats.render input=house.beats.json path=house.mp3
 rendered house.mp3: 0:17.400, peak -1 dBFS, -10.4 LUFS
 path: house.mp3
 seconds: 17.4
 peak_db: -1
 lufs: -10.3614
-$ achclwss beats.draw input=house.beats.json path=house.png
+$ wetwaresuite beats.draw input=house.beats.json path=house.png
 wrote house.png (arrangement: house: 124 bpm 4/4, 4 tracks, 6 patterns, 8 bars (0:15.484), house.beats.json)
 ```
 
@@ -66,7 +66,7 @@ The render runs about 2 seconds past the last bar. That's the reverb and the del
 `beats.info` shows what it made:
 
 ```sh
-$ achclwss beats.info input=house.beats.json
+$ wetwaresuite beats.info input=house.beats.json
 house: 124 bpm 4/4, 4 tracks, 6 patterns, 8 bars (0:15.484), house.beats.json, key A minor
 track 0 "Drums" (drum): volume 0 dB, pan 0
   bar 0-2: house beat x3
@@ -107,7 +107,7 @@ beats.draw song=$s path=wave.png view=waveform
 ```
 
 ```sh
-$ achclwss batch t1.txt
+$ wetwaresuite batch t1.txt
 made song1: house in A minor at 124 bpm, 8 bars: drums (4 lanes), bass, chords, melody; chords Am7 (i) - Fmaj7 (VI) - Cmaj7 (III) - G7 (VII)
 wrote house.png (arrangement: house: 124 bpm 4/4, 4 tracks, 6 patterns, 8 bars (0:15.484))
 wrote melody.png (pattern melody: 0 step lanes, 12 notes)
@@ -150,7 +150,7 @@ beats.save song=$song path=boombap.beats.json
 ```
 
 ```sh
-$ achclwss batch drums.txt
+$ wetwaresuite batch drums.txt
 made song1: boombap: 90 bpm 4/4, 0 tracks, 0 patterns, 0 bars (0.000 s)
 added track 0 "Drums" (drum)
 added pattern "beat" (1 bar, 3 lanes, 0 notes)
@@ -176,12 +176,12 @@ Without `bar=`, `beats.arrange_place` puts the pattern straight after the track'
 
 ```sh
 $ echo 'beats.new -> s
-beats.pattern_add song=$s name=p steps="kick: x..y"' | achclwss batch
+beats.pattern_add song=$s name=p steps="kick: x..y"' | wetwaresuite batch
 ...
 line 2: steps use x (hit), X (accent), o (soft) and . or - (rest); 'y' isn't one of them
 ```
 
-**CLI**: a hand-written song is easiest as a batch script, or as a `.beats.json` file you write yourself (the format is shown under [Song files](#song-files)), rendered with `achclwss beats.render input=boombap.beats.json path=boombap.wav`.
+**CLI**: a hand-written song is easiest as a batch script, or as a `.beats.json` file you write yourself (the format is shown under [Song files](#song-files)), rendered with `wetwaresuite beats.render input=boombap.beats.json path=boombap.wav`.
 
 **Claude:**
 
@@ -216,7 +216,7 @@ beats.save song=$song path=band.beats.json
 ```
 
 ```sh
-$ achclwss batch band.txt
+$ wetwaresuite batch band.txt
 opened song1: boombap: 90 bpm 4/4, 1 tracks, 2 patterns, 8 bars (0:21.333), boombap.beats.json
 added track 1 "Keys" (synth, keys)
 added pattern "changes" (4 bars, 0 lanes, 16 notes), placed on track 1 at bar 0 x2
@@ -246,7 +246,7 @@ Things to know about notes and chords:
 ```sh
 $ echo 'beats.open path=band.beats.json -> s
 beats.pattern_notes song=$s pattern=changes transpose=2
-beats.save song=$s path=band-up.beats.json' | achclwss batch
+beats.save song=$s path=band-up.beats.json' | wetwaresuite batch
 ```
 
 **Claude:**
@@ -278,7 +278,7 @@ beats.save song=$song path=band2.beats.json
 ```
 
 ```sh
-$ achclwss batch sound.txt
+$ wetwaresuite batch sound.txt
 opened song1: boombap: 90 bpm 4/4, 4 tracks, 5 patterns, 8 bars (0:21.333), band.beats.json
 track 2 "Bass" updated
 track 3 "Lead" updated
@@ -301,9 +301,9 @@ Each track's effects run in the order distortion, compression, pan, delay (ping-
 **CLI:** stems, one file per track, at equal lengths (`tail=3` fixes the ring-out instead of trimming it):
 
 ```sh
-$ achclwss beats.render input=band2.beats.json track=Drums tail=3 path=stems/drums.wav
+$ wetwaresuite beats.render input=band2.beats.json track=Drums tail=3 path=stems/drums.wav
 rendered stems/drums.wav: 0:24.333, peak -1 dBFS, -14.7 LUFS
-$ achclwss beats.render input=band2.beats.json track=Bass tail=3 path=stems/bass.wav
+$ wetwaresuite beats.render input=band2.beats.json track=Bass tail=3 path=stems/bass.wav
 rendered stems/bass.wav: 0:24.333, peak -5.52 dBFS, -20.2 LUFS
 ```
 
@@ -343,7 +343,7 @@ beats.save song=$song path=samples-demo.beats.json
 ```
 
 ```sh
-$ achclwss batch samples.txt
+$ wetwaresuite batch samples.txt
 ...
 added track 0 "Drums" (drum)
 track 0 "Drums" updated
@@ -374,9 +374,9 @@ Claude calls `beats_track_set` (`slot: "kick", sample: ...`), then `beats_track_
 **CLI:**
 
 ```sh
-$ achclwss beats.midi_export input=band2.beats.json path=band.mid
+$ wetwaresuite beats.midi_export input=band2.beats.json path=band.mid
 wrote band.mid (4 tracks, 1889 bytes)
-$ achclwss beats.render input=band.mid path=band.flac
+$ wetwaresuite beats.render input=band.mid path=band.flac
 rendered band.flac: 0:21.702, peak -1 dBFS, -12.4 LUFS
 ```
 
@@ -397,7 +397,7 @@ beats.render song=$back path=band-from-midi.wav
 ```
 
 ```sh
-$ achclwss batch midi.txt
+$ wetwaresuite batch midi.txt
 opened song1: boombap: 90 bpm 4/4, 4 tracks, 5 patterns, 8 bars (0:21.333), band2.beats.json
 wrote band.mid (4 tracks, 1889 bytes)
 imported song2: band: 90 bpm 4/4, 4 tracks, 4 patterns, 8 bars (0:21.333)
@@ -447,7 +447,7 @@ beats.render song=$song track=Lead tail=3 path=stems/lead.wav
 ```
 
 ```sh
-$ achclwss batch master.txt
+$ wetwaresuite batch master.txt
 opened song1: boombap: 90 bpm 4/4, 4 tracks, 5 patterns, 8 bars (0:21.333), band2.beats.json
 bounced to aud1: 2 ch, 44100 Hz, 0:23.933
 loudness -12.6 -> -14 LUFS (gain -1.4 dB), peak -2.4 dB
@@ -479,7 +479,7 @@ beats.render song=$song path=waltz.wav
 ```
 
 ```sh
-$ achclwss batch waltz.txt
+$ wetwaresuite batch waltz.txt
 made song1: song: 150 bpm 3/4, 0 tracks, 0 patterns, 0 bars (0.000 s)
 added track 0 "Drums" (drum)
 added pattern "oom" (1 bar, 3 lanes, 0 notes), placed on track 0 at bar 0 x4
@@ -492,7 +492,7 @@ In 6/8 a bar is 3 quarter notes, so 12 steps at `steps_per_beat=4`, or `steps_pe
 
 ## Asking Claude, in general
 
-`achclwss mcp` (or `--tools beats`) gives Claude every command as a tool (`beats_generate`, `beats_pattern_steps`...). Some things that help it:
+`wetwaresuite mcp` (or `--tools beats`) gives Claude every command as a tool (`beats_generate`, `beats_pattern_steps`...). Some things that help it:
 
 - Most edits take `preview: true`. Track and arrangement edits return the arrangement picture, and pattern edits return that pattern's grid and piano roll. `beats_preview` draws a view on demand, and `view: "waveform"` renders the audio to show it.
 - `beats_info` lists every track, placement, step lane and note as text, so Claude can read a song before changing it.
@@ -607,7 +607,7 @@ A `.beats.json` file is readable and can be written by hand:
 
 ```json
 {
-  "format": "achclwss-beats",
+  "format": "wetwaresuite-beats",
   "version": 1,
   "name": "boombap",
   "bpm": 90.0,

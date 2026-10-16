@@ -1,4 +1,4 @@
-//! `--internet`: there is no ACHCLWSS relay, so we use what the machine has.
+//! `--internet`: there is no wetwaresuite relay, so we use what the machine has.
 //! 1. cloudflared on PATH: start a quick tunnel and use its https URL
 //! 2. tailscale installed and up: use this machine's tailnet address
 //! 3. otherwise: explain the options in one line

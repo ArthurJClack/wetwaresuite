@@ -11,9 +11,9 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/render/render.hpp"
+#include "wetwaresuite/render/render.hpp"
 
-namespace achclwss::render::detail {
+namespace wetwaresuite::render::detail {
 
 struct V3 {
     float x = 0, y = 0, z = 0;
@@ -194,4 +194,4 @@ int threadCount(int requested);
 // Runs fn(row) for rows 0..rows-1 across `threads` threads.
 void parallelRows(int rows, int threads, const std::function<void(int)>& fn);
 
-}  // namespace achclwss::render::detail
+}  // namespace wetwaresuite::render::detail

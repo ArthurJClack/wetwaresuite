@@ -1,4 +1,4 @@
-#include "achclwss/audio/io.hpp"
+#include "wetwaresuite/audio/io.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -11,10 +11,10 @@
 #include <random>
 #include <stdexcept>
 
-#include "achclwss/core/process.hpp"
+#include "wetwaresuite/core/process.hpp"
 #include "decoders.hpp"
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 namespace fs = std::filesystem;
 
@@ -136,7 +136,7 @@ fs::path tempPath(const std::string& ext) {
     std::error_code ec;
     fs::path dir = fs::temp_directory_path(ec);
     if (ec) dir = ".";
-    return dir / ("achclwss-audio-" + std::to_string(salt) + "-" + std::to_string(++counter) + "." + ext);
+    return dir / ("wetwaresuite-audio-" + std::to_string(salt) + "-" + std::to_string(++counter) + "." + ext);
 }
 
 struct TempFile {
@@ -358,4 +358,4 @@ std::string toString(SampleFormat f) {
     return "16";
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio

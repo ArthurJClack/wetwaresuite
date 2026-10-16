@@ -8,11 +8,11 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/office/doc.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/office/doc.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "text.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 namespace fs = std::filesystem;
 
@@ -1338,4 +1338,4 @@ TextDocument readHtml(const std::string& html, const std::string& baseDir) {
     return r.doc;
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

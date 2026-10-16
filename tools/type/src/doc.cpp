@@ -1,8 +1,8 @@
 // The font document and its snapshot undo.
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 std::string FontDoc::summary() const {
     std::size_t encoded = 0;
@@ -32,4 +32,4 @@ Result FontEdit::apply() {
 
 void FontEdit::revert() { doc_->font = before_; }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

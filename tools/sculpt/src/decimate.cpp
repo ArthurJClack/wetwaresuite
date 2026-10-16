@@ -7,9 +7,9 @@
 #include <stdexcept>
 #include <unordered_map>
 
-#include "achclwss/sculpt/ops.hpp"
+#include "wetwaresuite/sculpt/ops.hpp"
 
-namespace achclwss::sculpt {
+namespace wetwaresuite::sculpt {
 
 namespace {
 
@@ -234,4 +234,4 @@ Mesh decimateQuadric(const Mesh& in, std::size_t target, Mask* mask) {
     return out;
 }
 
-}  // namespace achclwss::sculpt
+}  // namespace wetwaresuite::sculpt

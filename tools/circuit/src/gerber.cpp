@@ -5,10 +5,10 @@
 #include <map>
 #include <sstream>
 
-#include "achclwss/circuit/circuit.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
 #include "geom.hpp"
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 namespace {
 
@@ -27,7 +27,7 @@ std::string dec(double v) {
 class Gerber {
 public:
     Gerber(const std::string& function, const std::string& polarityNote = "Positive") {
-        head_ << "%TF.GenerationSoftware,achclwss,circuit,1.0*%\n";
+        head_ << "%TF.GenerationSoftware,wetwaresuite,circuit,1.0*%\n";
         head_ << "%TF.FileFunction," << function << "*%\n";
         head_ << "%TF.FilePolarity," << polarityNote << "*%\n";
         head_ << "%FSLAX46Y46*%\n%MOMM*%\n%LPD*%\nG01*\n";
@@ -175,7 +175,7 @@ std::vector<OutFile> fabFiles(const Circuit& c, const Netlist& nl, const std::st
     }
     for (const auto& v : c.board.vias) byTool[std::llround(v.drill * 1000)].push_back(v.pos);
     std::ostringstream d;
-    d << "M48\n; DRILL file {achclwss circuit} plated through holes\n; FORMAT={-:-/ absolute / metric / decimal}\nFMAT,2\nMETRIC\n";
+    d << "M48\n; DRILL file {wetwaresuite circuit} plated through holes\n; FORMAT={-:-/ absolute / metric / decimal}\nFMAT,2\nMETRIC\n";
     int tool = 1;
     std::map<long long, int> toolOf;
     for (const auto& [size, holes] : byTool) {
@@ -198,4 +198,4 @@ std::vector<OutFile> fabFiles(const Circuit& c, const Netlist& nl, const std::st
     return out;
 }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

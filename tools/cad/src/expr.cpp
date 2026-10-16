@@ -6,9 +6,9 @@
 #include <cstdlib>
 #include <set>
 
-#include "achclwss/cad/cad.hpp"
+#include "wetwaresuite/cad/cad.hpp"
 
-namespace achclwss::cad {
+namespace wetwaresuite::cad {
 
 namespace {
 
@@ -246,4 +246,4 @@ bool validParamName(const std::string& name) {
     return name != "pi" && !functionNames().count(name);
 }
 
-}  // namespace achclwss::cad
+}  // namespace wetwaresuite::cad

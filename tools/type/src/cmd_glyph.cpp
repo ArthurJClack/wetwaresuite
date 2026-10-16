@@ -4,7 +4,7 @@
 
 #include "cmdutil.hpp"
 
-namespace achclwss::typeface::cmd {
+namespace wetwaresuite::typeface::cmd {
 
 namespace {
 
@@ -523,4 +523,4 @@ void registerGlyphCommands(Session& session) {
             }));
 }
 
-}  // namespace achclwss::typeface::cmd
+}  // namespace wetwaresuite::typeface::cmd

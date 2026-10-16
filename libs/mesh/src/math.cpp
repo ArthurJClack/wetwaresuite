@@ -1,6 +1,6 @@
-#include "achclwss/mesh/math.hpp"
+#include "wetwaresuite/mesh/math.hpp"
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 namespace {
 
@@ -154,4 +154,4 @@ Mat4 Mat4::inverse() const {
     return out;
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

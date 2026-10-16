@@ -1,4 +1,4 @@
-#include "achclwss/core/process.hpp"
+#include "wetwaresuite/core/process.hpp"
 
 #include <cerrno>
 #include <cstdlib>
@@ -14,7 +14,7 @@
 extern char** environ;
 #endif
 
-namespace achclwss {
+namespace wetwaresuite {
 
 namespace {
 
@@ -175,4 +175,4 @@ ProcessResult runProgram(const std::vector<std::string>& args) {
     return result;
 }
 
-}  // namespace achclwss
+}  // namespace wetwaresuite

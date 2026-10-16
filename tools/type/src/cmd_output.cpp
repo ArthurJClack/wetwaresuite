@@ -3,10 +3,10 @@
 #include <cctype>
 #include <cmath>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "cmdutil.hpp"
 
-namespace achclwss::typeface::cmd {
+namespace wetwaresuite::typeface::cmd {
 
 namespace {
 
@@ -231,4 +231,4 @@ void registerOutputCommands(Session& session) {
                 false));
 }
 
-}  // namespace achclwss::typeface::cmd
+}  // namespace wetwaresuite::typeface::cmd

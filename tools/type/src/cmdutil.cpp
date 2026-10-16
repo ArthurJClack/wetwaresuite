@@ -7,9 +7,9 @@
 #include <filesystem>
 #include <stdexcept>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 namespace cmd {
 
@@ -303,4 +303,4 @@ void registerCommands(Session& session) {
     cmd::registerTraceCommands(session);
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

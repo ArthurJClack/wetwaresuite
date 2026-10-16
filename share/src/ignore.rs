@@ -12,7 +12,7 @@ use std::path::Path;
 pub const HEAVY: [&str; 6] = [".git", "node_modules", "target", "build", ".venv", "__pycache__"];
 
 /// Prefix of temporary files the tool writes while receiving; never synced.
-pub const TEMP_PREFIX: &str = ".achclwss-share-";
+pub const TEMP_PREFIX: &str = ".wetwaresuite-share-";
 
 pub const IGNORE_FILES: [&str; 2] = [".gitignore", ".shareignore"];
 
@@ -384,9 +384,9 @@ mod tests {
         assert!(i.is_ignored(".git", false)); // a worktree's .git file too
         assert!(!i.is_ignored("src/build.rs", false));
         assert!(!i.is_ignored("target.txt", false));
-        assert!(i.is_ignored(".achclwss-share-tmp-123", false));
+        assert!(i.is_ignored(".wetwaresuite-share-tmp-123", false));
         let heavy = Ignorer::new(true);
         assert!(!heavy.is_ignored("node_modules/x/index.js", false));
-        assert!(heavy.is_ignored(".achclwss-share-tmp-123", false));
+        assert!(heavy.is_ignored(".wetwaresuite-share-tmp-123", false));
     }
 }

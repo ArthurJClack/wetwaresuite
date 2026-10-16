@@ -1,11 +1,11 @@
-#include "achclwss/raster/document.hpp"
+#include "wetwaresuite/raster/document.hpp"
 
 #include <algorithm>
 #include <cctype>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
-namespace achclwss::raster {
+namespace wetwaresuite::raster {
 
 namespace {
 
@@ -128,4 +128,4 @@ bool colorArg(const Params& p, const std::string& key, const std::string& fallba
     return true;
 }
 
-}  // namespace achclwss::raster
+}  // namespace wetwaresuite::raster

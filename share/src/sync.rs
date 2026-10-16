@@ -72,7 +72,7 @@ pub fn default_state_dir() -> Option<PathBuf> {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
     }?;
-    Some(base.join("achclwss-share").join("sync"))
+    Some(base.join("wetwaresuite-share").join("sync"))
 }
 
 #[derive(Debug, Default, Clone)]
@@ -187,7 +187,7 @@ impl Engine {
         if !info.bool_or("writable", false) {
             return Err(io::Error::new(
                 io::ErrorKind::PermissionDenied,
-                "that share is read-only; the other machine should run `achclwss-share sync <folder>` (or serve --write)",
+                "that share is read-only; the other machine should run `wetwaresuite-share sync <folder>` (or serve --write)",
             ));
         }
         let peer_key = format!("{}/{}", info.str_or("host", "?"), info.str_or("folder", "?"));

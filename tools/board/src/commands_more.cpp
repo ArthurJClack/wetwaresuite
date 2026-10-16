@@ -7,10 +7,10 @@
 #include <set>
 #include <sstream>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::board {
+namespace wetwaresuite::board {
 
 using namespace detail;
 
@@ -608,4 +608,4 @@ void registerDiagramCommands(Session& session) { registerDiagrams(session.regist
 
 void registerQueryCommands(Session& session) { registerQuery(session.registry(), session); }
 
-}  // namespace achclwss::board
+}  // namespace wetwaresuite::board

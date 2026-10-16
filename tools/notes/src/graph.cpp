@@ -8,11 +8,11 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/notes/notes.hpp"
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/notes/notes.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 
-namespace achclwss::notes {
+namespace wetwaresuite::notes {
 
 Graph buildGraph(const Vault& vault, const GraphOptions& o) {
     Graph g;
@@ -273,4 +273,4 @@ raster::Image drawGraph(const Graph& g, int width, int height, int labels, const
     return img;
 }
 
-}  // namespace achclwss::notes
+}  // namespace wetwaresuite::notes

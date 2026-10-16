@@ -6,10 +6,10 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/cut/cut.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/cut/cut.hpp"
 
-namespace achclwss::cut {
+namespace wetwaresuite::cut {
 
 namespace fs = std::filesystem;
 
@@ -45,7 +45,7 @@ TempDir::TempDir() {
     std::random_device rd;
     std::mt19937_64 gen((static_cast<std::uint64_t>(rd()) << 32) ^ rd());
     for (int attempt = 0; attempt < 100; ++attempt) {
-        fs::path p = fs::temp_directory_path() / ("achclwss-cut-" + std::to_string(gen() % 1000000000000ULL));
+        fs::path p = fs::temp_directory_path() / ("wetwaresuite-cut-" + std::to_string(gen() % 1000000000000ULL));
         std::error_code ec;
         if (fs::create_directory(p, ec)) {
             path_ = p;
@@ -165,4 +165,4 @@ std::unique_ptr<Attachment> Timeline::preview() const {
     }
 }
 
-}  // namespace achclwss::cut
+}  // namespace wetwaresuite::cut

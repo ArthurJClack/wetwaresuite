@@ -5,11 +5,11 @@
 #include <map>
 #include <set>
 
-#include "achclwss/pdfdoc/writer.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/pdfdoc/writer.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 #include "internal.hpp"
 
-namespace achclwss::layout {
+namespace wetwaresuite::layout {
 
 static std::string pn(double v) { return pdfdoc::num(v); }
 
@@ -287,7 +287,7 @@ public:
         finishResources();
         const int root = w_.add("<< /Type /Catalog /Pages " + std::to_string(pages) + " 0 R >>");
         const int info = w_.add("<< /Title " + pdfdoc::text(doc_.title.empty() ? "layout" : doc_.title) +
-                                " /Creator (ACHCLWSS layout) /Producer (ACHCLWSS) >>");
+                                " /Creator (wetwaresuite layout) /Producer (wetwaresuite) >>");
         report.pages = static_cast<int>(kids.size());
         if (usedRgb && usedCmyk) report.warnings.push_back("mixes RGB and CMYK colours");
         return w_.finish(root, info, "1.4");
@@ -444,4 +444,4 @@ std::string imposePdf(const LayoutDoc& doc, const ImposeOptions& o, PdfReport* r
     return out;
 }
 
-}  // namespace achclwss::layout
+}  // namespace wetwaresuite::layout

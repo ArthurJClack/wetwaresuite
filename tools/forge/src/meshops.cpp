@@ -1,4 +1,4 @@
-#include "achclwss/forge/meshops.hpp"
+#include "wetwaresuite/forge/meshops.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -7,9 +7,9 @@
 #include <tuple>
 #include <vector>
 
-#include "achclwss/mesh/ops.hpp"
+#include "wetwaresuite/mesh/ops.hpp"
 
-namespace achclwss::forge {
+namespace wetwaresuite::forge {
 
 using mesh::Bounds;
 using mesh::Mesh;
@@ -177,4 +177,4 @@ Mesh decimateRatio(const Mesh& m, double ratio, bool normals, double creaseDegre
     return decimateTo(m, target, normals, creaseDegrees);
 }
 
-}  // namespace achclwss::forge
+}  // namespace wetwaresuite::forge

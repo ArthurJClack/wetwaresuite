@@ -10,7 +10,7 @@ use share::server::{Config, Share};
 const TOKEN: &str = "testtokentesttokentesttokentest1";
 
 fn tmp(name: &str) -> PathBuf {
-    let d = std::env::temp_dir().join(format!("achclwss-share-it-{name}-{}", std::process::id()));
+    let d = std::env::temp_dir().join(format!("wetwaresuite-share-it-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&d);
     std::fs::create_dir_all(&d).unwrap();
     d
@@ -267,7 +267,7 @@ fn pairing_by_code() {
     let base = format!("http://127.0.0.1:{}", share.port());
     let (t, info) = share::client::resolve(&base, Some("ABC234")).unwrap();
     assert_eq!(t.token, TOKEN);
-    assert_eq!(info.str_or("app", ""), "achclwss-share");
+    assert_eq!(info.str_or("app", ""), "wetwaresuite-share");
     // five wrong codes in a minute block the address
     for _ in 0..5 {
         pair("QQQQQQ");

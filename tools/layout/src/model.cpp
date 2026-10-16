@@ -8,11 +8,11 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 #include "internal.hpp"
 
-namespace achclwss::layout {
+namespace wetwaresuite::layout {
 
 using nlohmann::json;
 
@@ -826,7 +826,7 @@ Frame frameFrom(const json& j) {
 
 std::string toJson(const LayoutDoc& doc) {
     json j;
-    j["format"] = "achclwss-layout";
+    j["format"] = "wetwaresuite-layout";
     j["version"] = 1;
     j["title"] = doc.title;
     j["width"] = doc.width;
@@ -899,7 +899,7 @@ std::shared_ptr<LayoutDoc> fromJson(const std::string& text) {
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not a layout file: ") + e.what());
     }
-    if (!j.is_object() || j.value("format", "") != "achclwss-layout") throw std::runtime_error("not an .achlay layout file");
+    if (!j.is_object() || j.value("format", "") != "wetwaresuite-layout") throw std::runtime_error("not an .achlay layout file");
     auto doc = std::make_shared<LayoutDoc>();
     try {
         doc->title = j.value("title", "");
@@ -1018,4 +1018,4 @@ Result LayoutEdit::apply() {
 
 void LayoutEdit::revert() { static_cast<Layout&>(*doc_) = before_; }
 
-}  // namespace achclwss::layout
+}  // namespace wetwaresuite::layout

@@ -4,14 +4,14 @@
 #include <fstream>
 #include <sstream>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::vector;
+using namespace wetwaresuite;
+using namespace wetwaresuite::vector;
 
 namespace {
 
@@ -22,7 +22,7 @@ bool isColor(raster::Color c, int r, int g, int b, int tol = 8) {
 }
 
 
-std::filesystem::path tmp(const std::string& name) { return std::filesystem::temp_directory_path() / ("achclwss_vector_" + name); }
+std::filesystem::path tmp(const std::string& name) { return std::filesystem::temp_directory_path() / ("wetwaresuite_vector_" + name); }
 
 void testPathParsing() {
     std::string err;

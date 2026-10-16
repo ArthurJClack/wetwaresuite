@@ -6,7 +6,7 @@
 #include <string>
 #include <vector>
 
-namespace achclwss::cut {
+namespace wetwaresuite::cut {
 
 std::optional<std::string> ffmpegPath();
 std::optional<std::string> ffprobePath();
@@ -31,4 +31,4 @@ private:
 std::string readFile(const std::filesystem::path& path);
 bool writeFile(const std::filesystem::path& path, const std::string& bytes);
 
-}  // namespace achclwss::cut
+}  // namespace wetwaresuite::cut

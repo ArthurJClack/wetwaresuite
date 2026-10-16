@@ -6,7 +6,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::mesh::detail {
+namespace wetwaresuite::mesh::detail {
 
 double signedArea(const std::vector<Vec2>& poly) {
     double a = 0;
@@ -178,4 +178,4 @@ std::vector<std::uint32_t> triangulate(const std::vector<Vec2>& outerIn, const s
     return out;
 }
 
-}  // namespace achclwss::mesh::detail
+}  // namespace wetwaresuite::mesh::detail

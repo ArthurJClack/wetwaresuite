@@ -4,17 +4,17 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/forge/forge.hpp"
-#include "achclwss/forge/meshops.hpp"
-#include "achclwss/forge/texture.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/mesh/document.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
+#include "wetwaresuite/forge/forge.hpp"
+#include "wetwaresuite/forge/meshops.hpp"
+#include "wetwaresuite/forge/texture.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/mesh/document.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 using json = nlohmann::ordered_json;
 namespace fs = std::filesystem;
 
@@ -68,7 +68,7 @@ std::string addImage(Session& s, const raster::Image& img) {
 }  // namespace
 
 int main() {
-    auto dir = fs::temp_directory_path() / "achclwss_test_forge";
+    auto dir = fs::temp_directory_path() / "wetwaresuite_test_forge";
     fs::remove_all(dir);
     fs::create_directories(dir);
 
@@ -438,7 +438,7 @@ int main() {
     {
         Session ms;
         forge::registerCommands(ms);
-        mcp::Server server(ms, {"achclwss", "test", "forge"});
+        mcp::Server server(ms, {"wetwaresuite", "test", "forge"});
         json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
         bool sawPreview = false;
         for (const auto& t : list) {

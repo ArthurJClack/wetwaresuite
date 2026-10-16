@@ -1,13 +1,13 @@
 # Share: send files and live-sync folders over the LAN or internet
 
-`achclwss-share` is one small program (about 1 MB, no dependencies) that does four jobs:
+`wetwaresuite-share` is one small program (about 1 MB, no dependencies) that does four jobs:
 
 - **share a folder with any device**: one command prints a link, a QR code and a 6-character code. The other side needs nothing installed: a phone, tablet or laptop browser gets a file browser with downloads, "download folder as zip" and, if you allow it, uploads by drag and drop.
 - **live-sync a code project between two machines**: edit on your laptop, the change is on your desktop a fraction of a second later, and the other way round. `.gitignore` rules are respected and `node_modules`, `target`, `.git` and friends stay out by default.
 - **send one file or folder** to another machine that runs the tool.
 - **let Claude do all of the above** over MCP.
 
-Everything is headless: it runs in a terminal, over SSH, in a script or under Claude. When the ACHCLWSS GUI lands, its "Share this folder" button will call exactly these commands, so what you learn here carries over.
+Everything is headless: it runs in a terminal, over SSH, in a script or under Claude. When the wetwaresuite GUI lands, its "Share this folder" button will call exactly these commands, so what you learn here carries over.
 
 Every command and output below was run against the real binary. Addresses, tokens and codes differ on your machines.
 
@@ -31,14 +31,14 @@ It is a dependency-free Rust crate in `share/`:
 ```sh
 cd share
 cargo build --release
-# the binary: share/target/release/achclwss-share (achclwss-share.exe on Windows)
+# the binary: share/target/release/wetwaresuite-share (wetwaresuite-share.exe on Windows)
 ```
 
 Copy it anywhere on your `PATH`, or next to the `hub` binary so `hub share ...` finds it. `hub list` shows it as the `share` tool, and `hub mcp-config` includes it.
 
 ```sh
-$ achclwss-share --version
-achclwss-share 0.1.0
+$ wetwaresuite-share --version
+wetwaresuite-share 0.1.0
 ```
 
 ## 2. Share a folder with a phone or laptop
@@ -49,12 +49,12 @@ Go to the folder and run the tool with no arguments:
 
 ```sh
 $ cd ~/Pictures/holiday
-$ achclwss-share
+$ wetwaresuite-share
 Sharing /home/me/Pictures/holiday (read-only). Press Ctrl+C to stop.
 
   On another device:  http://192.168.1.20:8740/?k=eu23xrfuios6eax2zn43z4xnum6cg3ie
   On this machine:    http://127.0.0.1:8740/?k=eu23xrfuios6eax2zn43z4xnum6cg3ie
-  Pairing code:       Y2JQUF   (type it on the page, or `achclwss-share receive Y2JQUF`)
+  Pairing code:       Y2JQUF   (type it on the page, or `wetwaresuite-share receive Y2JQUF`)
 
   Scan with a phone camera:
 
@@ -83,18 +83,18 @@ The terminal shows what happens (uploads, deletes, pairings, blocked guessers). 
 ### Choosing what to share
 
 ```sh
-achclwss-share serve ~/Projects/site        # a folder
-achclwss-share serve ~/Downloads/video.mp4   # just one file: nothing else is visible
-achclwss-share ~/Projects/site               # a bare folder path works too
+wetwaresuite-share serve ~/Projects/site        # a folder
+wetwaresuite-share serve ~/Downloads/video.mp4   # just one file: nothing else is visible
+wetwaresuite-share ~/Projects/site               # a bare folder path works too
 ```
 
-With no folder, the current folder is shared, and the first line always says which. As a safety net, a bare `achclwss-share` refuses to share your whole home folder or a drive root (`/`, `C:\`); name it explicitly (`achclwss-share serve ~`) if you really mean it.
+With no folder, the current folder is shared, and the first line always says which. As a safety net, a bare `wetwaresuite-share` refuses to share your whole home folder or a drive root (`/`, `C:\`); name it explicitly (`wetwaresuite-share serve ~`) if you really mean it.
 
 **Double-clicking the binary** works as a "1-click share", with one honest caveat: the folder it shares is whatever folder the system starts it in.
 
 | system | what a double-click shares |
 | --- | --- |
-| Windows (Explorer) | the folder the `.exe` is in. Put `achclwss-share.exe` in the folder you want to share (or make a shortcut whose "Start in" is that folder) and double-click it. Close the window to stop. |
+| Windows (Explorer) | the folder the `.exe` is in. Put `wetwaresuite-share.exe` in the folder you want to share (or make a shortcut whose "Start in" is that folder) and double-click it. Close the window to stop. |
 | macOS (Finder) | Terminal opens in your home folder, which the tool refuses to share by accident. Run it from a terminal in the right folder instead. |
 | Linux file managers | varies (often your home folder, refused the same way). Use a terminal or a launcher with a working directory set. |
 
@@ -103,7 +103,7 @@ With no folder, the current folder is shared, and the first line always says whi
 By default a share is **read-only**. Add `--write` to let visitors upload files, create folders, rename and delete:
 
 ```sh
-$ achclwss-share serve ~/inbox --write
+$ wetwaresuite-share serve ~/inbox --write
 Sharing /home/me/inbox (read-write). Press Ctrl+C to stop.
 ...
   127.0.0.1 uploaded holiday/IMG_2041.jpg (3.1 MB)
@@ -126,12 +126,12 @@ Say you edit on a laptop and build or run on a desktop (or the other way round, 
 On the first machine (the **host**), say the desktop:
 
 ```sh
-desktop$ achclwss-share sync ~/code/myapp
+desktop$ wetwaresuite-share sync ~/code/myapp
 Hosting live sync of /home/me/code/myapp (read-write). Press Ctrl+C to stop.
 
   On another device:  http://192.168.1.20:8770/?k=edtzgny5rz5ewde5ke5bujhvpqk3duob
   On this machine:    http://127.0.0.1:8770/?k=edtzgny5rz5ewde5ke5bujhvpqk3duob
-  Pairing code:       EYCZPJ   (on the other machine: achclwss-share sync <folder> EYCZPJ)
+  Pairing code:       EYCZPJ   (on the other machine: wetwaresuite-share sync <folder> EYCZPJ)
 
   Waiting for the other machine. Changes made there show up here, and the other way round.
 ```
@@ -139,7 +139,7 @@ Hosting live sync of /home/me/code/myapp (read-write). Press Ctrl+C to stop.
 On the second machine, give the folder to keep in sync and the code:
 
 ```sh
-laptop$ achclwss-share sync ~/code/myapp EYCZPJ
+laptop$ wetwaresuite-share sync ~/code/myapp EYCZPJ
 Looking for EYCZPJ...
 Syncing /home/me/code/myapp with myapp on desktop (http://192.168.1.20:8770). Press Ctrl+C to stop.
   Skipping .git, node_modules, target, build, .venv, __pycache__ and .gitignore/.shareignore matches.
@@ -169,10 +169,10 @@ Now edit anywhere. Save `src/util.js` on the laptop and the desktop has it withi
 You can also join with the full link instead of the code, which is the way to go when the machines are on different networks or discovery is blocked:
 
 ```sh
-laptop$ achclwss-share sync ~/code/myapp "http://192.168.1.20:8770/?k=edtzgny5rz5ewde5ke5bujhvpqk3duob"
+laptop$ wetwaresuite-share sync ~/code/myapp "http://192.168.1.20:8770/?k=edtzgny5rz5ewde5ke5bujhvpqk3duob"
 ```
 
-or with the address plus the code: `achclwss-share sync ~/code/myapp http://192.168.1.20:8770 --code EYCZPJ`.
+or with the address plus the code: `wetwaresuite-share sync ~/code/myapp http://192.168.1.20:8770 --code EYCZPJ`.
 
 More than one machine can join the same host; each stays in sync with it (and so with each other).
 
@@ -191,7 +191,7 @@ Pass `--include-heavy` (on the joining side) to sync them too. Syncing `.git/` b
 On top of that, **`.gitignore` and `.shareignore`** files are honoured, in any folder, with the usual git syntax:
 
 ```gitignore
-# .shareignore: like .gitignore, but only for achclwss-share.
+# .shareignore: like .gitignore, but only for wetwaresuite-share.
 # Comments go on their own lines (as in git, "#" mid-line is part of the pattern).
 
 # any .log file, at any depth
@@ -239,7 +239,7 @@ Compare the two, keep what you want and delete the other; the deletion syncs. Ot
 
 Every upload and delete tells the other side which version it expects to replace; if the file changed there in the meantime the write is refused and the next round treats it as a conflict instead. A sync never overwrites an edit it hasn't seen.
 
-The joining machine remembers the last synced state (in `~/.cache/achclwss-share/sync/`, `~/Library/Caches/...` on macOS, `%LOCALAPPDATA%\achclwss-share\sync\` on Windows), so files deleted while sync was stopped stay deleted when it restarts. If that cache is cleared, the next start behaves like a first sync: nothing is deleted, files that differ become conflict copies.
+The joining machine remembers the last synced state (in `~/.cache/wetwaresuite-share/sync/`, `~/Library/Caches/...` on macOS, `%LOCALAPPDATA%\wetwaresuite-share\sync\` on Windows), so files deleted while sync was stopped stay deleted when it restarts. If that cache is cleared, the next start behaves like a first sync: nothing is deleted, files that differ become conflict copies.
 
 ## 4. Send one file or folder
 
@@ -248,15 +248,15 @@ For a one-off transfer between two machines that both have the tool.
 **Pull style**: the sender offers, the receiver fetches.
 
 ```sh
-sender$ achclwss-share send ~/Downloads/dataset.zip
+sender$ wetwaresuite-share send ~/Downloads/dataset.zip
 Sending /home/me/Downloads/dataset.zip (read-only). Press Ctrl+C to stop.
   ...
-  Pairing code:       Q4M8ZT   (on the other machine: achclwss-share receive Q4M8ZT)
+  Pairing code:       Q4M8ZT   (on the other machine: wetwaresuite-share receive Q4M8ZT)
   Will stop after the first finished download (use --keep to stay up).
 ```
 
 ```sh
-receiver$ achclwss-share receive Q4M8ZT
+receiver$ wetwaresuite-share receive Q4M8ZT
 Looking for Q4M8ZT...
 Receiving dataset.zip from sender...
   ↓ dataset.zip (412.0 MB)
@@ -268,14 +268,14 @@ The sender stops by itself once a `receive` is done. A browser can open the send
 **Push style**: the receiver waits, the sender pushes into it.
 
 ```sh
-receiver$ achclwss-share receive --to ~/incoming
+receiver$ wetwaresuite-share receive --to ~/incoming
 Receiving into /home/you/incoming (read-write). Press Ctrl+C to stop.
   ...
-  Pairing code:       54JXUG   (on the other machine: achclwss-share send <path> 54JXUG)
+  Pairing code:       54JXUG   (on the other machine: wetwaresuite-share send <path> 54JXUG)
 ```
 
 ```sh
-sender$ achclwss-share send demo/photos 54JXUG
+sender$ wetwaresuite-share send demo/photos 54JXUG
 Sending demo/photos to incoming on receiver...
   ↑ photos/cat.jpg (2.9 KB)
 Sent 1 file(s), 2.9 KB.
@@ -288,23 +288,23 @@ The receiver logs the upload and exits. Any `serve --write` share also accepts `
 Running shares announce themselves on the LAN every two seconds (a small UDP broadcast on port 8741 that contains the machine name, folder name and port, never the token or code). List them:
 
 ```sh
-$ achclwss-share peers
+$ wetwaresuite-share peers
 Listening for shares on this network for 3s...
   myapp                desktop      sync     http://192.168.1.20:8770  (writable)
   holiday              laptop       share    http://192.168.1.31:8740
-Join one with its pairing code (shown where it was started), e.g. `achclwss-share sync myproj CODE`.
+Join one with its pairing code (shown where it was started), e.g. `wetwaresuite-share sync myproj CODE`.
 ```
 
 `--wait 10` listens longer. Joining by code (`sync FOLDER CODE`, `receive CODE`, `send PATH CODE`) listens for up to 8 seconds and tries the code against each share it hears; only the right one accepts it. `--no-announce` keeps a share quiet (then people need the link).
 
 ## 6. Share over the internet
 
-Add `--internet` to any `serve`, `sync`, `send` or `receive`. There's no ACHCLWSS relay server, so the tool uses what your machine has, in this order:
+Add `--internet` to any `serve`, `sync`, `send` or `receive`. There's no wetwaresuite relay server, so the tool uses what your machine has, in this order:
 
 1. **cloudflared** on your `PATH`: starts a free Cloudflare quick tunnel and prints its `https://` link. No account, no router setup, HTTPS from the visitor to Cloudflare.
 
    ```sh
-   $ achclwss-share serve ~/Projects/site --internet
+   $ wetwaresuite-share serve ~/Projects/site --internet
    ...
      Opening an internet route...
      Over the internet:  https://sample-words-here.trycloudflare.com/?k=y2sgq6nkkfkpi5j5dvdeztifwfxcettt
@@ -334,23 +334,23 @@ Whichever route is used, **the token is still required**: the internet link carr
 
 ## 7. Drive it from Claude (MCP)
 
-`achclwss-share mcp` is an MCP server on stdio. Shares and syncs Claude starts run on background threads inside that server, and stop when Claude calls the matching stop tool or the session ends.
+`wetwaresuite-share mcp` is an MCP server on stdio. Shares and syncs Claude starts run on background threads inside that server, and stop when Claude calls the matching stop tool or the session ends.
 
 ### Connect
 
 Claude Code:
 
 ```sh
-claude mcp add achclwss-share -- /path/to/achclwss/share/target/release/achclwss-share mcp
+claude mcp add wetwaresuite-share -- /path/to/wetwaresuite/share/target/release/wetwaresuite-share mcp
 ```
 
-Claude Desktop: run `hub mcp-config --bin-dir /path/to/bin` (where `achclwss-share` lives next to the other binaries) and paste the output, which now has an `achclwss-share` entry next to `achclwss`; or add it by hand:
+Claude Desktop: run `hub mcp-config --bin-dir /path/to/bin` (where `wetwaresuite-share` lives next to the other binaries) and paste the output, which now has an `wetwaresuite-share` entry next to `wetwaresuite`; or add it by hand:
 
 ```json
 {
   "mcpServers": {
-    "achclwss-share": {
-      "command": "/path/to/achclwss-share",
+    "wetwaresuite-share": {
+      "command": "/path/to/wetwaresuite-share",
       "args": ["mcp"]
     }
   }
@@ -386,7 +386,7 @@ Claude calls `sync_start` with `folder` and `peer: "EYCZPJ"`, then `sync_status`
 
 > Host this repo for syncing and tell me what to type on the other machine.
 
-`sync_start` with just `folder`; Claude passes on the `achclwss-share sync <folder> CODE` line from the result.
+`sync_start` with just `folder`; Claude passes on the `wetwaresuite-share sync <folder> CODE` line from the result.
 
 > What's being shared right now? Stop everything.
 
@@ -428,10 +428,10 @@ This tool opens a port on your machine, so here is exactly what protects it.
 **"On another device" link doesn't load from the phone.**
 
 - Both devices must be on the same network. Guest Wi-Fi and some office or mesh networks isolate devices from each other ("client isolation"); try a different network or a phone hotspot.
-- **Firewall.** Windows shows a "Windows Defender Firewall has blocked some features" prompt the first time; tick **Private networks** and allow it. If you clicked Cancel, allow it later under *Windows Security > Firewall & network protection > Allow an app through firewall*, or run (as admin) `netsh advfirewall firewall add rule name="achclwss-share" dir=in action=allow program="C:\path\to\achclwss-share.exe"`. macOS asks "Do you want the application to accept incoming network connections?": click **Allow** (or later in *System Settings > Network > Firewall > Options*). On Linux with ufw: `sudo ufw allow 8740:8760/tcp` and `sudo ufw allow 8741/udp`.
+- **Firewall.** Windows shows a "Windows Defender Firewall has blocked some features" prompt the first time; tick **Private networks** and allow it. If you clicked Cancel, allow it later under *Windows Security > Firewall & network protection > Allow an app through firewall*, or run (as admin) `netsh advfirewall firewall add rule name="wetwaresuite-share" dir=in action=allow program="C:\path\to\wetwaresuite-share.exe"`. macOS asks "Do you want the application to accept incoming network connections?": click **Allow** (or later in *System Settings > Network > Firewall > Options*). On Linux with ufw: `sudo ufw allow 8740:8760/tcp` and `sudo ufw allow 8741/udp`.
 - The printed LAN address is the interface that routes to the internet. On machines with several networks (VPN, Docker, virtual machines) it may be the wrong one; find the right address with `ip addr` / `ipconfig` / System Settings and use `http://THAT-IP:PORT/?k=TOKEN` (the same token), or `--bind THAT-IP`.
 
-**"no share answered on this network within 8s" when joining by code.** Discovery uses UDP broadcast, which doesn't cross subnets or routers and is blocked by some Wi-Fi setups and firewalls (allow UDP 8741 inbound on the joining machine). Use the full link instead of the code: it works across subnets wherever TCP gets through. `achclwss-share peers` shows whether announcements arrive at all.
+**"no share answered on this network within 8s" when joining by code.** Discovery uses UDP broadcast, which doesn't cross subnets or routers and is blocked by some Wi-Fi setups and firewalls (allow UDP 8741 inbound on the joining machine). Use the full link instead of the code: it works across subnets wherever TCP gets through. `wetwaresuite-share peers` shows whether announcements arrive at all.
 
 **"found 1 share(s) nearby but none accepted code ..."** A typo in the code, or the share was restarted (a new code each time). Too many wrong tries blocks you for five minutes ("too many failed attempts").
 
@@ -454,16 +454,16 @@ This tool opens a port on your machine, so here is exactly what protects it.
 ## 10. Command reference
 
 ```
-achclwss-share                          share the current folder (read-only)
-achclwss-share serve [FOLDER]           share a folder; the other side just needs a browser
-achclwss-share sync FOLDER              host FOLDER for live two-way sync; prints a code
-achclwss-share sync FOLDER CODE|LINK    join a sync host and keep FOLDER in sync with it
-achclwss-share send PATH                offer a file or folder for download; prints a code
-achclwss-share send PATH CODE|LINK      upload a file or folder into a waiting `receive`
-achclwss-share receive CODE|LINK        download what a `send` is offering
-achclwss-share receive                  wait for a `send PATH CODE`; files land in --to DIR
-achclwss-share peers                    list shares announced on this network
-achclwss-share mcp                      MCP server on stdio, for Claude
+wetwaresuite-share                          share the current folder (read-only)
+wetwaresuite-share serve [FOLDER]           share a folder; the other side just needs a browser
+wetwaresuite-share sync FOLDER              host FOLDER for live two-way sync; prints a code
+wetwaresuite-share sync FOLDER CODE|LINK    join a sync host and keep FOLDER in sync with it
+wetwaresuite-share send PATH                offer a file or folder for download; prints a code
+wetwaresuite-share send PATH CODE|LINK      upload a file or folder into a waiting `receive`
+wetwaresuite-share receive CODE|LINK        download what a `send` is offering
+wetwaresuite-share receive                  wait for a `send PATH CODE`; files land in --to DIR
+wetwaresuite-share peers                    list shares announced on this network
+wetwaresuite-share mcp                      MCP server on stdio, for Claude
 
 --write            allow uploads, renames and deletes from the browser (serve)
 --internet         also reach it from outside the LAN: cloudflared tunnel, else tailscale
@@ -480,7 +480,7 @@ achclwss-share mcp                      MCP server on stdio, for Claude
 --wait SECONDS     how long `peers` listens (default 3)
 ```
 
-`hub share ARGS...` runs the same commands when `achclwss-share` sits next to `hub`.
+`hub share ARGS...` runs the same commands when `wetwaresuite-share` sits next to `hub`.
 
 ### The HTTP API
 

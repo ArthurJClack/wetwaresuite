@@ -1,17 +1,17 @@
-#include "achclwss/convert/convert.hpp"
+#include "wetwaresuite/convert/convert.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <set>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/render.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
-#include "achclwss/raster/ops.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/render.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/raster/ops.hpp"
 
-namespace achclwss::convert {
+namespace wetwaresuite::convert {
 
 namespace fs = std::filesystem;
 
@@ -107,7 +107,7 @@ Result officeConvert(const fs::path& input, const fs::path& output) {
     auto exe = soffice();
     if (!exe) return Result::failure("office document conversion needs LibreOffice (soffice) on PATH");
     std::error_code ec;
-    fs::path tmp = fs::temp_directory_path(ec) / ("achclwss-convert-" + std::to_string(std::hash<std::string>{}(input.string())));
+    fs::path tmp = fs::temp_directory_path(ec) / ("wetwaresuite-convert-" + std::to_string(std::hash<std::string>{}(input.string())));
     fs::create_directories(tmp, ec);
     auto r = runProgram({*exe, "--headless", "--norestore", "--convert-to", extOf(output), "--outdir", tmp.string(), input.string()});
     fs::path produced = tmp / input.filename();
@@ -129,7 +129,7 @@ Result pandocConvert(const fs::path& input, const fs::path& output) {
     if (extOf(output) == "pdf" && soffice()) {
         // pandoc's own PDF needs LaTeX; going through .docx and LibreOffice needs nothing extra
         std::error_code ec;
-        fs::path tmp = fs::temp_directory_path(ec) / ("achclwss-md-" + std::to_string(std::hash<std::string>{}(input.string())));
+        fs::path tmp = fs::temp_directory_path(ec) / ("wetwaresuite-md-" + std::to_string(std::hash<std::string>{}(input.string())));
         fs::create_directories(tmp, ec);
         fs::path docx = tmp / input.filename();
         docx.replace_extension(".docx");
@@ -368,4 +368,4 @@ void registerCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::convert
+}  // namespace wetwaresuite::convert

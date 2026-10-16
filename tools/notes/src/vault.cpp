@@ -9,9 +9,9 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/notes/notes.hpp"
+#include "wetwaresuite/notes/notes.hpp"
 
-namespace achclwss::notes {
+namespace wetwaresuite::notes {
 
 using nlohmann::json;
 
@@ -249,7 +249,7 @@ void Vault::saveCache() const {
         fs::rename(dir / "cache.json.tmp", dir / "cache.json", ec);
     }
     std::ofstream readme(dir / "README.txt", std::ios::binary);
-    readme << "This folder is a cache made by ACHCLWSS notes. It can be deleted at any time; it is rebuilt from the .md files.\n";
+    readme << "This folder is a cache made by wetwaresuite notes. It can be deleted at any time; it is rebuilt from the .md files.\n";
 }
 
 void Vault::clearCache() {
@@ -778,4 +778,4 @@ SearchResults Vault::search(const std::string& query, std::size_t limit, bool sn
     return out;
 }
 
-}  // namespace achclwss::notes
+}  // namespace wetwaresuite::notes

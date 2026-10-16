@@ -1,9 +1,9 @@
-#include "achclwss/audio/buffer.hpp"
+#include "wetwaresuite/audio/buffer.hpp"
 
 #include <algorithm>
 #include <cstdio>
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 Buffer::Buffer(int channelCount, std::size_t frameCount, int sampleRate) : rate(sampleRate) {
     channels.assign(static_cast<std::size_t>(std::max(channelCount, 0)), std::vector<float>(frameCount, 0.0f));
@@ -76,4 +76,4 @@ std::string describe(const Buffer& b) {
     return buf;
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio

@@ -1,13 +1,13 @@
-# Using ACHCLWSS with Claude (MCP)
+# Using wetwaresuite with Claude (MCP)
 
-Every command in ACHCLWSS is also an MCP tool, so Claude can open, edit, preview and save your files for you. You describe what you want ("brighten this photo and make a web copy"), Claude calls the tools, looks at previews to check its work, and saves the result. Nothing is uploaded anywhere: the server runs on your machine and works on your files directly.
+Every command in wetwaresuite is also an MCP tool, so Claude can open, edit, preview and save your files for you. You describe what you want ("brighten this photo and make a web copy"), Claude calls the tools, looks at previews to check its work, and saves the result. Nothing is uploaded anywhere: the server runs on your machine and works on your files directly.
 
 This tutorial covers connecting the server, what Claude sees, good prompts, and how to troubleshoot.
 
 ## 1. The server
 
 ```sh
-achclwss mcp
+wetwaresuite mcp
 ```
 
 starts an MCP server on stdin/stdout (the standard "stdio" transport). You do not normally run it by hand: Claude Code or Claude Desktop starts it for you from the config below. It serves every tool in the suite, plus four session tools (`undo`, `redo`, `history`, `documents`).
@@ -17,9 +17,9 @@ starts an MCP server on stdin/stdout (the standard "stdio" transport). You do no
 Fewer tools means less for Claude to read and fewer chances to pick the wrong one. Pass a comma-separated list of tool groups:
 
 ```sh
-achclwss mcp --tools photo,paint     # image editing and painting only
-achclwss mcp --tools vector          # vector drawing only (see vector.md)
-achclwss mcp --tools convert         # file conversion only
+wetwaresuite mcp --tools photo,paint     # image editing and painting only
+wetwaresuite mcp --tools vector          # vector drawing only (see vector.md)
+wetwaresuite mcp --tools convert         # file conversion only
 ```
 
 The groups are `photo`, `paint`, `vector`, `convert` and `toolkit`. The session tools are always included.
@@ -31,13 +31,13 @@ Groups bring what they need along: `paint` includes `photo` (opening, previewing
 Use an absolute path to the binary:
 
 ```sh
-claude mcp add achclwss -- /path/to/achclwss/build/apps/achclwss/achclwss mcp
+claude mcp add wetwaresuite -- /path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite mcp
 ```
 
 Everything after `--` is the command Claude Code runs. To add a filtered server, or to make it available in every project rather than just the current one:
 
 ```sh
-claude mcp add achclwss-art -s user -- /path/to/achclwss/build/apps/achclwss/achclwss mcp --tools photo,paint
+claude mcp add wetwaresuite-art -s user -- /path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite mcp --tools photo,paint
 ```
 
 `-s` (scope) can be `local` (the default: this project, just for you), `project` (shared with your team through a `.mcp.json` file in the repo) or `user` (all your projects).
@@ -48,8 +48,8 @@ Check that it connects:
 $ claude mcp list
 Checking MCP server health…
 
-achclwss-art: /path/to/achclwss/build/apps/achclwss/achclwss mcp --tools photo,paint - √ Connected
-achclwss: /path/to/achclwss/build/apps/achclwss/achclwss mcp - √ Connected
+wetwaresuite-art: /path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite mcp --tools photo,paint - √ Connected
+wetwaresuite: /path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite mcp - √ Connected
 ```
 
 Inside a Claude Code session, `/mcp` shows the same status and lets you browse the tools.
@@ -66,15 +66,15 @@ and add an entry under `mcpServers`:
 ```json
 {
   "mcpServers": {
-    "achclwss": {
-      "command": "/path/to/achclwss/build/apps/achclwss/achclwss",
+    "wetwaresuite": {
+      "command": "/path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite",
       "args": ["mcp"]
     }
   }
 }
 ```
 
-For a filtered server, put the extra arguments in `args`: `"args": ["mcp", "--tools", "photo,paint"]`. On Windows, write paths with doubled backslashes, for example `"C:\\Tools\\achclwss\\achclwss.exe"`. Restart Claude Desktop after saving.
+For a filtered server, put the extra arguments in `args`: `"args": ["mcp", "--tools", "photo,paint"]`. On Windows, write paths with doubled backslashes, for example `"C:\\Tools\\wetwaresuite\\wetwaresuite.exe"`. Restart Claude Desktop after saving.
 
 ### Let the hub write it for you
 
@@ -82,14 +82,14 @@ The `hub` install manager prints a ready-made config pointing at your binaries:
 
 ```sh
 cd hub && cargo build --release
-./target/release/hub mcp-config --bin-dir /path/to/achclwss/build/apps/achclwss
+./target/release/hub mcp-config --bin-dir /path/to/wetwaresuite/build/apps/wetwaresuite
 ```
 
 ```json
 {
   "mcpServers": {
-    "achclwss": {
-      "command": "/path/to/achclwss/build/apps/achclwss/achclwss",
+    "wetwaresuite": {
+      "command": "/path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite",
       "args": ["mcp"]
     }
   }
@@ -100,10 +100,10 @@ Without `--bin-dir` it uses the folder the `hub` binary itself is in, which is w
 
 ### The standalone toolkit server
 
-`achclwss-toolkit` (built at `build/tools/toolkit/achclwss-toolkit`) has its own tiny MCP server with just the file-identification tools:
+`wetwaresuite-toolkit` (built at `build/tools/toolkit/wetwaresuite-toolkit`) has its own tiny MCP server with just the file-identification tools:
 
 ```sh
-claude mcp add achclwss-toolkit -- /path/to/achclwss/build/tools/toolkit/achclwss-toolkit mcp
+claude mcp add wetwaresuite-toolkit -- /path/to/wetwaresuite/build/tools/toolkit/wetwaresuite-toolkit mcp
 ```
 
 It offers `toolkit_inspect` and `toolkit_hex` plus the four session tools. The suite binary already includes these, so you only need the standalone one if you want a very small server. See [toolkit.md](toolkit.md).
@@ -137,7 +137,7 @@ plus the session tools:
 
 ### Schemas
 
-Each tool's input schema is generated from the same parameter list `achclwss help` prints: types (`string`, `integer`, `number`, `boolean`, `array` of numbers), descriptions, `enum` choices, defaults and which parameters are required. Here is part of `paint_stroke`:
+Each tool's input schema is generated from the same parameter list `wetwaresuite help` prints: types (`string`, `integer`, `number`, `boolean`, `array` of numbers), descriptions, `enum` choices, defaults and which parameters are required. Here is part of `paint_stroke`:
 
 ```json
 {
@@ -180,7 +180,7 @@ Claude can look at its work in three ways:
 
 - **`preview=true`** on almost any editing tool attaches a PNG of the result (longest side 512 px) as an MCP image, right in the same reply. This is the cheapest way for Claude to check a step.
 - **`photo_preview`** renders the current image on demand; `max_size` (16..4096, default 512) sets the size.
-- **Resources.** Every open document is listed as a resource `achclwss://doc/<id>` (for example `achclwss://doc/img1`). Reading it returns a text summary and a PNG preview. The template `achclwss://doc/{id}` is advertised too.
+- **Resources.** Every open document is listed as a resource `wetwaresuite://doc/<id>` (for example `wetwaresuite://doc/img1`). Reading it returns a text summary and a PNG preview. The template `wetwaresuite://doc/{id}` is advertised too.
 
 ## 5. Example prompts
 
@@ -241,7 +241,7 @@ cat > session.jsonl <<'EOF'
 {"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"history","arguments":{}}}
 {"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"photo_save","arguments":{"doc":"img1","path":"dark-fixed.png"}}}
 EOF
-achclwss mcp < session.jsonl
+wetwaresuite mcp < session.jsonl
 ```
 
 You get one JSON response per request (notifications get none), for example:
@@ -250,12 +250,12 @@ You get one JSON response per request (notifications get none), for example:
 {"id":4,"jsonrpc":"2.0","result":{"content":[{"text":"Levels\n","type":"text"}],"isError":false}}
 ```
 
-To list the tools: `echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | achclwss mcp`.
+To list the tools: `echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | wetwaresuite mcp`.
 
 ## 7. Troubleshooting
 
 **Claude says the server failed to start, or shows no tools.**
-Use an absolute path to the binary and check it runs: `/path/to/achclwss --version`. Then pipe in a `tools/list` request as above; if that prints JSON, the server is fine and the problem is in the config (a typo in the path, or `"args"` missing `"mcp"`). In Claude Code, `claude mcp list` shows connection status. Restart Claude Desktop after editing its config.
+Use an absolute path to the binary and check it runs: `/path/to/wetwaresuite --version`. Then pipe in a `tools/list` request as above; if that prints JSON, the server is fine and the problem is in the config (a typo in the path, or `"args"` missing `"mcp"`). In Claude Code, `claude mcp list` shows connection status. Restart Claude Desktop after editing its config.
 
 **"file not found" for a file that exists.**
 Relative paths are resolved against the server's working directory, which is not necessarily your project folder (Claude Desktop in particular starts servers elsewhere). Give Claude absolute paths, or ask it to use them.
@@ -273,4 +273,4 @@ Those use optional helper programs (ffmpeg, LibreOffice, pandoc). Ask Claude to 
 Serve only what the task needs with `--tools`, for example `--tools photo,paint` for image work.
 
 **Your client asks permission for every call.**
-That is the client's choice. In Claude Code you can allow the server's tools in `/permissions` (for example allow `mcp__achclwss`). Tools that only look (`photo_info`, `photo_preview`, `convert_formats`, ...) are marked `readOnlyHint: true`; tools that write files or discard a document without undo (`photo_save`, `convert_file`, `photo_close`, ...) are marked `readOnlyHint: false` and `destructiveHint: true`, so a client can auto-approve the first kind safely.
+That is the client's choice. In Claude Code you can allow the server's tools in `/permissions` (for example allow `mcp__wetwaresuite`). Tools that only look (`photo_info`, `photo_preview`, `convert_formats`, ...) are marked `readOnlyHint: true`; tools that write files or discard a document without undo (`photo_save`, `convert_file`, `photo_close`, ...) are marked `readOnlyHint: false` and `destructiveHint: true`, so a client can auto-approve the first kind safely.

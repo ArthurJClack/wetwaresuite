@@ -2,7 +2,7 @@
 // standard tables, real DIMENSION entities (each with its *D block of drawn
 // geometry) and HATCH. Walls, doors, windows and rooms are written as the
 // lines, arcs and text they are drawn with, so any CAD program shows them;
-// the first piece of each carries the full definition as ACHCLWSS XDATA so
+// the first piece of each carries the full definition as wetwaresuite XDATA so
 // reopening the file here gets the editable wall back. Sheet settings
 // (paper, scale, title block) live in an XRECORD in the OBJECTS section.
 #include <algorithm>
@@ -15,16 +15,16 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/blueprint/blueprint.hpp"
+#include "wetwaresuite/blueprint/blueprint.hpp"
 #include "internal.hpp"
 
-namespace achclwss::blueprint {
+namespace wetwaresuite::blueprint {
 
 namespace {
 
-constexpr const char* kApp = "ACHCLWSS";
+constexpr const char* kApp = "wetwaresuite";
 constexpr const char* kSheetLayer = "BP_SHEET";
-constexpr const char* kMeta = "achclwss-blueprint";
+constexpr const char* kMeta = "wetwaresuite-blueprint";
 
 
 std::string upper(std::string s) {
@@ -705,7 +705,7 @@ std::string toDxf(const Drawing& doc, bool sheet) {
     ob.integer(281, 1);
     ob.code(3, "ACAD_GROUP");
     ob.code(350, groups);
-    ob.code(3, "ACHCLWSS_BLUEPRINT");
+    ob.code(3, "WETWARESUITE_BLUEPRINT");
     ob.code(350, xrec);
     ob.code(0, "DICTIONARY");
     ob.code(5, groups);
@@ -813,7 +813,7 @@ struct Record {
     }
     Vec2 point(int code) const { return {num(code), num(code + 10)}; }
     bool has(int code) const { return first(code) != nullptr; }
-    // the ACHCLWSS XDATA strings, joined
+    // the wetwaresuite XDATA strings, joined
     std::string appData() const {
         std::string data;
         bool mine = false;
@@ -1451,4 +1451,4 @@ std::shared_ptr<Drawing> openDxf(const std::filesystem::path& path, std::string*
     return doc;
 }
 
-}  // namespace achclwss::blueprint
+}  // namespace wetwaresuite::blueprint

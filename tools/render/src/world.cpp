@@ -6,10 +6,10 @@
 #include <stdexcept>
 #include <thread>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::render::detail {
+namespace wetwaresuite::render::detail {
 
 // ---- textures ----
 
@@ -636,9 +636,9 @@ void parallelRows(int rows, int threads, const std::function<void(int)>& fn) {
     for (auto& t : pool) t.join();
 }
 
-}  // namespace achclwss::render::detail
+}  // namespace wetwaresuite::render::detail
 
-namespace achclwss::render {
+namespace wetwaresuite::render {
 
 RenderOptions optionsFrom(const Scene& s) {
     RenderOptions o;
@@ -682,4 +682,4 @@ raster::Image renderScene(const Scene& scene, const RenderOptions& o, RenderStat
     return img;
 }
 
-}  // namespace achclwss::render
+}  // namespace wetwaresuite::render

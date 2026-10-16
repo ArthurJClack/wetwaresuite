@@ -9,7 +9,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 Affine Affine::operator*(const Affine& m) const {
     return {a * m.a + c * m.b, b * m.a + d * m.b, a * m.c + c * m.d, b * m.c + d * m.d, a * m.e + c * m.f + e, b * m.e + d * m.f + f};
@@ -630,4 +630,4 @@ Contour smoothThrough(const Polygon& pts) {
     return fromSegments(s);
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

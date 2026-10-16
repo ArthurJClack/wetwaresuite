@@ -1,4 +1,4 @@
-# ACHCLWSS
+# wetwaresuite
 
 an all-in-one, lightweight creative/office suite. plan and decisions: docs/architecture.md and the plan doc linked in README.md.
 

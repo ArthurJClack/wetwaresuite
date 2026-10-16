@@ -8,10 +8,10 @@
 #include <map>
 #include <stdexcept>
 
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/raster/ora.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/raster/ora.hpp"
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 namespace {
 
@@ -104,7 +104,7 @@ std::string write3mf(const Mesh& m) {
     std::string model =
         "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
         "<model unit=\"millimeter\" xml:lang=\"en-US\" xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\">\n"
-        " <metadata name=\"Application\">achclwss</metadata>\n"
+        " <metadata name=\"Application\">wetwaresuite</metadata>\n"
         " <resources>\n  <object id=\"1\" type=\"model\">\n   <mesh>\n    <vertices>\n";
     for (const auto& p : m.positions) {
         model += "     <vertex x=\"";
@@ -199,4 +199,4 @@ Mesh read3mf(const std::string& bytes) {
     return out;
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

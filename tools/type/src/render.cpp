@@ -8,12 +8,12 @@
 #include <map>
 #include <unordered_map>
 
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/pdfdoc/writer.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/pdfdoc/writer.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 #include "internal.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 namespace {
 
@@ -761,8 +761,8 @@ std::string proofPdf(const Font& font, const ProofOptions& o) {
     }
     w.set(pagesId, "<< /Type /Pages /Kids [" + kids + "] /Count " + std::to_string(pages.size()) + " >>");
     const int catalog = w.add("<< /Type /Catalog /Pages " + std::to_string(pagesId) + " 0 R >>");
-    const int info = w.add("<< /Title " + pdfdoc::text(font.familyStyle() + " proof") + " /Producer (ACHCLWSS type) >>");
+    const int info = w.add("<< /Title " + pdfdoc::text(font.familyStyle() + " proof") + " /Producer (wetwaresuite type) >>");
     return w.finish(catalog, info);
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

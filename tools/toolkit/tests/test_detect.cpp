@@ -1,10 +1,10 @@
 #include <filesystem>
 #include <fstream>
 
-#include "achclwss/toolkit/detect.hpp"
+#include "wetwaresuite/toolkit/detect.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 using namespace std::string_view_literals;
 using toolkit::detect;
 
@@ -43,7 +43,7 @@ int main() {
     CHECK(detect("\x01\x02\x03\0\x05"sv, "mystery").category == "binary");
 
     // file-based commands through a session
-    auto dir = std::filesystem::temp_directory_path() / "achclwss_test_detect";
+    auto dir = std::filesystem::temp_directory_path() / "wetwaresuite_test_detect";
     std::filesystem::create_directories(dir);
     auto file = dir / "sample.flac";
     {

@@ -1,4 +1,4 @@
-//! achclwss-share: share a folder with any browser, live-sync folders
+//! wetwaresuite-share: share a folder with any browser, live-sync folders
 //! between machines, send one-off files. See docs/tutorials/share.md.
 
 use std::io::IsTerminal;
@@ -14,19 +14,19 @@ use share::server::{Config, Logger, Share};
 use share::{client, discovery, mcp, rand, sync, util, VERSION};
 
 const USAGE: &str = "\
-achclwss-share: share and live-sync folders over LAN or internet
+wetwaresuite-share: share and live-sync folders over LAN or internet
 
 usage:
-  achclwss-share                          share the current folder (read-only)
-  achclwss-share serve [FOLDER]           share a folder; the other side just needs a browser
-  achclwss-share sync FOLDER              host FOLDER for live two-way sync; prints a code
-  achclwss-share sync FOLDER CODE|LINK    join a sync host and keep FOLDER in sync with it
-  achclwss-share send PATH                offer a file or folder for download; prints a code
-  achclwss-share send PATH CODE|LINK      upload a file or folder into a waiting `receive`
-  achclwss-share receive CODE|LINK        download what a `send` is offering
-  achclwss-share receive                  wait for a `send PATH CODE`; files land in --to DIR
-  achclwss-share peers                    list shares announced on this network
-  achclwss-share mcp                      MCP server on stdio, for Claude
+  wetwaresuite-share                          share the current folder (read-only)
+  wetwaresuite-share serve [FOLDER]           share a folder; the other side just needs a browser
+  wetwaresuite-share sync FOLDER              host FOLDER for live two-way sync; prints a code
+  wetwaresuite-share sync FOLDER CODE|LINK    join a sync host and keep FOLDER in sync with it
+  wetwaresuite-share send PATH                offer a file or folder for download; prints a code
+  wetwaresuite-share send PATH CODE|LINK      upload a file or folder into a waiting `receive`
+  wetwaresuite-share receive CODE|LINK        download what a `send` is offering
+  wetwaresuite-share receive                  wait for a `send PATH CODE`; files land in --to DIR
+  wetwaresuite-share peers                    list shares announced on this network
+  wetwaresuite-share mcp                      MCP server on stdio, for Claude
 
 options:
   --write            allow uploads, renames and deletes from the browser (serve)
@@ -187,18 +187,18 @@ fn serve(o: &Opts) -> Result<(), String> {
     if o.pos.len() < 2 && too_broad(&folder) {
         return Err(format!(
             "not sharing {} without being asked: it's your whole home folder or a drive. Run \
-             `achclwss-share serve FOLDER` with the folder you mean (or `serve .` to share this one anyway)",
+             `wetwaresuite-share serve FOLDER` with the folder you mean (or `serve .` to share this one anyway)",
             folder.display()
         ));
     }
     let mut share = Share::start(config(o, folder)).map_err(|e| format!("can't share: {e}"))?;
-    let _exposure = announce(&share, o, "Sharing", &format!("type it on the page, or `achclwss-share receive {}`", share.code()));
+    let _exposure = announce(&share, o, "Sharing", &format!("type it on the page, or `wetwaresuite-share receive {}`", share.code()));
     share.wait();
     Ok(())
 }
 
 fn sync_cmd(o: &Opts) -> Result<(), String> {
-    let folder = PathBuf::from(o.pos.get(1).ok_or("usage: achclwss-share sync FOLDER [CODE|LINK]")?);
+    let folder = PathBuf::from(o.pos.get(1).ok_or("usage: wetwaresuite-share sync FOLDER [CODE|LINK]")?);
     match o.pos.get(2) {
         None => {
             std::fs::create_dir_all(&folder).map_err(|e| format!("{}: {e}", folder.display()))?;
@@ -206,7 +206,7 @@ fn sync_cmd(o: &Opts) -> Result<(), String> {
             c.writable = true;
             c.kind = "sync".into();
             let mut share = Share::start(c).map_err(|e| format!("can't host sync: {e}"))?;
-            let hint = format!("on the other machine: achclwss-share sync <folder> {}", share.code());
+            let hint = format!("on the other machine: wetwaresuite-share sync <folder> {}", share.code());
             let _exposure = announce(&share, o, "Hosting live sync of", &hint);
             println!("  Waiting for the other machine. Changes made there show up here, and the other way round.\n");
             share.wait();
@@ -247,7 +247,7 @@ fn sync_cmd(o: &Opts) -> Result<(), String> {
 }
 
 fn send(o: &Opts) -> Result<(), String> {
-    let path = PathBuf::from(o.pos.get(1).ok_or("usage: achclwss-share send PATH [CODE|LINK]")?);
+    let path = PathBuf::from(o.pos.get(1).ok_or("usage: wetwaresuite-share send PATH [CODE|LINK]")?);
     if let Some(dest) = o.pos.get(2) {
         let (target, info) = client::resolve(dest, o.code.as_deref()).map_err(|e| e.to_string())?;
         println!("Sending {} to {} on {}...", path.display(), info.str_or("folder", "?"), info.str_or("host", "?"));
@@ -259,7 +259,7 @@ fn send(o: &Opts) -> Result<(), String> {
     c.writable = false;
     c.kind = "send".into();
     let mut share = Share::start(c).map_err(|e| format!("can't send: {e}"))?;
-    let hint = format!("on the other machine: achclwss-share receive {}", share.code());
+    let hint = format!("on the other machine: wetwaresuite-share receive {}", share.code());
     let _exposure = announce(&share, o, "Sending", &hint);
     wait_for_done(&mut share, o.keep, "download")
 }
@@ -297,7 +297,7 @@ fn receive(o: &Opts) -> Result<(), String> {
     c.writable = true;
     c.kind = "receive".into();
     let mut share = Share::start(c).map_err(|e| format!("can't receive: {e}"))?;
-    let hint = format!("on the other machine: achclwss-share send <path> {}", share.code());
+    let hint = format!("on the other machine: wetwaresuite-share send <path> {}", share.code());
     let _exposure = announce(&share, o, "Receiving into", &hint);
     wait_for_done(&mut share, o.keep, "upload")
 }
@@ -319,7 +319,7 @@ fn peers(o: &Opts) -> Result<(), String> {
             if p.ann.writable { "  (writable)" } else { "" }
         );
     }
-    println!("Join one with its pairing code (shown where it was started), e.g. `achclwss-share sync myproj CODE`.");
+    println!("Join one with its pairing code (shown where it was started), e.g. `wetwaresuite-share sync myproj CODE`.");
     Ok(())
 }
 
@@ -348,14 +348,14 @@ fn run(args: &[String]) -> Result<(), String> {
             o2.pos.insert(0, "receive".into());
             receive(&o2)
         }
-        other => Err(format!("unknown command {other:?}; run `achclwss-share help`")),
+        other => Err(format!("unknown command {other:?}; run `wetwaresuite-share help`")),
     }
 }
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.iter().any(|a| a == "--version" || a == "-V") {
-        println!("achclwss-share {VERSION}");
+        println!("wetwaresuite-share {VERSION}");
         return ExitCode::SUCCESS;
     }
     if args.iter().any(|a| a == "--help" || a == "-h") {
@@ -365,7 +365,7 @@ fn main() -> ExitCode {
     match run(&args) {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            eprintln!("achclwss-share: {e}");
+            eprintln!("wetwaresuite-share: {e}");
             if cfg!(windows) && args.is_empty() {
                 // started by double-click: keep the window open so the message can be read
                 eprintln!("press Enter to close");

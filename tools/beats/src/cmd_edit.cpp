@@ -6,7 +6,7 @@
 
 #include "common.hpp"
 
-namespace achclwss::beats::tool {
+namespace wetwaresuite::beats::tool {
 
 namespace {
 
@@ -618,4 +618,4 @@ void registerArrangeCommands(Session& session) {
             }));
 }
 
-}  // namespace achclwss::beats::tool
+}  // namespace wetwaresuite::beats::tool

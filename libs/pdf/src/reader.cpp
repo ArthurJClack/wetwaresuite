@@ -1,4 +1,4 @@
-#include "achclwss/pdf/reader.hpp"
+#include "wetwaresuite/pdf/reader.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -10,11 +10,11 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/pdf/fonts.hpp"
-#include "achclwss/pdf/page.hpp"
+#include "wetwaresuite/pdf/fonts.hpp"
+#include "wetwaresuite/pdf/page.hpp"
 #include "internal.hpp"
 
-namespace achclwss::pdf {
+namespace wetwaresuite::pdf {
 
 // ---- Object ------------------------------------------------------------------
 
@@ -1162,7 +1162,7 @@ std::string assemblePdf(const std::vector<PageSource>& pages) {
     a.out[static_cast<std::size_t>(pagesId - 1)] = "<< /Type /Pages /Kids [" + kids + "] /Count " + std::to_string(pageIds.size()) + " >>";
     a.out[static_cast<std::size_t>(catalog - 1)] = "<< /Type /Catalog /Pages " + std::to_string(pagesId) + " 0 R >>";
     const int infoId = a.alloc();
-    a.out[static_cast<std::size_t>(infoId - 1)] = "<< /Producer (ACHCLWSS) >>";
+    a.out[static_cast<std::size_t>(infoId - 1)] = "<< /Producer (wetwaresuite) >>";
 
     std::string out = "%PDF-1.7\n%\xE2\xE3\xCF\xD3\n";
     std::vector<std::size_t> offsets;
@@ -1225,4 +1225,4 @@ std::vector<int> parsePageList(const std::string& spec, int count) {
     return out;
 }
 
-}  // namespace achclwss::pdf
+}  // namespace wetwaresuite::pdf

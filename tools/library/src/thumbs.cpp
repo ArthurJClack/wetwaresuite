@@ -8,16 +8,16 @@
 #include <functional>
 #include <thread>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/library/library.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/render.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
-#include "achclwss/raster/ops.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/library/library.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/render.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/raster/ops.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 
-namespace achclwss::library {
+namespace wetwaresuite::library {
 
 namespace {
 
@@ -52,7 +52,7 @@ fs::path tempFile(const std::string& ext) {
     static std::atomic<unsigned> counter{0};
     std::error_code ec;
     fs::path dir = fs::temp_directory_path(ec);
-    std::string name = "achclwss-thumb-" + std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id()) % 1000000) +
+    std::string name = "wetwaresuite-thumb-" + std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id()) % 1000000) +
                        "-" + std::to_string(counter++) + ext;
     return dir / name;
 }
@@ -253,4 +253,4 @@ raster::Image contactSheet(const std::vector<raster::Image>& thumbs, int cell, i
     return sheet;
 }
 
-}  // namespace achclwss::library
+}  // namespace wetwaresuite::library

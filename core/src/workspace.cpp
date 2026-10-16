@@ -1,6 +1,6 @@
-#include "achclwss/core/workspace.hpp"
+#include "wetwaresuite/core/workspace.hpp"
 
-namespace achclwss {
+namespace wetwaresuite {
 
 std::string Workspace::add(std::shared_ptr<Document> doc, const std::string& prefix) {
     std::string id;
@@ -32,4 +32,4 @@ std::vector<std::string> Workspace::ids() const {
     return out;
 }
 
-}  // namespace achclwss
+}  // namespace wetwaresuite

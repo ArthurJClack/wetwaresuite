@@ -1,4 +1,4 @@
-#include "achclwss/mesh/render.hpp"
+#include "wetwaresuite/mesh/render.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -6,7 +6,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 const std::vector<std::string>& viewNames() {
     static const std::vector<std::string> v = {"iso", "front", "back", "left", "right", "top", "bottom"};
@@ -224,4 +224,4 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
     return out;
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

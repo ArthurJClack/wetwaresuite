@@ -7,14 +7,14 @@
 #include <sstream>
 #include <string>
 
-#include "achclwss/circuit/circuit.hpp"
-#include "achclwss/core/cli.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/raster/ora.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/raster/ora.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::circuit;
+using namespace wetwaresuite;
+using namespace wetwaresuite::circuit;
 namespace fs = std::filesystem;
 
 namespace {
@@ -22,7 +22,7 @@ namespace {
 fs::path tempDir() {
     std::random_device rd;
     const auto stamp = static_cast<unsigned long long>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-    fs::path d = fs::temp_directory_path() / ("achclwss_circuit_" + std::to_string(stamp) + "_" + std::to_string(rd()));
+    fs::path d = fs::temp_directory_path() / ("wetwaresuite_circuit_" + std::to_string(stamp) + "_" + std::to_string(rd()));
     fs::remove_all(d);
     fs::create_directories(d);
     return d;

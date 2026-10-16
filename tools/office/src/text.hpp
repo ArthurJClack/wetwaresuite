@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 // UTF-8 text to a path (std::filesystem::u8path is deprecated in C++20).
 inline std::filesystem::path pathFromUtf8(const std::string& s) { return std::filesystem::path(std::u8string(s.begin(), s.end())); }
@@ -129,4 +129,4 @@ inline std::string base64Decode(const std::string& in) {
     return out;
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

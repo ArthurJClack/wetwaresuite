@@ -2,10 +2,10 @@
 // fabrication output and the simulator.
 #include <set>
 
-#include "achclwss/raster/ora.hpp"
+#include "wetwaresuite/raster/ora.hpp"
 #include "cmd_common.hpp"
 
-namespace achclwss::circuit::cmd {
+namespace wetwaresuite::circuit::cmd {
 
 namespace {
 
@@ -496,9 +496,9 @@ void registerPcbOutputCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::circuit::cmd
+}  // namespace wetwaresuite::circuit::cmd
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 void registerCommands(Session& session) {
     cmd::registerFileCommands(session);
@@ -508,4 +508,4 @@ void registerCommands(Session& session) {
     cmd::registerPcbOutputCommands(session);
 }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

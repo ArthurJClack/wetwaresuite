@@ -5,9 +5,9 @@
 #include <filesystem>
 #include <regex>
 
-#include "achclwss/capture/capture.hpp"
+#include "wetwaresuite/capture/capture.hpp"
 
-namespace achclwss::capture {
+namespace wetwaresuite::capture {
 
 namespace {
 
@@ -425,4 +425,4 @@ DeviceList parseDeviceListing(Platform platform, const std::string& text) {
     return d;
 }
 
-}  // namespace achclwss::capture
+}  // namespace wetwaresuite::capture

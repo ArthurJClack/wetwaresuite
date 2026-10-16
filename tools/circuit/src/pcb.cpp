@@ -7,10 +7,10 @@
 #include <queue>
 #include <set>
 
-#include "achclwss/circuit/circuit.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
 #include "geom.hpp"
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 namespace {
 
@@ -556,4 +556,4 @@ std::vector<Issue> drc(const Circuit& c, const Netlist& nl) {
     return out;
 }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

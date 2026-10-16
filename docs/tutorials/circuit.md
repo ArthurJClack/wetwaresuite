@@ -9,9 +9,9 @@ There is also a small simulator (DC operating point and transient) for the analo
 
 Each task below is shown three ways:
 
-- **CLI**: single `achclwss` commands. A circuit only lives inside one process, so one-shot commands look things up (`circuit.symbols`, `circuit.footprints`, `circuit.symbol_info`) or open a file and report on it. Anything longer goes through a batch script, which can also come from a pipe (`... | achclwss batch`).
+- **CLI**: single `wetwaresuite` commands. A circuit only lives inside one process, so one-shot commands look things up (`circuit.symbols`, `circuit.footprints`, `circuit.symbol_info`) or open a file and report on it. Anything longer goes through a batch script, which can also come from a pipe (`... | wetwaresuite batch`).
 - **Batch**: a script with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)). This is how you will normally drive circuit from a shell.
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools circuit` serves just these tools. Every editing tool takes `preview=true`, which attaches a PNG of the schematic (or of the board, for board commands), so Claude can look at what it drew.
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools circuit` serves just these tools. Every editing tool takes `preview=true`, which attaches a PNG of the schematic (or of the board, for board commands), so Claude can look at what it drew.
 
 Every example below was run against the real binary in an empty folder; the KiCad task also uses `timer.net`, whose full text is in [task 5](#task-5-open-a-kicad-netlist-and-make-a-board). Outputs are copied from those runs; repeated fields are cut where marked `...`.
 
@@ -73,7 +73,7 @@ circuit.bom doc=$c
 ```
 
 ```sh
-$ achclwss batch blinky.txt
+$ wetwaresuite batch blinky.txt
 created ckt1: 0 parts, 0 nets, 0 wires
 ...
 placed J1 (header Conn_01x02) at 0,0
@@ -141,7 +141,7 @@ The schematic PNG shows the header on the left, the resistor and LED to its righ
 **CLI.** The design is saved, so you can come back to it in one command. `circuit.open` reports what is in the file:
 
 ```sh
-$ achclwss circuit.open path=blinky.circuit.json
+$ wetwaresuite circuit.open path=blinky.circuit.json
 opened blinky.circuit.json as ckt1: 3 parts, 3 nets, 5 wires; board 21.0 x 12.0 mm, 12 traces, 1 vias (blinky.circuit.json)
 ckt1
 doc: ckt1
@@ -151,7 +151,7 @@ parts: 6
 (`parts: 6` counts the three power symbols too; the summary line counts real parts.) To do one thing to a saved design, pipe a two-line script into `batch`, which reads standard input when given no file:
 
 ```sh
-$ printf 'circuit.open path=blinky.circuit.json -> c\ncircuit.export doc=$c path=blinky-again.pdf\n' | achclwss batch
+$ printf 'circuit.open path=blinky.circuit.json -> c\ncircuit.export doc=$c path=blinky-again.pdf\n' | wetwaresuite batch
 opened blinky.circuit.json as ckt1: ...
 wrote blinky-again.pdf (2602 bytes)
 ```
@@ -197,7 +197,7 @@ circuit.save doc=$c path=blinker.circuit.json
 ```
 
 ```sh
-$ achclwss batch blinker.txt
+$ wetwaresuite batch blinker.txt
 created ckt1: 0 parts, 0 nets, 0 wires
 ...
 placed U1 (ic NE555) at 0,0
@@ -242,7 +242,7 @@ The schematic (`blinker.png`) has the timing chain R1, R2, C1 down the left, the
 **CLI.** Check the result:
 
 ```sh
-$ achclwss circuit.open path=blinker.circuit.json
+$ wetwaresuite circuit.open path=blinker.circuit.json
 opened blinker.circuit.json as ckt1: 8 parts, 7 nets, 20 wires; board 34.0 x 25.0 mm, 65 traces, 2 vias (blinker.circuit.json)
 ...
 ```
@@ -287,7 +287,7 @@ circuit.gerber doc=$c path=nano-fab
 ```
 
 ```sh
-$ achclwss batch nano.txt
+$ wetwaresuite batch nano.txt
 ...
 placed A1 (arduino_nano Arduino_Nano) at 0,0
 pins: 1=D1/TX@-6,-7 2=D0/RX@-6,-6 3=RESET@-6,-5 4=GND@-6,-4 5=D2@-6,-3 6=D3@-6,-2 7=D4@-6,-1 8=D5@-6,0 9=D6@-6,1 10=D7@-6,2 11=D8@-6,3 12=D9@-6,4 13=D10@-6,5 14=D11/MOSI@-6,6 15=D12/MISO@-6,7 16=D13/SCK@6,-7 17=3V3@6,-6 18=AREF@6,-5 19=A0@6,-4 20=A1@6,-3 21=A2@6,-2 22=A3@6,-1 23=A4/SDA@6,0 24=A5/SCL@6,1 25=A6@6,2 26=A7@6,3 27=5V@6,4 28=RESET@6,5 29=GND@6,6 30=VIN@6,7
@@ -318,7 +318,7 @@ For a board of a given size, set the outline before placing: `circuit.board doc=
 The other dev boards work the same way: `symbol=arduino_uno` (the R3 shield header positions), `symbol=esp32_devkit` (the 30-pin DOIT DevKit V1, rows 25.4 mm apart) and `symbol=bluepill` (STM32F103, 2 x 20). `circuit.symbol_info` lists their pins:
 
 ```sh
-$ achclwss circuit.symbol_info symbol=esp32
+$ wetwaresuite circuit.symbol_info symbol=esp32
 esp32_devkit: ESP32 DevKit V1 (30 pins, DOIT layout)
 prefix A, default value ESP32_DevKit, footprint ESP32_DevKit
 pins:
@@ -340,7 +340,7 @@ The autorouter is fine for small boards, but sometimes you want a trace exactly 
 `circuit.pads` gives every pad's centre in mm, its size and its net:
 
 ```sh
-$ printf 'circuit.open path=blinky.circuit.json -> c\ncircuit.pads doc=$c\n' | achclwss batch
+$ printf 'circuit.open path=blinky.circuit.json -> c\ncircuit.pads doc=$c\n' | wetwaresuite batch
 ...
 6 pads:
 J1.1 at 5.08,5.08 size 1.7x1.7 drill 1 (F+B) net +5V
@@ -373,7 +373,7 @@ circuit.export doc=$c view=pcb path=hand.png
 ```
 
 ```sh
-$ achclwss batch hand.txt
+$ wetwaresuite batch hand.txt
 opened blinky.circuit.json as ckt1: 3 parts, 3 nets, 5 wires; board 21.0 x 12.0 mm, 12 traces, 1 vias (blinky.circuit.json)
 ...
 removed 12 traces and 1 vias
@@ -437,7 +437,7 @@ wrote hand.png (35287 bytes)
 **CLI.** Open it to see what came across:
 
 ```sh
-$ achclwss circuit.open path=timer.net
+$ wetwaresuite circuit.open path=timer.net
 opened timer.net as ckt1: 5 parts, 6 nets, 14 wires (timer.net)
 warning: U1: 'NE555P' has no library symbol; using a generic 8-pin IC
 ckt1
@@ -469,7 +469,7 @@ circuit.save doc=$t path=timer.circuit.json
 ```
 
 ```sh
-$ achclwss batch kicad.txt
+$ wetwaresuite batch kicad.txt
 opened timer.net as ckt1: 5 parts, 6 nets, 14 wires (timer.net)
 warning: U1: 'NE555P' has no library symbol; using a generic 8-pin IC
 ...
@@ -553,7 +553,7 @@ circuit.export doc=$c path=rc.png
 The `PULSE(...)` value has spaces, so it is in double quotes.
 
 ```sh
-$ achclwss batch rc.txt
+$ wetwaresuite batch rc.txt
 ...
 placed V1 (vsource PULSE(0 5 1m 10u 10u 5m 10m)) at 0,0
 pins: 1=+@0,-2 2=-@0,2
@@ -612,7 +612,7 @@ circuit.save doc=$c path=blinker-v2.circuit.json
 ```
 
 ```sh
-$ achclwss batch tweak.txt
+$ wetwaresuite batch tweak.txt
 ...
 U1 (ic, 8 pins):
   1 GND [power_in] at -5,-1 -> GND
@@ -673,7 +673,7 @@ Removing the pour and every trace and routing again fixes all of it. `fields=` a
 ## Looking things up
 
 ```sh
-$ achclwss circuit.symbols category=module
+$ wetwaresuite circuit.symbols category=module
 4 symbols:
 arduino_uno [module]: Arduino Uno R3 shield headers (aliases: uno)
 arduino_nano [module]: Arduino Nano 2x15 (aliases: nano)
@@ -683,7 +683,7 @@ count: 4
 ```
 
 ```sh
-$ achclwss circuit.symbol_info symbol=opamp
+$ wetwaresuite circuit.symbol_info symbol=opamp
 opamp: Op-amp (2 = -, 3 = +, 6 = out, 7 = V+, 4 = V-)
 prefix U, default value TL071, footprint SOIC-8
 pins:

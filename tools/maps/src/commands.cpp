@@ -7,10 +7,10 @@
 #include <set>
 #include <sstream>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::maps {
+namespace wetwaresuite::maps {
 
 namespace {
 
@@ -319,7 +319,7 @@ std::vector<ParamSpec> viewParams() {
             {"basemap", ParamType::String, "background: countries (offline Natural Earth outlines), none, or osm (online tiles, cached)", false,
              {"countries", "none", "osm"}, std::string("countries")},
             {"tile_url", ParamType::String, "osm: tile server template with {z}/{x}/{y}", false, {}, std::string("https://tile.openstreetmap.org/{z}/{x}/{y}.png")},
-            {"tile_cache", ParamType::String, "osm: tile cache folder (default: the user cache dir, achclwss/tiles)", false},
+            {"tile_cache", ParamType::String, "osm: tile cache folder (default: the user cache dir, wetwaresuite/tiles)", false},
             {"offline", ParamType::Bool, "osm: use cached tiles only, never download", false, {}, false},
             {"max_tiles", ParamType::Int, "osm: most tiles one render may use (zoom drops to fit)", false, {}, std::int64_t{64}},
             {"scale_bar", ParamType::Bool, "draw a scale bar", false, {}, true},
@@ -1736,4 +1736,4 @@ void registerCommands(Session& session) {
     registerRenderCommands(session);
 }
 
-}  // namespace achclwss::maps
+}  // namespace wetwaresuite::maps

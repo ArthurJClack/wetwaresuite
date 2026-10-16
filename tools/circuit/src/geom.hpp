@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/circuit/circuit.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
 
-namespace achclwss::circuit::geom {
+namespace wetwaresuite::circuit::geom {
 
 // A capsule (segment a-b grown by r; a == b gives a disc) or an axis-aligned box (centre a, half sizes hx, hy).
 struct Shape {
@@ -168,4 +168,4 @@ struct Islands {
 };
 Islands islands(const Circuit& c, const std::vector<WorldPad>& pads, const std::vector<ZoneFill>& fills);
 
-}  // namespace achclwss::circuit::geom
+}  // namespace wetwaresuite::circuit::geom

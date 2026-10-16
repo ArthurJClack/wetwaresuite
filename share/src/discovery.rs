@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use crate::json::Json;
 use crate::DISCOVERY_PORT;
 
-const MAGIC: &str = "ACHCLWSS-SHARE/1 ";
+const MAGIC: &str = "wetwaresuite-SHARE/1 ";
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Announcement {
@@ -159,8 +159,8 @@ mod tests {
         };
         assert_eq!(Announcement::decode(&a.encode()), Some(a));
         assert_eq!(Announcement::decode(b"garbage"), None);
-        assert_eq!(Announcement::decode(b"ACHCLWSS-SHARE/1 {\"id\":\"x\",\"port\":0}"), None);
-        let text = String::from_utf8(Announcement::decode(b"ACHCLWSS-SHARE/1 {\"id\":\"x\",\"port\":1}").unwrap().encode()).unwrap();
+        assert_eq!(Announcement::decode(b"wetwaresuite-SHARE/1 {\"id\":\"x\",\"port\":0}"), None);
+        let text = String::from_utf8(Announcement::decode(b"wetwaresuite-SHARE/1 {\"id\":\"x\",\"port\":1}").unwrap().encode()).unwrap();
         assert!(!text.contains("token"));
     }
 }

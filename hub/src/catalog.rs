@@ -26,11 +26,11 @@ const fn planned(id: &'static str, name: &'static str, summary: &'static str, ph
     Tool { id, name, summary, phase, approx_mb, status: Status::Planned, mcp_binary: None }
 }
 
-/// The `achclwss` binary serves every built tool over MCP with `achclwss mcp`.
-pub const SUITE: &str = "achclwss";
+/// The `wetwaresuite` binary serves every built tool over MCP with `wetwaresuite mcp`.
+pub const SUITE: &str = "wetwaresuite";
 
 /// `share` is its own small Rust binary (no C++ core), with its own MCP server.
-pub const SHARE: &str = "achclwss-share";
+pub const SHARE: &str = "wetwaresuite-share";
 
 const fn available(id: &'static str, name: &'static str, summary: &'static str, phase: u8, approx_mb: u32) -> Tool {
     Tool { id, name, summary, phase, approx_mb, status: Status::Available, mcp_binary: Some(SUITE) }

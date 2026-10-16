@@ -1,12 +1,12 @@
-#include "achclwss/audio/document.hpp"
+#include "wetwaresuite/audio/document.hpp"
 
 #include <algorithm>
 
-#include "achclwss/audio/analysis.hpp"
-#include "achclwss/audio/io.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/audio/analysis.hpp"
+#include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 namespace {
 
@@ -190,4 +190,4 @@ Result audioResult(const std::string& message, const AudioDoc& doc, const Params
     return maybePreview(r, doc, p);
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio

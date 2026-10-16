@@ -3,16 +3,16 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/library/library.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/ops.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/library/library.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/ops.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 namespace fs = std::filesystem;
 using nlohmann::json;
 
@@ -67,7 +67,7 @@ json call(mcp::Server& server, int id, const std::string& tool, const json& args
 }  // namespace
 
 int main() {
-    const fs::path dir = fs::temp_directory_path() / "achclwss_test_library";
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_test_library";
     fs::remove_all(dir);
     const fs::path assets = dir / "assets";
     fs::create_directories(assets / "photos");
@@ -332,7 +332,7 @@ int main() {
     {
         Session ms;
         library::registerCommands(ms);
-        mcp::Server server(ms, {"achclwss", "test", "library"});
+        mcp::Server server(ms, {"wetwaresuite", "test", "library"});
         json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
         int seen = 0;
         for (const auto& t : list) {

@@ -9,6 +9,7 @@
 #include "apps.hpp"
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/mcp/transport.hpp"
 
 namespace wetwaresuite::apps {
 
@@ -30,7 +31,7 @@ void usage(const std::string& bin, const App& app) {
               << "  " << bin << " run <command> key=value  run one command\n"
               << "  " << bin << " <command> key=value      same as run\n"
               << "  " << bin << " batch [file] [--keep-going]  run a script of commands (stdin if no file)\n"
-              << "  " << bin << " mcp [--tools a,b]        serve this app to Claude over MCP on stdin/stdout\n"
+              << "  " << bin << " mcp [--tools a,b] [--http]  serve this app to Claude over MCP (stdin/stdout, or HTTP)\n"
               << "  " << bin << " app.receive              open the newest file another app sent here\n"
               << "  " << bin << " --version\n";
 }
@@ -72,10 +73,16 @@ int help(const Session& session, const std::string& bin, const std::string& id) 
 
 int serve(const MainSpec& spec, const App& app, const std::vector<std::string>& args) {
     const std::string bin = binaryName(spec.app);
+    // --tools picks what to serve; everything else picks the transport (see mcp/transport.hpp)
     std::set<std::string> keep;
-    if (args.size() == 3 && args[1] == "--tools") {
+    std::vector<std::string> rest;
+    for (std::size_t i = 1; i < args.size(); ++i) {
+        if (args[i] != "--tools" || i + 1 >= args.size()) {
+            rest.push_back(args[i]);
+            continue;
+        }
         std::string item;
-        for (char c : args[2] + ",") {
+        for (char c : args[++i] + ",") {
             if (c != ',') {
                 item += c;
                 continue;
@@ -83,22 +90,25 @@ int serve(const MainSpec& spec, const App& app, const std::vector<std::string>& 
             if (!item.empty()) keep.insert(item);
             item.clear();
         }
-        for (const auto& t : keep) {
-            if (std::find(app.tools.begin(), app.tools.end(), t) == app.tools.end()) {
-                std::cerr << bin << " has no tool called " << t << "; tools: " << joined(app.tools) << "\n";
-                return 2;
-            }
+    }
+    for (const auto& t : keep) {
+        if (std::find(app.tools.begin(), app.tools.end(), t) == app.tools.end()) {
+            std::cerr << bin << " has no tool called " << t << "; tools: " << joined(app.tools) << "\n";
+            return 2;
         }
-    } else if (args.size() != 1) {
-        std::cerr << "usage: " << bin << " mcp [--tools a,b]  (tools: " << joined(app.tools) << ")\n";
+    }
+    mcp::TransportOptions transport;
+    std::string error;
+    if (!mcp::parseTransportArgs(rest, transport, error)) {
+        std::cerr << "error: " << error << "\nusage: " << bin << " mcp [--tools a,b] [--http ...]  (tools: "
+                  << joined(app.tools) << ")\n" << mcp::transportUsage();
         return 2;
     }
     Session session;
     spec.registerTools(session, keep);
     registerCommands(session, spec.app);
     mcp::Server server(session, {bin, spec.version, appInstructions(spec.app) + handoffInstructions(spec.app)});
-    server.run(std::cin, std::cout);
-    return 0;
+    return mcp::serve(server, transport, std::cin, std::cout, std::cerr);
 }
 
 }  // namespace

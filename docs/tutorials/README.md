@@ -8,6 +8,9 @@ Hands-on guides to the suite. Every example was run against the real binaries: t
 - [Workflows](workflows.md): moving work between apps step by step: a texture from image onto a model and into a game, a cad part sculpted and printed, music for a video, a logo on a poster.
 - [Offline editions](offline-editions.md): everything on a USB stick (1 to 256 GB) with fonts, starter files, materials and world maps; install with no internet.
 - [Using wetwaresuite with Claude (MCP)](mcp.md): connect Claude Code or Claude Desktop, what Claude sees, example prompts, troubleshooting.
+- [Connecting an AI (optional)](ai-connect.md): `hub connect` sets up Claude Desktop and Claude Code in one command (with backups, `--dry-run` and `--remove`); `wetwaresuite mcp --http` serves the tools over HTTP to another computer, with a token.
+- [Working offline](offline.md): everything works with no internet and no AI; every feature that could touch a network, and how to keep it offline; building and installing from a USB stick.
+- [Docker (optional)](docker.md): run the suite in a container, one-off commands on a mounted folder, or as an HTTP MCP server.
 - [Photo](photo.md): resize folders for the web, fix dark photos, crop, rotate, frame, effects.
 - [Paint](paint.md): brush strokes with tablet pressure, presets, layers, blend modes, fills, saving `.ora`.
 - [Vector](vector.md): drawing shapes and paths, styling, SVG in and out, a full logo.

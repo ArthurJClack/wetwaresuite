@@ -1,10 +1,12 @@
 //! hub: the wetwaresuite install manager. Lists the apps, installs only the ones
 //! you want from a local folder or archive (never from the internet), makes
-//! offline editions, and writes Claude's MCP config.
+//! offline editions, and connects them to Claude (optional).
 
 mod bundle;
 mod catalog;
+mod connect;
 mod install;
+mod json;
 mod packs;
 mod paths;
 
@@ -27,6 +29,7 @@ fn usage() {
          editions                        list the offline editions (1, 2, 4 ... GB) and what each holds\n  \
          bundle --size GB|auto --out DIR make an offline edition [--packs a,b] [--bin-dir DIR]... [--docs DIR]\n                                  \
          [--cache DIR] [--dry-run]  (may download; installing from it never does)\n  \
+         connect [--dry-run] [--remove]  add installed apps to Claude Desktop / Claude Code (`hub connect --help`)\n  \
          mcp-config [--bin-dir DIR]      print the MCP config that connects Claude to installed apps\n  \
          share [ARGS...]                 run wetwaresuite-share: share or live-sync a folder (`hub share help`)\n  \
          --version\n\n\
@@ -339,6 +342,16 @@ fn main() -> ExitCode {
         usage();
         return ExitCode::from(2);
     };
+    if cmd == "connect" {
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            println!("{}", connect::USAGE);
+            return ExitCode::SUCCESS;
+        }
+        let bin_dir = paths::bin_dir();
+        let binaries = mcp_binaries(&bin_dir);
+        let names: Vec<&str> = binaries.iter().map(String::as_str).collect();
+        return connect::run(&args[1..], &names, &bin_dir, paths::exe_name);
+    }
     if cmd == "share" {
         return share(&args[1..]);
     }

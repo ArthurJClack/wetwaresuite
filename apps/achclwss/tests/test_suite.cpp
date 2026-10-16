@@ -1,4 +1,5 @@
 // End-to-end: batch scripts and the MCP server driving the real tools.
+#include <cstdio>
 #include <filesystem>
 #include <sstream>
 
@@ -60,6 +61,17 @@ int main() {
         CHECK(batch.run(keep, o3, e3, true) == 1);
         CHECK(o3.str().find("120x80") != std::string::npos);
 
+        // trailing comments after hex colours, # inside quotes, and capturing a plain field
+        std::istringstream extra(
+            "photo.new width=5 height=5 background=#ff0000   # red\n"
+            "paint.layer_add doc=img2 name=\"My #1 layer\"\n"
+            "photo.pick_color doc=img2 x=1 y=1 -> c\n"
+            "echo colour $c\n");
+        std::ostringstream o4, e4;
+        CHECK(batch.run(extra, o4, e4) == 0);
+        if (!e4.str().empty()) std::printf("%s", e4.str().c_str());
+        CHECK(o4.str().find("colour #ff0000ff") != std::string::npos);
+
         CHECK(cli::split("a \"b c\" d\\ e").size() == 3);
         bool threw = false;
         try {
@@ -89,10 +101,19 @@ int main() {
             if (t["name"] == "paint_stroke") sawArray = t["inputSchema"]["properties"]["points"]["type"] == "array";
         }
         CHECK(sawEnum && sawArray);
+        for (const auto& t : list) {
+            if (t["name"] == "photo_info") CHECK(t["annotations"]["readOnlyHint"] == true);
+            if (t["name"] == "photo_save" || t["name"] == "convert_file" || t["name"] == "photo_batch") {
+                CHECK(t["annotations"]["readOnlyHint"] == false);
+            }
+            if (t["name"] == "photo_close") CHECK(t["annotations"]["destructiveHint"] == true);
+        }
 
         json made = call(server, 3, "paint_new", {{"width", 64}, {"height", 64}});
         CHECK(made["isError"] == false);
         CHECK(made["structuredContent"]["doc"] == "img1");
+        CHECK(call(server, 30, "photo_resize", {{"doc", "img1"}, {"width", 32.0}})["isError"] == false);  // whole doubles are integers
+        CHECK(call(server, 31, "undo", json::object())["isError"] == false);
         json stroke = call(server, 4, "paint_stroke",
                            {{"doc", "img1"}, {"points", {5, 5, 60, 60}}, {"pressures", {0.3, 1.0}}, {"color", "#00f"}, {"preview", true}});
         CHECK(stroke["isError"] == false);
@@ -138,6 +159,10 @@ int main() {
         suite::registerAll(s, {"convert"});
         CHECK(s.registry().find("convert.file") != nullptr);
         CHECK(s.registry().find("photo.open") == nullptr);
+        CHECK(s.registry().find("vector.convert") != nullptr);  // convert brings vector for SVG
+        Session p;
+        suite::registerAll(p, {"paint"});
+        CHECK(p.registry().find("photo.save") != nullptr);  // paint saves through photo
     }
 
     fs::remove_all(dir);

@@ -97,6 +97,14 @@ int main() {
     CHECK(batch.ok && intField(batch, "processed") == 2);
     CHECK(raster::load(dir / "out" / "a.png").width() == 50);
     CHECK(raster::load(dir / "out" / "b.png").height() == 25);
+    Result again = s.run("photo.batch", {{"input_dir", (dir / "in").string()}, {"output_dir", (dir / "out").string()},
+                                         {"format", std::string("png")}});
+    CHECK(again.ok && intField(again, "skipped") == 2 && intField(again, "processed") == 0);
+    Result inPlace = s.run("photo.batch", {{"input_dir", (dir / "in").string()}, {"output_dir", (dir / "in").string()},
+                                           {"format", std::string("png")}, {"max_size", std::int64_t{10}}, {"overwrite", true}});
+    CHECK(raster::load(dir / "in" / "a.png").width() == 200);  // the original is never replaced
+    CHECK(inPlace.ok && intField(inPlace, "processed") == 1);   // b.jpg -> b.png is fine
+    CHECK(s.run("photo.save", {{"doc", id}, {"path", (dir / "new" / "deep" / "x.png").string()}}).ok);
 
     fs::remove_all(dir);
     return check::summary("photo");

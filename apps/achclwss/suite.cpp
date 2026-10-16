@@ -8,8 +8,16 @@
 
 namespace achclwss::suite {
 
+const std::set<std::string>& toolNames() {
+    static const std::set<std::string> names = {"toolkit", "photo", "paint", "vector", "convert"};
+    return names;
+}
+
 void registerAll(Session& session, const std::set<std::string>& only) {
-    auto want = [&](const char* tool) { return only.empty() || only.count(tool) > 0; };
+    std::set<std::string> tools = only;
+    if (tools.count("paint")) tools.insert("photo");
+    if (tools.count("convert")) tools.insert("vector");
+    auto want = [&](const char* tool) { return only.empty() || tools.count(tool) > 0; };
     if (want("toolkit")) toolkit::registerCommands(session.registry());
     if (want("photo")) photo::registerCommands(session);
     if (want("paint")) paint::registerCommands(session);

@@ -41,6 +41,7 @@ struct CommandInfo {
     std::string description;  // shown to people and to MCP clients
     std::vector<ParamSpec> params;
     bool undoable = false;    // read-only and export commands are not
+    bool readOnly = false;    // changes nothing outside the session (no files written, nothing discarded)
 };
 
 // Ordered key/value output, e.g. {"doc": "img1"}, {"width": 800}.

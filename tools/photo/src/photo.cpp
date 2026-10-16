@@ -76,7 +76,7 @@ void registerCommands(Session& session) {
              "Open an image file as a new document. Reads PNG, JPEG, BMP, TGA, GIF, PSD (flattened), HDR, PNM and "
              "layered OpenRaster (.ora). Returns the document id to use with other commands.",
              {{"path", ParamType::String, "path to the image file", true}},
-             false},
+             false, true},
             [s](const Params& p) {
                 return std::make_unique<FunctionAction>([s, path = stringParam(p, "path")] {
                     if (!canOpenImage(path)) return Result::failure("can't open " + path + ": unsupported format");
@@ -100,7 +100,7 @@ void registerCommands(Session& session) {
              {{"width", ParamType::Int, "width in pixels", true},
               {"height", ParamType::Int, "height in pixels", true},
               colorParam("background", "background colour", false, "#ffffff")},
-             false},
+             false, true},
             [s](const Params& p) {
                 return std::make_unique<FunctionAction>([s, p] {
                     auto w = intParam(p, "width"), h = intParam(p, "height");
@@ -118,7 +118,7 @@ void registerCommands(Session& session) {
              "Image info",
              "Describe an open image: size, layers (index, name, opacity, blend, visibility) and the active layer.",
              {docParam()},
-             false},
+             false, true},
             imageCommand(
                 session,
                 [](ImageDoc& doc, const Params& p) {
@@ -142,7 +142,7 @@ void registerCommands(Session& session) {
              "Preview image",
              "Render the image (all visible layers) as a PNG so you can see it. Large images are scaled down.",
              {docParam(), {"max_size", ParamType::Int, "longest side of the preview in px", false, {}, std::int64_t{512}}},
-             false},
+             false, true},
             imageCommand(
                 session,
                 [](ImageDoc& doc, const Params& p) {
@@ -165,6 +165,10 @@ void registerCommands(Session& session) {
                 session,
                 [](ImageDoc& doc, const Params& p) {
                     std::string path = stringParam(p, "path");
+                    if (auto parent = fs::path(path).parent_path(); !parent.empty()) {
+                        std::error_code dirEc;
+                        fs::create_directories(parent, dirEc);
+                    }
                     if (!canSaveImage(path)) {
                         return Result::failure("can't save ." + lowerExt(path) + "; use one of: ora, " + joinList(writableExtensions()));
                     }
@@ -351,7 +355,7 @@ void registerCommands(Session& session) {
               {"x", ParamType::Int, "x in px", true},
               {"y", ParamType::Int, "y in px", true},
               {"layer", ParamType::Int, "read this layer instead of the flattened image", false}},
-             false},
+             false, true},
             imageCommand(
                 session,
                 [](ImageDoc& doc, const Params& p) {
@@ -375,7 +379,7 @@ void registerCommands(Session& session) {
     reg.add({"photo.batch",
              "Batch process folder",
              "Process every image in a folder in one go: optional resize to fit, adjustments and effect, then save in "
-             "a chosen format to an output folder. Originals are never touched.",
+             "a chosen format to an output folder. Originals are never replaced; existing results are skipped unless overwrite=true.",
              {{"input_dir", ParamType::String, "folder with the source images", true},
               {"output_dir", ParamType::String, "folder for results (created if missing)", true},
               {"format", ParamType::String, "output format", false, {"png", "jpg", "bmp", "tga", "ppm", "ora"}, std::string("jpg")},
@@ -384,7 +388,8 @@ void registerCommands(Session& session) {
               {"auto_contrast", ParamType::Bool, "apply auto contrast", false, {}, false},
               {"effect", ParamType::String, "optional effect", false, effectKinds()},
               {"effect_amount", ParamType::Number, "effect strength", false},
-              {"recursive", ParamType::Bool, "include subfolders", false, {}, false}},
+              {"recursive", ParamType::Bool, "include subfolders", false, {}, false},
+              {"overwrite", ParamType::Bool, "replace results that already exist (sources are never replaced)", false, {}, false}},
              false},
             [](const Params& p) {
                 return std::make_unique<FunctionAction>([p] {
@@ -395,9 +400,15 @@ void registerCommands(Session& session) {
                     if (ec) return Result::failure("can't create " + out.string() + ": " + ec.message());
                     const std::string format = stringParam(p, "format", "jpg");
                     const int maxSize = static_cast<int>(intParam(p, "max_size", 0));
+                    const bool overwrite = boolParam(p, "overwrite", false);
+                    const fs::path outAbs = fs::weakly_canonical(out, ec);
                     std::vector<fs::path> files;
                     auto consider = [&](const fs::directory_entry& e) {
-                        if (e.is_regular_file() && canOpenImage(e.path())) files.push_back(e.path());
+                        if (!e.is_regular_file() || !canOpenImage(e.path())) return;
+                        // results written into a subfolder of the input are not sources
+                        auto rel = fs::weakly_canonical(e.path(), ec).lexically_relative(outAbs);
+                        if (outAbs != fs::weakly_canonical(in, ec) && !rel.empty() && *rel.begin() != "..") return;
+                        files.push_back(e.path());
                     };
                     if (boolParam(p, "recursive", false)) {
                         for (const auto& e : fs::recursive_directory_iterator(in, ec)) consider(e);
@@ -405,9 +416,19 @@ void registerCommands(Session& session) {
                         for (const auto& e : fs::directory_iterator(in, ec)) consider(e);
                     }
                     std::sort(files.begin(), files.end());
-                    int done = 0;
+                    int done = 0, skipped = 0;
                     std::string failures;
                     for (const auto& f : files) {
+                        fs::path target = out / fs::relative(f, in, ec);
+                        target.replace_extension(format);
+                        if (fs::exists(target, ec) && fs::equivalent(target, f, ec)) {
+                            failures += "\n  " + f.string() + ": would replace the original; pick another output_dir or format";
+                            continue;
+                        }
+                        if (!overwrite && fs::exists(target, ec)) {
+                            ++skipped;
+                            continue;
+                        }
                         try {
                             auto doc = openImage(f);
                             if (maxSize > 0 && std::max(doc->image.width, doc->image.height) > maxSize) {
@@ -422,9 +443,6 @@ void registerCommands(Session& session) {
                                     applyEffect(layer.image, *parseEffect(stringParam(p, "effect")), numberParam(p, "effect_amount", 0));
                                 }
                             }
-                            fs::path rel = fs::relative(f, in, ec);
-                            fs::path target = out / rel;
-                            target.replace_extension(format);
                             fs::create_directories(target.parent_path(), ec);
                             saveImage(*doc, target, static_cast<int>(intParam(p, "quality", 90)));
                             ++done;
@@ -434,10 +452,12 @@ void registerCommands(Session& session) {
                     }
                     if (files.empty()) return Result::failure("no images found in " + in.string());
                     std::string msg = "processed " + std::to_string(done) + " of " + std::to_string(files.size()) +
-                                      " images into " + out.string() + failures;
-                    Result r = done > 0 ? Result::success(msg) : Result::failure(msg);
+                                      " images into " + out.string() +
+                                      (skipped ? " (" + std::to_string(skipped) + " already there; overwrite=true to redo)" : "") + failures;
+                    Result r = done > 0 || (skipped > 0 && failures.empty()) ? Result::success(msg) : Result::failure(msg);
                     return r.with("processed", static_cast<std::int64_t>(done))
-                        .with("failed", static_cast<std::int64_t>(files.size() - static_cast<std::size_t>(done)));
+                        .with("skipped", static_cast<std::int64_t>(skipped))
+                        .with("failed", static_cast<std::int64_t>(files.size() - static_cast<std::size_t>(done + skipped)));
                 });
             });
 }

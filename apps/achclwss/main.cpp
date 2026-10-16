@@ -37,6 +37,12 @@ void usage() {
 
 std::string toolOf(const std::string& id) { return id.substr(0, id.find('.')); }
 
+std::string joinedTools() {
+    std::string out;
+    for (const auto& t : achclwss::suite::toolNames()) out += (out.empty() ? "" : ", ") + t;
+    return out;
+}
+
 int list(const achclwss::Session& session, const std::string& tool) {
     std::string current;
     for (const auto& info : session.registry().list()) {
@@ -45,7 +51,7 @@ int list(const achclwss::Session& session, const std::string& tool) {
             current = toolOf(info.id);
             std::cout << (current.empty() ? "" : "\n") << current << "\n";
         }
-        std::cout << "  " << info.id << "  " << info.title << (info.undoable ? "" : "  (read-only/output)") << "\n";
+        std::cout << "  " << info.id << "  " << info.title << (info.readOnly ? "  (read-only)" : info.undoable ? "" : "  (no undo)") << "\n";
     }
     return 0;
 }
@@ -91,10 +97,24 @@ int main(int argc, char** argv) {
             std::cout << "achclwss " << kVersion << "\n";
             return 0;
         }
-        if (cmd == "list") return list(session, args.size() > 1 ? args[1] : "");
-        if (cmd == "help" && args.size() == 2) return help(session, args[1]);
+        if (cmd == "list") {
+            if (args.size() > 1 && !suite::toolNames().count(args[1])) {
+                std::cerr << "no tool called " << args[1] << "; tools: " << joinedTools() << "\n";
+                return 2;
+            }
+            return list(session, args.size() > 1 ? args[1] : "");
+        }
+        if (cmd == "help") {
+            if (args.size() == 2) return help(session, args[1]);
+            usage();
+            return args.size() == 1 ? 0 : 2;
+        }
         if (cmd == "mcp") {
-            if (args.size() == 3 && args[1] == "--tools") {
+            if (args.size() != 1 && (args.size() != 3 || args[1] != "--tools")) {
+                std::cerr << "usage: achclwss mcp [--tools a,b]  (tools: " << joinedTools() << ")\n";
+                return 2;
+            }
+            if (args.size() == 3) {
                 std::set<std::string> keep;
                 std::string item;
                 for (char c : args[2] + ",") {
@@ -104,6 +124,16 @@ int main(int argc, char** argv) {
                     } else {
                         item += c;
                     }
+                }
+                for (const auto& t : keep) {
+                    if (!suite::toolNames().count(t)) {
+                        std::cerr << "no tool called " << t << "; tools: " << joinedTools() << "\n";
+                        return 2;
+                    }
+                }
+                if (keep.empty()) {
+                    std::cerr << "--tools needs a list, e.g. --tools photo,paint\n";
+                    return 2;
                 }
                 Session filtered;
                 suite::registerAll(filtered, keep);

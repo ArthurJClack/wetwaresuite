@@ -1,3 +1,4 @@
+#include <cmath>
 #include "achclwss/mcp/server.hpp"
 
 #include <array>
@@ -80,7 +81,8 @@ json describe(const CommandInfo& info) {
             {"title", info.title},
             {"description", info.description},
             {"inputSchema", {{"type", "object"}, {"properties", properties}, {"required", required}}},
-            {"annotations", {{"title", info.title}, {"readOnlyHint", !info.undoable}, {"openWorldHint", false}}}};
+            {"annotations", {{"title", info.title}, {"readOnlyHint", info.readOnly},
+                             {"destructiveHint", !info.readOnly && !info.undoable}, {"openWorldHint", false}}}};
 }
 
 json noArgsTool(const char* name, const char* description, bool readOnly) {
@@ -99,7 +101,12 @@ bool toParams(const json& args, Params& out, std::string& error) {
     for (const auto& [key, v] : args.items()) {
         if (v.is_boolean()) out[key] = v.get<bool>();
         else if (v.is_number_integer()) out[key] = v.get<std::int64_t>();
-        else if (v.is_number()) out[key] = v.get<double>();
+        else if (v.is_number()) {
+            // 300.0 from a client means 300; whole numbers satisfy integer params
+            double d = v.get<double>();
+            if (std::floor(d) == d && std::abs(d) < 9e15) out[key] = static_cast<std::int64_t>(d);
+            else out[key] = d;
+        }
         else if (v.is_string()) out[key] = v.get<std::string>();
         else if (v.is_array()) {
             NumberList list;

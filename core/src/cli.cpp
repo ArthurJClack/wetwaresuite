@@ -135,9 +135,19 @@ std::string usage(const CommandInfo& info) {
 }
 
 Result Batch::runLine(const std::string& rawLine) {
+    // a comment starts at a # that begins a word outside quotes, so colours like #ff0000 survive
     std::string line = rawLine;
-    if (auto hash = line.find('#'); hash != std::string::npos && (hash == 0 || std::isspace(static_cast<unsigned char>(line[hash - 1])))) {
-        line = line.substr(0, hash);
+    bool quoted = false;
+    for (std::size_t i = 0; i < line.size(); ++i) {
+        char c = line[i];
+        if (c == '\\') {
+            ++i;
+        } else if (c == '"') {
+            quoted = !quoted;
+        } else if (c == '#' && !quoted && (i == 0 || std::isspace(static_cast<unsigned char>(line[i - 1])))) {
+            line.resize(i);
+            break;
+        }
     }
     std::vector<std::string> tokens = split(line);
     if (tokens.empty()) return Result::success("");
@@ -179,8 +189,11 @@ Result Batch::runLine(const std::string& rawLine) {
         }
     }
     if (result.ok && !capture.empty()) {
+        // the document id if there is one, else the result's value, else its first field
         const Value* doc = result.field("doc");
-        vars_[capture] = doc ? toText(*doc) : toText(result.value);
+        std::string text = doc ? toText(*doc) : toText(result.value);
+        if (text.empty() && !result.data.empty()) text = toText(result.data.front().second);
+        vars_[capture] = text;
     }
     return result;
 }

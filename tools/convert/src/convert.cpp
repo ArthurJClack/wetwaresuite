@@ -31,6 +31,8 @@ const std::set<std::string> kRasterOut = {"png", "jpg", "jpeg", "bmp", "tga", "p
 const std::set<std::string> kAudio = {"wav", "mp3", "flac", "ogg", "opus", "aac", "m4a", "aiff", "aif", "wma", "ac3", "amr"};
 const std::set<std::string> kVideo = {"mp4", "mkv", "mov", "webm", "avi", "wmv", "flv", "m4v", "mpg", "mpeg", "3gp", "ts", "gif"};
 const std::set<std::string> kFfmpegImages = {"webp", "avif", "heic", "heif", "tif", "tiff", "jxl", "ico", "exr"};
+const std::set<std::string> kStill = {"png", "jpg", "jpeg", "bmp", "tga", "ppm", "webp", "avif", "tif", "tiff", "jxl", "ico", "exr"};
+const std::set<std::string> kPlainMarkup = {"md", "markdown", "rst", "org", "tex"};
 const std::set<std::string> kOffice = {"doc", "docx", "odt", "rtf", "xls", "xlsx", "ods", "ppt", "pptx", "odp", "wpd", "pages", "key", "numbers"};
 const std::set<std::string> kOfficeOut = {"pdf", "docx", "doc", "odt", "rtf", "txt", "html", "xlsx", "xls", "ods", "csv", "pptx", "ppt", "odp", "epub"};
 const std::set<std::string> kMarkup = {"md", "markdown", "html", "htm", "rst", "tex", "org", "txt", "epub", "docx", "odt"};
@@ -81,6 +83,7 @@ Result ffmpegConvert(const fs::path& input, const fs::path& output, const Params
         args.insert(args.end(), {"-vf", "scale=" + std::to_string(w > 0 ? w : -2) + ":" + std::to_string(h > 0 ? h : -2)});
     }
     if (in(kAudio, to) && !in(kAudio, extOf(input))) args.push_back("-vn");  // video in, audio out: drop the picture
+    if (in(kStill, to)) args.insert(args.end(), {"-frames:v", "1"});      // video in, picture out: one frame
     if (o.count("quality")) {
         int q = static_cast<int>(std::clamp<std::int64_t>(intParam(o, "quality", 90), 1, 100));
         if (to == "mp3") args.insert(args.end(), {"-q:a", std::to_string((100 - q) * 9 / 100)});
@@ -118,6 +121,19 @@ Result officeConvert(const fs::path& input, const fs::path& output) {
 Result pandocConvert(const fs::path& input, const fs::path& output) {
     auto exe = pandoc();
     if (!exe) return Result::failure("markup conversion needs pandoc on PATH");
+    if (extOf(output) == "pdf" && soffice()) {
+        // pandoc's own PDF needs LaTeX; going through .docx and LibreOffice needs nothing extra
+        std::error_code ec;
+        fs::path tmp = fs::temp_directory_path(ec) / ("achclwss-md-" + std::to_string(std::hash<std::string>{}(input.string())));
+        fs::create_directories(tmp, ec);
+        fs::path docx = tmp / input.filename();
+        docx.replace_extension(".docx");
+        auto r = runProgram({*exe, input.string(), "-o", docx.string()});
+        Result out = r.exitCode == 0 ? officeConvert(docx, output) : Result::failure("pandoc failed: " + r.output);
+        fs::remove_all(tmp, ec);
+        if (out.ok) out.message = "converted " + input.string() + " to " + output.string() + " with pandoc and LibreOffice";
+        return out;
+    }
     auto r = runProgram({*exe, input.string(), "-o", output.string()});
     if (r.exitCode != 0) return Result::failure("pandoc failed: " + r.output);
     return Result::success("converted " + input.string() + " to " + output.string() + " with pandoc");
@@ -127,6 +143,8 @@ Result vectorConvert(Session& s, const fs::path& input, const fs::path& output, 
     Params args = {{"input", input.string()}, {"output", output.string()}};
     if (o.count("scale")) args["scale"] = numberParam(o, "scale", 1.0);
     if (o.count("quality")) args["quality"] = intParam(o, "quality", 90);
+    if (o.count("width")) args["width"] = intParam(o, "width", 0);
+    if (o.count("height")) args["height"] = intParam(o, "height", 0);
     Result r = s.run("vector.convert", args);
     if (!r.ok) return r;
     return Result::success("converted " + input.string() + " to " + output.string());
@@ -151,7 +169,11 @@ std::string backendFor(const Session& session, const fs::path& input, const std:
         return "ffmpeg";
     }
     if (in(kOffice, from) && in(kOfficeOut, to)) return "libreoffice";
-    if (in(kMarkup, from) && in(kMarkupOut, to)) return to == "pdf" && soffice() ? "libreoffice" : "pandoc";
+    if (in(kMarkup, from) && in(kMarkupOut, to)) {
+        // rendered formats go straight to LibreOffice; plain-text markup needs pandoc to be laid out
+        if (to == "pdf" && !in(kPlainMarkup, from) && soffice()) return "libreoffice";
+        return "pandoc";
+    }
     return {};
 }
 
@@ -255,7 +277,7 @@ void registerCommands(Session& session) {
              "List formats",
              "Show which conversions work on this machine and which helper programs are installed.",
              {},
-             false},
+             false, true},
             [s](const Params&) {
                 return std::make_unique<FunctionAction>([s] {
                     auto yes = [](bool b) { return std::string(b ? "ready" : "not installed"); };
@@ -278,7 +300,7 @@ void registerCommands(Session& session) {
              "Check conversion",
              "Say whether a file can be converted to a format and which backend would do it, without converting.",
              {{"input", ParamType::String, "file to convert", true}, {"to", ParamType::String, "target extension", true}},
-             false},
+             false, true},
             [s](const Params& p) {
                 return std::make_unique<FunctionAction>([s, p] {
                     std::string to = lower(stringParam(p, "to"));

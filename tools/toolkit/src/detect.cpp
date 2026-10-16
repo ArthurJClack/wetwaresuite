@@ -388,7 +388,7 @@ void registerCommands(CommandRegistry& registry) {
                   "Inspect file",
                   "Identify a file's format from its contents and say which suite tool opens it",
                   {{"path", ParamType::String, "path to the file", true}},
-                  false},
+                  false, true},
                  [](const Params& p) { return std::make_unique<InspectAction>(std::get<std::string>(p.at("path"))); });
 
     registry.add({"toolkit.hex",
@@ -397,7 +397,7 @@ void registerCommands(CommandRegistry& registry) {
                   {{"path", ParamType::String, "path to the file", true},
                    {"offset", ParamType::Int, "byte offset to start at (default 0)", false},
                    {"length", ParamType::Int, "number of bytes, up to 65536 (default 256)", false}},
-                  false},
+                  false, true},
                  [](const Params& p) {
                      return std::make_unique<HexAction>(std::get<std::string>(p.at("path")), intOr(p, "offset", 0),
                                                         intOr(p, "length", 256));

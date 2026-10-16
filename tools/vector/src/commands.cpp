@@ -251,7 +251,7 @@ void registerCommands(Session& session) {
              {{"width", ParamType::Int, "canvas width in px", false, {}, std::int64_t{800}},
               {"height", ParamType::Int, "canvas height in px", false, {}, std::int64_t{600}},
               paintParam("background", "background colour", "white")},
-             false},
+             false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     auto w = intParam(p, "width", 800), h = intParam(p, "height", 600);
@@ -271,7 +271,7 @@ void registerCommands(Session& session) {
              "Open an SVG file as a vector document and return its id. Supports rect, circle, ellipse, line, polyline, "
              "polygon, path and groups with fill/stroke/opacity and transforms; gradients, text and images are skipped.",
              {{"path", ParamType::String, "path to an .svg file", true}},
-             false},
+             false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     try {
@@ -312,15 +312,19 @@ void registerCommands(Session& session) {
              {{"input", ParamType::String, "path to an .svg file", true},
               {"output", ParamType::String, "output file; the extension picks the format", true},
               numParam("scale", "pixels per unit for raster formats", false, 1.0),
+              {"width", ParamType::Int, "raster output width in px (sets the scale, keeps aspect)", false},
+              {"height", ParamType::Int, "raster output height in px (sets the scale, keeps aspect)", false},
               {"quality", ParamType::Int, "JPEG quality 1..100", false, {}, std::int64_t{90}}},
              false},
             [](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([p] {
                     const std::string input = stringParam(p, "input"), output = stringParam(p, "output");
-                    const double scale = numberParam(p, "scale", 1.0);
-                    if (!(scale > 0) || scale > 32) return Result::failure("scale must be between 0 and 32");
                     try {
                         auto doc = openSvg(input);
+                        double scale = numberParam(p, "scale", 1.0);
+                        if (auto w = intParam(p, "width", 0); w > 0 && doc->width > 0) scale = static_cast<double>(w) / doc->width;
+                        else if (auto h = intParam(p, "height", 0); h > 0 && doc->height > 0) scale = static_cast<double>(h) / doc->height;
+                        if (!(scale > 0) || scale > 32) return Result::failure("scale must be between 0 and 32");
                         saveDoc(*doc, output, scale, static_cast<int>(std::clamp<std::int64_t>(intParam(p, "quality", 90), 1, 100)));
                         return Result::success("converted " + input + " to " + output + " (" +
                                                    std::to_string(doc->shapes.size()) + " shapes)",
@@ -347,7 +351,7 @@ void registerCommands(Session& session) {
              "Describe a vector document: canvas size, background and every shape bottom to top with its id, name, "
              "geometry, colours, transform and bounding box on the canvas.",
              {docParam()},
-             false},
+             false, true},
             vectorCommand(session, [](VectorDoc& doc, const Params& p) {
                 std::string text = stringParam(p, "doc") + ": " + std::to_string(doc.width) + "x" +
                                    std::to_string(doc.height) + ", background " + paintText(doc.background) + ", " +
@@ -370,7 +374,7 @@ void registerCommands(Session& session) {
     reg.add({"vector.preview", "Preview Drawing",
              "Render the drawing to a PNG image so you can see it. size is the longest side in px.",
              {docParam(), {"size", ParamType::Int, "longest side of the preview in px", false, {}, std::int64_t{512}}},
-             false},
+             false, true},
             vectorCommand(session, [](VectorDoc& doc, const Params& p) {
                 const auto size = std::clamp<std::int64_t>(intParam(p, "size", 512), 16, 4096);
                 const double scale = static_cast<double>(size) / std::max(doc.width, doc.height);

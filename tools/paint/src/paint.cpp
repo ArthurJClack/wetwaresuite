@@ -143,7 +143,7 @@ void registerCommands(Session& session) {
              {{"width", ParamType::Int, "width in px", true},
               {"height", ParamType::Int, "height in px", true},
               colorParam("background", "background colour (use transparent for none)", false, "#ffffff")},
-             false},
+             false, true},
             [s](const Params& p) {
                 return std::make_unique<FunctionAction>([s, p] {
                     auto w = intParam(p, "width"), h = intParam(p, "height");
@@ -243,7 +243,7 @@ void registerCommands(Session& session) {
                     }
                 }
                 doc.active = idx;
-                return done("drew a " + kind, doc, p);
+                return done(std::string(kind == "ellipse" ? "drew an " : "drew a ") + kind, doc, p);
             }));
 
     reg.add({"paint.polygon",

@@ -108,6 +108,7 @@ The most useful one is `vector.convert`, which turns an SVG file into a PNG
 ```sh
 achclwss run vector.convert input=logo.svg output=logo.png
 achclwss run vector.convert input=logo.svg output=logo@2x.png scale=2
+achclwss run vector.convert input=logo.svg output=logo-600.png width=600
 achclwss run vector.convert input=logo.svg output=thumb.jpg scale=0.25 quality=80
 ```
 

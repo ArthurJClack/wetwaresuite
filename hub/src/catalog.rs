@@ -53,6 +53,7 @@ pub const TOOLS: &[Tool] = &[
     tool("explorer", "explorer", "file manager: copy, move, trash with undo, search, zip and tar", 1),
     tool("terminal", "terminal", "terminal: run commands in the system shell", 1),
     tool("monitor", "monitor", "system monitor: processor, memory, disks, processes, network", 1),
+    tool("clock", "clock", "clock: world time, timers, stopwatch, alarms, date maths", 1),
 ];
 
 /// An app: what people install. Each is its own binary `wetwaresuite-<id>` that
@@ -81,7 +82,7 @@ pub const APPS: &[App] = &[
     App { id: "video", summary: "edit videos, take screenshots and record the screen", tools: &["cut", "capture"], approx_mb: 3, always: false },
     App { id: "office", summary: "documents, spreadsheets, slides, PDFs, print layouts and notes", tools: &["office", "layout", "notes"], approx_mb: 7, always: false },
     App { id: "maps", summary: "offline maps, GPS tracks and map data", tools: &["maps"], approx_mb: 4, always: false },
-    App { id: "system", summary: "calculator, code editor, file manager, terminal, system monitor and clock", tools: &["calc", "code", "explorer", "terminal", "monitor"], approx_mb: 6, always: false },
+    App { id: "system", summary: "calculator, code editor, file manager, terminal, system monitor and clock", tools: &["calc", "code", "explorer", "terminal", "monitor", "clock"], approx_mb: 6, always: false },
     App { id: "files", summary: "open, convert, find and batch-process any file (always installed)", tools: &["toolkit", "convert", "library", "automate"], approx_mb: 4, always: true },
     App { id: "share", summary: "share and live-sync folders with other devices", tools: &["share"], approx_mb: 1, always: false },
 ];

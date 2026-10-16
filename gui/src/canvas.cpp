@@ -1,0 +1,302 @@
+// The canvas: shows the open document's picture with zoom and pan, and turns
+// mouse and pen input into paint.stroke / paint.erase / paint.fill commands.
+#include <algorithm>
+#include <cmath>
+
+#include "shell.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
+
+namespace wetwaresuite::gui {
+
+namespace {
+
+bool hasParam(const CommandInfo* info, const std::string& name) {
+    if (!info) return false;
+    for (const auto& p : info->params) {
+        if (p.name == name) return true;
+    }
+    return false;
+}
+
+}  // namespace
+
+bool Shell::canPaint() const {
+    auto doc = session_.workspace().get(currentDoc_);
+    return doc && doc->kind() == "image" && find("paint.stroke");
+}
+
+void Shell::refreshCanvas() {
+    if (!canvas_.dirty && canvas_.shownDoc == currentDoc_) return;
+    canvas_.dirty = false;
+    canvas_.shownDoc = currentDoc_;
+    canvas_.summary.clear();
+    auto doc = session_.workspace().get(currentDoc_);
+    if (!doc) {
+        canvas_.texture.reset();
+        return;
+    }
+    canvas_.summary = doc->summary();
+    if (auto img = std::dynamic_pointer_cast<raster::ImageDoc>(doc)) {
+        raster::Image flat = img->flatten();
+        if (!flat.empty() && canvas_.texture.upload(renderer_, flat.data(), flat.width(), flat.height())) return;
+    }
+    // anything else: the document's own preview, else the tool's preview command
+    std::string png;
+    if (auto att = doc->preview()) png = att->bytes;
+    if (png.empty()) {
+        std::vector<std::string> owners;
+        if (auto it = docTool_.find(currentDoc_); it != docTool_.end()) owners.push_back(it->second);
+        for (const auto& t : tools_) owners.push_back(t);
+        for (const auto& tool : owners) {
+            const CommandInfo* preview = find(tool + ".preview");
+            if (!hasParam(preview, "doc")) continue;
+            // read-only, so it stays out of the history
+            Result r = session_.run(preview->id, {{"doc", currentDoc_}});
+            if (!r.ok) continue;
+            for (const auto& a : r.attachments) {
+                if (a.mime.rfind("image/", 0) == 0) {
+                    png = a.bytes;
+                    break;
+                }
+            }
+            if (!png.empty()) break;
+        }
+    }
+    if (png.empty()) {
+        canvas_.texture.reset();
+        return;
+    }
+    try {
+        raster::Image pic = raster::decode(png);
+        if (!canvas_.texture.upload(renderer_, pic.data(), pic.width(), pic.height())) canvas_.texture.reset();
+    } catch (const std::exception&) {
+        canvas_.texture.reset();
+    }
+}
+
+void Shell::canvasToolbar() {
+    if (ImGui::Button("Fit")) canvas_.fit = true;
+    ImGui::SetItemTooltip("Show the whole picture");
+    ImGui::SameLine();
+    if (ImGui::Button("100%")) {
+        const ImVec2 centre{canvas_.viewSize.x / 2, canvas_.viewSize.y / 2};
+        const ImVec2 img{(centre.x - canvas_.pan.x) / canvas_.zoom, (centre.y - canvas_.pan.y) / canvas_.zoom};
+        canvas_.zoom = 1;
+        canvas_.pan = {centre.x - img.x, centre.y - img.y};
+    }
+    ImGui::SameLine();
+    ImGui::TextDisabled("%d%%", static_cast<int>(std::lround(canvas_.zoom * 100)));
+    if (!canPaint()) return;
+    ImGui::SameLine();
+    ImGui::TextUnformatted("  Tool:");
+    const struct {
+        const char* name;
+        CanvasTool tool;
+        const char* tip;
+    } tools[] = {{"Move", CanvasTool::Move, "Drag to move around, scroll to zoom"},
+                 {"Brush", CanvasTool::Brush, "Paint with the mouse or a pen (pressure works)"},
+                 {"Eraser", CanvasTool::Eraser, "Rub out paint on the current layer"},
+                 {"Fill", CanvasTool::Fill, "Click to fill an area with the colour, like a paint bucket"}};
+    for (const auto& t : tools) {
+        ImGui::SameLine();
+        if (ImGui::RadioButton(t.name, canvas_.tool == t.tool)) canvas_.tool = t.tool;
+        ImGui::SetItemTooltip("%s", t.tip);
+    }
+    if (canvas_.tool == CanvasTool::Move) return;
+    // the tool's settings go on their own line so narrow windows still show them
+    const float unit = ImGui::GetFontSize();
+    bool first = true;
+    auto next = [&first] {
+        if (!first) ImGui::SameLine();
+        first = false;
+    };
+    if (canvas_.tool != CanvasTool::Eraser) {
+        next();
+        ImGui::ColorEdit4("Colour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
+    }
+    if (canvas_.tool == CanvasTool::Fill) return;
+    if (const CommandInfo* stroke = find("paint.stroke")) {
+        for (const auto& p : stroke->params) {
+            if (p.name != "brush" || p.choices.empty()) continue;
+            next();
+            ImGui::SetNextItemWidth(unit * 6);
+            if (ImGui::BeginCombo("Brush", canvas_.brush.c_str())) {
+                for (const auto& c : p.choices) {
+                    if (ImGui::Selectable(c.c_str(), c == canvas_.brush)) canvas_.brush = c;
+                }
+                ImGui::EndCombo();
+            }
+        }
+    }
+    next();
+    ImGui::SetNextItemWidth(unit * 7);
+    ImGui::SliderFloat("Size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
+    next();
+    ImGui::SetNextItemWidth(unit * 6);
+    ImGui::SliderFloat("Opacity", &canvas_.opacity, 1, 100, "%.0f%%");
+}
+
+ImVec2 Shell::toImage(ImVec2 screen) const {
+    // the texture may be smaller than the picture; the zoom is in picture px
+    return {(screen.x - canvas_.viewMin.x - canvas_.pan.x) / canvas_.zoom,
+            (screen.y - canvas_.viewMin.y - canvas_.pan.y) / canvas_.zoom};
+}
+
+void Shell::beginStroke(ImVec2 screen, float pressure, bool pen, bool eraser) {
+    canvas_.stroking = true;
+    canvas_.usedPen = pen;
+    canvas_.penErasing = eraser;
+    canvas_.points.clear();
+    canvas_.pressures.clear();
+    addStrokePoint(screen, pressure);
+}
+
+void Shell::addStrokePoint(ImVec2 screen, float pressure) {
+    if (!canvas_.stroking) return;
+    const ImVec2 p = toImage(screen);
+    auto& pts = canvas_.points;
+    if (pts.size() >= 2) {
+        const double dx = p.x - pts[pts.size() - 2], dy = p.y - pts.back();
+        if (dx * dx + dy * dy < 0.5) return;
+    }
+    pts.push_back(p.x);
+    pts.push_back(p.y);
+    canvas_.pressures.push_back(std::clamp(pressure, 0.0f, 1.0f));
+}
+
+void Shell::endStroke() {
+    if (!canvas_.stroking) return;
+    canvas_.stroking = false;
+    if (canvas_.points.size() < 2) return;
+    const bool erase = canvas_.tool == CanvasTool::Eraser || canvas_.penErasing;
+    const std::string id = erase ? "paint.erase" : "paint.stroke";
+    const CommandInfo* info = find(id);
+    if (!info) return;
+    Params p{{"doc", currentDoc_}, {"points", canvas_.points}};
+    if (hasParam(info, "brush")) p["brush"] = canvas_.brush;
+    if (hasParam(info, "size")) p["size"] = static_cast<double>(canvas_.size);
+    if (hasParam(info, "opacity")) p["opacity"] = static_cast<double>(canvas_.opacity);
+    if (!erase && hasParam(info, "color")) p["color"] = toHex({canvas_.color[0], canvas_.color[1], canvas_.color[2], canvas_.color[3]});
+    if (canvas_.usedPen && hasParam(info, "pressures")) {
+        p["pressures"] = NumberList(canvas_.pressures.begin(), canvas_.pressures.end());
+    }
+    Result r = run(id, p);
+    resultFor_ = info->title;
+    r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+    result_ = std::move(r);
+}
+
+void Shell::onEvent(const SDL_Event& e) {
+    switch (e.type) {
+        case SDL_EVENT_PEN_PROXIMITY_IN: canvas_.usedPen = canvas_.usedPen || canvas_.stroking; break;
+        case SDL_EVENT_PEN_DOWN:
+            penDown_ = true;
+            penEraser_ = e.ptouch.eraser;
+            break;
+        case SDL_EVENT_PEN_UP: penDown_ = false; break;
+        case SDL_EVENT_PEN_AXIS:
+            if (e.paxis.axis == SDL_PEN_AXIS_PRESSURE) penPressure_ = e.paxis.value;
+            break;
+        case SDL_EVENT_PEN_MOTION:
+            if (canvas_.stroking && canvas_.usedPen) addStrokePoint({e.pmotion.x, e.pmotion.y}, penPressure_);
+            break;
+        case SDL_EVENT_MOUSE_MOTION:
+            if (canvas_.stroking && !canvas_.usedPen && e.motion.which != SDL_PEN_MOUSEID) addStrokePoint({e.motion.x, e.motion.y}, 1.0f);
+            break;
+        case SDL_EVENT_DROP_FILE:
+            if (e.drop.data) openFile(e.drop.data);
+            break;
+        default: break;
+    }
+}
+
+void Shell::canvasView() {
+    refreshCanvas();
+    ImGuiIO& io = ImGui::GetIO();
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const ImVec2 size{std::max(avail.x, 32.0f), std::max(avail.y, 32.0f)};
+    ImGui::InvisibleButton("canvas", size, ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight | ImGuiButtonFlags_MouseButtonMiddle);
+    const bool hovered = ImGui::IsItemHovered(), active = ImGui::IsItemActive();
+    canvas_.viewMin = ImGui::GetItemRectMin();
+    canvas_.viewSize = size;
+    ImDrawList* dl = ImGui::GetWindowDrawList();
+    const ImVec2 v0 = canvas_.viewMin, v1{v0.x + size.x, v0.y + size.y};
+    dl->PushClipRect(v0, v1, true);
+    dl->AddRectFilled(v0, v1, dark_ ? IM_COL32(40, 42, 46, 255) : IM_COL32(200, 202, 206, 255));
+
+    const Texture& t = canvas_.texture;
+    if (!t.tex) {
+        const std::string text = canvas_.summary.empty() ? "No picture for this file." : canvas_.summary;
+        const ImVec2 ts = ImGui::CalcTextSize(text.c_str(), nullptr, false, size.x * 0.8f);
+        dl->AddText(nullptr, 0, {v0.x + (size.x - ts.x) / 2, v0.y + (size.y - ts.y) / 2}, ImGui::GetColorU32(ImGuiCol_Text),
+                    text.c_str(), nullptr, size.x * 0.8f);
+        dl->PopClipRect();
+        return;
+    }
+    const float w = static_cast<float>(t.srcWidth), h = static_cast<float>(t.srcHeight);
+    if (canvas_.fit) {
+        canvas_.zoom = std::min({size.x * 0.95f / w, size.y * 0.95f / h, 8.0f});
+        canvas_.pan = {(size.x - w * canvas_.zoom) / 2, (size.y - h * canvas_.zoom) / 2};
+        canvas_.fit = false;
+    }
+    if (hovered && io.MouseWheel != 0 && !canvas_.stroking) {
+        const ImVec2 img = toImage(io.MousePos);
+        canvas_.zoom = std::clamp(canvas_.zoom * std::pow(1.15f, io.MouseWheel), 0.02f, 64.0f);
+        canvas_.pan = {io.MousePos.x - v0.x - img.x * canvas_.zoom, io.MousePos.y - v0.y - img.y * canvas_.zoom};
+    }
+    const bool painting = canPaint() && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space);
+    const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
+                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking));
+    if (dragPan) {
+        canvas_.pan.x += io.MouseDelta.x;
+        canvas_.pan.y += io.MouseDelta.y;
+    }
+    const ImVec2 p0{v0.x + canvas_.pan.x, v0.y + canvas_.pan.y}, p1{p0.x + w * canvas_.zoom, p0.y + h * canvas_.zoom};
+    dl->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 255));
+    dl->AddImage(t.id(), p0, p1);
+    dl->AddRect({p0.x - 1, p0.y - 1}, {p1.x + 1, p1.y + 1}, ImGui::GetColorU32(ImGuiCol_Border));
+
+    // painting
+    const bool stroke = canvas_.tool == CanvasTool::Brush || canvas_.tool == CanvasTool::Eraser;
+    if (painting && stroke && ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+        const bool pen = io.MouseSource == ImGuiMouseSource_Pen || penDown_;
+        beginStroke(io.MousePos, pen ? penPressure_ : 1.0f, pen, pen && penEraser_);
+    }
+    if (canvas_.stroking && active) addStrokePoint(io.MousePos, canvas_.usedPen ? penPressure_ : 1.0f);
+    if (canvas_.stroking && !active) endStroke();
+    if (painting && canvas_.tool == CanvasTool::Fill && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
+        const ImVec2 img = toImage(io.MousePos);
+        if (img.x >= 0 && img.y >= 0 && img.x < w && img.y < h && find("paint.fill")) {
+            Result r = run("paint.fill", {{"doc", currentDoc_},
+                                          {"x", static_cast<std::int64_t>(img.x)},
+                                          {"y", static_cast<std::int64_t>(img.y)},
+                                          {"color", toHex({canvas_.color[0], canvas_.color[1], canvas_.color[2], canvas_.color[3]})}});
+            resultFor_ = "Bucket fill";
+            r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+            result_ = std::move(r);
+        }
+    }
+
+    // the stroke being drawn, before the command runs
+    if (canvas_.stroking && canvas_.points.size() >= 2) {
+        const bool erasing = canvas_.tool == CanvasTool::Eraser || canvas_.penErasing;
+        const ImU32 col = erasing ? IM_COL32(255, 255, 255, 160)
+                                  : ImGui::ColorConvertFloat4ToU32({canvas_.color[0], canvas_.color[1], canvas_.color[2],
+                                                                    canvas_.color[3] * canvas_.opacity / 100.0f});
+        std::vector<ImVec2> pts;
+        for (std::size_t i = 0; i + 1 < canvas_.points.size(); i += 2) {
+            pts.push_back({p0.x + static_cast<float>(canvas_.points[i]) * canvas_.zoom,
+                           p0.y + static_cast<float>(canvas_.points[i + 1]) * canvas_.zoom});
+        }
+        const float thick = std::max(1.0f, canvas_.size * canvas_.zoom);
+        if (pts.size() == 1) dl->AddCircleFilled(pts[0], thick / 2, col);
+        else dl->AddPolyline(pts.data(), static_cast<int>(pts.size()), col, ImDrawFlags_None, thick);
+    }
+    if (hovered && painting && stroke) {
+        dl->AddCircle(io.MousePos, std::max(2.0f, canvas_.size * canvas_.zoom / 2), IM_COL32(128, 128, 128, 255), 0, 1.5f);
+    }
+    dl->PopClipRect();
+}
+
+}  // namespace wetwaresuite::gui

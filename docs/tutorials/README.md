@@ -1,7 +1,8 @@
 # wetwaresuite tutorials
 
-Hands-on guides to the suite. Every example was run against the real `wetwaresuite` binary. There is no GUI yet: everything is a command, and the coming GUI will call the same commands.
+Hands-on guides to the suite. Every example was run against the real `wetwaresuite` binary. Everything is a command: the desktop window calls the same commands as the command line, scripts and Claude.
 
+- [The window (GUI)](gui.md): open files, find any action by typing, fill in simple forms, paint with a mouse or pen, undo, Simple and Pro modes, text size; works offline with no graphics card.
 - [Getting started](getting-started.md): build from source, find commands with `list` and `help`, write arguments, and understand document ids and undo.
 - [Headless and batch](headless-and-batch.md): batch scripts with variables and comments, shell loops, CI and cron, exit codes.
 - [Using wetwaresuite with Claude (MCP)](mcp.md): connect Claude Code or Claude Desktop, what Claude sees, example prompts, troubleshooting.

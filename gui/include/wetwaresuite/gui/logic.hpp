@@ -1,0 +1,142 @@
+// The window-free half of the GUI: fuzzy command search, forms generated from
+// CommandInfo, the beginner shortlist, colours, recent files and plain-word
+// messages. Everything here is pure so ctest covers it without a screen.
+#pragma once
+
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "wetwaresuite/core/command.hpp"
+
+namespace wetwaresuite::gui {
+
+// ---- search ----------------------------------------------------------------
+
+struct SearchHit {
+    const CommandInfo* command = nullptr;
+    int score = 0;  // higher is better
+};
+
+// Scores one command for a query: every word of the query has to show up in the
+// title, id or description (or, failing that, as letters in order in the title/id).
+// 0 means no match. An empty query matches everything with score 1.
+int matchScore(const std::string& query, const CommandInfo& info);
+
+// Best matches first (ties keep the input order), at most `limit` (0 = all).
+std::vector<SearchHit> search(const std::string& query, const std::vector<CommandInfo>& commands, std::size_t limit = 0);
+
+// ---- forms -----------------------------------------------------------------
+
+enum class FieldKind {
+    Bool,      // checkbox
+    Choice,    // dropdown of the spec's choices
+    Document,  // dropdown of open document ids
+    Color,     // colour picker + text
+    OpenFile,  // native "open" dialog + text
+    SaveFile,  // native "save" dialog + text
+    Folder,    // native folder dialog + text
+    Integer,   // slider when a range is known, else a number box
+    Number,
+    NumberList,  // comma separated numbers
+    Text,
+};
+
+struct Field {
+    ParamSpec spec;
+    FieldKind kind = FieldKind::Text;
+    std::string label;   // "Max size"
+    std::string help;    // the spec's description, first letter upper-case
+    bool required = false;
+    bool hidden = false;  // filled in by the GUI itself (e.g. "preview")
+    std::optional<double> min, max;  // a range read from the description, e.g. "0..100"
+
+    // Current value. `set` is false for an optional field the person hasn't
+    // touched and that has no default: it's left out so the command picks.
+    bool set = false;
+    bool flag = false;
+    double number = 0;
+    std::string text;  // Text, Color, files, Document, Choice and NumberList
+};
+
+struct Form {
+    std::string command;
+    std::string title;
+    std::string description;
+    std::vector<Field> fields;
+};
+
+// Plain words for a param name: "max_size" -> "Max size", "doc" -> "Document".
+std::string labelFor(const std::string& name);
+
+// Reads "0..100", "1..100" or "-90..90" style ranges out of a description.
+bool parseRange(const std::string& description, double& min, double& max);
+
+FieldKind kindFor(const ParamSpec& spec, const std::string& commandId);
+
+// Builds a form with defaults filled in. `docs` are the open document ids;
+// `currentDoc` pre-selects the document the person is looking at.
+Form buildForm(const CommandInfo& info, const std::vector<std::string>& docs = {}, const std::string& currentDoc = {});
+
+// Turns a form back into params. Returns false and sets `error` (plain words) when
+// a required field is empty or a number list doesn't parse.
+bool toParams(const Form& form, Params& out, std::string& error);
+
+// Sets a field from text the way a person would type it ("12", "yes", "#ff0000").
+bool setFieldText(Field& field, const std::string& text);
+
+// ---- shortlist for beginners ------------------------------------------------
+
+// Up to `count` common commands for one tool, picked by verbs people use most
+// (open, new, save, resize, crop, adjust, stroke, fill, ...), in that order.
+std::vector<std::string> beginnerCommands(const std::string& tool, const std::vector<CommandInfo>& commands,
+                                          std::size_t count = 8);
+
+// The commands of a tool: ids starting with "<tool>.".
+std::vector<const CommandInfo*> toolCommands(const std::string& tool, const std::vector<CommandInfo>& commands);
+
+// ---- opening files ---------------------------------------------------------
+
+// Which "<tool>.open" commands to try for a file, best guess first: tools whose
+// open command mentions the file's extension come before the rest.
+std::vector<std::string> openCandidates(const std::string& path, const std::vector<std::string>& tools,
+                                        const std::vector<CommandInfo>& commands);
+
+// ---- colours ----------------------------------------------------------------
+
+struct Rgba {
+    float r = 0, g = 0, b = 0, a = 1;
+};
+// "#rgb", "#rgba", "#rrggbb", "#rrggbbaa" or "transparent". Names other than that aren't known here.
+std::optional<Rgba> parseHex(const std::string& text);
+std::string toHex(const Rgba& c);  // "#rrggbb", or "#rrggbbaa" when not opaque
+Rgba fromRgb24(std::uint32_t rgb);
+
+// ---- recent files -----------------------------------------------------------
+
+// Puts `path` first, drops an older copy and anything past `limit`.
+std::vector<std::string> pushRecent(std::vector<std::string> recent, const std::string& path, std::size_t limit = 10);
+std::vector<std::string> parseRecent(const std::string& text);  // one path per line
+std::string formatRecent(const std::vector<std::string>& recent);
+
+// ---- messages ---------------------------------------------------------------
+
+// Rewrites the core's terse errors in plain words, e.g.
+// "missing parameter 'width' for photo.new" -> "Please fill in \"Width\".".
+std::string friendlyError(const std::string& message);
+
+// A message as a sentence: capital first letter, full stop at the end.
+std::string sentence(const std::string& message);
+
+// One "Label: value" line per data field of a result.
+std::vector<std::string> resultLines(const Result& result);
+
+// ---- tools ------------------------------------------------------------------
+
+// A plain-word sentence about a tool for the home screen card.
+std::string toolBlurb(const std::string& tool);
+// Display name: "forge" -> "Asset forge".
+std::string toolTitle(const std::string& tool);
+
+}  // namespace wetwaresuite::gui

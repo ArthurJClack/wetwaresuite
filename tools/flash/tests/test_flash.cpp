@@ -311,6 +311,82 @@ void testEspFlow(const fs::path& dir) {
     CHECK(rep2.verified);
 }
 
+// The white-screen bugs: merged images landing at the app slot, firmware for another chip.
+void testEspMergedAndChipChecks(const fs::path& dir) {
+    const Bytes boot = makeEspImage(0, {{0x3FFF0030, blob(256, 3)}});
+    const Bytes app = makeEspImage(0, {{0x3F400020, blob(1200, 4)}});
+    // Arduino's .merged.bin: starts at flash 0x0, 0xFF up to the bootloader at 0x1000
+    Bytes padded(0x10000, 0xFF);
+    std::copy(boot.begin(), boot.end(), padded.begin() + 0x1000);
+    padded[0x8000] = 0xAA;
+    padded[0x8001] = 0x50;
+    padded.insert(padded.end(), app.begin(), app.end());
+    Firmware pf = parseFirmware(padded, "sketch.ino.merged.bin", 0x10000);
+    CHECK(pf.format == "esp-image" && pf.espMerged);
+    CHECK(pf.espMergedBootOffset == 0 && pf.espBootloaderAt == 0x1000);
+
+    resetSims();
+    fs::path fm = dir / "sketch.ino.merged.bin";
+    writeFile(fm, padded);
+    FlashRequest req;
+    req.port = "sim:esp32";
+    req.file = fm.string();  // default address 0x10000: must still land at 0x0
+    req.verify = true;
+    FlashReport rep = flashPort(req);
+    CHECK(rep.regions.size() == 1 && contains(rep.regions[0], "0x00000000"));
+    Bytes img = simDevice("sim:esp32")->flashImage();
+    CHECK(img.size() >= 0x10000 + app.size());
+    CHECK(Bytes(img.begin() + 0x1000, img.begin() + 0x1000 + static_cast<std::ptrdiff_t>(boot.size())) == boot);
+    CHECK(Bytes(img.begin() + 0x10000, img.begin() + 0x10000 + static_cast<std::ptrdiff_t>(app.size())) == app);
+
+    // esptool merge_bin output (starts at the bootloader) pointed at 0x0 goes to 0x1000
+    resetSims();
+    Bytes fromBoot(padded.begin() + 0x1000, padded.end());
+    fs::path fe = dir / "factory.bin";
+    writeFile(fe, fromBoot);
+    FlashRequest req2;
+    req2.port = "sim:esp32";
+    req2.file = fe.string();
+    req2.address = 0x0;
+    FlashReport rep2 = flashPort(req2);
+    CHECK(contains(rep2.regions[0], "0x00001000"));
+    img = simDevice("sim:esp32")->flashImage();
+    CHECK(Bytes(img.begin() + 0x1000, img.begin() + 0x1000 + static_cast<std::ptrdiff_t>(boot.size())) == boot);
+
+    // an ESP32-S3 build on a plain ESP32 is refused before anything is erased
+    resetSims();
+    fs::path fs3 = dir / "s3-app.bin";
+    writeFile(fs3, makeEspImage(9, {{0x3C000020, blob(512)}}));
+    FlashRequest req3;
+    req3.port = "sim:esp32";
+    req3.file = fs3.string();
+    bool refused = false;
+    try {
+        flashPort(req3);
+    } catch (const FirmwareError& e) {
+        refused = contains(e.what(), "built for esp32-s3") && contains(e.what(), "esp32");
+    }
+    CHECK(refused);
+    CHECK(simDevice("sim:esp32")->flashImage().empty());
+
+    // an ESP32 merged image (bootloader at 0x1000) on an S3 is refused too
+    resetSims();
+    Bytes s3merged = padded;
+    s3merged[0x1000 + 12] = 9;  // bootloader says esp32-s3, but sits at 0x1000
+    fs::path fsm = dir / "s3-merged.bin";
+    writeFile(fsm, s3merged);
+    FlashRequest req4;
+    req4.port = "sim:esp32-s3";
+    req4.file = fsm.string();
+    refused = false;
+    try {
+        flashPort(req4);
+    } catch (const FirmwareError& e) {
+        refused = contains(e.what(), "boots from 0x00000000");
+    }
+    CHECK(refused);
+}
+
 void testEsp8266Flow(const fs::path& dir) {
     resetSims();
     const std::string port = "sim:esp8266";
@@ -542,6 +618,7 @@ int main() {
     testAvrFlow("sim:mega2560", "mega.hex", dir);
     testAvrFlow("sim:leonardo", "leo.hex", dir);
     testEspFlow(dir);
+    testEspMergedAndChipChecks(dir);
     testEsp8266Flow(dir);
     testStm32Flow(dir);
     testDetect();

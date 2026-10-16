@@ -222,17 +222,25 @@ FlashReport flashEspFlow(SerialPort& port, const FlashRequest& req, const Resolv
     // gather the regions to write
     std::vector<Part> parts = req.parts;
     if (parts.empty()) parts.push_back({req.address ? *req.address : r.board.defaultAddress, req.file});
-    std::vector<std::pair<std::uint32_t, Bytes>> regions;
+    struct Region {
+        std::uint32_t address;
+        Bytes bytes;
+        Firmware fw;
+    };
+    std::vector<Region> regions;
     for (const auto& p : parts) {
         Firmware fw = loadFirmware(p.path, p.address);
         if (fw.format == "elf")
             throw FirmwareError("ESP boards flash .bin images, not ELF. Point at the app.bin (and the bootloader/partition .bin) the build made");
         Bytes bytes = fw.flatten();
-        if (fw.esp && p.address == r.board.defaultAddress && fw.espMerged)
-            regions.emplace_back(fw.espMergedBootOffset, bytes);  // a merged image starts at the bootloader offset
-        else
-            regions.emplace_back(p.address, bytes);
-        rep.regions.push_back(hex32(regions.back().first) + " +" + std::to_string(bytes.size()));
+        std::uint32_t at = p.address;
+        // a merged image starts at the bootloader offset, wherever it was pointed (0x0, 0x1000 or the app slot)
+        if (fw.esp && fw.espMerged && at != fw.espMergedBootOffset && (at == r.board.defaultAddress || at == 0 || at == 0x1000)) {
+            log("this is a merged image (bootloader + partitions + app), so it goes at " + hex32(fw.espMergedBootOffset) + ", not " + hex32(at));
+            at = fw.espMergedBootOffset;
+        }
+        rep.regions.push_back(hex32(at) + " +" + std::to_string(bytes.size()));
+        regions.push_back({at, std::move(bytes), std::move(fw)});
     }
     EspLoader loader(port, log);
     loader.connect(r.reset);
@@ -241,24 +249,37 @@ FlashReport flashEspFlow(SerialPort& port, const FlashRequest& req, const Resolv
     if (r.board.family == "esp" && findBoard(r.board.name) && chip.name != r.board.mcu && lower(r.board.name).find(chip.name) == std::string::npos) {
         log("note: you said " + r.board.name + " but the chip reports " + chip.name);
     }
+    // refuse firmware built for another chip before erasing anything: it can't boot (the board just sits there)
+    for (const auto& g : regions) {
+        if (!g.fw.esp) continue;
+        const std::string built = g.fw.esp->chipName();
+        if (built.rfind("chip id", 0) != 0 && built != chip.name)
+            throw FirmwareError(fs::path(g.fw.path).filename().string() + " was built for " + built + " but this board is " + chip.name +
+                                ". It wouldn't boot; flash a build made for " + chip.name);
+        if (g.fw.espMerged && g.fw.espBootloaderAt != chip.bootloaderOffset)
+            throw FirmwareError("this merged image puts its bootloader at " + hex32(g.fw.espBootloaderAt) + " but " + chip.name +
+                                " boots from " + hex32(chip.bootloaderOffset) + ". It wouldn't boot; flash a merged image made for " + chip.name);
+    }
     loader.attachFlash(req.espFlashSize);
     if (req.flashBaud && req.flashBaud != r.baud) loader.changeBaud(req.flashBaud);
     std::size_t blocks = 0;
-    for (const auto& [addr, bytes] : regions) {
-        blocks += loader.writeFlash(addr, bytes);
-        rep.bytes += bytes.size();
+    for (const auto& g : regions) {
+        blocks += loader.writeFlash(g.address, g.bytes);
+        rep.bytes += g.bytes.size();
         if (req.verify && chip.md5) {
-            std::string want = md5Hex(bytes.data(), bytes.size());
-            std::string got = loader.flashMd5(addr, static_cast<std::uint32_t>(bytes.size()));
-            if (want != got) throw ProtocolError("MD5 mismatch at " + hex32(addr) + ": flash has " + got + ", file is " + want);
+            std::string want = md5Hex(g.bytes.data(), g.bytes.size());
+            std::string got = loader.flashMd5(g.address, static_cast<std::uint32_t>(g.bytes.size()));
+            if (want != got) throw ProtocolError("MD5 mismatch at " + hex32(g.address) + ": flash has " + got + ", file is " + want);
             rep.verified = true;
             rep.verifyMethod = "md5";
-            log("verified " + hex32(addr) + " by MD5");
+            log("verified " + hex32(g.address) + " by MD5");
         }
     }
     rep.blocks = blocks;
     if (req.verify && !chip.md5) log(chip.name + " ROM can't MD5, so the write isn't verified");
-    loader.finish(req.run);
+    // stay in the loader and reset with EN like esptool: the ROM's own "run" jump skips the reset,
+    // so the app starts with half-set-up peripherals (displays stay blank) or the ROM never answers
+    loader.finish(false);
     if (req.run) {
         loader.hardReset();
         log("reset to run the new firmware");
@@ -443,7 +464,7 @@ DetectReport detectBoard(const std::string& portName, const std::string& only, b
             rep.board = chip.name == "esp8266" ? "esp8266" : chip.name;
             rep.baud = 115200;
             rep.details = "ESP ROM bootloader, chip " + chip.name;
-            loader.finish(true);
+            loader.finish(false);
             loader.hardReset();
             return rep;
         } catch (const std::exception&) {

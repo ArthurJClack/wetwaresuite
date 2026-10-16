@@ -70,6 +70,7 @@ struct Firmware {
     std::optional<EspImageInfo> esp;
     bool espMerged = false;  // bootloader + partition table + app in one file (flash at the bootloader offset)
     std::uint32_t espMergedBootOffset = 0;  // where that merged file's data starts relative to flash 0 (0x1000 or 0)
+    std::uint32_t espBootloaderAt = 0;      // flash address of the merged file's bootloader (must match the chip)
 
     std::size_t byteCount() const;
     std::uint32_t lowAddress() const;

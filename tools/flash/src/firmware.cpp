@@ -488,13 +488,24 @@ std::optional<EspImageInfo> parseEspImage(const Bytes& b) {
 }
 
 bool looksLikeMergedEsp(const Bytes& b, std::uint32_t& bootOffset) {
-    if (b.empty() || b[0] != 0xE9) return false;
-    for (std::uint32_t off : {0x1000u, 0x0u, 0x2000u}) {
-        const std::size_t pt = 0x8000u - off;
-        if (b.size() > pt + 32 && b[pt] == 0xAA && b[pt + 1] == 0x50) {
-            bootOffset = off;
-            return true;
+    if (b.empty()) return false;
+    if (b[0] == 0xE9) {
+        // the file starts with the bootloader (esptool merge_bin): find where the partition table lands
+        for (std::uint32_t off : {0x1000u, 0x0u, 0x2000u}) {
+            const std::size_t pt = 0x8000u - off;
+            if (b.size() > pt + 32 && b[pt] == 0xAA && b[pt + 1] == 0x50) {
+                bootOffset = off;
+                return true;
+            }
         }
+        return false;
+    }
+    // the file starts at flash 0x0 with 0xFF padding before an ESP32/S2 bootloader at 0x1000
+    // (Arduino's .merged.bin, esptool merge_bin --target-offset 0)
+    if (b.size() > 0x8000 + 32 && b[0x1000] == 0xE9 && b[0x8000] == 0xAA && b[0x8001] == 0x50 &&
+        std::all_of(b.begin(), b.begin() + 0x1000, [](std::uint8_t c) { return c == 0xFF; })) {
+        bootOffset = 0;
+        return true;
     }
     return false;
 }
@@ -517,14 +528,16 @@ Firmware parseFirmware(const Bytes& bytes, const std::string& nameHint, std::uin
         } else {
             fw.format = "bin";
             fw.segments.push_back({binAddress, bytes});
-            if (auto esp = parseEspImage(bytes)) {
+            std::uint32_t off = 0;
+            const bool merged = looksLikeMergedEsp(bytes, off);
+            // a padded merged image has its bootloader header 0x1000 into the file
+            const std::size_t head = merged && bytes[0] != 0xE9 ? 0x1000 : 0;
+            if (auto esp = parseEspImage(head ? Bytes(bytes.begin() + static_cast<std::ptrdiff_t>(head), bytes.end()) : bytes)) {
                 fw.format = "esp-image";
                 fw.esp = esp;
-                std::uint32_t off = 0;
-                if (looksLikeMergedEsp(bytes, off)) {
-                    fw.espMerged = true;
-                    fw.espMergedBootOffset = off;
-                }
+                fw.espMerged = merged;
+                fw.espMergedBootOffset = off;
+                fw.espBootloaderAt = merged ? off + static_cast<std::uint32_t>(head) : 0;
             }
         }
     }

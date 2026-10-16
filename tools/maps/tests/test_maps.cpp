@@ -922,57 +922,18 @@ std::string countriesTile(int z, int x, int y, std::size_t& earthFeatures) {
 void testRealDataPack(const fs::path& dir) {
     std::vector<PmtilesTile> tiles;
     std::size_t earthFeatures = 0;
+    // a fresh counter per tile: accumulating straight into earthFeatures across this loop came out
+    // wrong on MSVC CI (each tile counted alone was right, the loop total was not)
     for (int z = 0; z <= 3; ++z) {
-        for (int x = 0; x < (1 << z); ++x) {
-            for (int y = 0; y < (1 << z); ++y) {
-                tiles.push_back({z, static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y), countriesTile(z, x, y, earthFeatures)});
+        const int n = 1 << z;
+        for (int x = 0; x < n; ++x) {
+            for (int y = 0; y < n; ++y) {
+                std::size_t count = 0;
+                std::string bytes = countriesTile(z, x, y, count);
+                earthFeatures += count;
+                tiles.push_back({z, static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y), std::move(bytes)});
             }
         }
-    }
-    if (earthFeatures <= 177 * 2 || std::getenv("WW_DIAG")) {  // diagnostics for a windows-only failure
-        std::size_t polys = 0, pts = 0;
-        for (const auto& f : countries()) {
-            polys += f.geom.polygons.size();
-            for (const auto& poly : f.geom.polygons) for (const auto& ring : poly) pts += ring.size();
-        }
-        std::size_t z0 = 0;
-        const std::string t0 = countriesTile(0, 0, 0, z0);
-        double tx = 0, ty = 0;
-        lonLatToTile(10, 50, 3, tx, ty);
-        const auto sq = clipRing({{0, 0}, {5000, 0}, {5000, 5000}, {0, 5000}}, -64, 4160);
-        const auto sq2 = clipRing({{-5000, -5000}, {100, -5000}, {100, 100}, {-5000, 100}}, -64, 4160);
-        std::size_t zc[4] = {0, 0, 0, 0};
-        for (int z = 1; z <= 3; ++z)
-            for (int x = 0; x < (1 << z); ++x)
-                for (int y = 0; y < (1 << z); ++y) countriesTile(z, x, y, zc[z]);
-        std::fprintf(stderr, "FAILED diag2: z1=%zu z2=%zu z3=%zu sq2=%zu area2=%.1f\n", zc[1], zc[2], zc[3], sq2.size(), sq2.empty() ? 0.0 : ringArea(sq2));
-        for (const auto& f : countries()) {
-            if (f.props.at("name").text() != "France") continue;
-            for (const auto& poly : f.geom.polygons) {
-                std::vector<std::pair<double, double>> pts;
-                for (const auto& c : poly[0]) {
-                    double px = 0, py = 0;
-                    lonLatToTile(c.x, std::clamp(c.y, -85.0, 85.0), 3, px, py);
-                    pts.push_back({(px - 4) * 4096, (py - 2) * 4096});
-                }
-                const auto r = clipRing(pts, -64, 4160);
-                std::fprintf(stderr, "FAILED diag4: n=%zu p0=%.2f,%.2f p1=%.2f,%.2f clip=%zu area=%.1f c0=%.1f,%.1f\n", pts.size(), pts[0].first, pts[0].second,
-                             pts[1].first, pts[1].second, r.size(), r.empty() ? 0.0 : ringArea(r), r.empty() ? 0.0 : double(r[0].first), r.empty() ? 0.0 : double(r[0].second));
-            }
-        }
-        std::string per;
-        for (int x = 0; x < 4; ++x)
-            for (int y = 0; y < 4; ++y) {
-                std::size_t c = 0;
-                countriesTile(2, x, y, c);
-                per += std::to_string(c) + " ";
-            }
-        std::fprintf(stderr, "FAILED diag6: z2 tiles %s\n", per.c_str());
-        std::size_t again = 0;
-        countriesTile(3, 4, 2, again);
-        std::fprintf(stderr, "FAILED diag5: z3(4,2) earth=%zu\n", again);
-        std::fprintf(stderr, "FAILED diag: earth=%zu countries=%zu polys=%zu pts=%zu z0earth=%zu z0bytes=%zu tile(10,50,3)=%.4f,%.4f clipsq=%zu area=%.1f\n",
-                     earthFeatures, countries().size(), polys, pts, z0, t0.size(), tx, ty, sq.size(), sq.empty() ? 0.0 : ringArea(sq));
     }
     CHECK(tiles.size() == 85 && earthFeatures > 177 * 2);
     const std::string meta = R"j({"name":"natural earth z0-3","attribution":"Natural Earth (public domain)","vector_layers":[{"id":"water"},{"id":"earth"},{"id":"boundaries"},{"id":"places"}]})j";

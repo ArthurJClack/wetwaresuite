@@ -960,6 +960,14 @@ void testRealDataPack(const fs::path& dir) {
                              pts[1].first, pts[1].second, r.size(), r.empty() ? 0.0 : ringArea(r), r.empty() ? 0.0 : double(r[0].first), r.empty() ? 0.0 : double(r[0].second));
             }
         }
+        std::string per;
+        for (int x = 0; x < 4; ++x)
+            for (int y = 0; y < 4; ++y) {
+                std::size_t c = 0;
+                countriesTile(2, x, y, c);
+                per += std::to_string(c) + " ";
+            }
+        std::fprintf(stderr, "FAILED diag6: z2 tiles %s\n", per.c_str());
         std::size_t again = 0;
         countriesTile(3, 4, 2, again);
         std::fprintf(stderr, "FAILED diag5: z3(4,2) earth=%zu\n", again);

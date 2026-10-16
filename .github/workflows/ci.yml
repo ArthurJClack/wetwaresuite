@@ -70,12 +70,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: test
-        run: cargo test --locked
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked 2>&1 | tee test.log
       - name: lint
         if: matrix.os == 'ubuntu-latest'
         run: cargo clippy --locked -- -D warnings
       - name: build
         run: cargo build --release --locked
+      - name: report failures
+        if: failure()
+        shell: bash
+        run: |
+          [ -f test.log ] || exit 0
+          body=$(grep -iE "panicked|FAILED|failures:|assert|left:|right:|error" test.log | tail -60 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' || true)
+          echo "::error title=test.log::$body"
 
   share:
     # adding some other label to a PR needs no new run
@@ -92,8 +102,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: test
-        run: cargo test --locked
+        shell: bash
+        run: |
+          set -o pipefail
+          cargo test --locked 2>&1 | tee test.log
       - name: lint
         run: cargo clippy --locked --all-targets -- -D warnings
       - name: build
         run: cargo build --release --locked
+      - name: report failures
+        if: failure()
+        shell: bash
+        run: |
+          [ -f test.log ] || exit 0
+          body=$(grep -iE "panicked|FAILED|failures:|assert|left:|right:|error" test.log | tail -60 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' || true)
+          echo "::error title=test.log::$body"

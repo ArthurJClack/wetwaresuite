@@ -3,6 +3,7 @@
 #include "achclwss/animate/animate.hpp"
 #include "achclwss/audio/commands.hpp"
 #include "achclwss/beats/beats.hpp"
+#include "achclwss/board/board.hpp"
 #include "achclwss/automate/automate.hpp"
 #include "achclwss/blueprint/blueprint.hpp"
 #include "achclwss/cad/cad.hpp"
@@ -47,6 +48,7 @@ const std::set<std::string>& toolNames() {
         "beats",
         "animate",
         "render",
+        "board",
     };
     return names;
 }
@@ -81,6 +83,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("beats")) beats::registerCommands(session);
     if (want("animate")) animate::registerCommands(session);
     if (want("render")) render::registerCommands(session);
+    if (want("board")) board::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

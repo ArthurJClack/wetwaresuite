@@ -54,7 +54,7 @@ pub const TOOLS: &[Tool] = &[
     planned("cut", "cut", "video editing", 4, 20),
     planned("capture", "capture", "screen recording and screenshots", 4, 5),
     planned("office", "office", "documents, spreadsheets, slides, PDF", 4, 250),
-    planned("layout", "layout", "print layout and publishing", 4, 10),
+    available("layout", "layout", "print layout and publishing", 4, 10),
     planned("library", "library", "asset browser for every format", 4, 3),
     planned("automate", "automate", "Python scripting across tools", 4, 20),
     planned("sculpt", "sculpt", "digital sculpting and retopology", 5, 15),

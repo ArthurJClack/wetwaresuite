@@ -166,6 +166,76 @@ photo.info doc=$a
 
 Layers are listed top first and numbered from 0 at the bottom. Edits such as `photo.adjust` apply to the active layer unless you pass `layer=` or `all_layers=true`. To work with layers (add, blend modes, merge), see [paint](paint.md).
 
+## Task 6: retouching (remove spots, blend in, erase objects)
+
+Three commands clean up pictures. They work entirely on your computer, with no internet and no AI needed, and each one is a single undo step.
+
+| You want to | Use | How it works, in plain words |
+| --- | --- | --- |
+| hide a spot, a pimple, dust on the lens or a scratch | **Healing brush** (`photo.heal`) | borrows texture from a clean spot you point at, then matches it to the colour and brightness around the blemish, so there's no visible edge |
+| paste part of one picture into another so it looks like it belongs | **Seamless clone** (`photo.clone_seamless`) | keeps the detail of the pasted part but lets it take on the colours and light of where it lands |
+| make something disappear: a person in the background, a sign, a power line, a date stamp | **Remove object** (`photo.remove_object`) | fills the gap with small pieces copied from around it, continuing lines and patterns into the hole |
+
+### Marking the area
+
+All three need to know *where*. Coordinates are pixels from the top-left corner of the picture.
+
+- **Rectangle** (`shape=rect`, the default): `x` and `y` of the top-left corner plus `width` and `height`.
+- **Ellipse** (`shape=ellipse`): the same four numbers describe the box the ellipse fits in. Good for round spots.
+- **Brush stroke** (`shape=stroke`): a list of points `x1,y1,x2,y2,...` along the line, and a `radius` in pixels. Good for scratches, wires and hairs. One point (`points=120,80`) makes a single round dab.
+
+Make the area a little bigger than the thing you're fixing: a few pixels of margin all round give the best result.
+
+### In the window
+
+1. Open your picture (**Open a file** on the home screen).
+2. Press **Ctrl+K** and type `heal`, `remove` or `seamless`. Pick **Healing brush**, **Remove object** or **Seamless clone**.
+3. Fill in the area: choose the **shape**, then the position and size. For a healing brush, also fill in **from x** and **from y**: a clean spot nearby that has the right kind of texture (skin next to the pimple, sky next to the dust spot). Leave them on **Automatic** to fill smoothly from the edges instead, which is fine for spots on smooth areas.
+4. Press **Run**. Not happy? Press **Ctrl+Z**, change the numbers, and run again.
+
+### On the command line and in scripts
+
+```text
+# retouch.txt
+photo.open path=portrait.jpg -> p
+# a spot at about (412, 300): heal it with skin texture from 30 px to its right
+photo.heal doc=$p shape=ellipse x=402 y=290 width=20 height=20 from_x=442 from_y=300
+# a scratch across the sky: a brush stroke, filled smoothly
+photo.heal doc=$p shape=stroke points=100,80,260,95,410,90 radius=4
+# a tourist in the background: content-aware fill
+photo.remove_object doc=$p x=820 y=410 width=90 height=210
+photo.save doc=$p path=portrait-clean.jpg
+```
+
+```sh
+wetwaresuite batch retouch.txt
+```
+
+Seamless clone with two pictures: put the moon from `moon.jpg` into the sky of `night.jpg`.
+
+```text
+photo.open path=night.jpg -> night
+photo.open path=moon.jpg -> moon
+photo.clone_seamless doc=$night source_doc=$moon from_x=40 from_y=40 width=180 height=180 to_x=900 to_y=120
+photo.save doc=$night path=night-with-moon.jpg
+```
+
+`from_x`, `from_y`, `width` and `height` pick the part of the source to copy; `to_x`, `to_y` say where its top-left lands. The pasted part is an ellipse unless you pass `shape=rect`. Leave out `source_doc` to copy within the same picture (for example, to duplicate a cloud).
+
+### With Claude
+
+> Remove the dust spot near the top-left of /home/me/scan.jpg and the wire across the sky, then save it as scan-clean.jpg.
+
+Claude calls `photo_open`, `photo_preview` to find the spot and the wire, `photo_heal` for the spot (with an ellipse and a clean `from_x`/`from_y` nearby), `photo_remove_object` with `shape=stroke` along the wire, `photo_preview` again to check, and `photo_save`.
+
+### Tips and limits
+
+- **Healing brush** works on any size (up to about 2000x2000 pixels), and brush-sized areas take a few milliseconds. It keeps the edges of the area exactly as they were, so the borrowed texture can't leave a seam. If the result looks blotchy, the spot you borrowed from had a different texture; pick another `from_x`/`from_y`.
+- **Remove object** is for small and medium things: up to 60000 pixels (about 245x245). Bigger areas would take too long, so you get a plain message asking you to select less. Remove a big object in a few overlapping parts instead. A 100x100 pixel area takes a fraction of a second.
+- `patch` (default 9) is the size of the pieces Remove object copies. Use 5 to 7 for fine detail, 13 to 21 for coarse textures like gravel or foliage.
+- All three work on the active layer (or `layer=`), and `preview=true` attaches a picture of the result.
+- Each result says how many pixels changed (`pixels`); the healing brush and seamless clone also report `iterations` and `converged` (whether the blending finished fully; it practically always does).
+
 ## Saving
 
 The extension of `path` picks the format:
@@ -360,3 +430,54 @@ Process every image in a folder. Does not use open documents; not undoable.
 | `overwrite` | boolean | no | false | replace results that already exist (sources are never replaced) |
 
 Returns `processed` and `failed` counts. Fails if no images are found.
+
+### Area parameters (photo.heal and photo.remove_object)
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `shape` | `rect`, `ellipse`, `stroke` | no | `rect` | shape of the area |
+| `x`, `y` | integer | for rect/ellipse | | top-left of the area (or of the ellipse's box) |
+| `width`, `height` | integer | for rect/ellipse | | size of the area |
+| `points` | number list | for stroke | | `x1,y1,x2,y2,...` along the brush stroke |
+| `radius` | number | no | 10 | brush radius in px (stroke) |
+
+### photo.heal
+Healing brush: hide a blemish with texture from a clean spot, matched to the colours around it (Poisson image editing). Undoable.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| area parameters | | yes | | see above |
+| `from_x`, `from_y` | integer | no | | clean spot the middle of the area borrows texture from; leave out to fill smoothly from the edges |
+| `layer` | integer | no | active layer | layer index |
+| `preview` | boolean | no | false | attach a preview |
+
+Returns `pixels`, `iterations` and `converged`.
+
+### photo.clone_seamless
+Paste a rectangle or ellipse from an open image (or the same one) so it blends into its new place. Undoable.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image to paste into |
+| `source_doc` | string | no | same as `doc` | image to copy from |
+| `source_layer` | integer | no | its active layer | layer of the source to copy |
+| `from_x`, `from_y` | integer | yes | | top-left of the area to copy, in the source |
+| `width`, `height` | integer | yes | | size of the area |
+| `to_x`, `to_y` | integer | yes | | where the top-left lands in `doc` |
+| `shape` | `ellipse`, `rect` | no | `ellipse` | shape of the pasted area |
+| `layer` | integer | no | active layer | layer of `doc` to paste into |
+| `preview` | boolean | no | false | attach a preview |
+
+### photo.remove_object
+Content-aware fill: erase an area and fill it from its surroundings (exemplar-based inpainting). At most 60000 pixels. Undoable.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| area parameters | | yes | | see above |
+| `patch` | integer | no | 9 | size of the copied pieces, 3..31 px |
+| `layer` | integer | no | active layer | layer index |
+| `preview` | boolean | no | false | attach a preview |
+
+Returns `pixels`.

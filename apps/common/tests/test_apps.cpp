@@ -82,7 +82,7 @@ int main() {
 
     // ---- the table: every tool in exactly one app, and the hub agrees ----
     {
-        CHECK(apps::all().size() == 12);
+        CHECK(apps::all().size() == 13);
         CHECK(apps::appOfTool("paint")->id == "image");
         CHECK(apps::appOfTool("slicer")->id == "cad");
         CHECK(apps::appOfTool("toolkit")->id == "files");

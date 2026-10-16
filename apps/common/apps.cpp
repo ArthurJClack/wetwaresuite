@@ -19,6 +19,8 @@ const std::vector<App>& all() {
         {"video", "edit videos, take screenshots and record the screen", {"cut", "capture"}, 0xe5484d},
         {"office", "documents, spreadsheets, slides, PDFs, print layouts and notes", {"office", "layout", "notes"}, 0x1f9bd1},
         {"maps", "offline maps, GPS tracks and map data", {"maps"}, 0x3aa76d},
+        {"system", "calculator, code editor, file manager, terminal, system monitor and clock",
+         {"calc", "code"}, 0x6c7bd9},
         {"files", "open, convert, find and batch-process any file (always installed)",
          {"toolkit", "convert", "library", "automate"}, 0x8a8f98, true},
         {"share", "share and live-sync folders with other devices", {"share"}, 0xd4a017},

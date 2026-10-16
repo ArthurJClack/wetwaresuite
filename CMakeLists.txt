@@ -35,13 +35,14 @@ add_subdirectory(libs/mesh)
 add_subdirectory(libs/audio)
 add_subdirectory(libs/pdf)
 add_subdirectory(libs/pdfdoc)
+add_subdirectory(libs/sysutil)
 
 # ---- apps: what gets built ----
 # Each app is its own binary, wetwaresuite-<app>, carrying a few tools (the
 # table is apps/common/apps.cpp; hub/src/catalog.rs mirrors it). Build only
 # some with -DWETWARESUITE_APPS="image;model" or by turning WETWARESUITE_APP_<NAME>
 # off; WETWARESUITE_BUILD_SUITE is the all-in-one `wetwaresuite` binary.
-set(WETWARESUITE_ALL_APPS image draw model game cad electronics sound video office maps files)
+set(WETWARESUITE_ALL_APPS image draw model game cad electronics sound video office maps system files)
 set(WETWARESUITE_APP_TOOLS_image photo paint)
 set(WETWARESUITE_APP_TOOLS_draw vector type board)
 set(WETWARESUITE_APP_TOOLS_model sculpt render animate)
@@ -52,6 +53,7 @@ set(WETWARESUITE_APP_TOOLS_sound audio beats)
 set(WETWARESUITE_APP_TOOLS_video cut capture)
 set(WETWARESUITE_APP_TOOLS_office office layout notes)
 set(WETWARESUITE_APP_TOOLS_maps maps)
+set(WETWARESUITE_APP_TOOLS_system calc code)
 set(WETWARESUITE_APP_TOOLS_files toolkit convert library automate)
 
 option(WETWARESUITE_BUILD_SUITE "Build the all-in-one wetwaresuite binary (every tool)" ON)
@@ -97,7 +99,7 @@ foreach(t IN LISTS _ww_tools)
 endforeach()
 list(REMOVE_DUPLICATES _ww_tools)
 foreach(t toolkit vector blueprint photo paint convert forge slicer cad layout audio cut capture library automate
-          office levels sculpt beats animate render circuit flash board notes maps type)
+          office levels sculpt beats animate render circuit flash board notes maps type calc code)
   if("${t}" IN_LIST _ww_tools)
     add_subdirectory(tools/${t})
   endif()

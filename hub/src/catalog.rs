@@ -49,7 +49,7 @@ pub const TOOLS: &[Tool] = &[
     planned("cad", "cad", "precision parametric 2D/3D CAD", 3, 45),
     planned("blueprint", "blueprint", "technical drafting and floor plans", 3, 8),
     planned("slicer", "slicer", "3D printing slicer", 3, 20),
-    planned("forge", "asset forge", "game assets: meshes, textures, sprites", 3, 25),
+    available("forge", "asset forge", "game assets: meshes, textures, sprites", 3, 25),
     planned("audio", "audio", "multitrack and spectral audio editing", 4, 12),
     planned("cut", "cut", "video editing", 4, 20),
     planned("capture", "capture", "screen recording and screenshots", 4, 5),

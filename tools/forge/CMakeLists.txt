@@ -1,0 +1,10 @@
+add_library(achclwss_forge src/forge.cpp src/mesh_commands.cpp src/image_commands.cpp src/sprite_commands.cpp src/texture.cpp src/meshops.cpp)
+add_library(achclwss::forge ALIAS achclwss_forge)
+target_include_directories(achclwss_forge PUBLIC include)
+target_link_libraries(achclwss_forge PUBLIC achclwss::mesh achclwss::raster PRIVATE nlohmann_json::nlohmann_json)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_forge tests/test_forge.cpp)
+  target_link_libraries(test_forge PRIVATE achclwss::forge achclwss::mcp nlohmann_json::nlohmann_json achclwss_check)
+  add_test(NAME forge COMMAND test_forge)
+endif()

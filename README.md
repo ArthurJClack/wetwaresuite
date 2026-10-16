@@ -37,6 +37,7 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 | `tools/render/` | 3D scenes and renders: primitives and models with materials (metal, glass, glow, textures), lights and sky; a path tracer with denoising and a fast preview rasterizer; turntables to GIF/MP4 |
 | `tools/circuit/` | electronics: schematics from a built-in symbol library (passives, semiconductors, op-amps, regulators, Arduino/ESP32/Blue Pill boards) with ERC, netlists and BOMs; two-layer PCBs with autorouting, ground pours, DRC and Gerber/Excellon output; KiCad netlist import; DC and transient simulation |
 | `tools/flash/` | flash firmware to Arduino (AVR), ESP32/ESP8266 and STM32 headless: list and identify serial ports, detect boards, inspect HEX/BIN/ELF/ESP images, native STK500v1/v2, AVR109, ESP ROM and STM32 USART bootloaders (no external tools) with avrdude/esptool/stm32prog fallbacks, serial monitor and send |
+| `tools/board/` | whiteboards and diagrams: shapes, sticky notes, attached connectors (straight, elbow, curved), freehand ink, layers, themes incl. a sketchy look, auto-layout, Mermaid and outlines in, Excalidraw and draw.io in/out, PNG/SVG/PDF |
 | `apps/achclwss/` | `achclwss`: one headless binary that runs every command, batch scripts, or an MCP server |
 | `hub/` | `hub`: lists tools, prints the MCP config for Claude |
 

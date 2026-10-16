@@ -19,6 +19,7 @@ target_link_libraries(achclwss_suite PUBLIC achclwss::animate)
 target_link_libraries(achclwss_suite PUBLIC achclwss::render)
 target_link_libraries(achclwss_suite PUBLIC achclwss::circuit)
 target_link_libraries(achclwss_suite PUBLIC achclwss::flash)
+target_link_libraries(achclwss_suite PUBLIC achclwss::board)
 
 add_executable(achclwss main.cpp)
 target_link_libraries(achclwss PRIVATE achclwss_suite achclwss::mcp)

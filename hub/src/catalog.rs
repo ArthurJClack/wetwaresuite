@@ -65,7 +65,7 @@ pub const TOOLS: &[Tool] = &[
     available("circuit", "circuit", "schematics and PCB layout", 6, 25),
     available("flash", "flash", "flash firmware to Arduino, ESP32 and STM32", 6, 5),
     planned("maps", "maps", "offline maps and GIS", 6, 15),
-    planned("board", "board", "whiteboard and diagrams", 6, 5),
+    available("board", "board", "whiteboard and diagrams", 6, 5),
     planned("notes", "notes", "markdown notes and knowledge base", 6, 5),
     planned("type", "type", "font design", 6, 8),
 ];

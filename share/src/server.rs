@@ -987,7 +987,7 @@ fn delete(shared: &Shared, req: &Request, rel: &str) -> Response {
     if sync {
         // a sync delete also removes folders it left empty, as git does
         let mut dir = parent.clone();
-        while dir != shared.root && dir.starts_with(&shared.root) && std::fs::remove_dir(&dir).is_ok() {
+        while dir != shared.root && dir.starts_with(&shared.root) && paths::remove_empty_dir(&dir) {
             match dir.parent() {
                 Some(p) => dir = p.to_path_buf(),
                 None => break,

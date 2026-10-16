@@ -1,9 +1,11 @@
 #include "suite.hpp"
 
+#include "achclwss/automate/automate.hpp"
 #include "achclwss/blueprint/blueprint.hpp"
 #include "achclwss/cad/cad.hpp"
 #include "achclwss/convert/convert.hpp"
 #include "achclwss/forge/forge.hpp"
+#include "achclwss/library/library.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
 #include "achclwss/slicer/slicer.hpp"
@@ -23,6 +25,8 @@ const std::set<std::string>& toolNames() {
         "forge",
         "slicer",
         "cad",
+        "library",
+        "automate",
     };
     return names;
 }
@@ -42,6 +46,8 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("forge")) forge::registerCommands(session);
     if (want("slicer")) slicer::registerCommands(session);
     if (want("cad")) cad::registerCommands(session);
+    if (want("library")) library::registerCommands(session);
+    if (want("automate")) automate::registerCommands(session, [only](Session& fresh) { registerAll(fresh, only); });
 }
 
 }  // namespace achclwss::suite

@@ -65,7 +65,10 @@ std::string angleName(Angle a) { return a == Angle::Degrees ? "deg" : a == Angle
 
 // the answer's other forms: exact fraction, hex/bin/oct of whole numbers
 Result answerResult(const Answer& a, const State& st) {
-    Result r = Result::success(a.text, a.isList ? Value(a.text) : Value(a.value.value.toDouble()));
+    // a quantity with a unit is reported in that unit (5 km to mi -> 3.1), not in SI
+    const Quantity& shownQ = a.value;
+    const double shown = shownQ.unit.empty() ? shownQ.value.toDouble() : shownQ.value.toDouble() / shownQ.scale - shownQ.offset;
+    Result r = Result::success(a.text, a.isList ? Value(a.text) : Value(shown));
     r.with("text", a.text);
     if (a.isList) {
         NumberList xs;
@@ -75,9 +78,12 @@ Result answerResult(const Answer& a, const State& st) {
     }
     if (!a.defined.empty()) return r.with("defined", a.defined);
     const Quantity& q = a.value;
-    r.with("value", q.value.toDouble());
-    if (q.value.exact && !q.value.isInteger() && q.unit.empty() && q.dims.none())
-        r.with("exact", q.value.num.toString() + "/" + q.value.den.toString());
+    r.with("value", shown);
+    if (q.value.exact && !q.value.isInteger() && q.unit.empty() && q.dims.none()) {
+        // a fraction is only worth showing while it is short enough to read
+        const std::string frac = q.value.num.toString() + "/" + q.value.den.toString();
+        if (frac.size() <= 40) r.with("exact", frac);
+    }
     if (!q.unit.empty() || !q.dims.none()) r.with("unit", q.unit.empty() ? detail::siUnitText(q.dims) : q.unit);
     if (q.unit.empty() && q.dims.none() && q.value.isInteger() && q.value.num.bits() <= 4096) {
         Settings s = st.settings;
@@ -369,10 +375,16 @@ void registerUnits(CommandRegistry& reg, const StatePtr& st) {
                 const Quantity& q = a.value;
                 std::string dec = q.value.num.toString(), hex = formatQuantity(q, scratch.settings, "hex"),
                             bin = formatQuantity(q, scratch.settings, "bin"), oct = formatQuantity(q, scratch.settings, "oct");
+                // counted from the binary as shown, so negatives count their two's complement bits
+                std::int64_t digits = 0, ones = 0;
+                for (std::size_t i = bin.find('b') == std::string::npos ? 0 : bin.find('b') + 1; i < bin.size(); ++i) {
+                    if (bin[i] == '0' || bin[i] == '1') ++digits;
+                    if (bin[i] == '1') ++ones;
+                }
                 return Result::success("dec " + dec + "\nhex " + hex + "\nbin " + bin + "\noct " + oct)
                     .with("dec", dec).with("hex", hex).with("bin", bin).with("oct", oct)
-                    .with("bits_used", static_cast<std::int64_t>(q.value.num.abs().bits()))
-                    .with("ones", static_cast<std::int64_t>(q.value.num.abs().popcount()));
+                    .with("bits_used", digits)
+                    .with("ones", ones);
             }));
 
     reg.add({"calc.factor", "Prime factors", "Split a whole number into prime factors (360 = 2^3 * 3^2 * 5) and say if it is prime.",

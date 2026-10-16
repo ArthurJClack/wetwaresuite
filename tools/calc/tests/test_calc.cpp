@@ -210,6 +210,13 @@ int main() {
         CHECK(s.run("calc.settings", {{"angle", std::string("rad")}}).ok);
         CHECK(s.run("calc.eval", {{"expression", std::string("sin(pi/2)")}}).message == "1");
         CHECK(s.run("calc.convert", {{"value", std::string("26.2")}, {"from", std::string("mi")}, {"to", std::string("km")}}).message == "26.2 mi = 42.1648128 km");
+        {
+            // an answer with a unit reports its number in that unit
+            Result conv = s.run("calc.eval", {{"expression", std::string("5 km to mi")}});
+            CHECK(conv.ok && std::abs(std::get<double>(conv.value) - 3.10686) < 1e-4);
+            Result temp = s.run("calc.eval", {{"expression", std::string("100 degC to degF")}});
+            CHECK(temp.ok && std::abs(std::get<double>(temp.value) - 212) < 1e-9);
+        }
         Result st = s.run("calc.stats", {{"data", std::string("2 4 4 4 5 5 7 9")}});
         CHECK(st.ok && field(st, "pstdev") == "2");
         Result sv = s.run("calc.solve", {{"equation", std::string("x^2 - 5x + 6 = 0")}});
@@ -218,6 +225,8 @@ int main() {
         CHECK(fa.ok && fa.message == "97 = 97 (prime)");
         Result b = s.run("calc.base", {{"value", std::string("-1")}, {"bits", std::int64_t{16}}});
         CHECK(b.ok && field(b, "hex") == "0xffff");
+        CHECK(field(b, "bits_used") == "16" && field(b, "ones") == "16");
+        CHECK(!s.run("calc.eval", {{"expression", std::string("(1 + 1/800)^-360")}}).field("exact"));  // too long to show
         Result g = s.run("calc.graph", {{"expressions", std::string("sin(x)")}});
         CHECK(g.ok && g.attachments.size() == 1);
         auto out = std::filesystem::temp_directory_path() / "wetwaresuite_calc_graph.png";

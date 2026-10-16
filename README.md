@@ -22,6 +22,7 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 | `tools/cad/` | parametric CAD: feature tree, expressions, holes, patterns, booleans, measuring, STL/3MF export |
 | `tools/slicer/` | 3D printing: printer/filament presets, perimeters, infill, supports, G-code with time and filament estimates |
 | `tools/forge/` | game assets: mesh cleanup, LODs, UVs, sprite sheets and atlases, normal maps, tileable textures, pixel art |
+| `tools/office/` | office suite: spreadsheets with formulas and charts (XLSX/CSV), documents (DOCX/Markdown/PDF), slide decks (PPTX/PDF), PDF merge/split/rotate/text |
 | `tools/convert/` | change a file's type: images and 3D meshes built in, audio/video via ffmpeg, docs via LibreOffice/pandoc |
 | `apps/achclwss/` | `achclwss`: one headless binary that runs every command, batch scripts, or an MCP server |
 | `hub/` | `hub`: lists tools, prints the MCP config for Claude |

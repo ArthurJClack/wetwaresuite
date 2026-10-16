@@ -1366,11 +1366,15 @@ std::vector<Feature> parseCsv(const std::string& text, const ImportOptions& o, s
         }
         bool ok = false;
         if (latCol >= 0 && lonCol >= 0) {
-            auto la = static_cast<std::size_t>(latCol) < row.size() ? parseCoordCell(row[static_cast<std::size_t>(latCol)]) : std::nullopt;
-            auto lo = static_cast<std::size_t>(lonCol) < row.size() ? parseCoordCell(row[static_cast<std::size_t>(lonCol)]) : std::nullopt;
-            if (la && lo && (projected || (std::abs(*la) <= 90 && std::abs(*lo) <= 360))) {
-                f.geom = Geometry::point(*lo, *la);
-                ok = true;
+            std::optional<double> la, lo;
+            if (static_cast<std::size_t>(latCol) < row.size()) la = parseCoordCell(row[static_cast<std::size_t>(latCol)]);
+            if (static_cast<std::size_t>(lonCol) < row.size()) lo = parseCoordCell(row[static_cast<std::size_t>(lonCol)]);
+            if (la && lo) {
+                const double lat = *la, lon = *lo;
+                if (projected || (std::abs(lat) <= 90 && std::abs(lon) <= 360)) {
+                    f.geom = Geometry::point(lon, lat);
+                    ok = true;
+                }
             }
         }
         if (!ok && wktCol >= 0 && static_cast<std::size_t>(wktCol) < row.size() && !trim(row[static_cast<std::size_t>(wktCol)]).empty()) {

@@ -9,6 +9,7 @@
 #include "achclwss/cut/cut.hpp"
 #include "achclwss/forge/forge.hpp"
 #include "achclwss/layout/layout.hpp"
+#include "achclwss/levels/levels.hpp"
 #include "achclwss/library/library.hpp"
 #include "achclwss/office/office.hpp"
 #include "achclwss/paint/paint.hpp"
@@ -37,6 +38,7 @@ const std::set<std::string>& toolNames() {
         "library",
         "automate",
         "office",
+        "levels",
     };
     return names;
 }
@@ -63,6 +65,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("library")) library::registerCommands(session);
     if (want("automate")) automate::registerCommands(session, [only](Session& fresh) { registerAll(fresh, only); });
     if (want("office")) office::registerCommands(session);
+    if (want("levels")) levels::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

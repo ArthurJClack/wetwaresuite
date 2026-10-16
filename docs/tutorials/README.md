@@ -20,4 +20,5 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Capture](capture.md): screenshots of a screen, monitor or region, screen recordings with a microphone, webcam snapshots, and how Claude looks at your screen.
 - [Toolkit](toolkit.md): identify any file from its contents, hex dumps, the standalone `achclwss-toolkit`.
 - [Library](library.md): index an asset drive, tag and rate, find duplicates and similar images, smart collections, thumbnails and contact sheets, asking Claude to find files.
+- [Levels](levels.md): game levels and tilemaps: caves, dungeons and overworlds from a seed, auto-tiling, painting and stamping, entities with properties, collision, Tiled TMX/TMJ, LDtk, JSON and CSV.
 - [Automate](automate.md): scripts with variables, pipelines over folders, watch folders that process dropped files, the Python client, cron and Task Scheduler, pipelines from Claude.

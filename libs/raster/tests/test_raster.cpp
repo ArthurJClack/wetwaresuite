@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
+#include <functional>
+#include <random>
 
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/document.hpp"
@@ -9,6 +11,7 @@
 #include "wetwaresuite/raster/paint.hpp"
 #include "wetwaresuite/raster/parallel.hpp"
 #include "wetwaresuite/raster/pyramid.hpp"
+#include "wetwaresuite/raster/simd.hpp"
 #include "check.hpp"
 
 using namespace wetwaresuite::raster;
@@ -22,6 +25,101 @@ double alphaSum(const Image& img) {
         for (int x = 0; x < img.width(); ++x) s += img.at(x, y).a / 255.0;
     }
     return s;
+}
+
+// Random pixels with plenty of the edge cases: alpha 0 and 255, black and white channels.
+Image noisy(int w, int h, unsigned seed) {
+    std::mt19937 rng(seed);
+    Image img(w, h);
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            auto pick = [&] {
+                const unsigned v = rng() % 10;
+                return static_cast<std::uint8_t>(v == 0 ? 0 : v == 1 ? 255 : rng() % 256);
+            };
+            img.set(x, y, {pick(), pick(), pick(), pick()});
+        }
+    }
+    return img;
+}
+
+bool samePixels(const Image& a, const Image& b) {
+    return a.width() == b.width() && a.height() == b.height() && std::equal(a.data(), a.data() + a.bytes(), b.data());
+}
+
+// Runs fn on the scalar loops and on the SIMD loops; both must give the same bytes.
+bool simdMatches(const std::function<Image()>& fn) {
+    const bool was = setSimdEnabled(false);
+    const Image scalar = fn();
+    setSimdEnabled(true);
+    const Image vec = fn();
+    setSimdEnabled(was);
+    return samePixels(scalar, vec);
+}
+
+void testSimd() {
+    CHECK(std::string(simdName()) == (simdAvailable() ? std::string(simdName()) : std::string("scalar")));
+    const Image a = noisy(67, 41, 1), b = noisy(67, 41, 2), c = noisy(23, 17, 3);
+    for (const auto& name : blendNames()) {
+        const Blend mode = *parseBlend(name);
+        for (double op : {1.0, 0.63, 0.004}) {
+            CHECK(simdMatches([&] {
+                Image d = a;
+                blendOnto(d, b, 0, 0, mode, op);
+                blendOnto(d, c, 30, -5, mode, op);  // offset and clipped
+                return d;
+            }));
+        }
+    }
+    for (int r : {1, 3, 8, 40}) {
+        CHECK(simdMatches([&] {
+            Image d = a;
+            boxBlur(d, r);
+            return d;
+        }));
+    }
+    for (const auto& f : filterNames()) {
+        const Filter filter = *parseFilter(f);
+        for (auto [w, h] : {std::pair{33, 20}, std::pair{150, 97}, std::pair{11, 60}, std::pair{5, 3}}) {
+            CHECK(simdMatches([&] { return resize(a, w, h, filter); }));
+        }
+    }
+    for (auto kind : {Adjust::Saturation, Adjust::Vibrance}) {
+        for (double amount : {-100.0, -35.0, 40.0, 100.0}) {
+            CHECK(simdMatches([&] {
+                Image d = a;
+                adjust(d, kind, amount);
+                return d;
+            }));
+        }
+    }
+    CHECK(simdMatches([&] {
+        Image d = a;
+        unsharpMask(d, 3, 1.5);
+        return d;
+    }));
+    CHECK(simdMatches([&] {
+        LayeredImage li;
+        li.width = a.width();
+        li.height = a.height();
+        li.layers.push_back({"a", a});
+        li.layers.push_back({"b", b, 0.5, Blend::Overlay});
+        Pyramid pyr;
+        pyr.build(li);
+        Image all(64, 64);
+        int y = 0;
+        for (int i = 1; i < pyr.levels(); ++i) {  // every level, stacked into one picture
+            const Image& l = pyr.level(i);
+            for (int row = 0; row < l.height() && y < 64; ++row, ++y) std::copy_n(l.pixel(0, row), static_cast<std::size_t>(l.width()) * 4, all.pixel(0, y));
+        }
+        return all;
+    }));
+    // the SIMD switch is a real switch
+    const bool was = setSimdEnabled(false);
+    CHECK(!simdEnabled());
+    setSimdEnabled(true);
+    CHECK(simdEnabled() == simdAvailable());
+    setSimdEnabled(was);
 }
 
 }  // namespace
@@ -287,5 +385,6 @@ int main() {
         declared.revert();
         CHECK(d->image.layers[1].image.at(15, 15).a == 0 && d->image.layers[1].image.at(11, 11).a == 0);
     }
+    testSimd();
     return check::summary("raster");
 }

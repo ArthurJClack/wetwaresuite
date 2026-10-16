@@ -52,3 +52,31 @@ void parallelRows(int rows, std::size_t costPerRow, const std::function<void(int
 }
 
 }  // namespace wetwaresuite::raster
+
+#include "simd_ops.hpp"
+
+namespace wetwaresuite::raster {
+
+namespace {
+
+std::atomic<bool> gSimd{true};
+
+}  // namespace
+
+bool simdAvailable() { return WW_SIMD != 0; }
+
+const char* simdName() {
+#if WW_SIMD_SSE2
+    return "sse2";
+#elif WW_SIMD_NEON
+    return "neon";
+#else
+    return "scalar";
+#endif
+}
+
+bool simdEnabled() { return WW_SIMD != 0 && gSimd.load(std::memory_order_relaxed); }
+
+bool setSimdEnabled(bool on) { return gSimd.exchange(on); }
+
+}  // namespace wetwaresuite::raster

@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <limits>
 #include <set>
 #include <tuple>
 #include <variant>
@@ -54,6 +55,129 @@ std::string shortNum(double v) {
 }
 
 }  // namespace
+
+// ---- Jenks natural breaks --------------------------------------------------------------
+
+namespace {
+
+// Sorted values grouped into runs: count, sum and sum of squares per group, prefix-summed,
+// so the squared deviation of any run of groups is O(1).
+struct JenksGroups {
+    std::vector<double> w, s, ss;  // prefix sums, size groups + 1
+    std::vector<double> last;      // largest value in each group
+    double cost(std::size_t i, std::size_t j) const {  // groups i..j inclusive
+        const double n = w[j + 1] - w[i];
+        const double sum = s[j + 1] - s[i];
+        const double c = (ss[j + 1] - ss[i]) - sum * sum / n;
+        return c > 0 ? c : 0;
+    }
+};
+
+// Fills cur[j] for j in [lo, hi] (the best cost of putting groups 0..j into m+1 classes), knowing
+// the best split for those j lies in [optLo, optHi]: the split point never moves left as j grows
+// (the squared-deviation cost obeys the quadrangle inequality), so divide and conquer finds every
+// optimum in O(n log n) per class instead of O(n^2).
+void jenksLayer(const JenksGroups& g, const std::vector<double>& prev, std::vector<double>& cur, std::vector<std::uint32_t>& from,
+                std::size_t m, std::size_t lo, std::size_t hi, std::size_t optLo, std::size_t optHi) {
+    // iterative over an explicit stack: deep recursion would be fine (log n), but keep it flat anyway
+    struct Job {
+        std::size_t lo, hi, optLo, optHi;
+    };
+    std::vector<Job> stack{{lo, hi, optLo, optHi}};
+    while (!stack.empty()) {
+        const Job job = stack.back();
+        stack.pop_back();
+        if (job.lo > job.hi) continue;
+        const std::size_t mid = job.lo + (job.hi - job.lo) / 2;
+        double best = std::numeric_limits<double>::infinity();
+        std::size_t arg = std::max(job.optLo, m);
+        // the last class is groups i..mid; groups 0..i-1 hold the other m classes
+        for (std::size_t i = std::max(job.optLo, m); i <= std::min(mid, job.optHi); ++i) {
+            const double c = prev[i - 1] + g.cost(i, mid);
+            if (c < best) {
+                best = c;
+                arg = i;
+            }
+        }
+        cur[mid] = best;
+        from[mid] = static_cast<std::uint32_t>(arg);
+        if (mid > job.lo) stack.push_back({job.lo, mid - 1, job.optLo, arg});
+        stack.push_back({mid + 1, job.hi, arg, job.optHi});
+    }
+}
+
+}  // namespace
+
+std::vector<double> jenksBreaks(std::vector<double> values, int classes, std::size_t maxGroups) {
+    values.erase(std::remove_if(values.begin(), values.end(), [](double v) { return !std::isfinite(v); }), values.end());
+    if (values.empty()) return {};
+    std::sort(values.begin(), values.end());
+    // equal values always share a class, so work on distinct values with their counts; when there are
+    // still too many, merge neighbours into maxGroups runs of equal size (breaks then fall between runs)
+    std::vector<std::size_t> starts;  // index of the first value of each distinct run
+    for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i == 0 || values[i] != values[i - 1]) starts.push_back(i);
+    }
+    const std::size_t distinct = starts.size();
+    maxGroups = std::max<std::size_t>(maxGroups, 2);
+    if (distinct > maxGroups) {
+        // half the runs start at the widest gaps between neighbouring values (where natural breaks fall),
+        // the other half are spread evenly by rank
+        const std::size_t half = maxGroups / 2;
+        std::vector<std::size_t> byGap(distinct - 1);  // byGap[i]: the gap before distinct value i + 1
+        for (std::size_t i = 0; i + 1 < distinct; ++i) byGap[i] = i + 1;
+        std::nth_element(byGap.begin(), byGap.begin() + static_cast<std::ptrdiff_t>(half), byGap.end(), [&](std::size_t a, std::size_t b) {
+            const double ga = values[starts[a]] - values[starts[a] - 1], gb = values[starts[b]] - values[starts[b] - 1];
+            return ga != gb ? ga > gb : a < b;
+        });
+        std::vector<std::size_t> pick(byGap.begin(), byGap.begin() + static_cast<std::ptrdiff_t>(half));
+        for (std::size_t gi = 0; gi < maxGroups - half; ++gi) pick.push_back(gi * distinct / (maxGroups - half));
+        std::sort(pick.begin(), pick.end());
+        pick.erase(std::unique(pick.begin(), pick.end()), pick.end());
+        std::vector<std::size_t> merged;
+        for (std::size_t i : pick) merged.push_back(starts[i]);
+        starts = std::move(merged);
+    }
+    const std::size_t n = starts.size();
+    JenksGroups g;
+    g.w.assign(n + 1, 0);
+    g.s.assign(n + 1, 0);
+    g.ss.assign(n + 1, 0);
+    g.last.resize(n);
+    const double shift = values[values.size() / 2];  // centring keeps the sums of squares accurate
+    for (std::size_t gi = 0; gi < n; ++gi) {
+        const std::size_t b = starts[gi], e = gi + 1 < n ? starts[gi + 1] : values.size();
+        double s = 0, ss = 0;
+        for (std::size_t i = b; i < e; ++i) {
+            const double d = values[i] - shift;
+            s += d;
+            ss += d * d;
+        }
+        g.w[gi + 1] = g.w[gi] + static_cast<double>(e - b);
+        g.s[gi + 1] = g.s[gi] + s;
+        g.ss[gi + 1] = g.ss[gi] + ss;
+        g.last[gi] = values[e - 1];
+    }
+    const std::size_t k = std::min<std::size_t>(static_cast<std::size_t>(std::max(1, classes)), n);
+    std::vector<double> prev(n), cur(n);
+    for (std::size_t j = 0; j < n; ++j) prev[j] = g.cost(0, j);
+    std::vector<std::vector<std::uint32_t>> from(k);  // from[m][j]: first group of the last class
+    for (std::size_t m = 1; m < k; ++m) {
+        from[m].assign(n, 0);
+        std::fill(cur.begin(), cur.end(), std::numeric_limits<double>::infinity());
+        jenksLayer(g, prev, cur, from[m], m, m, n - 1, m, n - 1);
+        std::swap(prev, cur);
+    }
+    std::vector<double> breaks(k + 1);
+    breaks[0] = values.front();
+    std::size_t j = n - 1;
+    for (std::size_t m = k - 1; m >= 1; --m) {
+        breaks[m + 1] = g.last[j];
+        j = from[m][j] - 1;
+    }
+    breaks[1] = g.last[j];
+    return breaks;
+}
 
 std::vector<StyleClass> styleClasses(const Layer& layer) {
     const Style& s = layer.style;
@@ -102,38 +226,17 @@ std::vector<StyleClass> styleClasses(const Layer& layer) {
         if (s.method == "equal") {
             for (int i = 1; i <= k; ++i) breaks.push_back(v.front() + (v.back() - v.front()) * i / k);
         } else if (s.method == "natural" || s.method == "jenks") {
-            // 1-D k-means from quantile seeds: a light stand-in for Jenks natural breaks
-            std::vector<double> centers;
-            for (int i = 0; i < k; ++i) centers.push_back(v[std::min(v.size() - 1, static_cast<std::size_t>((i + 0.5) * static_cast<double>(v.size()) / k))]);
-            for (int iter = 0; iter < 30; ++iter) {
-                std::vector<double> sum(static_cast<std::size_t>(k), 0), cnt(static_cast<std::size_t>(k), 0);
-                for (double x : v) {
-                    std::size_t best = 0;
-                    for (std::size_t c = 1; c < centers.size(); ++c) {
-                        if (std::abs(x - centers[c]) < std::abs(x - centers[best])) best = c;
-                    }
-                    sum[best] += x;
-                    cnt[best] += 1;
-                }
-                for (std::size_t c = 0; c < centers.size(); ++c) {
-                    if (cnt[c] > 0) centers[c] = sum[c] / cnt[c];
-                }
-                std::sort(centers.begin(), centers.end());
-            }
-            for (int i = 0; i + 1 < k; ++i) {
-                const double mid = (centers[static_cast<std::size_t>(i)] + centers[static_cast<std::size_t>(i) + 1]) / 2;
-                // snap to the largest value below the midpoint so classes have real edges
-                auto it = std::upper_bound(v.begin(), v.end(), mid);
-                breaks.push_back(it == v.begin() ? v.front() : *(it - 1));
-            }
-            breaks.push_back(v.back());
+            breaks = jenksBreaks(v, k);  // v is sorted and finite, so this starts at v.front()
         } else {
             for (int i = 1; i <= k; ++i) breaks.push_back(v[std::min(v.size() - 1, static_cast<std::size_t>(std::ceil(static_cast<double>(i) * static_cast<double>(v.size()) / k)) - 1)]);
         }
-        // drop duplicate breaks
+        // drop duplicate breaks; the first class may hold just the minimum (e.g. many zeros), so its top may equal it
         std::vector<double> b{breaks.front()};
         for (std::size_t i = 1; i < breaks.size(); ++i) {
-            if (breaks[i] > b.back()) b.push_back(breaks[i]);
+            if (breaks[i] > b.back() || (b.size() == 1 && breaks.size() > 2 && breaks[i] == b.back() && i + 1 < breaks.size() &&
+                                         breaks[i + 1] > breaks[i])) {
+                b.push_back(breaks[i]);
+            }
         }
         if (b.size() == 1) b.push_back(b[0]);
         const std::size_t n = b.size() - 1;

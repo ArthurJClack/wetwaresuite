@@ -759,7 +759,7 @@ void registerLayerCommands(Session& session) {
 
     reg.add({"maps.style", "Style Layer",
              "Change how a layer draws. Single colour, or mode=categorized (a colour per value of field=) or mode=graduated "
-             "(classes of a numeric field= by method= quantile/equal/natural, coloured along ramp=); polygons in those modes get "
+             "(classes of a numeric field= by method= quantile/equal/natural (Jenks), coloured along ramp=); polygons in those modes get "
              "fill_opacity 0.85 unless you set it. label= shows a field as text. Only the parameters you pass change.",
              {docParam(), layerParam("layer name or index (default: the top layer)"),
               {"stroke", ParamType::String, "line/outline colour, e.g. #2b5cab or red", false},
@@ -779,7 +779,7 @@ void registerLayerCommands(Session& session) {
               {"ramp", ParamType::String, "graduated colours: viridis, blues, reds, greens, spectral, heat, terrain, gray, or #rrggbb,#rrggbb", false},
               {"palette", ParamType::String, "categorized colours, comma-separated (default: a 12-colour palette)", false},
               {"classes", ParamType::Int, "graduated: number of classes (1-12)", false},
-              {"method", ParamType::String, "graduated class breaks", false, {"quantile", "equal", "natural"}},
+              {"method", ParamType::String, "graduated class breaks: quantile (equal counts), equal (equal widths), natural or jenks (Jenks natural breaks)", false, {"quantile", "equal", "natural", "jenks"}},
               {"size_by_value", ParamType::Bool, "graduated points: bigger markers for bigger values", false},
               {"raster_ramp", ParamType::String, "value rasters: colour ramp", false},
               {"hillshade", ParamType::Bool, "value rasters: shade the relief", false},

@@ -43,7 +43,7 @@ open files live in the session's `Workspace` as documents with short ids (`img1`
 
 every edit also records the area it changed on the document (`ImageDoc::takeChanges()`). the GUI canvas keeps a mipmap pyramid of the flattened picture (`raster::Pyramid`: full size, half, quarter, ... down to 1 px); zoomed out it draws from the smallest level that still has a pixel per screen pixel (and fits the GPU's texture limit), and after an edit it re-flattens only the changed area, shrinks it down the chain and re-uploads just that part of the texture.
 
-the heavy pixel loops (box blur, resize including Lanczos-3, layer blending, adjustments, the pyramid) run on `raster::parallelRows`, a small std::thread parallel-for over row slices. every row is computed by the same code whichever thread runs it and blur sums are exact integers, so output is identical on any thread count. `photo.benchmark` times them.
+the heavy pixel loops (box blur, resize including Lanczos-3, layer blending, adjustments, the pyramid) run on `raster::parallelRows`, a small std::thread parallel-for over row slices. every row is computed by the same code whichever thread runs it and blur sums are exact integers, so output is identical on any thread count. the hottest loops (blending, box blur, bilinear and Lanczos resize, saturation, the pyramid) also have hand-written SIMD twins that hold one RGBA pixel per register (`libs/raster/src/simd_ops.hpp`: SSE2 on x86-64, NEON on arm64, both baseline so there's no runtime detection); they do the same float operations in the same order as the scalar loops and the library builds with `-ffp-contract=off`, so `raster::setSimdEnabled(false)` gives the same bytes and `test_raster` checks it. `photo.benchmark` times them (`compare=true` shows scalar vs SIMD).
 
 ## apps
 
@@ -90,7 +90,7 @@ for AI, each app's MCP instructions name the other installed apps (and the missi
 
 ## MCP
 
-`mcp::Server` maps command `toolkit.inspect` to MCP tool `toolkit_inspect` and builds the input schema from the command's params (types, enums, defaults, arrays). it adds `undo`, `redo`, `history` and `documents`, returns `structuredContent` for every result, attaches PNG previews as image content when a command is called with `preview=true`, and lists open documents as resources (`wetwaresuite://doc/img1`). `wetwaresuite mcp` serves every tool in one connection; `--tools photo,paint` narrows it. each `wetwaresuite-<app> mcp` serves just that app.
+`mcp::Server` maps command `toolkit.inspect` to MCP tool `toolkit_inspect` and builds the input schema from the command's params (types, enums, defaults, arrays). it adds `undo`, `redo`, `history` and `documents`, returns `structuredContent` for every result, attaches PNG previews as image content when a command is called with `preview=true`, and lists open documents as resources (`wetwaresuite://doc/img1`). `wetwaresuite mcp` serves every tool in one connection; `--tools photo,paint` narrows it. start-up stays small without lazy loading: registering all ~700 commands is ~4 ms, so the cost that mattered was `tools/list`. it's written straight to text (`mcp::toolsListJson`, byte for byte what nlohmann's `dump()` gives; `test_suite` compares the two over every real command) and cached until the registry's `revision()` changes, and `tools/call` finds its command through a name map instead of copying the registry. `--version` and `mcp --tools` skip the full registration. each `wetwaresuite-<app> mcp` serves just that app.
 
 ## staying light
 

@@ -508,6 +508,7 @@ How it works:
 - After the first failed download, the render stops trying, draws the missing area blank and warns you. The render still succeeds.
 - "© OpenStreetMap contributors" is printed on the map, as the licence requires.
 - `tile_url=` points at another server that uses `{z}/{x}/{y}` (for example your own tile server). Respect its usage terms.
+- `tile_url=` can also be a **folder of tiles on your disk**, for example `tile_url=D:/maps/tiles/{z}/{x}/{y}.png` (tiles you exported from another program, copied from a friend, or kept from an earlier `tile_cache=`). Those are read straight from the folder and never downloaded, with or without `offline=true`. MBTiles files are SQLite databases: unpack one to a `{z}/{x}/{y}.png` folder first with a tool such as `mb-util`, and make sure it writes XYZ rows (counted from the top), not TMS rows (counted from the bottom).
 
 The run for this tutorial had no access to tile.openstreetmap.org, so it shows the offline behaviour:
 

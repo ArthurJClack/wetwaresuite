@@ -1,0 +1,8 @@
+.git
+build
+build-*
+**/target
+*.log
+.cache
+.vscode
+.idea

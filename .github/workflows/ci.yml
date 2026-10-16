@@ -1,17 +1,29 @@
 name: ci
 
+# Linux runs on every push and pull request. Windows and macOS minutes cost more,
+# so those run on pushes to main, on a manual run (Actions > ci > Run workflow),
+# and on pull requests labelled `full-ci`.
 on:
   push:
-    branches: [main]
+    branches: ['**']
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+concurrency:
+  # a run for an unrelated label gets its own group, so it never cancels a real run
+  group: ci-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}${{ github.event.action == 'labeled' && github.event.label.name != 'full-ci' && format('-{0}', github.run_id) || '' }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 jobs:
   cpp:
+    # adding some other label to a PR needs no new run
+    if: github.event.action != 'labeled' || github.event.label.name == 'full-ci'
     name: c++ (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) && '["ubuntu-latest", "windows-latest", "macos-latest"]' || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -44,11 +56,13 @@ jobs:
           done
 
   hub:
+    # adding some other label to a PR needs no new run
+    if: github.event.action != 'labeled' || github.event.label.name == 'full-ci'
     name: hub (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) && '["ubuntu-latest", "windows-latest", "macos-latest"]' || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -64,11 +78,13 @@ jobs:
         run: cargo build --release --locked
 
   share:
+    # adding some other label to a PR needs no new run
+    if: github.event.action != 'labeled' || github.event.label.name == 'full-ci'
     name: share (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: ${{ fromJSON((github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && contains(github.event.pull_request.labels.*.name, 'full-ci'))) && '["ubuntu-latest", "windows-latest", "macos-latest"]' || '["ubuntu-latest"]') }}
     runs-on: ${{ matrix.os }}
     defaults:
       run:

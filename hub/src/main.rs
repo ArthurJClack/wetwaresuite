@@ -1,7 +1,11 @@
-//! hub: the wetwaresuite install manager. Lists tools, writes Claude's MCP config,
-//! and will install tools once release packages are published.
+//! hub: the wetwaresuite install manager. Lists tools, installs them from a
+//! local folder or archive, and connects them to Claude (optional). Never
+//! touches the network.
 
 mod catalog;
+mod connect;
+mod json;
+mod local_install;
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -14,7 +18,8 @@ fn usage() {
     println!(
         "usage: hub <command>\n\n  \
          list                       show every tool and its status\n  \
-         install <tool>             install a tool\n  \
+         install <tool> --from P    install a tool from a folder, archive or program file on this computer\n  \
+         connect [--dry-run] [--remove]  add the tools to Claude Desktop / Claude Code (`hub connect --help`)\n  \
          mcp-config [--bin-dir DIR] print the MCP config that connects Claude to installed tools\n  \
          share [ARGS...]            run wetwaresuite-share: share or live-sync a folder (`hub share help`)\n  \
          --version"
@@ -40,8 +45,9 @@ fn install(id: &str) -> ExitCode {
     match tool.status {
         Status::Planned => eprintln!("{} is planned for phase {} and isn't built yet", tool.name, tool.phase),
         Status::Available => eprintln!(
-            "{} builds from source for now (see README); downloadable packages come with the release pipeline",
-            tool.name
+            "{} builds from source (see README). If you have a build or a release archive on this computer, \
+             run `hub install {} --from <folder or archive>`",
+            tool.name, tool.id
         ),
     }
     ExitCode::FAILURE
@@ -76,7 +82,7 @@ fn exe_name(binary: &str) -> String {
 
 /// Builds the `mcpServers` block for Claude Desktop / Claude Code: one entry
 /// per MCP binary, each serving every available tool it contains.
-fn mcp_config(bin_dir: &Path) -> String {
+fn mcp_binaries() -> Vec<&'static str> {
     let mut binaries: Vec<&str> = Vec::new();
     for t in TOOLS.iter().filter(|t| t.status == Status::Available) {
         if let Some(b) = t.mcp_binary {
@@ -85,6 +91,11 @@ fn mcp_config(bin_dir: &Path) -> String {
             }
         }
     }
+    binaries
+}
+
+fn mcp_config(bin_dir: &Path) -> String {
+    let binaries = mcp_binaries();
     let entries: Vec<String> = binaries
         .iter()
         .map(|b| {
@@ -128,8 +139,22 @@ fn share(args: &[String]) -> ExitCode {
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("share") {
-        return share(&args[1..]);
+    match args.first().map(String::as_str) {
+        Some("share") => return share(&args[1..]),
+        Some("connect") if args.iter().any(|a| a == "--help" || a == "-h") => {
+            println!("{}", connect::USAGE);
+            return ExitCode::SUCCESS;
+        }
+        Some("connect") => return connect::run(&args[1..], &mcp_binaries(), &default_bin_dir(), exe_name),
+        Some("install") if args.len() > 2 => {
+            let Some(tool) = catalog::find(&args[1]).filter(|t| t.status == Status::Available) else {
+                eprintln!("unknown or unbuilt tool '{}', run `hub list` to see them", args[1]);
+                return ExitCode::FAILURE;
+            };
+            let binary = tool.mcp_binary.unwrap_or(catalog::SUITE);
+            return local_install::run(tool.id, binary, &args[2..], &default_bin_dir(), exe_name);
+        }
+        _ => {}
     }
     match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["list"] => list(),

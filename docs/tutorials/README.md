@@ -5,6 +5,9 @@ Hands-on guides to the suite. Every example was run against the real `wetwaresui
 - [Getting started](getting-started.md): build from source, find commands with `list` and `help`, write arguments, and understand document ids and undo.
 - [Headless and batch](headless-and-batch.md): batch scripts with variables and comments, shell loops, CI and cron, exit codes.
 - [Using wetwaresuite with Claude (MCP)](mcp.md): connect Claude Code or Claude Desktop, what Claude sees, example prompts, troubleshooting.
+- [Connecting an AI (optional)](ai-connect.md): `hub connect` sets up Claude Desktop and Claude Code in one command (with backups, `--dry-run` and `--remove`); `wetwaresuite mcp --http` serves the tools over HTTP to another computer, with a token.
+- [Working offline](offline.md): everything works with no internet and no AI; every feature that could touch a network, and how to keep it offline; building and installing from a USB stick.
+- [Docker (optional)](docker.md): run the suite in a container, one-off commands on a mounted folder, or as an HTTP MCP server.
 - [Photo](photo.md): resize folders for the web, fix dark photos, crop, rotate, frame, effects.
 - [Paint](paint.md): brush strokes with tablet pressure, presets, layers, blend modes, fills, saving `.ora`.
 - [Vector](vector.md): drawing shapes and paths, styling, SVG in and out, a full logo.

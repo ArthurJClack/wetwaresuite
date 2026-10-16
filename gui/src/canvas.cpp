@@ -1,11 +1,16 @@
 // The canvas: shows the open document's picture with zoom and pan, and turns
 // mouse and pen input into paint.stroke / paint.erase / paint.fill commands.
+// Images are drawn from a mipmap pyramid: zoomed out, the texture holds a half,
+// quarter, ... size copy instead of the full picture, and after an edit only the
+// changed area is re-flattened and re-uploaded.
 #include <algorithm>
 #include <cmath>
+#include <map>
 
 #include "shell.hpp"
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/raster/pyramid.hpp"
 
 namespace wetwaresuite::gui {
 
@@ -17,6 +22,46 @@ bool hasParam(const CommandInfo* info, const std::string& name) {
         if (p.name == name) return true;
     }
     return false;
+}
+
+// The pyramid of the image on the canvas, and which of its levels the texture holds.
+struct MipCache {
+    std::weak_ptr<raster::ImageDoc> doc;
+    raster::Pyramid pyramid;
+    int level = -1;
+};
+
+std::map<const void*, MipCache>& mipCaches() {
+    static std::map<const void*, MipCache> caches;  // one per window
+    return caches;
+}
+
+int maxTextureSide(SDL_Renderer* renderer) {
+    const int side = static_cast<int>(
+        SDL_GetNumberProperty(SDL_GetRendererProperties(renderer), SDL_PROP_RENDERER_MAX_TEXTURE_SIZE_NUMBER, 4096));
+    return side > 0 ? side : 4096;
+}
+
+// Puts the right pyramid level for `zoom` on the texture: a full upload when the level changes,
+// else (when `changes` is set) just the area the last update touched.
+bool showLevel(SDL_Renderer* renderer, Texture& tex, MipCache& mc, float zoom, bool changes) {
+    if (mc.pyramid.levels() == 0) return false;
+    const int level = mc.pyramid.levelFor(zoom, maxTextureSide(renderer));
+    const raster::Image& img = mc.pyramid.level(level);
+    if (level != mc.level || !tex.tex || tex.width != img.width() || tex.height != img.height()) {
+        if (!tex.upload(renderer, img.data(), img.width(), img.height())) return false;
+        mc.level = level;
+    } else if (changes) {
+        const raster::PixelRect r = mc.pyramid.changed(level);
+        if (!r.empty()) {
+            const SDL_Rect rect{r.x0, r.y0, r.width(), r.height()};
+            SDL_UpdateTexture(tex.tex, &rect, img.pixel(r.x0, r.y0), img.width() * 4);
+        }
+    }
+    // the zoom maths works in full-size picture px whatever level is shown
+    tex.srcWidth = mc.pyramid.level(0).width();
+    tex.srcHeight = mc.pyramid.level(0).height();
+    return true;
 }
 
 }  // namespace
@@ -33,14 +78,28 @@ void Shell::refreshCanvas() {
     canvas_.summary.clear();
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc) {
+        mipCaches().erase(this);
         canvas_.texture.reset();
         return;
     }
     canvas_.summary = doc->summary();
-    if (auto img = std::dynamic_pointer_cast<raster::ImageDoc>(doc)) {
-        raster::Image flat = img->flatten();
-        if (!flat.empty() && canvas_.texture.upload(renderer_, flat.data(), flat.width(), flat.height())) return;
+    if (auto img = std::dynamic_pointer_cast<raster::ImageDoc>(doc); img && img->image.width > 0 && img->image.height > 0) {
+        MipCache& mc = mipCaches()[this];
+        const raster::ImageDoc::Changes changes = img->takeChanges();
+        if (mc.doc.lock() != img || changes.all || !mc.pyramid.update(img->image, changes.rect)) {
+            mc.pyramid.build(img->image);
+            mc.level = -1;
+        }
+        mc.doc = img;
+        // a pending "fit" would zoom out right away, so start on the level it will need
+        float zoom = canvas_.zoom;
+        if (canvas_.fit && canvas_.viewSize.x > 0 && canvas_.viewSize.y > 0) {
+            zoom = std::min({canvas_.viewSize.x * 0.95f / static_cast<float>(img->image.width),
+                             canvas_.viewSize.y * 0.95f / static_cast<float>(img->image.height), 8.0f});
+        }
+        if (showLevel(renderer_, canvas_.texture, mc, zoom, true)) return;
     }
+    mipCaches().erase(this);
     // anything else: the document's own preview, else the tool's preview command
     std::string png;
     if (auto att = doc->preview()) png = att->bytes;
@@ -252,6 +311,9 @@ void Shell::canvasView() {
     if (dragPan) {
         canvas_.pan.x += io.MouseDelta.x;
         canvas_.pan.y += io.MouseDelta.y;
+    }
+    if (auto it = mipCaches().find(this); it != mipCaches().end() && !it->second.doc.expired()) {
+        showLevel(renderer_, canvas_.texture, it->second, canvas_.zoom, false);  // zoom changed: maybe another level
     }
     const ImVec2 p0{v0.x + canvas_.pan.x, v0.y + canvas_.pan.y}, p1{p0.x + w * canvas_.zoom, p0.y + h * canvas_.zoom};
     dl->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 255));

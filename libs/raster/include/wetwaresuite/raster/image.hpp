@@ -20,6 +20,15 @@ struct Color {
     bool operator==(const Color&) const = default;
 };
 
+// A rectangle of pixels, x0/y0 inclusive, x1/y1 exclusive.
+struct PixelRect {
+    int x0 = 0, y0 = 0, x1 = 0, y1 = 0;
+    bool empty() const { return x1 <= x0 || y1 <= y0; }
+    int width() const { return x1 - x0; }
+    int height() const { return y1 - y0; }
+    void add(const PixelRect& r);  // grows to cover r too
+};
+
 class Image {
 public:
     Image() = default;
@@ -65,5 +74,7 @@ void blendOnto(Image& dst, const Image& src, int x, int y, Blend mode, double op
 
 // Flattens visible layers, bottom first, into one image.
 Image composite(const std::vector<Layer>& layers, int width, int height);
+// Flattens only the width x height area starting at (x, y), e.g. to refresh the part of a view that changed.
+Image compositeRegion(const std::vector<Layer>& layers, int x, int y, int width, int height);
 
 }  // namespace wetwaresuite::raster

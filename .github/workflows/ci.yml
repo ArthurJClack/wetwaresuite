@@ -18,13 +18,19 @@ jobs:
       - name: configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: build
-        run: cmake --build build --config Release --parallel
+        shell: bash
+        run: |
+          set -o pipefail
+          cmake --build build --config Release --parallel 2>&1 | tee build.log
       - name: test
         run: ctest --test-dir build -C Release --output-on-failure
-      - name: report failed checks
+      - name: report failures
         if: failure()
         shell: bash
-        run: grep -h "FAILED" build/Testing/Temporary/LastTest*.log | head -40 | sed 's/^/::error::/' || true
+        run: |
+          # surface compiler errors and failed checks as annotations, readable without the full log
+          { grep -hiE "error[: ]|error C[0-9]" build.log 2>/dev/null | head -30
+            grep -h "FAILED" build/Testing/Temporary/LastTest*.log 2>/dev/null | head -30; } | sed 's/^/::error::/' || true
 
   hub:
     name: hub (${{ matrix.os }})

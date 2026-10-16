@@ -156,7 +156,7 @@ esp_entry: 0x00000000
 checksum_ok: true
 ```
 
-`flash_size` and `flash_mode` come from the image header, which the build set (this one was made by a test script). A merged/factory image (bootloader, partition table and app in one file) is recognised and reported as `merged_image_at: 0x00001000` (or `0x00000000` on the S3/C3/C6); flash writes it at that offset.
+`flash_size` and `flash_mode` come from the image header, which the build set (this one was made by a test script). A merged/factory image (bootloader, partition table and app in one file) is recognised and reported as `merged_image_at: 0x00001000` (or `0x00000000` on the S3/C3/C6); flash writes it at that offset even if you point it at 0x0 or the app slot, including Arduino's `.merged.bin` (which starts at 0x0 with padding). Before erasing anything, flash checks the chip the image was built for against the chip on the board and refuses a mismatch (an ESP32-S3 build on a plain ESP32 can't boot, and display boards just show a white screen).
 
 ELF files list their machine (AVR, ARM, Xtensa, RISC-V), entry point and allocated sections with their flash (load) addresses; the loadable program headers are what gets written, exactly like `objcopy -O ihex`. AVR ELFs drop the RAM/EEPROM/fuse address spaces (0x800000 and above).
 

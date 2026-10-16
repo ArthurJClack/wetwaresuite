@@ -37,33 +37,87 @@ std::string fileName(const std::string& path) {
 
 }  // namespace
 
+namespace {
+
+ImVec4 im(const Rgba& c) { return {c.r, c.g, c.b, c.a}; }
+
+// Every colour from a picked palette (see palette.hpp for what each one drives).
+void applyTheme(ImGuiStyle& s, const Theme& th) {
+    if (th.dark) ImGui::StyleColorsDark(&s);
+    else ImGui::StyleColorsLight(&s);
+    ImVec4* c = s.Colors;
+    c[ImGuiCol_Text] = im(th.text);
+    c[ImGuiCol_TextDisabled] = im(th.textMuted);
+    c[ImGuiCol_WindowBg] = c[ImGuiCol_ChildBg] = im(th.background);
+    c[ImGuiCol_PopupBg] = im(th.popup);
+    c[ImGuiCol_Border] = c[ImGuiCol_Separator] = im(th.border);
+    c[ImGuiCol_SeparatorHovered] = c[ImGuiCol_SeparatorActive] = im(th.focus);
+    c[ImGuiCol_FrameBg] = im(th.frame);
+    c[ImGuiCol_FrameBgHovered] = im(th.frameHover);
+    c[ImGuiCol_FrameBgActive] = im(th.frameActive);
+    c[ImGuiCol_Button] = im(th.button);
+    c[ImGuiCol_ButtonHovered] = im(th.buttonHover);
+    c[ImGuiCol_ButtonActive] = im(th.buttonActive);
+    c[ImGuiCol_Header] = im(th.header);
+    c[ImGuiCol_HeaderHovered] = im(th.headerHover);
+    c[ImGuiCol_HeaderActive] = im(th.headerActive);
+    c[ImGuiCol_CheckMark] = c[ImGuiCol_SliderGrab] = im(th.highlight);
+    c[ImGuiCol_SliderGrabActive] = im(th.accent);
+    c[ImGuiCol_ScrollbarBg] = im(th.background);
+    c[ImGuiCol_ScrollbarGrab] = im(th.button);
+    c[ImGuiCol_ScrollbarGrabHovered] = im(th.buttonHover);
+    c[ImGuiCol_ScrollbarGrabActive] = im(th.buttonActive);
+    c[ImGuiCol_TextLink] = im(th.link);
+    c[ImGuiCol_TextSelectedBg] = im(th.selection);
+    c[ImGuiCol_NavCursor] = im(th.focus);
+    c[ImGuiCol_ResizeGrip] = c[ImGuiCol_ResizeGripHovered] = c[ImGuiCol_ResizeGripActive] = im(th.border);
+}
+
+}  // namespace
+
 void Shell::applyStyle(float dpiScale) {
     dpi_ = dpiScale > 0 ? dpiScale : 1.0f;
     ImGuiStyle s;
-    if (dark_) ImGui::StyleColorsDark(&s);
-    else ImGui::StyleColorsLight(&s);
-    const Rgba a = fromRgb24(app_.accent);
-    const ImVec4 accent{a.r, a.g, a.b, 1.0f};
-    ImVec4* c = s.Colors;
-    const ImVec4 bg = dark_ ? ImVec4{0.08f, 0.09f, 0.10f, 1} : ImVec4{0.98f, 0.98f, 0.98f, 1};
-    const ImVec4 fg = dark_ ? ImVec4{1, 1, 1, 1} : ImVec4{0, 0, 0, 1};
-    c[ImGuiCol_Text] = fg;
-    c[ImGuiCol_TextDisabled] = dark_ ? ImVec4{0.74f, 0.76f, 0.80f, 1} : ImVec4{0.30f, 0.31f, 0.33f, 1};
-    c[ImGuiCol_WindowBg] = c[ImGuiCol_ChildBg] = bg;
-    c[ImGuiCol_PopupBg] = dark_ ? ImVec4{0.12f, 0.13f, 0.15f, 1} : ImVec4{1, 1, 1, 1};
-    c[ImGuiCol_Border] = dark_ ? ImVec4{0.42f, 0.44f, 0.48f, 1} : ImVec4{0.45f, 0.45f, 0.48f, 1};
-    c[ImGuiCol_FrameBg] = dark_ ? ImVec4{0.16f, 0.17f, 0.19f, 1} : ImVec4{0.92f, 0.92f, 0.93f, 1};
-    c[ImGuiCol_FrameBgHovered] = mix(c[ImGuiCol_FrameBg], accent, 0.25f);
-    c[ImGuiCol_FrameBgActive] = mix(c[ImGuiCol_FrameBg], accent, 0.40f);
-    c[ImGuiCol_Button] = mix(c[ImGuiCol_FrameBg], accent, dark_ ? 0.30f : 0.18f);
-    c[ImGuiCol_ButtonHovered] = mix(c[ImGuiCol_FrameBg], accent, 0.55f);
-    c[ImGuiCol_ButtonActive] = mix(c[ImGuiCol_FrameBg], accent, 0.80f);
-    c[ImGuiCol_Header] = mix(bg, accent, 0.35f);
-    c[ImGuiCol_HeaderHovered] = mix(bg, accent, 0.50f);
-    c[ImGuiCol_HeaderActive] = mix(bg, accent, 0.70f);
-    c[ImGuiCol_CheckMark] = c[ImGuiCol_SliderGrab] = dark_ ? mix(accent, {1, 1, 1, 1}, 0.25f) : accent;
-    c[ImGuiCol_SliderGrabActive] = accent;
-    c[ImGuiCol_NavCursor] = accent;
+    if (custom_) {
+        theme_ = deriveTheme(palette_);
+        applyTheme(s, theme_);
+        accent_ = im(theme_.accent);
+        accentHover_ = im(theme_.accentHover);
+        accentActive_ = im(theme_.accentActive);
+        accentText_ = im(theme_.accentText);
+        title_ = im(theme_.title);
+    } else {
+        // the app's own look: its accent on the standard dark or light surfaces
+        if (dark_) ImGui::StyleColorsDark(&s);
+        else ImGui::StyleColorsLight(&s);
+        const Rgba a = fromRgb24(app_.accent);
+        const ImVec4 accent{a.r, a.g, a.b, 1.0f};
+        ImVec4* c = s.Colors;
+        const ImVec4 bg = dark_ ? ImVec4{0.08f, 0.09f, 0.10f, 1} : ImVec4{0.98f, 0.98f, 0.98f, 1};
+        const ImVec4 fg = dark_ ? ImVec4{1, 1, 1, 1} : ImVec4{0, 0, 0, 1};
+        c[ImGuiCol_Text] = fg;
+        c[ImGuiCol_TextDisabled] = dark_ ? ImVec4{0.74f, 0.76f, 0.80f, 1} : ImVec4{0.30f, 0.31f, 0.33f, 1};
+        c[ImGuiCol_WindowBg] = c[ImGuiCol_ChildBg] = bg;
+        c[ImGuiCol_PopupBg] = dark_ ? ImVec4{0.12f, 0.13f, 0.15f, 1} : ImVec4{1, 1, 1, 1};
+        c[ImGuiCol_Border] = dark_ ? ImVec4{0.42f, 0.44f, 0.48f, 1} : ImVec4{0.45f, 0.45f, 0.48f, 1};
+        c[ImGuiCol_FrameBg] = dark_ ? ImVec4{0.16f, 0.17f, 0.19f, 1} : ImVec4{0.92f, 0.92f, 0.93f, 1};
+        c[ImGuiCol_FrameBgHovered] = mix(c[ImGuiCol_FrameBg], accent, 0.25f);
+        c[ImGuiCol_FrameBgActive] = mix(c[ImGuiCol_FrameBg], accent, 0.40f);
+        c[ImGuiCol_Button] = mix(c[ImGuiCol_FrameBg], accent, dark_ ? 0.30f : 0.18f);
+        c[ImGuiCol_ButtonHovered] = mix(c[ImGuiCol_FrameBg], accent, 0.55f);
+        c[ImGuiCol_ButtonActive] = mix(c[ImGuiCol_FrameBg], accent, 0.80f);
+        c[ImGuiCol_Header] = mix(bg, accent, 0.35f);
+        c[ImGuiCol_HeaderHovered] = mix(bg, accent, 0.50f);
+        c[ImGuiCol_HeaderActive] = mix(bg, accent, 0.70f);
+        c[ImGuiCol_CheckMark] = c[ImGuiCol_SliderGrab] = dark_ ? mix(accent, {1, 1, 1, 1}, 0.25f) : accent;
+        c[ImGuiCol_SliderGrabActive] = accent;
+        c[ImGuiCol_NavCursor] = accent;
+        accent_ = accent;
+        accentHover_ = mix(accent, {1, 1, 1, 1}, 0.2f);
+        accentActive_ = mix(accent, {0, 0, 0, 1}, 0.2f);
+        accentText_ = luminance(accent) > 0.55f ? ImVec4{0, 0, 0, 1} : ImVec4{1, 1, 1, 1};
+        title_ = accent;
+    }
     s.FrameRounding = s.GrabRounding = s.ChildRounding = s.PopupRounding = 6;
     s.FrameBorderSize = 1;
     s.ChildBorderSize = 1;
@@ -80,12 +134,10 @@ void Shell::applyStyle(float dpiScale) {
 }
 
 bool Shell::accentButton(const char* label, ImVec2 size) {
-    const Rgba a = fromRgb24(app_.accent);
-    const ImVec4 accent{a.r, a.g, a.b, 1.0f};
-    ImGui::PushStyleColor(ImGuiCol_Button, accent);
-    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, mix(accent, {1, 1, 1, 1}, 0.2f));
-    ImGui::PushStyleColor(ImGuiCol_ButtonActive, mix(accent, {0, 0, 0, 1}, 0.2f));
-    ImGui::PushStyleColor(ImGuiCol_Text, luminance(accent) > 0.55f ? ImVec4{0, 0, 0, 1} : ImVec4{1, 1, 1, 1});
+    ImGui::PushStyleColor(ImGuiCol_Button, accent_);
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, accentHover_);
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, accentActive_);
+    ImGui::PushStyleColor(ImGuiCol_Text, accentText_);
     bool pressed = ImGui::Button(label, size);
     ImGui::PopStyleColor(4);
     return pressed;
@@ -93,6 +145,9 @@ bool Shell::accentButton(const char* label, ImVec2 size) {
 
 void Shell::frame() {
     drainDialogs();
+    if (paletteStale_ && loadPalette()) applyStyle(dpi_);
+    paletteStale_ = false;
+    if (palettePending_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) savePaletteNow();
     ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_K)) focusSearch_ = true;
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_O)) showOpenDialog();
@@ -131,8 +186,7 @@ void Shell::frame() {
 }
 
 void Shell::topBar() {
-    const Rgba a = fromRgb24(app_.accent);
-    ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{a.r, a.g, a.b, 1});
+    ImGui::PushStyleColor(ImGuiCol_Text, title_);
     ImGui::AlignTextToFramePadding();
     heading(app_.name, 1.2f);
     ImGui::PopStyleColor();
@@ -186,7 +240,12 @@ void Shell::topBar() {
     if (ImGui::Button(pro_ ? "Mode: Pro" : "Mode: Simple")) pro_ = !pro_;
     ImGui::SetItemTooltip("Simple shows the most common actions. Pro shows every action.");
     ImGui::SameLine();
-    if (ImGui::Button("Aa")) ImGui::OpenPopup("settings");
+    if (ImGui::Button("Aa") || openSettings_) {
+        paletteStale_ = true;  // show what other apps may have saved meanwhile
+        openSettings_ = false;
+        ImGui::OpenPopup("settings");
+        ImGui::SetNextWindowPos({ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y + 2}, ImGuiCond_Always, {1, 0});  // under Aa
+    }
     ImGui::SetItemTooltip("Text size and colours");
     settingsPopup();
 }
@@ -240,16 +299,7 @@ void Shell::settingsPopup() {
     ImGui::TextUnformatted("Text size");
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12);
     if (ImGui::SliderFloat("##textsize", &textScale_, 0.75f, 2.0f, "%.2fx")) applyStyle(dpi_);
-    ImGui::TextUnformatted("Colours");
-    if (ImGui::RadioButton("Dark", dark_)) {
-        dark_ = true;
-        applyStyle(dpi_);
-    }
-    ImGui::SameLine();
-    if (ImGui::RadioButton("Light", !dark_)) {
-        dark_ = false;
-        applyStyle(dpi_);
-    }
+    coloursSettings();
     ImGui::EndPopup();
 }
 
@@ -338,8 +388,7 @@ void Shell::homeView() {
         if (i % static_cast<std::size_t>(columns)) ImGui::SameLine();
         ImGui::PushID(tool.c_str());
         ImGui::BeginChild("card", {cardW, cardH}, ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar);
-        const Rgba a = fromRgb24(app_.accent);
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{a.r, a.g, a.b, 1});
+        ImGui::PushStyleColor(ImGuiCol_Text, title_);
         heading(toolTitle(tool), 1.2f);
         ImGui::PopStyleColor();
         ImGui::PushTextWrapPos(0.0f);
@@ -390,8 +439,8 @@ void Shell::rightPanel() {
         ImGui::Spacing();
         ImGui::Separator();
         const bool ok = result_->ok;
-        const ImVec4 colour = ok ? (dark_ ? ImVec4{0.45f, 0.95f, 0.55f, 1} : ImVec4{0.0f, 0.45f, 0.1f, 1})
-                                 : (dark_ ? ImVec4{1.0f, 0.55f, 0.5f, 1} : ImVec4{0.7f, 0.0f, 0.0f, 1});
+        const ImVec4 colour = ok ? (darkLook() ? ImVec4{0.45f, 0.95f, 0.55f, 1} : ImVec4{0.0f, 0.45f, 0.1f, 1})
+                                 : (darkLook() ? ImVec4{1.0f, 0.55f, 0.5f, 1} : ImVec4{0.7f, 0.0f, 0.0f, 1});
         ImGui::PushStyleColor(ImGuiCol_Text, colour);
         heading(ok ? "Done" : "That didn't work", 1.1f);
         ImGui::PushTextWrapPos(0.0f);

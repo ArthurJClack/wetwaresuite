@@ -227,7 +227,90 @@ Press **Aa** at the top right:
 
 - **Text size** makes everything bigger or smaller (the window already follows your screen's scale
   setting).
-- **Dark** or **Light** colours. Both are high contrast.
+- **Dark** or **Light**: the app's own colours on dark or light panels. Both are high contrast.
+
+### Your own colours, in every app at once
+
+Under **Colours** you can pick three colours. They are shared: every wetwaresuite app (and the
+`wetwaresuite-gui` launcher) uses them, so the whole suite looks the same.
+
+| in the menu | also called | what it colours |
+|-------------|-------------|-----------------|
+| **Main colour** | primary | buttons like **Run** and **Open a file**, the app's name, headings and highlights |
+| **Panels** | secondary | the boxes and panels. A dark colour gives a dark look, a pale one a light look |
+| **Details** | tertiary | links, borders, selected text and the keyboard focus |
+
+1. Press **Aa**.
+2. Click the colour swatch next to **Main colour** and pick a colour (or type its code, like
+   `#ff8800`). The window changes as you go.
+3. Do the same for **Panels** and **Details** if you like.
+4. Let go of the mouse: the colours are saved. Other open apps change when you click back into
+   their window; apps you start later begin with them.
+
+You don't have to worry about picking colours that clash with the text: the window works out the
+text colour (black or white), the lighter and darker shades for hovering and pressing, and nudges
+any colour that would be hard to read until it reads well (at least the WCAG AA contrast levels).
+
+**Ready-made** sets, one click each:
+
+| button | name for commands | what it is |
+|--------|-------------------|------------|
+| High contrast | `high-contrast` | yellow and cyan on black: the easiest to read, for low vision or bright rooms |
+| Light | `light` | dark text on pale grey panels with a blue main colour |
+| Colour-blind friendly | `colour-blind` | orange and sky blue (the Okabe-Ito colours), which stay apart with every common kind of colour blindness |
+| Warm | `warm` | coral and gold on dark brown, easy on the eyes at night |
+
+**Reset to this app's own colours** forgets your colours: every app goes back to its own colour
+(image pink, model orange, cad blue and so on) on the standard panels. That is also how every app looks
+until you pick something, so nothing changes for anyone who never opens this menu.
+
+The colours are kept in one small text file, `palette.txt`, in your personal wetwaresuite folder
+(the same folder as `bin/` and `handoff/`):
+
+| system | file |
+|--------|------|
+| Linux | `~/.local/share/wetwaresuite/palette.txt` (or `$XDG_DATA_HOME/wetwaresuite/`) |
+| macOS | `~/Library/Application Support/wetwaresuite/palette.txt` |
+| Windows | `%APPDATA%\wetwaresuite\palette.txt` |
+
+`$WETWARESUITE_HOME` moves the whole folder. The file is three lines you can edit by hand:
+
+```
+primary=#ff8800
+secondary=#1d2733
+tertiary=#56b4e9
+```
+
+#### The same from the command line, batch scripts and Claude
+
+Every button is a command, so the colours can be set without the window (any app works, they all
+share the file):
+
+```sh
+wetwaresuite-image app.palette_get                                  # what's in use now
+wetwaresuite-image app.palette_set primary=#ff8800 secondary=#1d2733 tertiary=#56b4e9
+wetwaresuite-image app.palette_set primary=orange                   # just one; plain names work too
+wetwaresuite-image app.palette_preset name=high-contrast            # or default, light, colour-blind, warm
+wetwaresuite-image app.palette_reset                                # back to each app's own colours
+```
+
+Colours are `#rrggbb`, the short `#rgb`, or a plain name (`black`, `white`, `grey`, `red`,
+`orange`, `yellow`, `green`, `teal`, `blue`, `navy`, `purple`, `pink`, `brown`). A typo gets a plain
+answer and changes nothing, for example *The primary colour "#12345" isn't a colour. Write # and six
+digits or letters a-f, like #3d7eff, or a plain name such as blue.*
+
+In a [batch script](headless-and-batch.md) (`#` right after `=` is a colour, not a comment):
+
+```
+# colours.txt: run with  wetwaresuite batch colours.txt
+app.palette_preset name=light
+app.palette_set primary=#c2410c
+app.palette_get
+```
+
+Over MCP the tools are `app_palette_get`, `app_palette_set`, `app_palette_preset` and
+`app_palette_reset`, so you can ask Claude, for example, "make all my wetwaresuite apps high
+contrast" or "use a dark green main colour".
 
 ## 11. Doing the same thing without the window
 
@@ -280,6 +363,11 @@ This is optional: nothing in the window needs it.
   through `apps::runGui` with the name, tools and accent colour from the app table
   (`apps/common/apps.cpp`). `wetwaresuite-gui` goes through the same `runGui`.
 - `wetwaresuite-image gui --screenshot shot.bmp` works on every app, like the launcher's.
+  `--action settings` starts with the **Aa** menu open (handy for screenshots of the colours).
+- The palette logic (parsing colours, the file, contrast and shades) is window-free in
+  `gui/include/wetwaresuite/gui/palette.hpp`, tested by `test_gui_palette`; the `app.palette_*`
+  commands are in `apps/common/palette_commands.cpp`, tested in `test_apps`. The window reads the
+  palette through `app.palette_get` when it starts and whenever it gets the focus.
 - With `-DWETWARESUITE_GUI=OFF` the apps link a small stub instead: no SDL3 is needed or downloaded,
   and starting an app with no arguments prints the help and says the window was left out.
 - On Windows the apps stay console-subsystem programs so the command line works. Before opening the

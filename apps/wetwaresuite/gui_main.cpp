@@ -30,7 +30,7 @@ void usage() {
                  "steps work from `wetwaresuite run`, batch scripts and Claude over MCP.\n\n"
                  "  --app NAME         which app to show (see --list-apps), default all\n"
                  "  --tools a,b        show just these tools instead\n"
-                 "  --action ID        start on this action's form, e.g. photo.resize\n"
+                 "  --action ID        start on this action's form, e.g. photo.resize (settings: the Aa menu)\n"
                  "  --screenshot FILE  draw a few frames, save them as a BMP and quit\n";
 }
 

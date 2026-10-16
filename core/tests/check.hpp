@@ -7,6 +7,16 @@
 #include <exception>
 #include <initializer_list>
 
+#ifdef _WIN32
+// the two kernel32 calls below, declared exactly as <windows.h> does so tests don't pull in its macros
+struct _EXCEPTION_POINTERS;
+extern "C" {
+__declspec(dllimport) long(__stdcall* __stdcall SetUnhandledExceptionFilter(long(__stdcall*)(_EXCEPTION_POINTERS*)))(
+    _EXCEPTION_POINTERS*);
+__declspec(dllimport) int __stdcall SetThreadStackGuarantee(unsigned long*);
+}
+#endif
+
 namespace check {
 inline int failures = 0;
 inline int passed = 0;
@@ -41,7 +51,23 @@ inline void onSignal(int sig) {
     std::raise(sig);
 }
 
+#ifdef _WIN32
+// stack overflows and crashes on other threads skip signal handlers on Windows; this sees them all
+inline long __stdcall onException(_EXCEPTION_POINTERS* info) {
+    // EXCEPTION_POINTERS starts with the EXCEPTION_RECORD pointer, which starts with the code
+    const unsigned long code = **reinterpret_cast<unsigned long* const*>(info);
+    std::fprintf(stderr, "crashed with exception 0x%08lx; last check reached: %s:%d\n", code, lastFile, lastLine);
+    std::fflush(stderr);
+    return 0;  // EXCEPTION_CONTINUE_SEARCH
+}
+#endif
+
 inline const bool installed = [] {
+#ifdef _WIN32
+    unsigned long guarantee = 64 * 1024;  // room for the handler after a stack overflow
+    SetThreadStackGuarantee(&guarantee);
+    SetUnhandledExceptionFilter(onException);
+#endif
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::set_terminate(onTerminate);
     for (int sig : {SIGSEGV, SIGFPE, SIGILL}) std::signal(sig, onSignal);

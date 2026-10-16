@@ -42,6 +42,7 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 | `tools/maps/` | offline maps and lightweight GIS: GeoJSON/KML/GPX/CSV/Shapefile in and out, GeoTIFF and world-file rasters, WGS84/Web Mercator/UTM, geodesic measuring, buffer/simplify/clip/filter/joins, heatmaps, GPX track stats, styled PNG/SVG/PDF maps over built-in Natural Earth countries or OSM tiles |
 | `tools/type/` | font design: glyphs from shapes, SVG path data, SVG files or traced handwriting; components, transforms, oblique, embolden, overlap removal; auto-spacing and kerning; TTF/OTF/WOFF/UFO in, TTF/WOFF/SVG font out; proofs as PNG and PDF |
 | `apps/achclwss/` | `achclwss`: one headless binary that runs every command, batch scripts, or an MCP server |
+| `share/` | `achclwss-share`: share a folder with any browser (link, QR, code), live-sync code between machines, send files; LAN or internet |
 | `hub/` | `hub`: lists tools, prints the MCP config for Claude |
 
 everything runs headless today. the GUI is a thin layer that calls the same commands and lands after the command set for each phase.
@@ -55,7 +56,8 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ctest --test-dir build -C Release
 
-cd hub && cargo build --release
+(cd hub && cargo build --release)
+(cd share && cargo build --release)
 ```
 
 ## try it
@@ -75,6 +77,14 @@ hook it up to Claude:
 
 ```sh
 claude mcp add achclwss -- "$PWD/build/apps/achclwss/achclwss" mcp
+```
+
+share and sync folders (see [docs/tutorials/share.md](docs/tutorials/share.md)):
+
+```sh
+cd share && cargo build --release
+./target/release/achclwss-share serve ~/some/folder      # prints a link, QR code and pairing code
+claude mcp add achclwss-share -- "$PWD/target/release/achclwss-share" mcp
 ```
 
 or run `hub mcp-config --bin-dir "$PWD/build/apps/achclwss"` and paste the output into Claude Desktop's config.

@@ -4,6 +4,7 @@
 
 ```
 hub (Rust, standalone)        installs tools, writes MCP config
+share (Rust, standalone)      achclwss-share: share/sync folders over LAN or internet, own MCP server
   │
 apps/achclwss                 one headless binary: run, batch, mcp over every tool
 tools/<name> (C++)            each tool is a library of commands (+ GUI later)
@@ -42,6 +43,7 @@ open files live in the session's `Workspace` as documents with short ids (`img1`
 - image codecs are vendored single-header stb; heavy formats go through ffmpeg/LibreOffice/pandoc only if installed
 - the GUI (Qt, shared by every tool) is a thin layer over the commands
 - the hub is a dependency-free Rust binary (~300 KB) so it runs before anything else is installed
+- `share` is a dependency-free Rust binary too (~1 MB): networking is all in Rust's std (TCP, UDP), so there's no per-OS socket code; it's a separate binary with its own `mcp` because it doesn't need the C++ core, and `hub mcp-config` emits an entry for it
 
 ## phases
 

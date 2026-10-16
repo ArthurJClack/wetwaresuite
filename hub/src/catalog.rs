@@ -62,7 +62,7 @@ pub const TOOLS: &[Tool] = &[
     available("animate", "animate", "2D and 3D animation", 5, 15),
     available("levels", "levels", "game level and tilemap editor", 5, 10),
     available("beats", "beats", "music making: sequencer, synths, samples", 5, 15),
-    planned("circuit", "circuit", "schematics and PCB layout", 6, 25),
+    available("circuit", "circuit", "schematics and PCB layout", 6, 25),
     planned("flash", "flash", "flash firmware to Arduino, ESP32 and STM32", 6, 5),
     planned("maps", "maps", "offline maps and GIS", 6, 15),
     planned("board", "board", "whiteboard and diagrams", 6, 5),

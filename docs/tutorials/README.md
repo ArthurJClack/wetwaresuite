@@ -26,3 +26,4 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Beats](beats.md): music making: generate a beat from a genre and key, program drums on a step grid, bass and chords in the piano roll, synth sound design and effects, your own samples, MIDI in and out, stems and mastering.
 - [Animate](animate.md): 2D and 3D animation: a bouncing ball with easing and squash, a logo sting, a cutout rig on bones, hand-drawn cels with onion skin, a 3D turntable; GIFs, sprite sheets with JSON atlases, PNG sequences and video.
 - [Render](render.md): 3D scenes and pictures: a model to a picture in one command, a still life in metal, glass and textures, studio product shots on transparent backgrounds, sunsets, cad parts, turntable GIFs and MP4s.
+- [Circuit](circuit.md): electronics from schematic to fab: an LED board, a 555 blinker to Gerbers, an Arduino Nano carrier with ground pours, hand routing, KiCad netlists, simulating an RC filter.

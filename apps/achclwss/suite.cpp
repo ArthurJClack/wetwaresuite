@@ -7,6 +7,7 @@
 #include "achclwss/blueprint/blueprint.hpp"
 #include "achclwss/cad/cad.hpp"
 #include "achclwss/capture/capture.hpp"
+#include "achclwss/circuit/circuit.hpp"
 #include "achclwss/convert/convert.hpp"
 #include "achclwss/cut/cut.hpp"
 #include "achclwss/forge/forge.hpp"
@@ -47,6 +48,7 @@ const std::set<std::string>& toolNames() {
         "beats",
         "animate",
         "render",
+        "circuit",
     };
     return names;
 }
@@ -81,6 +83,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("beats")) beats::registerCommands(session);
     if (want("animate")) animate::registerCommands(session);
     if (want("render")) render::registerCommands(session);
+    if (want("circuit")) circuit::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

@@ -55,7 +55,7 @@ people install apps, not tools. an app is a few related tools in one binary:
 | draw | vector, type, board |
 | model | sculpt, render, animate |
 | game | forge, levels |
-| cad | cad, blueprint, slicer |
+| cad | cad, blueprint, slicer, fit |
 | electronics | circuit, flash |
 | sound | audio, beats |
 | video | cut, capture |
@@ -105,7 +105,7 @@ for AI, each app's MCP instructions name the other installed apps (and the missi
 
 1. foundation: core, MCP, hub, toolkit, CI on windows/mac/linux
 2. 2D creative: photo, paint, vector, convert on a shared raster engine, one headless `wetwaresuite` binary
-3. precision and 3D: cad, blueprint, slicer, asset forge on a shared mesh engine (`libs/mesh`)
+3. precision and 3D: cad, blueprint, slicer, asset forge on a shared mesh engine (`libs/mesh`); later scan fit (parts that fit phone 3D scans, on mesh + sculpt)
 4. media, office and the rest: audio (`libs/audio`), cut, capture, office (`libs/pdf`), layout (`libs/pdfdoc`), library, automate (plus a Python client in `python/`)
 5. 3D art and games: sculpt (shared `libs/mesh` topology helpers), render, animate, levels, beats
 6. making and organising: circuit, flash, maps (Natural Earth countries built in), board, notes, type

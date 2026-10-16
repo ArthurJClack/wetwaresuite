@@ -10,3 +10,4 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Vector](vector.md): drawing shapes and paths, styling, SVG in and out, a full logo.
 - [Convert](convert.md): images, SVG, audio, video, office documents and markup, one file or a whole folder.
 - [Toolkit](toolkit.md): identify any file from its contents, hex dumps, the standalone `achclwss-toolkit`.
+- [Share](share.md): share a folder with a phone or laptop in one command, live-sync a code project between machines, send files, go over the internet with cloudflared or tailscale, and drive it from Claude.

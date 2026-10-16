@@ -41,3 +41,22 @@ jobs:
         run: cargo clippy --locked -- -D warnings
       - name: build
         run: cargo build --release --locked
+
+  share:
+    name: share (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: share
+    steps:
+      - uses: actions/checkout@v4
+      - name: test
+        run: cargo test --locked
+      - name: lint
+        run: cargo clippy --locked --all-targets -- -D warnings
+      - name: build
+        run: cargo build --release --locked

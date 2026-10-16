@@ -5,6 +5,8 @@
 #include <set>
 
 #include "achclwss/core/process.hpp"
+#include "achclwss/mesh/io.hpp"
+#include "achclwss/mesh/render.hpp"
 #include "achclwss/raster/codec.hpp"
 #include "achclwss/raster/document.hpp"
 #include "achclwss/raster/ops.hpp"
@@ -37,7 +39,10 @@ const std::set<std::string> kMarkup = {"md", "markdown", "html", "htm", "rst", "
 const std::set<std::string> kMarkupOut = {"md", "html", "rst", "tex", "org", "txt", "epub", "docx", "odt", "pdf"};
 const std::set<std::string> kVectorIn = {"svg"};
 const std::set<std::string> kVectorOut = {"svg", "png", "jpg", "jpeg", "bmp", "tga", "ppm"};
-const std::set<std::string> k3d = {"obj", "fbx", "gltf", "glb", "dae", "ply", "stl", "3mf", "step", "stp", "iges", "igs", "usd", "usdz", "blend"};
+const std::set<std::string> kMeshIn(mesh::readableExtensions().begin(), mesh::readableExtensions().end());
+const std::set<std::string> kMeshOut(mesh::writableExtensions().begin(), mesh::writableExtensions().end());
+const std::set<std::string> kMeshRender = {"png", "jpg", "jpeg", "bmp", "tga", "ppm"};  // mesh -> rendered preview
+const std::set<std::string> k3dLater = {"fbx", "dae", "step", "stp", "iges", "igs", "usd", "usda", "usdc", "usdz", "blend", "3ds", "x3d", "wrl"};
 
 bool in(const std::set<std::string>& set, const std::string& v) { return set.count(v) > 0; }
 
@@ -123,6 +128,41 @@ Result pandocConvert(const fs::path& input, const fs::path& output) {
     return Result::success("converted " + input.string() + " to " + output.string() + " with pandoc");
 }
 
+Result meshConvert(const fs::path& input, const fs::path& output, const Params& o) {
+    try {
+        mesh::Mesh m = mesh::load(input);
+        if (m.empty()) return Result::failure(input.string() + " has no triangles to convert");
+        const double scale = numberParam(o, "scale", 1.0);
+        if (scale <= 0) return Result::failure("scale must be positive");
+        if (scale != 1.0) mesh::transform(m, mesh::Mat4::scale(scale));
+        const std::string to = extOf(output);
+        if (in(kMeshRender, to)) {
+            mesh::RenderOptions ro;
+            if (o.count("view")) {
+                auto v = mesh::parseView(stringParam(o, "view"));
+                if (!v) return Result::failure("unknown view '" + stringParam(o, "view") + "' (try iso, front, top, right)");
+                ro.view = *v;
+            }
+            int w = static_cast<int>(intParam(o, "width", 0)), h = static_cast<int>(intParam(o, "height", 0));
+            if (w <= 0 && h <= 0) w = h = 1024;
+            if (w <= 0) w = h;
+            if (h <= 0) h = w;
+            if (w > 8192 || h > 8192) return Result::failure("renders are limited to 8192 pixels a side");
+            raster::save(mesh::render(m, w, h, ro), output, static_cast<int>(intParam(o, "quality", 90)));
+            return Result::success("rendered " + input.string() + " to " + output.string())
+                .with("triangles", static_cast<std::int64_t>(m.triangleCount()));
+        }
+        mesh::SaveOptions so;
+        so.ascii = boolParam(o, "ascii", false);
+        mesh::save(output, m, so);
+        return Result::success("converted " + input.string() + " to " + output.string())
+            .with("triangles", static_cast<std::int64_t>(m.triangleCount()))
+            .with("watertight", mesh::isWatertight(m));
+    } catch (const std::exception& e) {
+        return Result::failure(e.what());
+    }
+}
+
 Result vectorConvert(Session& s, const fs::path& input, const fs::path& output, const Params& o) {
     Params args = {{"input", input.string()}, {"output", output.string()}};
     if (o.count("scale")) args["scale"] = numberParam(o, "scale", 1.0);
@@ -143,6 +183,7 @@ std::string joined(const std::set<std::string>& s) {
 std::string backendFor(const Session& session, const fs::path& input, const std::string& targetRaw) {
     const std::string from = extOf(input), to = lower(targetRaw);
     if (in(kRasterIn, from) && in(kRasterOut, to)) return "raster";
+    if (in(kMeshIn, from) && (in(kMeshOut, to) || in(kMeshRender, to))) return "mesh";
     if (in(kVectorIn, from) && in(kVectorOut, to) && session.registry().find("vector.convert")) return "vector";
     const bool mediaIn = in(kAudio, from) || in(kVideo, from) || in(kFfmpegImages, from) || in(kRasterIn, from);
     const bool mediaOut = in(kAudio, to) || in(kVideo, to) || in(kFfmpegImages, to) || in(kRasterOut, to);
@@ -170,10 +211,17 @@ Result convertFile(Session& session, const fs::path& input, const fs::path& outp
     Result r;
     if (backend == "raster") r = rasterConvert(input, output, o);
     else if (backend == "vector") r = vectorConvert(session, input, output, o);
+    else if (backend == "mesh") r = meshConvert(input, output, o);
     else if (backend == "ffmpeg") r = ffmpegConvert(input, output, o);
     else if (backend == "libreoffice") r = officeConvert(input, output);
     else if (backend == "pandoc") r = pandocConvert(input, output);
-    else if (in(k3d, from) || in(k3d, to)) return Result::failure("3D and CAD conversion arrives with asset forge and cad in phase 3");
+    else if (in(k3dLater, from) || in(k3dLater, to)) {
+        return Result::failure("." + (in(k3dLater, from) ? from : to) + " isn't supported yet; built-in 3D conversion covers " +
+                               joined(kMeshIn) + " (run convert.formats for the list)");
+    } else if (in(kMeshOut, to) || in(kMeshIn, from)) {
+        return Result::failure("can't turn ." + from + " into ." + to + ": 3D meshes convert between " + joined(kMeshIn) +
+                               ", and can be rendered to " + joined(kMeshRender));
+    }
     else return Result::failure("no converter from ." + from + " to ." + to + " yet (run convert.formats to see what works)");
     if (!r.ok) return r;
     auto bytes = static_cast<std::int64_t>(fs::file_size(output, ec));
@@ -186,15 +234,18 @@ void registerCommands(Session& session) {
 
     reg.add({"convert.file",
              "Convert file",
-             "Convert one file to another format, picked from the output's extension. Images use the built-in "
-             "engine; SVG uses the vector tool; audio and video use ffmpeg; office documents use LibreOffice; "
+             "Convert one file to another format, picked from the output's extension. Images and 3D meshes "
+             "(STL, OBJ, PLY, OFF, glTF, 3MF) use the built-in engines, and a mesh saved as .png renders a preview; "
+             "SVG uses the vector tool; audio and video use ffmpeg; office documents use LibreOffice; "
              "markup uses pandoc. Run convert.formats to see what's available on this machine.",
              {{"input", ParamType::String, "file to convert", true},
               {"output", ParamType::String, "file to write; its extension sets the format, e.g. photo.jpg", true},
               {"quality", ParamType::Int, "1..100 for lossy formats (JPEG, MP3, video)", false},
-              {"width", ParamType::Int, "resize images/video to this width (keeps aspect if height is unset)", false},
+              {"width", ParamType::Int, "resize images/video to this width (keeps aspect if height is unset); mesh renders default to 1024", false},
               {"height", ParamType::Int, "resize images/video to this height", false},
-              {"scale", ParamType::Number, "SVG to raster: scale factor", false},
+              {"scale", ParamType::Number, "SVG to raster: scale factor; meshes: scale the model (e.g. 25.4 for inches to mm)", false},
+              {"ascii", ParamType::Bool, "meshes: write STL/PLY as text instead of binary", false, {}, false},
+              {"view", ParamType::String, "mesh to image: camera", false, mesh::viewNames(), std::string("iso")},
               {"start", ParamType::Number, "audio/video: start time in seconds", false},
               {"duration", ParamType::Number, "audio/video: length in seconds", false},
               {"overwrite", ParamType::Bool, "replace the output if it exists", false, {}, false}},
@@ -268,8 +319,10 @@ void registerCommands(Session& session) {
                         ", " + joined(kFfmpegImages) +
                         "\noffice documents (LibreOffice, " + yes(hasOffice) + "): " + joined(kOffice) + " -> " + joined(kOfficeOut) +
                         "\nmarkup (pandoc, " + yes(hasPandoc) + "): " + joined(kMarkup) + " -> " + joined(kMarkupOut) +
-                        "\n3D and CAD: coming with asset forge and cad (phase 3)";
-                    return Result::success(text).with("ffmpeg", hasFfmpeg).with("libreoffice", hasOffice)
+                        "\n3D meshes (built in, ready): " + joined(kMeshIn) + " -> " + joined(kMeshOut) + ", or rendered to " +
+                        joined(kMeshRender) +
+                        "\nother 3D and CAD (" + joined(k3dLater) + "): coming with asset forge and cad";
+                    return Result::success(text).with("mesh", true).with("ffmpeg", hasFfmpeg).with("libreoffice", hasOffice)
                         .with("pandoc", hasPandoc).with("vector", hasVector);
                 });
             });
@@ -285,7 +338,7 @@ void registerCommands(Session& session) {
                     if (!to.empty() && to[0] == '.') to.erase(0, 1);
                     std::string b = backendFor(*s, stringParam(p, "input"), to);
                     if (b.empty()) return Result::failure("no converter to ." + to + " for " + stringParam(p, "input"));
-                    bool ready = b == "raster" || b == "vector" || (b == "ffmpeg" && ffmpeg()) ||
+                    bool ready = b == "raster" || b == "vector" || b == "mesh" || (b == "ffmpeg" && ffmpeg()) ||
                                  (b == "libreoffice" && soffice()) || (b == "pandoc" && pandoc());
                     return Result::success(b + (ready ? " can do it" : " would do it, but isn't installed"))
                         .with("backend", b).with("ready", ready);

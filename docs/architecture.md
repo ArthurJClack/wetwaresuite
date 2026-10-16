@@ -11,6 +11,7 @@ tools/<name> (C++)            each tool is a library of commands (+ GUI later)
 mcp/                          JSON-RPC over stdio, exposes a Session's commands
 core/                         commands, registry, undo history, workspace, batch, processes
 libs/raster                   shared 2D engine (stb for codecs, vendored)
+libs/mesh                     shared 3D engine: meshes, primitives, CSG, slicing, mesh formats, preview renders
   │
 external programs             ffmpeg, LibreOffice, pandoc: optional, found on PATH
 ```

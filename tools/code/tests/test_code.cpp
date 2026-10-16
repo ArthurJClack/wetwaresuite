@@ -228,6 +228,15 @@ int main() {
             sysutil::writeFile(dir / "add.cpp", "#include <cstdio>\nint main(int argc, char**) { std::printf(\"args %d\\n\", argc - 1); }\n");
             Result r = s.run("code.run", {{"path", sysutil::fromPath(dir / "add.cpp")}, {"args", std::string("a b")}, {"timeout", 120.0}});
             CHECK(r.ok && field(r, "output").find("args 2") != std::string::npos);
+            // a compiled program runs as it is
+            fs::path exe = fs::temp_directory_path() / "wetwaresuite-run" / "add";
+#ifdef _WIN32
+            exe += ".exe";
+#endif
+            if (fs::exists(exe)) {
+                Result direct = s.run("code.run", {{"path", sysutil::fromPath(exe)}, {"args", std::string("x")}});
+                CHECK(direct.ok && field(direct, "output").find("args 1") != std::string::npos);
+            }
             sysutil::writeFile(dir / "broken.cpp", "int main() { return undefined_thing; }\n");
             Result b = s.run("code.run", {{"path", sysutil::fromPath(dir / "broken.cpp")}, {"timeout", 120.0}});
             CHECK(!b.ok && field(b, "errors") != "0" && field(b, "problems").find("broken.cpp\t1\t") != std::string::npos);
@@ -266,6 +275,7 @@ int main() {
         sysutil::writeFile(repo / "a.txt", "one\n");
         Result st = s.run("code.git_status", {{"folder", folder}});
         CHECK(st.ok && st.message.find("new (not staged): a.txt") != std::string::npos);
+        CHECK(field(st, "branch").find("No commits") == std::string::npos && st.message.find("(no commits yet)") != std::string::npos);
         CHECK(field(s.run("code.git_log", {{"folder", folder}}), "count") == "0");
         CHECK(!s.run("code.git_commit", {{"folder", folder}, {"message", std::string("first")}}).ok);  // nothing staged
         CHECK(s.run("code.git_stage", {{"folder", folder}, {"paths", std::string("a.txt")}}).ok);

@@ -1,6 +1,7 @@
 // Running files and building projects with the toolchains already on this
 // computer. Nothing is ever downloaded: when a compiler or interpreter is
 // missing, the error says which one to install.
+#include <fstream>
 #include <stdexcept>
 
 #include "wetwaresuite/code/code.hpp"
@@ -83,6 +84,19 @@ Plan cFamily(const fs::path& file, const std::string& lang, const std::vector<st
     return compileThenRun(cc, c, out, dir, args, sysutil::nameOf(file));
 }
 
+// A compiled program (ELF, Windows .exe, Mach-O) or, outside Windows, a file
+// marked executable that is not a script for a language we know.
+bool isProgram(const fs::path& file) {
+    std::ifstream in(file, std::ios::binary);
+    unsigned char m[4] = {0, 0, 0, 0};
+    in.read(reinterpret_cast<char*>(m), 4);
+    if (in.gcount() >= 2 && m[0] == 'M' && m[1] == 'Z') return true;
+    if (in.gcount() < 4) return false;
+    if (m[0] == 0x7f && m[1] == 'E' && m[2] == 'L' && m[3] == 'F') return true;
+    const unsigned v = (unsigned(m[0]) << 24) | (unsigned(m[1]) << 16) | (unsigned(m[2]) << 8) | unsigned(m[3]);
+    return v == 0xfeedfaceu || v == 0xfeedfacfu || v == 0xcefaedfeu || v == 0xcffaedfeu || v == 0xcafebabeu;
+}
+
 Plan interpreted(std::vector<std::string> cmd, const fs::path& file, const std::vector<std::string>& args, const std::string& what) {
     Plan p;
     cmd.push_back(sysutil::fromPath(file));
@@ -147,6 +161,12 @@ std::vector<Toolchain> findToolchains() {
 Plan planRun(const fs::path& file, const Language& lang, const std::vector<std::string>& args) {
     const std::string id = lang.id;
     const std::string ext = sysutil::extensionOf(file);
+    if ((id.empty() || id == "text") && isProgram(file)) {
+        Plan p;
+        p.steps.push_back({with({sysutil::fromPath(fs::absolute(file))}, args), file.parent_path(), {}, false});
+        p.description = "run the program";
+        return p;
+    }
     if (id == "c" || id == "cpp") return cFamily(file, id, args);
     if (id == "rust") {
         need({"rustc"}, "Rust");

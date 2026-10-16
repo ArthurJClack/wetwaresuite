@@ -57,11 +57,18 @@ void registerReadCommands(Session& s, StatePtr st) {
                 const fs::path dir = folderParam(*st, p);
                 ProcessResult r = gitOk(dir, {"status", "--porcelain=v1", "-b", "-uall"});
                 std::string branch, text, rows;
+                bool fresh = false;
                 std::size_t staged = 0, unstaged = 0;
                 for (const auto& line : lines(r.output)) {
                     if (line.size() < 3) continue;
                     if (line.rfind("## ", 0) == 0) {
                         branch = line.substr(3);
+                        for (const char* pre : {"No commits yet on ", "Initial commit on "}) {
+                            if (branch.rfind(pre, 0) == 0) {
+                                branch = branch.substr(std::string(pre).size());
+                                fresh = true;
+                            }
+                        }
                         continue;
                     }
                     const char x = line[0], y = line[1];
@@ -82,7 +89,7 @@ void registerReadCommands(Session& s, StatePtr st) {
                     }
                     rows += std::string(1, x) + "\t" + std::string(1, y) + "\t" + path + "\n";
                 }
-                std::string head = "branch " + (branch.empty() ? "?" : branch) + "\n";
+                std::string head = "branch " + (branch.empty() ? "?" : branch) + (fresh ? " (no commits yet)" : "") + "\n";
                 if (!staged && !unstaged) head += "nothing changed\n";
                 return Result::success(head + text)
                     .with("branch", branch.substr(0, branch.find("...")))

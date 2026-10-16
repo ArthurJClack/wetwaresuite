@@ -266,7 +266,12 @@ steps:
     raster::save(raster::Image(90, 90, {0, 255, 0, 255}), dir / "drop" / "dropped.png");
     for (int i = 0; i < 100 && !fs::exists(dir / "shrunk" / "dropped.png"); ++i) std::this_thread::sleep_for(std::chrono::milliseconds(50));
     CHECK(imageWidth(dir / "shrunk" / "dropped.png") == 40);
+    // the output file appears before the watcher counts the run, so wait for the count too
     Result status = s.run("automate.watch_status", {});
+    for (int i = 0; i < 100 && intField(status, "runs") < 1; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        status = s.run("automate.watch_status", {});
+    }
     CHECK(status.ok && status.message.find("w1") != std::string::npos && intField(status, "runs") >= 1);
     CHECK(s.run("automate.watch_stop", {{"id", id}}).ok);
     CHECK(!s.run("automate.watch_stop", {{"id", id}}).ok);

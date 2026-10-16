@@ -1,0 +1,10 @@
+add_library(achclwss_mcp src/server.cpp)
+add_library(achclwss::mcp ALIAS achclwss_mcp)
+target_include_directories(achclwss_mcp PUBLIC include)
+target_link_libraries(achclwss_mcp PUBLIC achclwss::core PRIVATE nlohmann_json::nlohmann_json)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_mcp tests/test_mcp.cpp)
+  target_link_libraries(test_mcp PRIVATE achclwss::mcp nlohmann_json::nlohmann_json achclwss_check)
+  add_test(NAME mcp COMMAND test_mcp)
+endif()

@@ -88,8 +88,8 @@ std::vector<StrokePoint> smooth(const std::vector<StrokePoint>& points, double a
     return out;
 }
 
-void stroke(Image& target, const Brush& brush, const std::vector<StrokePoint>& points) {
-    if (points.empty() || target.empty()) return;
+PixelRect strokeBounds(const Image& target, const Brush& brush, const std::vector<StrokePoint>& points) {
+    if (points.empty() || target.empty()) return {};
     const double maxR = brush.size / 2 + 2;
     double minX = points[0].x, maxX = minX, minY = points[0].y, maxY = minY;
     for (const auto& p : points) {
@@ -98,10 +98,16 @@ void stroke(Image& target, const Brush& brush, const std::vector<StrokePoint>& p
         minY = std::min(minY, p.y);
         maxY = std::max(maxY, p.y);
     }
-    Box box{std::max(0, static_cast<int>(std::floor(minX - maxR))), std::max(0, static_cast<int>(std::floor(minY - maxR))),
-            std::min(target.width(), static_cast<int>(std::ceil(maxX + maxR))),
-            std::min(target.height(), static_cast<int>(std::ceil(maxY + maxR)))};
-    if (box.empty()) return;
+    auto toInt = [](double v) { return static_cast<int>(std::clamp(v, -1e9, 1e9)); };
+    PixelRect r{std::max(0, toInt(std::floor(minX - maxR))), std::max(0, toInt(std::floor(minY - maxR))),
+                std::min(target.width(), toInt(std::ceil(maxX + maxR))), std::min(target.height(), toInt(std::ceil(maxY + maxR)))};
+    return r.empty() ? PixelRect{} : r;
+}
+
+void stroke(Image& target, const Brush& brush, const std::vector<StrokePoint>& points) {
+    const PixelRect r = strokeBounds(target, brush, points);
+    if (r.empty()) return;
+    Box box{r.x0, r.y0, r.x1, r.y1};
     std::vector<float> mask(static_cast<std::size_t>(box.width()) * box.height(), 0.0f);
 
     auto radiusAt = [&](double p) { return (brush.pressureSize ? brush.size * std::clamp(p, 0.05, 1.0) : brush.size) / 2; };

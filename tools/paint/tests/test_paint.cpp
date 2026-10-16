@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <filesystem>
 
 #include "wetwaresuite/paint/paint.hpp"
@@ -91,6 +92,39 @@ int main() {
     Result reopened = s.run("photo.open", {{"path", (dir / "art.ora").string()}});
     CHECK(reopened.ok && std::get<std::int64_t>(*reopened.field("layers")) == 2);
     fs::remove_all(dir);
+
+    // dirty-region undo: 100 small strokes on a 4000x4000 canvas keep only the painted areas
+    {
+        Session big;
+        photo::registerCommands(big);
+        paint::registerCommands(big);
+        const std::size_t baseline = raster::undoMemoryBytes();
+        Result r = big.run("paint.new", {{"width", std::int64_t{4000}}, {"height", std::int64_t{4000}}});
+        CHECK(r.ok);
+        const std::string bid = toText(*r.field("doc"));
+        auto bdoc = big.workspace().getAs<raster::ImageDoc>(bid);
+        const raster::LayeredImage original = bdoc->image;
+        for (int i = 0; i < 100; ++i) {
+            const double x = 37.0 * i, y = 3990.0 - 39.0 * i;
+            CHECK(big.run("paint.stroke", {{"doc", bid}, {"points", NumberList{x, y, x + 15, y + 6, x + 25, y - 4}},
+                                           {"size", 10.0}, {"color", std::string(i % 2 ? "#ff0000" : "#0000ff80")}}).ok);
+        }
+        CHECK(big.run("paint.erase", {{"doc", bid}, {"points", NumberList{100, 100, 140, 120}}, {"size", 20.0}}).ok);
+        const raster::LayeredImage painted = bdoc->image;
+        const std::size_t used = raster::undoMemoryBytes() - baseline;
+        CHECK(used < 3u * 1024 * 1024);  // a whole-image snapshot would be 128 MB per step
+        int steps = 0;
+        while (big.history().undo()) ++steps;
+        CHECK(steps >= 101);
+        CHECK(bdoc->image.layers[1].image.bytes() == original.layers[1].image.bytes());
+        CHECK(std::equal(original.layers[1].image.data(), original.layers[1].image.data() + original.layers[1].image.bytes(),
+                         bdoc->image.layers[1].image.data()));
+        CHECK(raster::undoMemoryBytes() - baseline == 0);  // undone steps give their memory back
+        while (big.history().redo()) {
+        }
+        CHECK(std::equal(painted.layers[1].image.data(), painted.layers[1].image.data() + painted.layers[1].image.bytes(),
+                         bdoc->image.layers[1].image.data()));
+    }
 
     return check::summary("paint");
 }

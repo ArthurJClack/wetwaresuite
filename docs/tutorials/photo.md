@@ -166,6 +166,51 @@ photo.info doc=$a
 
 Layers are listed top first and numbered from 0 at the bottom. Edits such as `photo.adjust` apply to the active layer unless you pass `layer=` or `all_layers=true`. To work with layers (add, blend modes, merge), see [paint](paint.md).
 
+## Task 6: sharper resizing, and how fast is my computer?
+
+**Choosing a resize filter.** `photo.resize` has four ways to work out the new pixels. You only need to pick one when the default doesn't look right:
+
+| Filter | Looks like | Use it for |
+| --- | --- | --- |
+| `bilinear` (default) | smooth | everyday resizing; when shrinking a lot (more than half) it automatically averages whole areas so there is no shimmer or jagged edges |
+| `area` | smooth, a little soft | making small thumbnails from big photos |
+| `lanczos` | crisp | photos you care about, shrinking or enlarging: edges and text stay sharp. It's a bit slower than the others |
+| `nearest` | blocky | pixel art and icons, where you want hard square pixels |
+
+**CLI.**
+
+```sh
+wetwaresuite photo.resize doc=$p width=1600 filter=lanczos
+```
+
+**Batch.**
+
+```text
+photo.open path=poster.png -> p
+photo.resize doc=$p percent=50 filter=lanczos
+photo.save doc=$p path=poster-half.png
+```
+
+**Claude.**
+
+> Shrink poster.png to half size, keeping it as sharp as possible.
+
+Claude calls `photo_open`, then `photo_resize` with `percent=50` and `filter=lanczos`, then `photo_save`.
+
+**Speed test.** `photo.benchmark` makes a test picture in memory (nothing is opened or saved) and times the heavy operations: blur, the resize filters, blending three layers, and a colour adjustment. It's handy for comparing two computers, or for seeing what a big canvas will feel like before you start:
+
+```sh
+$ wetwaresuite photo.benchmark size=4096
+4096x4096 px on 8 threads:
+  blur (radius 8) 210.4 ms
+  resize to half, bilinear 31.2 ms
+  ...
+```
+
+(Your numbers will differ.) `size` is the test picture's width and height (default 2048); `threads=1` shows how fast it is on one CPU core, and the default `threads=0` uses all of them. The picture operations split their work across every core, and the result is exactly the same whatever the number of threads.
+
+**Big pictures and undo.** Undo only remembers the parts of a picture an edit changed (in small 64x64 squares, or the exact area of a brush stroke), not the whole picture each time. So even on a very large canvas, hundreds of brush strokes take only a few megabytes of undo memory. Edits that change the size or the layer list (resize, crop, canvas size, adding or removing a layer) still remember the whole picture for that one step.
+
 ## Saving
 
 The extension of `path` picks the format:
@@ -247,7 +292,7 @@ Scale the whole image (all layers).
 | `width` | integer | no | | new width; with no height, keeps the aspect ratio |
 | `height` | integer | no | | new height; with no width, keeps the aspect ratio |
 | `percent` | number | no | | scale by a percentage instead, e.g. 50 (wins over width/height) |
-| `filter` | `bilinear` or `nearest` | no | `bilinear` | `nearest` keeps hard pixel edges, good for pixel art |
+| `filter` | `bilinear`, `area`, `lanczos` or `nearest` | no | `bilinear` | `bilinear` is smooth and quick (and averages whole areas when shrinking more than 2x); `area` always averages; `lanczos` is the sharpest; `nearest` keeps hard pixel edges, good for pixel art |
 | `preview` | boolean | no | false | attach a preview |
 
 Give at least one of `width`, `height` or `percent`.
@@ -342,6 +387,16 @@ Read one pixel. Read-only.
 | `layer` | integer | no | read this layer instead of the flattened image |
 
 Returns `color` (`#rrggbbaa`), `r`, `g`, `b`, `a`.
+
+### photo.benchmark
+Time blur, resize (bilinear, area, lanczos), 3-layer blending and a colour adjustment on a generated test image. Read-only; nothing is opened or saved.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `size` | integer | no | 2048 | test image width and height in px, 16..16384 |
+| `threads` | integer | no | 0 | threads to use; 0 = all CPU cores |
+
+Returns `blur_ms`, `resize_bilinear_ms`, `resize_area_ms`, `resize_lanczos_ms`, `composite_ms`, `adjust_ms`, `size` and `threads`.
 
 ### photo.batch
 Process every image in a folder. Does not use open documents; not undoable.

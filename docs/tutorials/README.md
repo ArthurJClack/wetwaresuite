@@ -8,6 +8,7 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Photo](photo.md): resize folders for the web, fix dark photos, crop, rotate, frame, effects.
 - [Paint](paint.md): brush strokes with tablet pressure, presets, layers, blend modes, fills, saving `.ora`.
 - [Vector](vector.md): drawing shapes and paths, styling, SVG in and out, a full logo.
+- [Blueprint](blueprint.md): floor plans with walls, doors and dimensions printed to scale as PDF, opening and measuring DXF files, part drawings.
 - [CAD](cad.md): parametric parts with expressions, holes, patterns and booleans; a bracket you resize by changing one number, STL export, measuring.
 - [Convert](convert.md): images, SVG, audio, video, office documents and markup, one file or a whole folder.
 - [Asset forge](forge.md): game assets: models to glb with the right up axis, scale and LODs, sprite sheets and atlases, tileable textures and normal maps, pixel art.

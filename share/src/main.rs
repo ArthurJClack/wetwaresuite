@@ -36,6 +36,8 @@ options:
   --port N           TCP port (default 8740, or the next free one)
   --max-upload MB    largest upload accepted (default 4096)
   --include-heavy    also sync .git, node_modules, target, build, .venv, __pycache__
+  --no-delta         sync: always send whole files (by default big edited files
+                     send only the changed blocks)
   --code CODE        pairing code for a link without ?k= (sync/receive/send)
   --to DIR           where `receive` saves (default: current folder)
   --keep             `send`/`receive`: keep running after the first transfer
@@ -55,6 +57,7 @@ struct Opts {
     port: Option<u16>,
     max_upload_mb: Option<u64>,
     include_heavy: bool,
+    no_delta: bool,
     code: Option<String>,
     to: Option<PathBuf>,
     keep: bool,
@@ -73,6 +76,7 @@ fn parse(args: &[String]) -> Result<Opts, String> {
             "--internet" => o.internet = true,
             "--local" => o.local = true,
             "--include-heavy" => o.include_heavy = true,
+            "--no-delta" => o.no_delta = true,
             "--keep" => o.keep = true,
             "--no-qr" => o.no_qr = true,
             "--no-announce" => o.no_announce = true,
@@ -227,6 +231,7 @@ fn sync_cmd(o: &Opts) -> Result<(), String> {
             }
             let mut opts = sync::Options::new(&folder, target);
             opts.include_heavy = o.include_heavy;
+            opts.delta = !o.no_delta;
             opts.log = Some(logger());
             let mut h = sync::start(opts).map_err(|e| format!("can't start sync: {e}"))?;
             let mut announced = false;

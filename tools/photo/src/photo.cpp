@@ -10,6 +10,7 @@
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/document.hpp"
 #include "wetwaresuite/raster/ops.hpp"
+#include "heal.hpp"
 #include "wetwaresuite/raster/parallel.hpp"
 
 namespace wetwaresuite::photo {
@@ -531,6 +532,8 @@ void registerCommands(Session& session) {
                         .with("failed", static_cast<std::int64_t>(files.size() - static_cast<std::size_t>(done + skipped)));
                 });
             });
+
+    registerHealCommands(session);
 }
 
 }  // namespace wetwaresuite::photo

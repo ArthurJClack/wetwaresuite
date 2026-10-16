@@ -13,4 +13,6 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Convert](convert.md): images, SVG, audio, video, office documents and markup, one file or a whole folder.
 - [Asset forge](forge.md): game assets: models to glb with the right up axis, scale and LODs, sprite sheets and atlases, tileable textures and normal maps, pixel art.
 - [Slicer](slicer.md): 3D models to G-code: printer and filament presets, infill, brim and supports, layer previews, parts from cad.
+- [Cut](cut.md): video editing: a talking head into a short with a title and music, picture-in-picture, crossfades, GIFs, burned-in subtitles, quick trims and joins.
+- [Capture](capture.md): screenshots of a screen, monitor or region, screen recordings with a microphone, webcam snapshots, and how Claude looks at your screen.
 - [Toolkit](toolkit.md): identify any file from its contents, hex dumps, the standalone `achclwss-toolkit`.

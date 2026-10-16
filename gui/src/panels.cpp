@@ -237,8 +237,8 @@ void Shell::topBar() {
     ImGui::EndDisabled();
     ImGui::SetItemTooltip("Put back what you took back (Ctrl+Y)");
     ImGui::SameLine();
-    if (ImGui::Button(pro_ ? "Mode: Pro" : "Mode: Simple")) pro_ = !pro_;
-    ImGui::SetItemTooltip("Simple shows the most common actions. Pro shows every action.");
+    if (ImGui::Button(pro_ ? "Mode: Advanced" : "Mode: Simple")) pro_ = !pro_;
+    ImGui::SetItemTooltip("Simple shows the most common actions. Advanced shows every action. Both are free.");
     ImGui::SameLine();
     if (ImGui::Button("Aa") || openSettings_) {
         paletteStale_ = true;  // show what other apps may have saved meanwhile
@@ -305,7 +305,7 @@ void Shell::settingsPopup() {
 
 void Shell::leftPanel() {
     heading("Actions", 1.1f);
-    if (!pro_) wrappedMuted("The most common ones. Switch to Pro for all of them.");
+    if (!pro_) wrappedMuted("The most common ones. Switch to Advanced for all of them.");
     for (const auto& tool : tools_) {
         if (tools_.size() > 1) {
             if (expandTool_ == tool) {

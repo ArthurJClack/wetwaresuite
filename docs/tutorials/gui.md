@@ -111,13 +111,14 @@ After you press Run, the result shows under the form: **Done** in green with wha
 **That didn't work** in red with the reason in plain words, for example *Please fill in "Height".*
 Nothing changes when an action fails.
 
-## 5. Simple and Pro
+## 5. Simple and Advanced
 
 The left side lists actions for each tool. In **Simple** mode (the default) it shows only the most
 common ones, about eight per tool, and every box in a form has a short explanation under it.
 
-Press **Mode: Simple** at the top to switch to **Pro**: every action of every tool is listed, and
+Press **Mode: Simple** at the top to switch to **Advanced**: every action of every tool is listed, and
 the explanations move into tooltips (hover over a box's name to read it).
+Both modes are free and can do the same things; Advanced just shows more at once.
 
 ## 6. Looking at your picture
 

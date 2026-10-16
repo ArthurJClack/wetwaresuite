@@ -182,7 +182,7 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
         }
     }
 
-    const double br = o.color.r, bg = o.color.g, bb = o.color.b;
+    const bool perFace = o.faceColors.size() == m.triangleCount();
     const double ink = 0.25;
     const double ss2 = static_cast<double>(ss * ss);
     for (int y = 0; y < height; ++y) {
@@ -199,6 +199,8 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
                         pb = o.background.b * pa;
                     } else {
                         const double diff = lit[k * 2], spec = lit[k * 2 + 1] * 255.0;
+                        const raster::Color& fc = perFace ? o.faceColors[static_cast<std::size_t>(faceId[k])] : o.color;
+                        const double br = fc.r, bg = fc.g, bb = fc.b;
                         pr = br * diff + spec;
                         pg = bg * diff + spec;
                         pb = bb * diff + spec;

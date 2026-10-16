@@ -6,14 +6,22 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 - how it fits together: [docs/architecture.md](docs/architecture.md)
 - license: GPL-3.0 (see `LICENSE`)
 
-## what works today (phase 1)
+## what works today (phases 1 and 2)
 
 | piece | what it is |
 | --- | --- |
-| `core/` | the command system: typed commands, a registry, undo/redo history |
-| `mcp/` | an MCP server that turns any tool's commands into MCP tools |
-| `tools/toolkit/` | `achclwss-toolkit`: says what any file is and which tool opens it, hex dumps, MCP mode |
+| `core/` | the command system: typed commands, a registry, undo/redo, open documents, batch scripting |
+| `mcp/` | an MCP server that turns any tool's commands into MCP tools, with image previews and resources |
+| `libs/raster/` | the shared 2D image engine: layers, blend modes, brushes, filters, PNG/JPEG/BMP/TGA/PPM/OpenRaster |
+| `tools/toolkit/` | says what any file is and which tool opens it, hex dumps |
+| `tools/photo/` | photo editing: open, resize, crop, rotate, adjust, levels, effects, batch a whole folder |
+| `tools/paint/` | painting: pressure brushes, eraser, fills, shapes, gradients, layers |
+| `tools/vector/` | vector design: shapes, paths, text, SVG in and out |
+| `tools/convert/` | change a file's type: images built in, audio/video via ffmpeg, docs via LibreOffice/pandoc |
+| `apps/achclwss/` | `achclwss`: one headless binary that runs every command, batch scripts, or an MCP server |
 | `hub/` | `hub`: lists tools, prints the MCP config for Claude |
+
+everything runs headless today. the GUI is a thin layer that calls the same commands and lands after the command set for each phase.
 
 ## build
 
@@ -30,10 +38,24 @@ cd hub && cargo build --release
 ## try it
 
 ```sh
-./build/tools/toolkit/achclwss-toolkit inspect photo.cr2
-./build/tools/toolkit/achclwss-toolkit hex photo.cr2 0 64
-./hub/target/release/hub list
-./hub/target/release/hub mcp-config --bin-dir "$PWD/build/tools/toolkit"
+achclwss=./build/apps/achclwss/achclwss
+$achclwss list
+$achclwss help photo.resize
+$achclwss convert.file input=song.wav output=song.mp3
+$achclwss photo.batch input_dir=holiday output_dir=web max_size=1600 format=jpg
+echo 'paint.new width=200 height=120 -> art
+paint.stroke doc=$art points=10,60,190,60 brush=ink size=8
+photo.save doc=$art path=line.png' | $achclwss batch
 ```
 
-paste the `mcp-config` output into Claude Desktop's config (or add it with `claude mcp add`) and Claude can use the toolkit directly.
+hook it up to Claude:
+
+```sh
+claude mcp add achclwss -- "$PWD/build/apps/achclwss/achclwss" mcp
+```
+
+or run `hub mcp-config --bin-dir "$PWD/build/apps/achclwss"` and paste the output into Claude Desktop's config.
+
+## tutorials
+
+step-by-step guides for every tool, covering the command line, batch scripts and Claude: [docs/tutorials](docs/tutorials/README.md).

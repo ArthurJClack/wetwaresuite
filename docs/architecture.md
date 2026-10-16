@@ -49,3 +49,4 @@ open files live in the session's `Workspace` as documents with short ids (`img1`
 2. 2D creative: photo, paint, vector, convert on a shared raster engine, one headless `achclwss` binary
 3. precision and 3D: cad, blueprint, slicer, asset forge on a shared mesh engine (`libs/mesh`)
 4. media, office and the rest: audio (`libs/audio`), cut, capture, office (`libs/pdf`), layout (`libs/pdfdoc`), library, automate (plus a Python client in `python/`)
+5. 3D art and games: sculpt (shared `libs/mesh` topology helpers), render, animate, levels, beats

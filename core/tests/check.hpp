@@ -1,9 +1,11 @@
 // Minimal test helper so the core has no test-framework dependency.
 #pragma once
 
+#include <csignal>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
+#include <initializer_list>
 
 namespace check {
 inline int failures = 0;
@@ -30,9 +32,19 @@ inline void onTerminate() {
     std::abort();
 }
 
+// a crash otherwise shows only "SegFault" with no output, so say how far the test got
+// (not async-signal-safe, but good enough to point at the failing area of a test)
+inline void onSignal(int sig) {
+    std::fprintf(stderr, "crashed with signal %d; last check reached: %s:%d\n", sig, lastFile, lastLine);
+    std::fflush(stderr);
+    std::signal(sig, SIG_DFL);
+    std::raise(sig);
+}
+
 inline const bool installed = [] {
     std::setvbuf(stdout, nullptr, _IONBF, 0);
     std::set_terminate(onTerminate);
+    for (int sig : {SIGSEGV, SIGFPE, SIGILL}) std::signal(sig, onSignal);
     return true;
 }();
 

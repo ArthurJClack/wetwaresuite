@@ -804,6 +804,207 @@ void testPmtiles(const fs::path& dir) {
     fs::remove_all(packsDir());
 }
 
+// ---- a multi-zoom pack cut from real data -----------------------------------------------------
+// No real Protomaps/planetiler pack is vendored (none could be fetched offline with a clear licence),
+// so this builds one the way they are laid out: the public-domain Natural Earth countries cut into
+// MVT tiles for zooms 0-3, clipped with a buffer, outer rings clockwise and holes anticlockwise,
+// water under every tile, gzip, deduplicated ocean tiles and leaf directories. Testing against a
+// pack written by another tool is still open.
+
+using TilePt = std::pair<int, int>;
+
+// Sutherland-Hodgman against the tile square plus a buffer, in tile units.
+std::vector<TilePt> clipRing(const std::vector<std::pair<double, double>>& ring, double lo, double hi) {
+    std::vector<std::pair<double, double>> pts = ring;
+    for (int edge = 0; edge < 4 && !pts.empty(); ++edge) {
+        auto inside = [&](const std::pair<double, double>& p) {
+            const double v = edge < 2 ? p.first : p.second;
+            return edge % 2 == 0 ? v >= lo : v <= hi;
+        };
+        auto cross = [&](const std::pair<double, double>& a, const std::pair<double, double>& b) {
+            const double edgeV = edge % 2 == 0 ? lo : hi;
+            const double av = edge < 2 ? a.first : a.second, bv = edge < 2 ? b.first : b.second;
+            const double t = (edgeV - av) / (bv - av);
+            return std::pair<double, double>{a.first + (b.first - a.first) * t, a.second + (b.second - a.second) * t};
+        };
+        std::vector<std::pair<double, double>> out;
+        for (std::size_t i = 0; i < pts.size(); ++i) {
+            const auto& cur = pts[i];
+            const auto& prev = pts[(i + pts.size() - 1) % pts.size()];
+            if (inside(cur)) {
+                if (!inside(prev)) out.push_back(cross(prev, cur));
+                out.push_back(cur);
+            } else if (inside(prev)) {
+                out.push_back(cross(prev, cur));
+            }
+        }
+        pts = std::move(out);
+    }
+    std::vector<TilePt> q;
+    for (const auto& p : pts) {
+        const TilePt t{static_cast<int>(std::lround(p.first)), static_cast<int>(std::lround(p.second))};
+        if (q.empty() || q.back() != t) q.push_back(t);
+    }
+    while (q.size() > 1 && q.front() == q.back()) q.pop_back();
+    return q;
+}
+
+double ringArea(const std::vector<TilePt>& r) {  // positive = clockwise on screen (y down)
+    double a = 0;
+    for (std::size_t i = 0; i < r.size(); ++i) {
+        const auto& p = r[i];
+        const auto& n = r[(i + 1) % r.size()];
+        a += static_cast<double>(p.first) * n.second - static_cast<double>(n.first) * p.second;
+    }
+    return a / 2;
+}
+
+std::string countriesTile(int z, int x, int y, std::size_t& earthFeatures) {
+    const double lo = -64, hi = 4096 + 64;
+    std::vector<TestFeature> earth, places, borders;
+    for (const auto& f : countries()) {
+        TestFeature tf{3, {}, {{"kind", "earth"}}};
+        for (const auto& poly : f.geom.polygons) {
+            std::vector<std::vector<TilePt>> rings;
+            for (std::size_t ri = 0; ri < poly.size(); ++ri) {
+                std::vector<std::pair<double, double>> pts;
+                for (const auto& c : poly[ri]) {
+                    double tx = 0, ty = 0;
+                    lonLatToTile(c.x, std::clamp(c.y, -85.0, 85.0), z, tx, ty);
+                    pts.push_back({(tx - x) * 4096, (ty - y) * 4096});
+                }
+                if (ri == 0) {
+                    // the border as a line: runs of points in the tile, plus one point either side (cut by the renderer)
+                    auto in = [&](std::size_t i) {
+                        const auto& q = pts[i % pts.size()];
+                        return q.first >= lo && q.first <= hi && q.second >= lo && q.second <= hi;
+                    };
+                    std::vector<TilePt> run;
+                    for (std::size_t i = 0; i <= pts.size(); ++i) {
+                        const bool keep = in(i) || in(i + 1) || (i > 0 && in(i - 1));
+                        if (keep) run.push_back({static_cast<int>(std::lround(pts[i % pts.size()].first)), static_cast<int>(std::lround(pts[i % pts.size()].second))});
+                        if ((!keep || i == pts.size()) && run.size() >= 2) borders.push_back(TestFeature{2, {run}, {{"kind", "country"}}});
+                        if (!keep) run.clear();
+                    }
+                }
+                auto r = clipRing(pts, lo, hi);
+                if (r.size() < 3 || std::abs(ringArea(r)) < 1) {
+                    if (ri == 0) break;  // the outer ring is outside this tile: skip the polygon
+                    continue;
+                }
+                const bool outer = ri == 0;
+                if ((ringArea(r) > 0) != outer) std::reverse(r.begin(), r.end());
+                rings.push_back(std::move(r));
+            }
+            for (auto& r : rings) tf.parts.push_back(std::move(r));
+        }
+        if (tf.parts.empty()) continue;
+        earth.push_back(std::move(tf));
+        // a label point: the middle of the first outer ring's box, when it falls inside this tile
+        const auto& ring = f.geom.polygons[0][0];
+        double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+        for (const auto& c : ring) {
+            minX = std::min(minX, c.x), maxX = std::max(maxX, c.x), minY = std::min(minY, c.y), maxY = std::max(maxY, c.y);
+        }
+        double tx = 0, ty = 0;
+        lonLatToTile((minX + maxX) / 2, (minY + maxY) / 2, z, tx, ty);
+        const int px = static_cast<int>((tx - x) * 4096), py = static_cast<int>((ty - y) * 4096);
+        if (px >= 0 && px < 4096 && py >= 0 && py < 4096 && z >= 2) {
+            places.push_back(TestFeature{1, {{{px, py}}}, {{"kind", "country"}, {"name", f.props.at("name").text()}}});
+        }
+    }
+    earthFeatures += earth.size();
+    // like Protomaps: the background is sea, land is the earth layer; open-ocean tiles hold one water square
+    if (earth.empty()) return mvtTile({mvtLayer("water", {TestFeature{3, {{{-64, -64}, {4160, -64}, {4160, 4160}, {-64, 4160}}}, {{"kind", "ocean"}}}})});
+    std::vector<std::string> layers{mvtLayer("earth", earth), mvtLayer("boundaries", borders)};  // borders may be empty (an island tile)
+    if (!places.empty()) layers.push_back(mvtLayer("places", places));
+    return mvtTile(layers);
+}
+
+void testRealDataPack(const fs::path& dir) {
+    std::vector<PmtilesTile> tiles;
+    std::size_t earthFeatures = 0;
+    for (int z = 0; z <= 3; ++z) {
+        for (int x = 0; x < (1 << z); ++x) {
+            for (int y = 0; y < (1 << z); ++y) {
+                tiles.push_back({z, static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y), countriesTile(z, x, y, earthFeatures)});
+            }
+        }
+    }
+    CHECK(tiles.size() == 85 && earthFeatures > 177 * 2);
+    const std::string meta = R"j({"name":"natural earth z0-3","attribution":"Natural Earth (public domain)","vector_layers":[{"id":"water"},{"id":"earth"},{"id":"boundaries"},{"id":"places"}]})j";
+    const fs::path file = dir / "ne.pmtiles";
+    writeText(file, writePmtiles(tiles, TileType::Mvt, meta, true, 16));
+    CHECK(fs::file_size(file) < 1500000);
+    PmtilesReader reader(file);
+    const auto& h = reader.header();
+    CHECK(h.minZoom == 0 && h.maxZoom == 3 && h.addressedTiles == 85 && h.leafLength > 0);
+    CHECK(h.tileContents < h.tileEntries || h.tileEntries < h.addressedTiles);  // open-ocean tiles are stored once
+    bool allBack = true;
+    for (const auto& t : tiles) allBack = allBack && reader.tile(t.z, t.x, t.y) == t.bytes;
+    CHECK(allBack);
+    CHECK(!reader.tile(4, 0, 0));
+    // every tile decodes, with outer rings first
+    bool decodes = true;
+    for (const auto& t : tiles) {
+        const auto layers = decodeMvt(t.bytes);
+        decodes = decodes && !layers.empty() && (layers[0].name == "water" || (layers[0].name == "earth" && layers[1].name == "boundaries" && !layers[0].features.empty()));
+    }
+    CHECK(decodes);
+    const TilesInfo ti = describePmtiles(reader);
+    CHECK(ti.layers.size() == 4 && ti.attribution == "Natural Earth (public domain)");
+
+    // the whole world from z0
+    Map m;
+    RenderOptions o;
+    o.width = 720;
+    o.bbox = BBox{-180, -70, 180, 75};
+    o.basemap = file.string();
+    o.legend = o.scaleBar = o.northArrow = false;
+    RenderInfo info;
+    const raster::Image world = renderImage(m, o, &info);
+    CHECK(info.tileSource == file.string() && info.zoom <= 2 && info.tilesUsed >= 1);
+    struct Spot {
+        double lon, lat;
+        bool land;
+    };
+    const std::vector<Spot> spots = {{3, 27, true},      // Sahara (Algeria)
+                                     {-60, -10, true},   // Amazon
+                                     {100, 60, true},    // Siberia
+                                     {135, -25, true},   // Australia
+                                     {-35, 20, false},   // mid-Atlantic
+                                     {-150, 0, false},   // Pacific
+                                     {80, -30, false}};  // Indian Ocean
+    bool worldOk = true;
+    for (const auto& sp : spots) worldOk = worldOk && (sp.land ? isLand(pixelAt(world, info, sp.lon, sp.lat)) : isWater(pixelAt(world, info, sp.lon, sp.lat)));
+    CHECK(worldOk);
+    // western Europe at the deepest zoom: several z3 tiles stitched together
+    o.width = 1400;
+    o.bbox = BBox{-12, 35, 20, 60};
+    RenderInfo eu;
+    const raster::Image europe = renderImage(m, o, &eu);
+    CHECK(eu.zoom == 3 && eu.tilesUsed >= 2);
+    CHECK(isLand(pixelAt(europe, eu, 2.35, 47.0)) && isLand(pixelAt(europe, eu, -3.7, 40.4)) && isLand(pixelAt(europe, eu, 10, 51)));  // France, Spain, Germany
+    CHECK(isWater(pixelAt(europe, eu, -9, 46)) && isWater(pixelAt(europe, eu, 4, 55)) && isWater(pixelAt(europe, eu, 5, 38)));  // Biscay, North Sea, Mediterranean
+    const std::string svg = renderMap(m, o, "svg", &eu);
+    CHECK(svg.find(">France</text>") != std::string::npos || svg.find(">Spain</text>") != std::string::npos);
+    // a city-scale close-up past the deepest zoom still draws from z3
+    o.width = 400;
+    o.bbox = BBox{-3.8, 40.3, -3.6, 40.5};
+    RenderInfo city;
+    const raster::Image madrid = renderImage(m, o, &city);
+    CHECK(city.zoom == 3 && isLand(madrid.at(madrid.width() / 2, madrid.height() / 2)));
+    // through the commands, as an installed pack
+    Session s;
+    registerCommands(s);
+    Result r = run(s, "maps.tiles_info path=" + q(file));
+    CHECK(r.ok && num(r, "max_zoom") == 3 && str(r, "layers").find("earth") != std::string::npos);
+    r = run(s, "maps.new title=Europe");
+    CHECK(r.ok);
+    r = run(s, "maps.render doc=" + toText(r.value) + " path=" + q(dir / "europe.png") + " basemap=" + q(file) + " bbox=-12,35,20,60 width=600");
+    CHECK(r.ok && str(r, "tile_source").find("ne.pmtiles") != std::string::npos && fs::exists(dir / "europe.png"));
+}
+
 void testMcp(const fs::path& dir) {
     Session session;
     registerCommands(session);
@@ -958,6 +1159,7 @@ int main() {
     testRendering(dir);
     testCommands(dir);
     testPmtiles(dir);
+    testRealDataPack(dir);
     testMcp(dir);
     std::error_code ec;
     fs::remove_all(dir, ec);

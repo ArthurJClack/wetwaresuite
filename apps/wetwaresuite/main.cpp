@@ -1,5 +1,6 @@
 // wetwaresuite: every tool in one headless binary. Run single commands, batch
 // scripts, or serve everything to Claude over MCP.
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -117,10 +118,20 @@ int main(int argc, char** argv) {
         return 0;
     }
 
+    if (!args.empty() && args[0] == "--version") {  // no need to register ~700 commands for this
+        std::cout << "wetwaresuite " << kVersion << "\n";
+        return 0;
+    }
+
     if (argc > 0) apps::setSelfPath(argv[0]);
+    // `mcp --tools a,b` builds its own smaller session below, so it skips the full one
+    const auto toolsFlag = std::find(args.begin(), args.end(), "--tools");
+    const bool narrowMcp = !args.empty() && args[0] == "mcp" && toolsFlag != args.end() && toolsFlag + 1 != args.end();
     Session session;
-    suite::registerAll(session);
-    apps::registerCommands(session, "suite");
+    if (!narrowMcp) {
+        suite::registerAll(session);
+        apps::registerCommands(session, "suite");
+    }
 
     // no arguments, `open`/`gui`, or files dragged onto the program: the window
     auto isFile = [](const std::string& a) {
@@ -141,10 +152,6 @@ int main(int argc, char** argv) {
     const std::string instructions = std::string(kInstructions) + apps::handoffInstructions("suite");
 
     try {
-        if (cmd == "--version") {
-            std::cout << "wetwaresuite " << kVersion << "\n";
-            return 0;
-        }
         if (cmd == "list") {
             if (args.size() > 1 && args[1] != "app" && !suite::toolNames().count(args[1])) {
                 std::cerr << "no tool called " << args[1] << "; tools: " << joinedTools() << "\n";

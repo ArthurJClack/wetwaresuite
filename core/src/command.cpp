@@ -34,6 +34,7 @@ bool matches(ParamType type, const Value& value) {
 void CommandRegistry::add(CommandInfo info, ActionFactory factory) {
     auto id = info.id;
     entries_.insert_or_assign(id, Entry{std::move(info), std::move(factory)});
+    ++revision_;
 }
 
 const CommandInfo* CommandRegistry::find(const std::string& id) const {

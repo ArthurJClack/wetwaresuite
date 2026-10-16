@@ -72,5 +72,36 @@ int main() {
     json parse = json::parse(*server.handle("{not json"));
     CHECK(parse["error"]["code"] == -32700);
 
+    // the fast tools/list text is byte for byte what nlohmann builds, edge cases included
+    {
+        Session odd;
+        CommandInfo info{"odd.case", "Quote \" back\\slash \t tab", std::string("ctrl \x01\x1f del \x7f caf\xC3\xA9 \xE2\x9C\x93 / end"),
+                         {{"zeta", ParamType::Number, "a number", false, {}, 0.1},
+                          {"alpha", ParamType::NumberList, "list\nline", true, {}, NumberList{1, 2.5, -3e-7}},
+                          {"mid", ParamType::String, "choices", false, {"a\"b", "\xC3\xA9t\xC3\xA9"}, std::string("a\"b")},
+                          {"flag", ParamType::Bool, "", false, {}, true},
+                          {"count", ParamType::Int, "count", true, {}, std::int64_t{-42}},
+                          {"count", ParamType::Int, "repeated name", false},
+                          {"big", ParamType::Number, "big", false, {}, 1e300}},
+                         false, true};
+        odd.registry().add(info, [](const Params&) { return std::make_unique<FunctionAction>([] { return Result::success("ok"); }); });
+        odd.registry().add({"odd.empty", "", "", {}, true}, [](const Params&) { return std::make_unique<FunctionAction>([] { return Result::success("ok"); }); });
+        CHECK(mcp::toolsListJson(odd.registry()) == mcp::toolsListJsonReference(odd.registry()));
+        CHECK(mcp::toolsListJson(session.registry()) == mcp::toolsListJsonReference(session.registry()));
+        mcp::Server oddServer(odd, "odd", "1");
+        const json expected = {{"jsonrpc", "2.0"}, {"id", "seven"}, {"result", {{"tools", json::parse(mcp::toolsListJsonReference(odd.registry()))}}}};
+        const std::string req = json{{"jsonrpc", "2.0"}, {"id", "seven"}, {"method", "tools/list"}}.dump();
+        CHECK(*oddServer.handle(req) == expected.dump());
+        CHECK(*oddServer.handle(req) == expected.dump());  // cached
+        // a command added later shows up (the cache follows the registry)
+        odd.registry().add({"odd.later", "Later", "added after the first list", {}, true},
+                           [](const Params&) { return std::make_unique<FunctionAction>([] { return Result::success("later"); }); });
+        CHECK(json::parse(*oddServer.handle(req))["result"]["tools"].size() == 7);
+        json later = call(oddServer, {{"jsonrpc", "2.0"}, {"id", 8}, {"method", "tools/call"}, {"params", {{"name", "odd_later"}}}});
+        CHECK(later["result"]["content"][0]["text"] == "later");
+        json missing = call(oddServer, {{"jsonrpc", "2.0"}, {"id", 9}, {"method", "tools/call"}, {"params", {{"name", "odd_nope"}}}});
+        CHECK(missing["error"]["code"] == -32602);
+    }
+
     return check::summary("mcp");
 }

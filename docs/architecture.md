@@ -90,7 +90,7 @@ for AI, each app's MCP instructions name the other installed apps (and the missi
 
 ## MCP
 
-`mcp::Server` maps command `toolkit.inspect` to MCP tool `toolkit_inspect` and builds the input schema from the command's params (types, enums, defaults, arrays). it adds `undo`, `redo`, `history` and `documents`, returns `structuredContent` for every result, attaches PNG previews as image content when a command is called with `preview=true`, and lists open documents as resources (`wetwaresuite://doc/img1`). `wetwaresuite mcp` serves every tool in one connection; `--tools photo,paint` narrows it. each `wetwaresuite-<app> mcp` serves just that app.
+`mcp::Server` maps command `toolkit.inspect` to MCP tool `toolkit_inspect` and builds the input schema from the command's params (types, enums, defaults, arrays). it adds `undo`, `redo`, `history` and `documents`, returns `structuredContent` for every result, attaches PNG previews as image content when a command is called with `preview=true`, and lists open documents as resources (`wetwaresuite://doc/img1`). `wetwaresuite mcp` serves every tool in one connection; `--tools photo,paint` narrows it. start-up stays small without lazy loading: registering all ~700 commands is ~4 ms, so the cost that mattered was `tools/list`. it's written straight to text (`mcp::toolsListJson`, byte for byte what nlohmann's `dump()` gives; `test_suite` compares the two over every real command) and cached until the registry's `revision()` changes, and `tools/call` finds its command through a name map instead of copying the registry. `--version` and `mcp --tools` skip the full registration. each `wetwaresuite-<app> mcp` serves just that app.
 
 ## staying light
 

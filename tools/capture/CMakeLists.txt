@@ -1,0 +1,10 @@
+add_library(achclwss_capture src/plan.cpp src/commands.cpp)
+add_library(achclwss::capture ALIAS achclwss_capture)
+target_include_directories(achclwss_capture PUBLIC include)
+target_link_libraries(achclwss_capture PUBLIC achclwss::core PRIVATE achclwss::raster)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_capture tests/test_capture.cpp)
+  target_link_libraries(test_capture PRIVATE achclwss::capture achclwss::mcp achclwss::raster achclwss_check)
+  add_test(NAME capture COMMAND test_capture)
+endif()

@@ -12,6 +12,7 @@
 #include "achclwss/forge/forge.hpp"
 #include "achclwss/layout/layout.hpp"
 #include "achclwss/levels/levels.hpp"
+#include "achclwss/maps/maps.hpp"
 #include "achclwss/library/library.hpp"
 #include "achclwss/office/office.hpp"
 #include "achclwss/paint/paint.hpp"
@@ -47,6 +48,7 @@ const std::set<std::string>& toolNames() {
         "beats",
         "animate",
         "render",
+        "maps",
     };
     return names;
 }
@@ -81,6 +83,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("beats")) beats::registerCommands(session);
     if (want("animate")) animate::registerCommands(session);
     if (want("render")) render::registerCommands(session);
+    if (want("maps")) maps::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

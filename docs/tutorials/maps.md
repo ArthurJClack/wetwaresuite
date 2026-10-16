@@ -1,0 +1,619 @@
+# Maps: offline maps and lightweight GIS
+
+`maps` makes maps and answers questions about places, headless and offline. A **map** holds layers, drawn bottom to top:
+
+- **vector layers**: features (points, lines, polygons, and multi-part versions of each) with properties such as `name=Paris` or `pop_est=2100000`. Coordinates are always stored as WGS84 longitude/latitude, so any layer can be measured, joined or drawn against any other.
+- **raster layers**: GeoTIFFs (elevation, densities, or RGB pictures), and PNG/JPG images placed by a world file.
+
+It reads and writes GeoJSON, KML, GPX, CSV with lat/lon columns, Shapefile and WKT with its own code. Its measurements are geodesic on the WGS84 ellipsoid. It reprojects between WGS84, Web Mercator and UTM. It buffers, simplifies, clips, filters, joins and builds heatmaps. It renders PNG, JPG, SVG and PDF maps with a scale bar, north arrow, legend and graticule.
+
+**Nothing needs the internet.** The default background is a built-in public-domain Natural Earth 1:110m country map. OpenStreetMap tiles are only downloaded when you ask for `basemap=osm`.
+
+Each task below is shown three ways:
+
+- **CLI**: single `achclwss` commands. A map only lives inside one process, so one-shot commands are for looking at files (`maps.open path=hike.gpx`) and for measurements that need no map (`maps.measure`, `maps.transform`). For short edits, pipe a few lines into `achclwss batch`.
+- **Batch**: a script for multi-step work, using `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
+- **Claude**: a prompt for Claude over MCP, and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools maps` serves the 35 maps tools.
+
+Every example was run against the real binary in a folder that held three small files: `cafes.csv` (15 Paris cafés with `name,lat,lon,rating,seats`), `trips.csv` (made-up days spent per country, keyed by ISO code) and `hike.gpx` (a 12 km loop near Chamonix with elevation and times). Outputs are copied from those runs. Repeated fields are cut where marked `...`.
+
+## How maps works
+
+**Coordinates.** Commands that take a point use `lat=` and `lon=`, or `lat,lon` pairs (`from=48.8566,2.3522`), as you would read them off a phone. Boxes are `bbox=min_lon,min_lat,max_lon,max_lat`, as in GeoJSON. WKT and `maps.transform` use x,y order (lon lat), as their standards do.
+
+**Units.** Distances are metres (`distance=300`, `radius=600`, `tolerance=20`). Areas are square metres in results and km² in messages.
+
+**Layers** are named after the file they came from (`cafes`, `hike tracks`, `hike waypoints`). Commands take `layer=` with a name or a 0-based index (0 is the bottom layer). Without `layer=`, a command works on the top vector layer. `maps.track_stats` and `maps.profile` pick the top layer with lines, and `maps.heatmap` the top layer with points. Names with spaces need quotes: `layer="5 min walk"`.
+
+**Expressions.** `where=` (on most commands), `maps.filter` and `maps.calc` share one small language:
+
+| piece | examples |
+| --- | --- |
+| fields and text | `name == 'France'`, `continent != 'Asia'`, `"field with spaces" > 3` |
+| comparisons, logic | `== != < <= > >=`, `and`, `or`, `not`, parentheses |
+| lists and text tests | `iso_a3 in ('ESP', 'PRT')`, `name contains 'land'`, `name startswith 'Le'`, `name like '%ville'` |
+| missing values | `pop_est is null`, `days is not null` |
+| arithmetic | `pop_est / 1e6`, `(a + b) * 2`, `-x`, `%` |
+| geometry | `$area` (m²), `$length` (m), `$x` / `$y` (centroid lon/lat), `$id` (index), `$type`, `$vertices` |
+| functions | `round(x, n)`, `abs`, `floor`, `ceil`, `sqrt`, `log10`, `min`, `max`, `lower`, `upper`, `len`, `coalesce(a, b)`, `str`, `num` |
+
+Text values need quotes. Inside a `key="..."` argument, use single quotes: `where="continent == 'Europe'"`. If an expression names a field that no feature has, the result warns you. That usually means a missing quote.
+
+**Undo.** Every edit (import, add, delete, style, buffer, filter, clip, join, ...) is one undo step that restores the whole map:
+
+```text
+maps.open path=cafes.csv -> m
+maps.feature_delete doc=$m where="rating < 4.3"
+undo
+maps.info doc=$m
+```
+
+```text
+deleted 4 features from cafes
+...
+undone
+1 layer, 15 features
+0: cafes (15 points)
+```
+
+`maps.info`, `maps.features`, `maps.measure`, `maps.bbox`, `maps.contains`, `maps.nearest`, `maps.transform`, `maps.track_stats`, `maps.raster_sample` and `maps.preview` only read. `maps.render`, `maps.export`, `maps.save`, `maps.raster_save` and `maps.profile` write files and change nothing in the map.
+
+## Task 1: a world map of where you've been
+
+`trips.csv` holds days spent per country, keyed by ISO 3166 alpha-3 code:
+
+```text
+code,days,last_visit
+FRA,21,2025
+ESP,14,2024
+...
+XKX,3,2020
+```
+
+**Batch** (`trips.txt`):
+
+```text
+# trips.txt: a world map of where I've been, coloured by days spent
+maps.new title="Where I've been" -> m
+maps.add_countries doc=$m
+maps.join doc=$m layer=countries csv=trips.csv key=iso_a3 csv_key=code
+maps.style doc=$m layer=countries mode=graduated field=days ramp=blues classes=4 method=natural
+maps.render doc=$m path=trips.png width=1200
+maps.render doc=$m path=trips.pdf crs=wgs84 graticule=true title="Trips 2019-2026"
+maps.save doc=$m path=trips.achmap
+```
+
+```text
+$ achclwss batch trips.txt
+created map1: 0 layers, 0 features, "Where I've been"
+...
+added 177 countries as countries
+...
+joined 2 column(s) onto 12 of 177 features of countries
+1 CSV row matched no feature: XKX
+...
+styled countries: field, ramp, method, classes, mode
+classes:
+  #deebf7 5 - 7
+  #91c2e1 7 - 10
+  #4a84b2 10 - 14
+  #08306b 14 - 21
+...
+rendered 1200x804 png to trips.png
+...
+rendered 1024x494 pdf to trips.pdf
+...
+saved trips.achmap
+```
+
+`maps.add_countries` adds the built-in country layer, with the fields `name`, `iso_a3`, `continent` and `pop_est`. `maps.join` copies every other CSV column onto the features whose key matches. It reports the CSV rows that matched nothing (Kosovo has no ISO code in Natural Earth), so you can fix typos. Keys match exactly first, then ignoring case and spaces. Numbers match numerically, but codes with leading zeros such as `007` stay text.
+
+`mode=graduated` colours a numeric field in `classes=` steps along a ramp. `method=` picks the breaks: `quantile` (equal counts, the default), `equal` (equal widths) or `natural` (groups that are similar inside). Countries with no value keep the plain land colour. `mode=categorized field=continent` gives each value its own colour instead.
+
+The PNG uses Web Mercator, the projection of web maps. The PDF uses `crs=wgs84` (plate carrée), which shows the whole globe including Antarctica. A world map in Web Mercator stops at 60°S unless you pass a `bbox=`.
+
+**CLI.** Look at the saved project, render it again, or export only the visited countries:
+
+```sh
+$ achclwss maps.open path=trips.achmap
+opened trips.achmap as map1: 1 layer, 177 features, "Where I've been", trips.achmap
+0: countries (177 polygons, graduated by days)
+   fields: continent, iso_a3, name, pop_est, days, last_visit
+...
+$ printf 'maps.open path=trips.achmap -> m\nmaps.render doc=$m path=trips-small.jpg width=600 legend=false\n' | achclwss batch
+$ printf 'maps.new -> m\nmaps.add_countries doc=$m\nmaps.join doc=$m csv=trips.csv key=iso_a3 csv_key=code\nmaps.export doc=$m path=out/visited.geojson where="days > 0" precision=3\n' | achclwss batch
+...
+wrote 12 features of countries to out/visited.geojson
+```
+
+**Claude.** *"Make a world map from trips.csv, coloured by days per country, and save it as a PDF."* Claude calls `maps_new`, `maps_add_countries`, `maps_join` (`csv=trips.csv key=iso_a3 csv_key=code`), `maps_style` (`mode=graduated field=days`) and `maps_preview` to look at the result. It then calls `maps_render` with `path=trips.pdf`. If the join reports unmatched rows, Claude can tell you which codes to fix.
+
+## Task 2: distances, areas and coordinates
+
+These need no map, so they are one-shot commands.
+
+**CLI.** The distance and bearings from Paris to New York, the length of a route through Brussels to Amsterdam, the area of a box around Paris, and the Eiffel Tower in UTM and Web Mercator:
+
+```sh
+$ achclwss maps.measure from=48.8566,2.3522 to=40.7128,-74.0060
+5852.9 km, initial bearing 291.83°, final bearing 233.72°
+...
+$ achclwss maps.measure points=48.8566,2.3522,50.8503,4.3517,52.3676,4.9041
+length 437.4 km over 2 segments
+...
+$ achclwss maps.measure points=48.90,2.25,48.90,2.42,48.81,2.42,48.81,2.25 polygon=true
+area 124.9 km², perimeter 44.968 km
+...
+$ achclwss maps.transform points=2.2945,48.8584
+WGS84 to UTM 31N (EPSG:32631):
+2.2945,48.8584 -> 448252.001,5411954.91
+...
+$ achclwss maps.transform points=448252,5411935 from=utm31n to=wgs84
+UTM 31N to WGS84 (EPSG:4326):
+448252,5411935 -> 2.2945025,48.85822091
+...
+$ achclwss maps.transform points=2.2945,48.8584,-0.1246,51.5007 to=webmercator
+WGS84 to Web Mercator (EPSG:3857):
+2.2945,48.8584 -> 255422.572,6250868.901
+-0.1246,51.5007 -> -13870.409,6710344.26
+...
+$ achclwss maps.transform points=2.2945,48.8584 to=EPSG:32630
+WGS84 to UTM 30N (EPSG:32630):
+2.2945,48.8584 -> 888275.411,5425243.062
+```
+
+Distances are Vincenty geodesics on the WGS84 ellipsoid (accurate to well under a millimetre). Areas are computed on the authalic sphere, the sphere with the ellipsoid's surface area, which is good to about 0.1 %. `to=utm` (the default) picks the zone of the first point. The Norway and Svalbard zone exceptions are applied. The first output line gives the converted coordinates at full precision. The result fields printed below it (such as `points`) are rounded to 6 digits on the command line, but MCP returns them at full precision.
+
+Coordinate systems are named as `wgs84` (or `EPSG:4326`), `webmercator` (`EPSG:3857`), `utm31n` / `utm31s` (`EPSG:32631` / `EPSG:32731`, or `EPSG:25831` for ETRS89 UTM, which is treated as WGS84), and `auto` on renders.
+
+**Batch.** With a map open, `maps.measure layer=` totals a layer's lengths and areas (per feature when there are few):
+
+```text
+maps.open path=hike.gpx -> m
+maps.measure doc=$m layer="hike tracks"
+```
+
+**Claude.** *"How far is it from Lisbon to Tokyo, and which direction do I set off in?"* Claude calls `maps_measure` with `from=38.72,-9.14 to=35.68,139.69`. *"Convert these UTM 32N coordinates to lat/lon: 334180 5085090."* `maps_transform` with `points=334180,5085090 from=utm32n to=wgs84`.
+
+## Task 3: cafés in Paris: walking areas, a heatmap, the best ones
+
+**Batch** (`cafes.txt`):
+
+```text
+# cafes.txt: Paris cafés from a CSV: walking areas, a heatmap, the best ones, exports
+maps.new title="Coffee in Paris" -> m
+maps.import doc=$m path=cafes.csv
+maps.filter doc=$m layer=cafes where="rating >= 4.5 and seats < 50" output=favourites
+maps.nearest doc=$m layer=cafes lat=48.8606 lon=2.3376 count=3
+maps.buffer doc=$m layer=cafes distance=300 dissolve=true output="5 min walk"
+maps.measure doc=$m layer="5 min walk"
+maps.heatmap doc=$m layer=cafes radius=600 weight=seats
+maps.layer_move doc=$m layer=cafes to=top
+maps.layer_remove doc=$m layer=favourites
+maps.style doc=$m layer="5 min walk" fill=#2e8b57 fill_opacity=0.25 stroke=#2e8b57
+maps.style doc=$m layer=cafes mode=graduated field=rating ramp=reds classes=3 point_size=9 label=name label_size=9
+maps.render doc=$m path=paris.png width=900 basemap=none
+maps.export doc=$m layer=cafes path=out/cafes.geojson
+maps.export doc=$m layer=cafes path=out/cafes.kml
+maps.export doc=$m layer="5 min walk" path=out/walk.shp crs=utm31n
+maps.raster_save doc=$m layer="cafes heatmap" path=out/heat.tif
+maps.raster_save doc=$m layer="cafes heatmap" path=out/heat.png
+```
+
+```text
+$ achclwss batch cafes.txt
+...
+imported 15 features into cafes (15 points)
+fields: name, rating, seats
+...
+8 of 15 features match -> favourites
+...
+nearest in cafes to 48.8606,2.3376:
+#3 347.54 m (at 48.8637,2.337) {name=Café Kitsuné; rating=4.5; seats=30}
+#6 711.76 m (at 48.867,2.3375) {name=Télescope; rating=4.7; seats=20}
+#1 798.92 m (at 48.854,2.3333) {name=Les Deux Magots; rating=4.2; seats=150}
+...
+buffered cafes by 300 m into 5 min walk (1 feature, 2.9743 km²)
+...
+5 min walk: 1 feature, area 2.9743 km², perimeter 17.723 km
+...
+heatmap cafes heatmap: 400x344 cells, peak 296.078
+...
+rendered 900x774 png to paris.png
+...
+wrote 1 feature of 5 min walk to out/walk.shp, out/walk.shx, out/walk.dbf, out/walk.prj, out/walk.cpg
+...
+wrote out/heat.tif
+...
+wrote out/heat.png, out/heat.pgw, out/heat.prj
+```
+
+The CSV columns `lat` and `lon` were found automatically. Column names such as `latitude`, `y`, `lng`, `long`, `longitude` and `x` work too, and so do values like `48°51'24"N`. The delimiter (comma, semicolon, tab or pipe) is detected. `lat=` and `lon=` name other columns, `wkt_column=` reads a geometry column, and `crs=` converts projected x/y columns (see Task 6). Numbers become numbers, except codes with leading zeros such as postcodes, which stay text.
+
+`maps.buffer` turns points into geodesic circles. Lines and polygons are buffered on a metric grid around the layer and traced back to polygons (see [limitations](#limitations)). `dissolve=true` merges everything into one multi-polygon with a `count` field. A negative distance shrinks polygons.
+
+`maps.heatmap` sums a quartic kernel of `radius=` metres around each point, weighted by `weight=`, into a value raster. Zero is transparent in the `heat` ramp. The raster can be saved as a float GeoTIFF or as a coloured PNG with a world file.
+
+The shapefile export reprojects to UTM 31N and writes a matching `.prj`. Outer rings are written clockwise, as the format requires. `.cpg` says the attributes are UTF-8.
+
+**CLI.** Open the CSV and list the best cafés:
+
+```sh
+$ achclwss maps.open path=cafes.csv
+opened cafes.csv as map1: 1 layer, 15 features
+0: cafes (15 points)
+   fields: name, rating, seats
+...
+$ printf 'maps.open path=cafes.csv -> m\nmaps.features doc=$m where="rating >= 4.6" fields=name,rating\n' | achclwss batch
+```
+
+**Claude.** *"Here's cafes.csv. Show me the cafés with a heatmap weighted by seats, and shade everything within a 5 minute walk."* Claude calls `maps_open`, `maps_heatmap` (`weight=seats`), `maps_buffer` (`distance=400 dissolve=true`) and `maps_preview`. *"Which café is closest to the Louvre?"* `maps_nearest lat=48.8606 lon=2.3376`.
+
+## Task 4: a GPX hike: stats, elevation profile and a map
+
+**CLI.** A GPX file opens as one layer per kind of data: tracks, routes and waypoints.
+
+```sh
+$ achclwss maps.open path=hike.gpx
+opened hike.gpx as map1: 2 layers, 3 features
+0: hike tracks (1 line)
+   fields: name
+1: hike waypoints (2 points)
+   fields: name, ele
+map1
+...
+$ printf 'maps.open path=hike.gpx -> m\nmaps.track_stats doc=$m hysteresis=15\n' | achclwss batch
+...
+hike tracks: 12.378 km over 241 points
+elevation: +610.7 m / -601.1 m, 1029.9 to 1660.6 m
+time: 2026-07-12T08:30:00Z to 2026-07-12T12:17:00Z, 3:47:00 total, 3:30:58 moving
+speed: average 3.27 km/h, moving 3.51 km/h, max 4.29 km/h, pace 17:06 min/km
+```
+
+**Batch** (`hike.txt`):
+
+```text
+# hike.txt: stats, an elevation profile and a map of a GPX track
+maps.open path=hike.gpx -> m
+maps.track_stats doc=$m layer="hike tracks"
+maps.profile doc=$m layer="hike tracks" path=profile.png title="Col loop"
+maps.simplify doc=$m layer="hike tracks" tolerance=10 output=simple
+maps.export doc=$m layer=simple path=out/hike-simple.gpx
+maps.layer_remove doc=$m layer=simple
+maps.style doc=$m layer="hike tracks" stroke=#d03030 width=3
+maps.style doc=$m layer="hike waypoints" label=name marker=triangle point_size=11 fill=#202020
+maps.render doc=$m path=hike.png width=800 crs=auto graticule=true
+maps.render doc=$m path=hike.svg width=800 center=45.935,6.88 radius_km=4
+```
+
+```text
+...
+hike tracks: 12.378 km over 241 points
+elevation: +782.2 m / -787.3 m, 1029.9 to 1660.6 m
+...
+profile of hike tracks: 12.378 km, 241 points -> profile.png
+...
+simplified simple: 241 -> 49 vertices
+...
+rendered 800x824 png to hike.png
+...
+crs: EPSG:32632
+...
+rendered 800x803 svg to hike.svg
+```
+
+The gain with the default `hysteresis=3` (782 m) is higher than with `hysteresis=15` (611 m), because this track's elevation wobbles by a few metres, like real GPS. A climb only counts once it has risen more than the hysteresis. Use 3 for a barometric watch and 10 to 20 for GPS-only elevations. Moving time counts the stretches faster than 0.5 m/s, so the 15 minute lunch stop is left out. Max speed is smoothed over 5 points so a single GPS jump doesn't count.
+
+`maps.simplify` (Douglas-Peucker) kept 49 of 241 points, and none of the dropped points is more than 10 m from the simplified line. `crs=auto` draws the map in the UTM zone of its centre (32N here), so distances and shapes are true and the north arrow tilts with grid north. `center=` and `radius_km=` frame an area around a point.
+
+**Claude.** *"How long and how steep was my hike in hike.gpx? Draw the elevation profile."* Claude calls `maps_open`, `maps_track_stats` and `maps_profile` without `path=`. The chart comes back as an image in the tool result, so nothing is written to disk.
+
+## Task 5: rasters: GeoTIFFs and pictures with world files
+
+**Batch** (`rasters.txt`), using the files written in Task 3:
+
+```text
+# rasters.txt: a GeoTIFF of values and a picture placed by its world file
+maps.open path=out/heat.tif -> m
+maps.raster_sample doc=$m points=48.8541,2.3326,48.8640,2.3620,48.8800,2.3000
+maps.style doc=$m layer=heat raster_ramp=viridis
+maps.import doc=$m path=cafes.csv
+maps.render doc=$m path=heat-viridis.png width=700 basemap=none
+maps.new title="World file" -> w
+maps.add_countries doc=$w where="iso_a3 == 'FRA'"
+maps.raster_add doc=$w path=out/heat.png opacity=0.8
+maps.info doc=$w
+maps.render doc=$w path=placed.png width=700 center=48.857,2.345 radius_km=3
+```
+
+```text
+opened out/heat.tif as map1: 1 layer, 0 features, 1 raster
+0: heat (400x344 value grid (0 to 296.078), Web Mercator)
+...
+48.8541,2.3326: 282.176
+48.864,2.362: 101.628
+48.88,2.3: no data
+...
+added raster heat: 400x344 image, Web Mercator, extent 2.309408,48.837008,2.381192,48.877626
+...
+```
+
+A single-band GeoTIFF (elevation, density, temperature) keeps its values. You can sample them, colour them with `raster_ramp=` (viridis, terrain, heat, gray, blues, reds, greens, spectral, or two colours `#rrggbb,#rrggbb`) and shade them with `hillshade=true`. RGB(A) GeoTIFFs and PNG/JPG images are drawn as pictures. `GDAL_NODATA` values are transparent.
+
+A PNG/JPG is placed by its world file (`.pgw`, `.jgw`, `.pngw`, `.jpgw`, `.wld`). The world file's coordinate system comes from a `.prj` next to it, or from `crs=`. For an image with no world file, such as a scanned map, give its corners: `maps.raster_add doc=$m path=scan.jpg bbox=6.85,45.90,6.93,45.95`. Rasters are drawn in the map's projection, whatever their own.
+
+**CLI.**
+
+```sh
+$ achclwss maps.open path=out/heat.tif
+opened out/heat.tif as map1: 1 layer, 0 features, 1 raster
+0: heat (400x344 value grid (0 to 296.078), Web Mercator)
+```
+
+**Claude.** *"What's the elevation at these three summits in dem.tif?"* Claude calls `maps_open path=dem.tif`, then `maps_raster_sample` with the points. *"Overlay this scan of an old map on the country outlines; its corners are ..."* `maps_raster_add` with `bbox=`, `opacity=0.6`, then `maps_preview`.
+
+## Task 6: converting between formats
+
+**CLI.** `maps.open` reads any supported file. Conversions are two lines piped into batch:
+
+```sh
+$ achclwss maps.open path=out/walk.shp
+opened out/walk.shp as map1: 1 layer, 1 feature
+0: walk (1 polygon)
+   fields: count
+...
+bbox: 2.313517,48.839704,2.377084,48.874898
+$ printf 'maps.open path=out/walk.shp -> m\nmaps.export doc=$m path=out/walk.geojson\n' | achclwss batch
+...
+wrote 1 feature of walk to out/walk.geojson
+$ printf 'maps.open path=hike.gpx -> m\nmaps.export doc=$m layer="hike tracks" path=out/hike.kml\nmaps.export doc=$m layer="hike waypoints" path=out/waypoints.csv\n' | achclwss batch
+...
+wrote 1 feature of hike tracks to out/hike.kml
+...
+wrote 2 features of hike waypoints to out/waypoints.csv
+```
+
+The shapefile's UTM `.prj` was read, and the polygon came back in lon/lat.
+
+A CSV of projected coordinates (`stations.csv`, semicolon-separated, UTM 32N easting/northing):
+
+```text
+station;easting;northing;elev
+Chamonix;334180;5085090;1035
+...
+```
+
+```sh
+$ printf 'maps.new -> m\nmaps.import doc=$m path=stations.csv crs=utm32n lat=northing lon=easting\nmaps.features doc=$m\nmaps.export doc=$m path=out/stations.geojson precision=5\n' | achclwss batch
+...
+imported 3 features into stations (3 points)
+...
+#0 point 45.899381,6.862373 (lat,lon) {elev=1035; station=Chamonix}
+#1 point 45.955753,6.947311 (lat,lon) {elev=1252; station=Argentière}
+#2 point 45.855118,6.778539 (lat,lon) {elev=1008; station=Les Houches}
+...
+wrote 3 features of stations to out/stations.geojson
+```
+
+**Batch.** The tracks of every GPX in a folder to GeoJSON, with a shell loop (see [automate](automate.md) for pipelines). `layer=0` is the bottom layer, which for a GPX file is the tracks:
+
+```sh
+for f in *.gpx; do
+  printf 'maps.open path=%s -> m\nmaps.export doc=$m layer=0 path=%s.geojson\n' "$f" "${f%.gpx}" | achclwss batch
+done
+```
+
+**Claude.** *"Convert parcels.shp to GeoJSON in lat/lon, and tell me what fields it has."* `maps_open` (the summary lists the fields), then `maps_export`.
+
+| format | read | write |
+| --- | --- | --- |
+| GeoJSON `.geojson` `.json` | Feature, FeatureCollection, bare geometries, the old `crs` member (EPSG:3857 / UTM), `coordTimes` | RFC 7946, `precision=`, per-vertex times as `coordTimes`, `crs=` reprojects (and adds a `crs` member) |
+| KML `.kml` | Placemarks in Folders/Documents, Point/LineString/Polygon/MultiGeometry, `gx:Track`, ExtendedData, `name`/`description` | Placemarks with ExtendedData, the layer's colours as styles |
+| GPX `.gpx` | tracks (with `ele` and `time`), routes, waypoints, as separate layers | points as waypoints, lines as tracks, with elevation and times |
+| CSV `.csv` `.tsv` `.txt` | lat/lon columns (auto-detected, DMS and N/S/E/W), a WKT column, projected x/y with `crs=`, any delimiter | lat/lon columns for point layers, a `wkt` column otherwise |
+| Shapefile `.shp` | Point, MultiPoint, PolyLine, Polygon and their Z/M variants, `.dbf` (with `.cpg` or Latin-1), `.prj` (WGS84, Web Mercator, UTM) | `.shp/.shx/.dbf/.prj/.cpg`; mixed layers write `name_points`, `name_lines`, `name_polygons` sets; `crs=` |
+| WKT `.wkt` | one geometry per line, Z ignored | one geometry per line |
+| `.achmap` | the whole map with styles and rasters (`maps.open`) | `maps.save` |
+| GeoTIFF `.tif` | strips or tiles; none/LZW/Deflate/PackBits; predictors; 8/16/32-bit int and float; EPSG 4326, 3857, UTM | `maps.raster_save`: float32 values or RGBA, Deflate, GeoKeys |
+| PNG/JPG + world file | `.pgw` `.jgw` `.pngw` `.jpgw` `.wld` and `.prj`, or `bbox=` | `maps.raster_save` writes the image, `.pgw`/`.jgw` and `.prj` |
+
+## Task 7: questions about places
+
+**Batch** (`places.txt`):
+
+```text
+# places.txt: asking questions of a country layer
+maps.new title="Europe" -> m
+maps.add_countries doc=$m where="continent == 'Europe'"
+maps.contains doc=$m lat=46.95 lon=7.45
+maps.nearest doc=$m lat=59.0 lon=-1.0 count=2
+maps.calc doc=$m field=area_km2 expr="round($area / 1e6)"
+maps.calc doc=$m field=density expr="round(pop_est / area_km2, 1)"
+maps.features doc=$m where="density > 200" fields=name,density,area_km2
+maps.bbox doc=$m where="name in ('Spain', 'Portugal')"
+maps.import doc=$m path=cafes.csv
+maps.spatial_join doc=$m target=cafes join=countries fields=name,iso_a3 prefix=country_ count_field=cafes
+maps.features doc=$m layer=cafes limit=2 fields=name,country_name
+maps.features doc=$m layer=countries where="cafes > 0" fields=name,cafes
+maps.layer_remove doc=$m layer=cafes
+maps.clip doc=$m layer=countries bbox=-11,35,32,71
+maps.simplify doc=$m layer=countries tolerance=20000 output=simple
+maps.style doc=$m layer=simple visible=false
+maps.style doc=$m layer=countries mode=graduated field=density ramp=viridis classes=6 method=quantile label=iso_a3 label_size=8
+maps.render doc=$m path=europe.png width=900 crs=auto graticule=true
+maps.render doc=$m path=europe.svg width=900 crs=auto
+maps.export doc=$m layer=simple path=out/europe-simple.geojson precision=3
+```
+
+```text
+added 39 countries as countries
+...
+46.95,7.45 is inside 1 feature of countries
+#19 {continent=Europe; iso_a3=CHE; name=Switzerland; pop_est=8574832}
+...
+nearest in countries to 59,-1:
+#28 122.8 km (at 58.635,-3.005) {continent=Europe; iso_a3=GBR; name=United Kingdom; pop_est=66834405}
+#1 366.4 km (at 59.663,5.308) {continent=Europe; iso_a3=NOR; name=Norway; pop_est=5347896}
+...
+countries: 5 features match
+#14 polygon, 357427.5 km² {area_km2=357427; density=232.6; name=Germany}
+#20 polygon, 2416.5 km² {area_km2=2417; density=256.5; name=Luxembourg}
+#21 polygon, 30135 km² {area_km2=30135; density=381.1; name=Belgium}
+#22 polygon, 40031.2 km² {area_km2=40031; density=433; name=Netherlands}
+#28 2 polygons, 249994.9 km² {area_km2=249995; density=267.3; name=United Kingdom}
+...
+map: -9.527,35.947,3.039,43.748 (min_lon,min_lat,max_lon,max_lat), about 1075.2 km x 866.2 km, centre in UTM 30N
+...
+15 of 15 features of cafes fall inside countries
+...
+#0 point 48.8541,2.3326 (lat,lon) {country_name=France; name=Café de Flore}
+...
+#2 3 polygons, 644858.8 km² {cafes=15; name=France}
+...
+clipped countries to -11,35,32,71: 38 of 39 features kept
+...
+simplified simple: 1296 -> 681 vertices
+...
+rendered 900x970 png to europe.png
+warning: a transverse Mercator/UTM view this wide distorts a lot; webmercator or wgs84 suit large areas
+```
+
+The areas are of the 1:110m outlines, so they are only roughly right. France's polygons include French Guiana, and the clip cuts it off. `maps.spatial_join mode=within` gives each café the fields of the country it lies in and counts cafés per country. `mode=nearest` copies the fields of the nearest feature instead, plus a distance in metres (`max_distance=` limits it). `maps.clip` cuts lines and polygons at the box edges. The UTM warning is advice, not an error: a 43° wide view in UTM 32N still looks fine, but scale varies across it.
+
+**CLI.** Which country is a point in:
+
+```sh
+$ printf 'maps.new -> m\nmaps.add_countries doc=$m\nmaps.contains doc=$m lat=-33.87 lon=151.21\n' | achclwss batch
+```
+
+**Claude.** *"Which European countries have more than 200 people per km²? Map population density across Europe."* Claude calls `maps_add_countries` (`where="continent == 'Europe'"`), `maps_calc` twice, and `maps_features` with `where="density > 200"`. It then styles with `maps_style mode=graduated field=density` and checks the result with `maps_preview crs=auto`.
+
+## Task 8: OpenStreetMap tiles
+
+The built-in countries are fine for world and country maps, but for a city you want streets. `basemap=osm` draws OpenStreetMap tiles under your layers:
+
+```text
+# osm.txt: the cafés over OpenStreetMap tiles
+maps.open path=cafes.csv -> m
+maps.style doc=$m label=name fill=#c0392b
+maps.render doc=$m path=paris-osm.png width=800 basemap=osm tile_cache=tiles
+maps.render doc=$m path=paris-offline.png width=800 basemap=osm tile_cache=tiles offline=true
+```
+
+How it works:
+
+- Tiles are downloaded with `curl`, which must be on your PATH. They are fetched one at a time, with a `User-Agent` naming ACHCLWSS, as the [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/) asks.
+- Tiles are cached under the user cache folder (`~/.cache/achclwss/tiles`, `~/Library/Caches/achclwss/tiles` or `%LOCALAPPDATA%\achclwss\cache\tiles`), or under `tile_cache=`. They are reused for 30 days. `offline=true` never downloads and uses whatever is cached.
+- The zoom level follows the map scale and drops until the view needs at most `max_tiles=` tiles (64 by default). This keeps one render from fetching hundreds of tiles.
+- After the first failed download, the render stops trying, draws the missing area blank and warns you. The render still succeeds.
+- "© OpenStreetMap contributors" is printed on the map, as the licence requires.
+- `tile_url=` points at another server that uses `{z}/{x}/{y}` (for example your own tile server). Respect its usage terms.
+
+The run for this tutorial had no access to tile.openstreetmap.org, so it shows the offline behaviour:
+
+```text
+rendered 800x654 png to paris-osm.png
+OSM tiles: zoom 14, 0 used, 0 downloaded (map data © OpenStreetMap contributors, ODbL)
+warning: tile download failed (curl: (22) The requested URL returned error: 403); offline areas stay blank
+warning: 12 OSM tiles weren't available
+...
+rendered 800x654 png to paris-offline.png
+OSM tiles: zoom 14, 0 used, 0 downloaded (map data © OpenStreetMap contributors, ODbL)
+warning: 12 OSM tiles weren't available (offline=true uses cached tiles only)
+```
+
+OSM tiles are Web Mercator pictures, so `basemap=osm` always renders in Web Mercator.
+
+**CLI.**
+
+```sh
+$ printf 'maps.open path=cafes.csv -> m\nmaps.render doc=$m path=paris-osm.png basemap=osm\n' | achclwss batch
+```
+
+**Claude.** *"Show the cafés on a street map."* Claude calls `maps_preview` with `basemap=osm`. Only ask for this when you are online and happy to fetch tiles: by default everything Claude does with maps stays offline.
+
+## Styling
+
+`maps.style` changes only the parameters you pass:
+
+| parameter | what it does |
+| --- | --- |
+| `stroke`, `width` | line and outline colour and width in px (`width=0` removes outlines) |
+| `fill`, `fill_opacity` | polygon and point fill |
+| `opacity` | the whole layer |
+| `point_size`, `marker` | marker diameter in px; `circle`, `square`, `triangle`, `diamond` |
+| `dash` | `solid`, `dash`, `dot` |
+| `label`, `label_size`, `label_color`, `halo` | text from a field; labels that would overlap are skipped |
+| `mode` | `single`, `categorized` (a colour per value of `field=`), `graduated` (classes of a numeric `field=`) |
+| `field`, `classes`, `method`, `ramp`, `palette` | categorized and graduated settings; `ramp` is a name or `#rrggbb,#rrggbb` |
+| `size_by_value` | graduated points: bigger markers for bigger values |
+| `raster_ramp`, `hillshade` | value rasters |
+| `visible` | show or hide the layer |
+
+Colours are `#rrggbb`, `#rgb`, `#rrggbbaa` or CSS names such as `red`. Layer order is the drawing order: `maps.layer_move layer=cafes to=top` (or `bottom`, `up`, `down`, or an index).
+
+## Rendering
+
+`maps.render` writes PNG/JPG (antialiased) and SVG/PDF (vector, with real text). `maps.preview` takes the same view options and returns a PNG without writing anything. That is what Claude uses to look at a map.
+
+| parameter | default | what it does |
+| --- | --- | --- |
+| `path` | required | `.png`, `.jpg`, `.svg` or `.pdf` (`format=` overrides) |
+| `width`, `height` | 1024, from the extent | size in px; PDF pages are sized at `dpi=` (96) |
+| `crs` | `webmercator` | `webmercator`, `wgs84` (plate carrée), `utm33n`..., `EPSG:...`, or `auto` (UTM of the centre) |
+| `bbox` | the visible layers plus a margin | `min_lon,min_lat,max_lon,max_lat` |
+| `center`, `radius_km` | | frame an area around `lat,lon` |
+| `basemap` | `countries` | `countries` (offline), `none`, `osm` |
+| `background`, `land` | `#dde8f0`, `#f4f1ea` | sea and land colours |
+| `scale_bar`, `north_arrow`, `legend`, `labels` | `true` | map furniture; the scale bar is true at the centre |
+| `graticule`, `graticule_step` | `false`, automatic | latitude/longitude lines with labels |
+| `title` | the map's title | text across the top |
+| `tile_url`, `tile_cache`, `offline`, `max_tiles` | | OSM tiles (Task 8) |
+
+## Command reference
+
+`achclwss help maps.<command>` prints every parameter. In brief:
+
+| command | what it does |
+| --- | --- |
+| `maps.new`, `maps.open`, `maps.save`, `maps.close` | create, open any supported file or `.achmap`, save the project, close |
+| `maps.info`, `maps.features` | describe the map; list features with `where=`, `fields=`, `offset=`, `limit=` |
+| `maps.import`, `maps.export` | add a file as layers; write one layer (`crs=`, `precision=`, `where=`) |
+| `maps.add_countries` | the built-in Natural Earth countries (`where=` to pick some) |
+| `maps.feature_add`, `maps.feature_delete` | add a point (`lat=` `lon=`), a WKT geometry or `points=` with `kind=line/polygon`, with `props="name=Home; visits=3"`; delete by `index=` or `where=` |
+| `maps.layer_move`, `maps.layer_rename`, `maps.layer_remove` | layer order and names |
+| `maps.style` | see [styling](#styling) |
+| `maps.measure`, `maps.transform`, `maps.bbox` | geodesic distance/length/area; coordinate conversion; extents |
+| `maps.contains`, `maps.nearest` | point in polygon; nearest features by geodesic distance |
+| `maps.filter`, `maps.calc` | keep matching features (`output=` or `in_place=true`); set or delete a field from an expression |
+| `maps.join`, `maps.spatial_join` | attach CSV columns by key; copy fields by containment or nearness |
+| `maps.buffer`, `maps.simplify`, `maps.clip` | grow or shrink by metres; Douglas-Peucker in metres; cut to a box |
+| `maps.heatmap` | point density raster |
+| `maps.track_stats`, `maps.profile` | GPS track statistics; elevation chart |
+| `maps.raster_add`, `maps.raster_sample`, `maps.raster_save` | add a GeoTIFF or placed image; read values; write GeoTIFF or PNG + world file |
+| `maps.render`, `maps.preview` | draw to a file; draw to an attachment |
+
+## MCP
+
+`achclwss mcp --tools maps` serves the 35 maps tools (`maps_new`, `maps_import`, ..., `maps_render`). Every edit takes `preview=true`, which attaches a PNG of the whole map to the result. `maps_preview` renders any view without writing a file, and `maps_profile` without `path=` returns the elevation chart as an image. Results carry the numbers as structured fields, so Claude can do arithmetic on distances or areas without parsing text.
+
+Example prompts:
+
+- *"Plot these addresses' coordinates from customers.csv and tell me which ones are more than 50 km from our warehouse at 52.52, 13.40."* `maps_open`, then `maps_feature_add layer=warehouse`, then `maps_spatial_join mode=nearest target=customers join=warehouse`, then `maps_features where="distance_m > 50000"`.
+- *"Colour African countries by the GDP column in gdp.csv and export a PDF poster."* `maps_add_countries where="continent == 'Africa'"`, `maps_join`, `maps_style mode=graduated`, `maps_preview`, `maps_render path=africa.pdf width=2400`.
+- *"Turn my Strava GPX into a KML for Google Earth and tell me the total climb."* `maps_open`, `maps_track_stats`, `maps_export path=ride.kml`.
+
+## Limitations
+
+- **Datum**: WGS84 only. ETRS89 (`EPSG:258xx`) is treated as WGS84, which is within a metre or so in Europe. NAD27, OSGB36, other datums and local grids such as British National Grid or Lambert are not supported. Files that use them import with a warning or need converting first.
+- **Projections**: WGS84 lon/lat, Web Mercator and UTM (plus a local transverse Mercator used internally). There are no equal-area or conic map projections. Transverse Mercator views are cut to about 75° of longitude either side of the central meridian, and Web Mercator to ±85°.
+- **Buffers** of lines and polygons are traced from a grid of `resolution=` cells (600 by default) across the layer's extent. Their edges are accurate to about one cell, so a buffer of a whole country is only good to a few hundred metres. Raise `resolution=` for precision. Point buffers are exact geodesic circles.
+- **Clip** cuts to a lon/lat rectangle only. There is no polygon-by-polygon intersection, union or difference beyond buffer dissolve.
+- **Areas** are on the authalic sphere (about 0.1 % from the ellipsoidal value), with polygon edges taken as great circles.
+- **The built-in countries** are Natural Earth 1:110m with coordinates rounded to 0.001°. That is right for world and continent maps, but coarse at city scale (coastlines are kilometres off). Use your own data or `basemap=osm` for close-ups. Disputed borders follow Natural Earth's de-facto choices.
+- **GeoTIFF**: no BigTIFF, no planar-configuration (separate band) files, no JPEG-compressed TIFFs, no overviews. Only the first image is read. GeoKeys are limited to EPSG 4326, 3857 and UTM codes; for anything else, pass `crs=` or the raster is placed by `bbox=`. Rasters are resampled with nearest neighbour.
+- **KML**: no NetworkLinks, GroundOverlays, KMZ archives or 3D models; styles are not read. **GPX**: extensions such as heart rate are ignored. **Shapefiles**: no MultiPatch; M values are dropped; `.dbf` fields are written as text, numbers or logicals, with names cut to 10 characters.
+- **Feature properties** are kept in alphabetical order of field name, so CSV and DBF exports may reorder columns.
+- **OpenStreetMap tiles** need `curl` and the network, and are drawn at the nearest zoom level, so some scaling blur is possible. Tile servers' usage policies forbid bulk downloading. The tile code has only been tested against a pre-filled cache: the tutorial run had no access to the tile server.
+- **Labels** in PNG and PDF output use the built-in Helvetica font with the Western European (WinAnsi) characters. Other scripts (Cyrillic, Greek, CJK, ...) come out as `?`. SVG output keeps the text and shows it with the viewer's fonts. Labels that would overlap are dropped, not moved.
+- **Size**: everything is in memory, which is fine for tens of thousands of features. Big national datasets are slow to buffer and render.

@@ -1,6 +1,6 @@
 add_library(achclwss_suite suite.cpp)
 target_include_directories(achclwss_suite PUBLIC .)
-target_link_libraries(achclwss_suite PUBLIC achclwss_toolkit achclwss::photo achclwss::paint achclwss::convert)
+target_link_libraries(achclwss_suite PUBLIC achclwss_toolkit achclwss::photo achclwss::paint achclwss::vector achclwss::convert)
 
 add_executable(achclwss main.cpp)
 target_link_libraries(achclwss PRIVATE achclwss_suite achclwss::mcp)

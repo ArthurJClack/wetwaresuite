@@ -120,6 +120,18 @@ int main() {
         CHECK(mcp::base64("") == "");
     }
 
+    // ---- convert hands SVG to the vector tool ----
+    {
+        Session s;
+        suite::registerAll(s);
+        CHECK(s.run("vector.new", {{"width", std::int64_t{40}}, {"height", std::int64_t{20}}}).ok);
+        CHECK(s.run("vector.add_rect", {{"doc", std::string("vec1")}, {"x", 0.0}, {"y", 0.0}, {"width", 20.0}, {"height", 20.0}}).ok);
+        CHECK(s.run("vector.save", {{"doc", std::string("vec1")}, {"path", (dir / "box.svg").string()}}).ok);
+        Result r = s.run("convert.file", {{"input", (dir / "box.svg").string()}, {"output", (dir / "box.png").string()}, {"scale", 2.0}});
+        CHECK(r.ok);
+        CHECK(fs::exists(dir / "box.png"));
+    }
+
     // ---- --tools filtering ----
     {
         Session s;

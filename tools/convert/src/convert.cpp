@@ -36,7 +36,7 @@ const std::set<std::string> kOfficeOut = {"pdf", "docx", "doc", "odt", "rtf", "t
 const std::set<std::string> kMarkup = {"md", "markdown", "html", "htm", "rst", "tex", "org", "txt", "epub", "docx", "odt"};
 const std::set<std::string> kMarkupOut = {"md", "html", "rst", "tex", "org", "txt", "epub", "docx", "odt", "pdf"};
 const std::set<std::string> kVectorIn = {"svg"};
-const std::set<std::string> kVectorOut = {"svg", "png", "jpg", "jpeg", "bmp", "tga"};
+const std::set<std::string> kVectorOut = {"svg", "png", "jpg", "jpeg", "bmp", "tga", "ppm"};
 const std::set<std::string> k3d = {"obj", "fbx", "gltf", "glb", "dae", "ply", "stl", "3mf", "step", "stp", "iges", "igs", "usd", "usdz", "blend"};
 
 bool in(const std::set<std::string>& set, const std::string& v) { return set.count(v) > 0; }
@@ -124,14 +124,11 @@ Result pandocConvert(const fs::path& input, const fs::path& output) {
 }
 
 Result vectorConvert(Session& s, const fs::path& input, const fs::path& output, const Params& o) {
-    Result opened = s.run("vector.open", {{"path", input.string()}});
-    if (!opened.ok) return opened;
-    const Value* doc = opened.field("doc");
-    Params save = {{"doc", toText(doc ? *doc : Value{})}, {"path", output.string()}};
-    if (o.count("scale")) save["scale"] = numberParam(o, "scale", 1.0);
-    Result saved = s.run("vector.save", save);
-    s.run("vector.close", {{"doc", toText(doc ? *doc : Value{})}});
-    if (!saved.ok) return saved;
+    Params args = {{"input", input.string()}, {"output", output.string()}};
+    if (o.count("scale")) args["scale"] = numberParam(o, "scale", 1.0);
+    if (o.count("quality")) args["quality"] = intParam(o, "quality", 90);
+    Result r = s.run("vector.convert", args);
+    if (!r.ok) return r;
     return Result::success("converted " + input.string() + " to " + output.string());
 }
 
@@ -146,7 +143,7 @@ std::string joined(const std::set<std::string>& s) {
 std::string backendFor(const Session& session, const fs::path& input, const std::string& targetRaw) {
     const std::string from = extOf(input), to = lower(targetRaw);
     if (in(kRasterIn, from) && in(kRasterOut, to)) return "raster";
-    if (in(kVectorIn, from) && in(kVectorOut, to) && session.registry().find("vector.open")) return "vector";
+    if (in(kVectorIn, from) && in(kVectorOut, to) && session.registry().find("vector.convert")) return "vector";
     const bool mediaIn = in(kAudio, from) || in(kVideo, from) || in(kFfmpegImages, from) || in(kRasterIn, from);
     const bool mediaOut = in(kAudio, to) || in(kVideo, to) || in(kFfmpegImages, to) || in(kRasterOut, to);
     if (mediaIn && mediaOut && to != "ora" && from != "ora") {
@@ -263,7 +260,7 @@ void registerCommands(Session& session) {
                 return std::make_unique<FunctionAction>([s] {
                     auto yes = [](bool b) { return std::string(b ? "ready" : "not installed"); };
                     bool hasFfmpeg = ffmpeg().has_value(), hasOffice = soffice().has_value(), hasPandoc = pandoc().has_value();
-                    bool hasVector = s->registry().find("vector.open") != nullptr;
+                    bool hasVector = s->registry().find("vector.convert") != nullptr;
                     std::string text =
                         "images (built in, ready): " + joined(kRasterIn) + " -> " + joined(kRasterOut) +
                         "\nsvg (vector tool, " + yes(hasVector) + "): svg -> " + joined(kVectorOut) +

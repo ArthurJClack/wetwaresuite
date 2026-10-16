@@ -4,6 +4,7 @@
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
 #include "achclwss/toolkit/detect.hpp"
+#include "achclwss/vector/vector.hpp"
 
 namespace achclwss::suite {
 
@@ -12,6 +13,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("toolkit")) toolkit::registerCommands(session.registry());
     if (want("photo")) photo::registerCommands(session);
     if (want("paint")) paint::registerCommands(session);
+    if (want("vector")) vector::registerCommands(session);
     if (want("convert")) convert::registerCommands(session);
 }
 

@@ -1,4 +1,7 @@
+#include <algorithm>
 #include <chrono>
+#include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
@@ -8,6 +11,7 @@
 
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/maps/maps.hpp"
+#include "wetwaresuite/maps/tiles.hpp"
 #include "wetwaresuite/mcp/server.hpp"
 #include "wetwaresuite/raster/codec.hpp"
 #include "check.hpp"
@@ -572,6 +576,233 @@ void testCommands(const fs::path& dir) {
     CHECK(!s.workspace().get(hike));
 }
 
+// ---- offline map packs: PMTiles + vector tiles, all built here (no network) ----------------
+
+void setEnv(const char* name, const std::string& value) {
+#ifdef _WIN32
+    _putenv_s(name, value.c_str());
+#else
+    setenv(name, value.c_str(), 1);
+#endif
+}
+
+void pbVarint(std::string& out, std::uint64_t v) {
+    while (v >= 0x80) {
+        out += static_cast<char>((v & 0x7F) | 0x80);
+        v >>= 7;
+    }
+    out += static_cast<char>(v);
+}
+void pbBytes(std::string& out, int field, const std::string& bytes) {
+    pbVarint(out, static_cast<std::uint64_t>(field) << 3 | 2);
+    pbVarint(out, bytes.size());
+    out += bytes;
+}
+void pbInt(std::string& out, int field, std::uint64_t v) {
+    pbVarint(out, static_cast<std::uint64_t>(field) << 3);
+    pbVarint(out, v);
+}
+std::uint32_t zz(std::int64_t v) { return static_cast<std::uint32_t>((v << 1) ^ (v >> 63)); }
+
+struct TestFeature {
+    int type;  // 1 point, 2 line, 3 polygon
+    std::vector<std::vector<std::pair<int, int>>> parts;
+    std::vector<std::pair<std::string, std::string>> tags;
+};
+
+// A hand-encoded MVT layer: geometry commands, zigzag deltas, string values.
+std::string mvtLayer(const std::string& name, const std::vector<TestFeature>& features) {
+    std::string layer;
+    pbInt(layer, 15, 2);
+    pbBytes(layer, 1, name);
+    std::vector<std::string> keys, values;
+    auto index = [](std::vector<std::string>& list, const std::string& s) {
+        for (std::size_t i = 0; i < list.size(); ++i) {
+            if (list[i] == s) return static_cast<std::uint32_t>(i);
+        }
+        list.push_back(s);
+        return static_cast<std::uint32_t>(list.size() - 1);
+    };
+    for (const auto& f : features) {
+        std::string feat, tags, geom;
+        for (const auto& [k, v] : f.tags) {
+            pbVarint(tags, index(keys, k));
+            pbVarint(tags, index(values, v));
+        }
+        std::int64_t cx = 0, cy = 0;
+        for (const auto& part : f.parts) {
+            pbVarint(geom, 1 | (1 << 3));  // MoveTo 1
+            pbVarint(geom, zz(part[0].first - cx));
+            pbVarint(geom, zz(part[0].second - cy));
+            cx = part[0].first;
+            cy = part[0].second;
+            if (part.size() > 1) {
+                pbVarint(geom, 2 | ((part.size() - 1) << 3));  // LineTo n-1
+                for (std::size_t i = 1; i < part.size(); ++i) {
+                    pbVarint(geom, zz(part[i].first - cx));
+                    pbVarint(geom, zz(part[i].second - cy));
+                    cx = part[i].first;
+                    cy = part[i].second;
+                }
+            }
+            if (f.type == 3) pbVarint(geom, 7 | (1 << 3));  // ClosePath
+        }
+        pbBytes(feat, 2, tags);
+        pbInt(feat, 3, static_cast<std::uint64_t>(f.type));
+        pbBytes(feat, 4, geom);
+        pbBytes(layer, 2, feat);
+    }
+    for (const auto& k : keys) pbBytes(layer, 3, k);
+    for (const auto& v : values) {
+        std::string val;
+        pbBytes(val, 1, v);
+        pbBytes(layer, 4, val);
+    }
+    pbInt(layer, 5, 4096);
+    return layer;
+}
+
+std::string mvtTile(const std::vector<std::string>& layers) {
+    std::string t;
+    for (const auto& l : layers) pbBytes(t, 3, l);
+    return t;
+}
+
+// z0: land on the western half with a square lake around lon -90, lat 0; a road and a town.
+std::string worldTile() {
+    TestFeature earth{3, {{{-64, -64}, {2048, -64}, {2048, 4160}, {-64, 4160}}, {{512, 1536}, {512, 2560}, {1536, 2560}, {1536, 1536}}}, {{"kind", "earth"}}};
+    TestFeature road{2, {{{100, 1000}, {1900, 1000}}}, {{"kind", "highway"}}};
+    TestFeature town{1, {{{300, 3000}}}, {{"kind", "locality"}, {"name", "Testville"}}};
+    return mvtTile({mvtLayer("earth", {earth}), mvtLayer("roads", {road}), mvtLayer("places", {town})});
+}
+
+// z1: the western tiles are all land, the eastern all sea.
+std::string halfTile(bool land) {
+    if (!land) return mvtTile({mvtLayer("water", {TestFeature{3, {{{0, 0}, {4096, 0}, {4096, 4096}, {0, 4096}}}, {{"kind", "ocean"}}}})});
+    return mvtTile({mvtLayer("earth", {TestFeature{3, {{{-64, -64}, {4160, -64}, {4160, 4160}, {-64, 4160}}}, {}}})});
+}
+
+bool isLand(Color c) { return near(c.r, 0xf2, 6) && near(c.g, 0xef, 6) && near(c.b, 0xe9, 6); }
+bool isWater(Color c) { return near(c.r, 0xa6, 6) && near(c.g, 0xcb, 6) && near(c.b, 0xe3, 6); }
+
+Color pixelAt(const raster::Image& img, const RenderInfo& info, double lon, double lat) {
+    // a Web Mercator view: x is linear in longitude, y in the Mercator ordinate
+    auto merc = [](double la) { return std::log(std::tan(kPi / 4 + la * kDeg / 2)); };
+    const double x = (lon - info.bbox.minX) / info.bbox.width() * img.width();
+    const double y = (merc(info.bbox.maxY) - merc(lat)) / (merc(info.bbox.maxY) - merc(info.bbox.minY)) * img.height();
+    return img.at(std::clamp(static_cast<int>(x), 0, img.width() - 1), std::clamp(static_cast<int>(y), 0, img.height() - 1));
+}
+
+void testPmtiles(const fs::path& dir) {
+    // Hilbert tile ids, as in the PMTiles spec
+    CHECK(zxyToTileId(0, 0, 0) == 0);
+    CHECK(zxyToTileId(1, 0, 0) == 1 && zxyToTileId(1, 0, 1) == 2 && zxyToTileId(1, 1, 1) == 3 && zxyToTileId(1, 1, 0) == 4);
+    CHECK(zxyToTileId(2, 0, 0) == 5 && zxyToTileId(3, 0, 0) == 21);
+    CHECK(zxyToTileId(12, 3423, 1763) == 19078479);
+    std::mt19937 rng(7);
+    bool roundTrip = true;
+    for (int i = 0; i < 2000; ++i) {
+        const int z = static_cast<int>(rng() % 26);
+        const std::uint32_t n = 1u << z, x = rng() % n, y = rng() % n;
+        int z2 = -1;
+        std::uint32_t x2 = 0, y2 = 0;
+        roundTrip = roundTrip && tileIdToZxy(zxyToTileId(z, x, y), z2, x2, y2) && z2 == z && x2 == x && y2 == y;
+    }
+    CHECK(roundTrip);
+    int tz = -1;
+    std::uint32_t txx = 0, tyy = 0;
+    CHECK(tileIdToZxy(19078479, tz, txx, tyy) && tz == 12 && txx == 3423 && tyy == 1763);
+    // gzip and directories
+    const std::string text(5000, 'm');
+    CHECK(gunzip(gzipCompress(text)) == text);
+    const std::vector<PmtilesEntry> entries{{1, 0, 10, 1}, {2, 10, 20, 3}, {9, 0, 10, 1}, {40, 500, 7, 0}};
+    const auto back = parsePmtilesDirectory(encodePmtilesDirectory(entries));
+    CHECK(back.size() == 4 && back[1].offset == 10 && back[1].runLength == 3 && back[2].offset == 0 && back[3].tileId == 40 && back[3].runLength == 0 &&
+          back[3].offset == 500);
+    // MVT decoding
+    const auto layers = decodeMvt(worldTile());
+    CHECK(layers.size() == 3 && layers[0].name == "earth" && layers[0].extent == 4096);
+    CHECK(layers[0].features.size() == 1 && layers[0].features[0].geom.type == GeomType::Polygon);
+    CHECK(layers[0].features[0].geom.polygons.size() == 1 && layers[0].features[0].geom.polygons[0].size() == 2);  // outer ring + lake
+    CHECK(layers[1].features[0].geom.type == GeomType::Line && near(layers[1].features[0].geom.lines[0][1].x, 1900, 0));
+    CHECK(layers[2].features[0].props.at("name").str == "Testville" && near(layers[2].features[0].geom.points[0].y, 3000, 0));
+    // a tiny vector pack: z0 + z1, leaf directories forced, tiles gzipped
+    std::vector<PmtilesTile> tiles{{0, 0, 0, worldTile()}, {1, 0, 0, halfTile(true)}, {1, 0, 1, halfTile(true)}, {1, 1, 0, halfTile(false)}, {1, 1, 1, halfTile(false)}};
+    const std::string meta = R"({"name":"test world","attribution":"<a href=\"https://openstreetmap.org\">&copy; OpenStreetMap</a>","vector_layers":[{"id":"earth"},{"id":"water"},{"id":"roads"},{"id":"places"}]})";
+    const fs::path file = dir / "world.pmtiles";
+    writeText(file, writePmtiles(tiles, TileType::Mvt, meta, true, 2));
+    PmtilesReader reader(file);
+    CHECK(reader.header().minZoom == 0 && reader.header().maxZoom == 1 && reader.header().tileType == TileType::Mvt);
+    CHECK(reader.header().tileCompression == TileCompression::Gzip && reader.header().leafLength > 0);
+    CHECK(reader.tile(0, 0, 0) == worldTile() && reader.tile(1, 1, 1) == halfTile(false) && reader.tile(1, 0, 1) == halfTile(true));
+    CHECK(!reader.tile(2, 0, 0) && !reader.tile(1, 2, 0));
+    const TilesInfo ti = describePmtiles(reader);
+    CHECK(ti.name == "test world" && ti.layers.size() == 4 && ti.attribution == "\xC2\xA9 OpenStreetMap");
+    // render the world from z0: land west, sea east, the lake is a hole
+    Map m;
+    RenderOptions o;
+    o.width = 512;
+    o.bbox = BBox{-180, -70, 180, 70};
+    o.basemap = file.string();
+    o.legend = o.scaleBar = o.northArrow = false;
+    RenderInfo info;
+    const raster::Image img = renderImage(m, o, &info);
+    CHECK(info.tileSource == file.string() && info.zoom == 0 && info.tilesUsed == 1);
+    CHECK(isLand(pixelAt(img, info, -150, 0)) && isLand(pixelAt(img, info, -30, -20)));
+    CHECK(isWater(pixelAt(img, info, 90, 0)) && isWater(pixelAt(img, info, -90, 0)));  // the sea, and the lake
+    const std::string svg = renderMap(m, o, "svg", &info);
+    CHECK(svg.find(">Testville</text>") != std::string::npos);
+    CHECK(svg.find("OpenStreetMap</text>") != std::string::npos);
+    // overzoom: a close-up far past zoom 1 still draws from the z1 tiles
+    o.bbox = BBox{-151, -1, -149, 1};
+    RenderInfo close;
+    const raster::Image land = renderImage(m, o, &close);
+    CHECK(close.zoom == 1 && isLand(land.at(land.width() / 2, land.height() / 2)));
+    o.bbox = BBox{89, -1, 91, 1};
+    const raster::Image sea = renderImage(m, o, &close);
+    CHECK(isWater(sea.at(sea.width() / 2, sea.height() / 2)));
+    // a raster pack renders like a tile folder
+    const raster::Image green(256, 256, {0, 200, 0, 255});
+    writeText(dir / "green.pmtiles", writePmtiles({{0, 0, 0, raster::encodePng(green)}}, TileType::Png, "{}", false));
+    o.bbox = BBox{-60, -40, 60, 40};
+    o.basemap = (dir / "green.pmtiles").string();
+    RenderInfo rinfo;
+    const raster::Image rimg = renderImage(m, o, &rinfo);
+    CHECK(rinfo.tilesUsed == 1 && rimg.at(rimg.width() / 2, rimg.height() / 2).g > 150 && rimg.at(rimg.width() / 2, rimg.height() / 2).r < 60);
+    // MBTiles: a plain message, the countries instead
+    o.basemap = (dir / "x.mbtiles").string();
+    RenderInfo mb;
+    renderImage(m, o, &mb);
+    CHECK(!mb.warnings.empty() && mb.warnings[0].find("pmtiles convert") != std::string::npos);
+    // installed packs: none yet, then one in <home>/packs/maps-world-low/
+    Session s;
+    registerCommands(s);
+    Result r = run(s, "maps.tiles_info");
+    CHECK(!r.ok && r.message.find("no map pack is installed") != std::string::npos);
+    o.basemap = "pack";
+    RenderInfo none;
+    renderImage(m, o, &none);
+    CHECK(none.tileSource.empty() && !none.warnings.empty() && none.warnings[0].find("no map pack is installed") != std::string::npos);
+    const fs::path packDir = packsDir() / "maps-world-low";
+    fs::create_directories(packDir);
+    fs::copy_file(file, packDir / "world.pmtiles", fs::copy_options::overwrite_existing);
+    CHECK(bestMapPack() && bestMapPack()->filename() == "world.pmtiles");
+    RenderOptions defaults;  // basemap=auto picks the pack up
+    defaults.width = 256;
+    RenderInfo autoInfo;
+    renderImage(m, defaults, &autoInfo);
+    CHECK(!autoInfo.tileSource.empty());
+    r = run(s, "maps.tiles_info");
+    CHECK(r.ok && str(r, "format") == "mvt" && num(r, "max_zoom") == 1 && str(r, "layers").find("earth") != std::string::npos);
+    r = run(s, "maps.tiles_info path=" + q(dir / "green.pmtiles"));
+    CHECK(r.ok && str(r, "format") == "png" && num(r, "min_zoom") == 0);
+    r = run(s, "maps.new title=Pack");
+    CHECK(r.ok);
+    r = run(s, "maps.render doc=" + toText(r.value) + " path=" + q(dir / "pack.png") + " bbox=-180,-70,180,70 width=300");
+    CHECK(r.ok && str(r, "tile_source").find("world.pmtiles") != std::string::npos && fs::exists(dir / "pack.png"));
+    fs::remove_all(packsDir());
+}
+
 void testMcp(const fs::path& dir) {
     Session session;
     registerCommands(session);
@@ -604,6 +835,8 @@ void testMcp(const fs::path& dir) {
 
 int main() {
     const fs::path dir = tempDir();
+    // map packs are looked up under $WETWARESUITE_HOME: keep the user's own out of the tests
+    setEnv("WETWARESUITE_HOME", (dir / "home").string());
     testGeodesy();
     testProjections();
     testExpressions();
@@ -615,6 +848,7 @@ int main() {
     testAnalysis();
     testRendering(dir);
     testCommands(dir);
+    testPmtiles(dir);
     testMcp(dir);
     std::error_code ec;
     fs::remove_all(dir, ec);

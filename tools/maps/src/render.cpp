@@ -1,7 +1,7 @@
 // Map rendering: the map is laid out once as a display list in pixels (paths,
 // text, images), then drawn by one of three backends: an antialiased raster
 // (PNG), SVG text or a vector PDF. Also styling classes, the offline country
-// basemap and the optional OSM tile basemap (fetched with curl, cached).
+// basemap, map packs (.pmtiles from disk) and the optional OSM tile basemap (fetched with curl, cached).
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <set>
+#include <tuple>
 #include <variant>
 
 #include "wetwaresuite/core/process.hpp"
@@ -873,6 +874,258 @@ void placeLabels(Scene& sc, std::vector<Label>& labels) {
     }
 }
 
+// ---- map packs: PMTiles basemaps (vector or raster), read from disk -------------------------
+
+// fractional slippy-map zoom of the view, for 256 px tiles
+double viewZoom(const View& v) {
+    const double world = 2 * kPi * kA;
+    const Coord centre = v.lonlat(v.W / 2.0, v.H / 2.0);
+    const double upp = metresPerPixel(v, v.H / 2.0) / std::max(0.05, std::cos(centre.y * kDeg));
+    return std::log2(world / (256 * upp));
+}
+
+struct TileRange {
+    int z = 0, x0 = 0, x1 = 0, y0 = 0, y1 = 0;
+};
+
+TileRange tileRange(const View& v, int z, int minZoom, int maxTiles) {
+    const BBox ll = viewLonLat(v);
+    TileRange t;
+    for (;; --z) {
+        double tx0 = 0, ty0 = 0, tx1 = 0, ty1 = 0;
+        lonLatToTile(ll.minX, std::min(ll.maxY, 85.05), z, tx0, ty0);
+        lonLatToTile(ll.maxX, std::max(ll.minY, -85.05), z, tx1, ty1);
+        const int n = 1 << z;
+        t = {z, std::clamp(static_cast<int>(std::floor(tx0)), 0, n - 1), std::clamp(static_cast<int>(std::floor(tx1)), 0, n - 1),
+             std::clamp(static_cast<int>(std::floor(ty0)), 0, n - 1), std::clamp(static_cast<int>(std::floor(ty1)), 0, n - 1)};
+        const double count = static_cast<double>(t.x1 - t.x0 + 1) * (t.y1 - t.y0 + 1);
+        if (count <= maxTiles || z <= minZoom || z == 0) return t;
+    }
+}
+
+// The tile, or the nearest ancestor the archive has (sparse extracts, overzoom).
+std::optional<std::string> tileOrAncestor(const PmtilesReader& r, int& z, int& x, int& y) {
+    for (; z >= r.header().minZoom; --z, x >>= 1, y >>= 1) {
+        if (auto t = r.tile(z, static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y))) return t;
+        if (z == 0) break;
+    }
+    return std::nullopt;
+}
+
+void vectorPack(Scene& sc, const View& v, const PmtilesReader& r, const TileRange& tr, double styleZoom, RenderInfo& info) {
+    const double world = 2 * kPi * kA;
+    const bool mercator = v.crs.kind == Crs::WebMercator;
+    std::vector<detail::StyledPath> paths;
+    std::vector<detail::StyledLabel> styled;
+    std::set<std::tuple<int, int, int>> drawn;
+    int missing = 0, broken = 0;
+    for (int ty = tr.y0; ty <= tr.y1; ++ty) {
+        for (int tx = tr.x0; tx <= tr.x1; ++tx) {
+            int z = tr.z, x = tx, y = ty;
+            std::optional<std::string> bytes;
+            try {
+                bytes = tileOrAncestor(r, z, x, y);
+            } catch (const std::exception& e) {
+                if (!broken++) info.warnings.push_back(std::string("a map tile couldn't be read: ") + e.what());
+                continue;
+            }
+            if (!bytes) {
+                ++missing;
+                continue;
+            }
+            if (!drawn.insert({z, x, y}).second) continue;
+            std::vector<MvtLayer> layers;
+            try {
+                layers = decodeMvt(*bytes);
+            } catch (const std::exception& e) {
+                if (!broken++) info.warnings.push_back(std::string("a map tile couldn't be read: ") + e.what());
+                continue;
+            }
+            const double n = std::ldexp(1.0, z);
+            const detail::TileToPixels toPx = [&, x, y, n](double lx, double ly) -> std::pair<double, double> {
+                const double mx = (x + lx / 4096.0) / n, my = (y + ly / 4096.0) / n;
+                if (mercator) return {((mx - 0.5) * world - v.x0) * v.scale, (v.y0 - (0.5 - my) * world) * v.scale};
+                const double lon = mx * 360.0 - 180.0, lat = std::atan(std::sinh(kPi * (1 - 2 * my))) / kDeg;
+                const P p = v.px({lon, lat});
+                return {p.x, p.y};
+            };
+            detail::styleVectorTile(layers, styleZoom, toPx, v.W, v.H, paths, styled);
+            ++info.tilesUsed;
+        }
+    }
+    std::stable_sort(paths.begin(), paths.end(), [](const detail::StyledPath& a, const detail::StyledPath& b) { return a.order < b.order; });
+    for (auto& sp : paths) {
+        DPath p;
+        p.closed = sp.closed;
+        p.fill = sp.fill;
+        p.stroke = sp.stroke;
+        p.width = sp.width;
+        p.dash = sp.dash;
+        for (auto& part : sp.parts) {
+            std::vector<P> pts;
+            pts.reserve(part.size());
+            for (const auto& [px, py] : part) pts.push_back({px, py});
+            p.parts.push_back(std::move(pts));
+        }
+        sc.ops.push_back(std::move(p));
+    }
+    std::stable_sort(styled.begin(), styled.end(), [](const detail::StyledLabel& a, const detail::StyledLabel& b) { return a.rank > b.rank; });
+    std::vector<Label> labels;
+    std::set<std::string> named;  // a place repeats in the buffer of neighbouring tiles
+    for (const auto& l : styled) {
+        if (labels.size() >= 200) break;
+        if (!named.insert(l.text).second) continue;
+        labels.push_back({l.x, l.y, l.text, l.size, l.color, true, 1});
+    }
+    placeLabels(sc, labels);
+    if (missing) info.warnings.push_back(std::to_string(missing) + " map tiles aren't in this map pack (the area is outside it); they stay blank");
+}
+
+void rasterPack(Scene& sc, const View& v, const PmtilesReader& r, const TileRange& tr, RenderInfo& info) {
+    const double world = 2 * kPi * kA;
+    const int n = 1 << tr.z;
+    std::shared_ptr<Grid> mosaic;
+    int T = 256, missing = 0;
+    for (int ty = tr.y0; ty <= tr.y1; ++ty) {
+        for (int tx = tr.x0; tx <= tr.x1; ++tx) {
+            std::optional<std::string> bytes;
+            try {
+                bytes = r.tile(tr.z, static_cast<std::uint32_t>(tx), static_cast<std::uint32_t>(ty));
+            } catch (const std::exception&) {
+            }
+            if (!bytes) {
+                ++missing;
+                continue;
+            }
+            raster::Image t;
+            try {
+                t = raster::decode(*bytes);
+            } catch (const std::exception&) {
+                ++missing;
+                continue;
+            }
+            if (!mosaic) {
+                T = std::clamp(t.width(), 16, 1024);
+                mosaic = std::make_shared<Grid>();
+                mosaic->width = (tr.x1 - tr.x0 + 1) * T;
+                mosaic->height = (tr.y1 - tr.y0 + 1) * T;
+                mosaic->image = raster::Image(mosaic->width, mosaic->height);
+                mosaic->crs = Crs::webMercator();
+                const double units = world / n;
+                mosaic->geo = {units / T, 0, -world / 2 + tr.x0 * units, 0, -units / T, world / 2 - tr.y0 * units};
+            }
+            const int ox = (tx - tr.x0) * T, oy = (ty - tr.y0) * T;
+            for (int y = 0; y < std::min(T, t.height()); ++y) {
+                for (int x = 0; x < std::min(T, t.width()); ++x) mosaic->image.set(ox + x, oy + y, t.at(x, y));
+            }
+            ++info.tilesUsed;
+        }
+    }
+    if (missing) info.warnings.push_back(std::to_string(missing) + " map tiles aren't in this map pack; they stay blank");
+    if (!mosaic) return;
+    Style st;
+    st.opacity = 1;
+    if (auto img = rasterize(v, *mosaic, st)) sc.ops.push_back(DImage{0, 0, static_cast<double>(v.W), static_cast<double>(v.H), img});
+}
+
+// Draws a .pmtiles basemap; false (with a warning) when it can't, so the caller falls back.
+bool pmtilesBasemap(Scene& sc, const View& v, const RenderOptions& o, const fs::path& file, RenderInfo& info) {
+    std::shared_ptr<const PmtilesReader> r;
+    TilesInfo meta;
+    try {
+        r = openPmtiles(file);
+        meta = describePmtiles(*r);
+    } catch (const std::exception& e) {
+        info.warnings.push_back("the map file " + file.string() + " can't be used (" + e.what() + "); showing the built-in country outlines");
+        return false;
+    }
+    const PmtilesHeader& h = r->header();
+    const bool vector = h.tileType == TileType::Mvt;
+    if (!vector && h.tileType != TileType::Png && h.tileType != TileType::Jpeg) {
+        info.warnings.push_back(std::string("the map file holds ") + toString(h.tileType) +
+                                " tiles, which the maps app can't draw (it reads vector, PNG and JPEG tiles); showing the built-in country outlines");
+        return false;
+    }
+    const double zf = viewZoom(v);
+    // Protomaps vector tiles are drawn at 512 px: one zoom level fewer than 256 px raster tiles
+    const int want = static_cast<int>(std::lround(zf)) - (vector ? 1 : 0);
+    const TileRange tr = tileRange(v, std::clamp(want, h.minZoom, h.maxZoom), h.minZoom, o.maxTiles);
+    info.zoom = tr.z;
+    info.tileSource = file.string();
+    info.attribution = meta.attribution;
+    if (vector) {
+        sc.background = detail::vectorWaterColor();
+        vectorPack(sc, v, *r, tr, std::max(0.0, zf - 1), info);
+    } else {
+        sc.background = {0xf2, 0xef, 0xe9, 255};
+        rasterPack(sc, v, *r, tr, info);
+    }
+    if (want > h.maxZoom) info.warnings.push_back("zoomed in past the map pack's detail (zoom " + std::to_string(h.maxZoom) + "); a bigger pack shows more");
+    return true;
+}
+
+bool endsWith(const std::string& s, const std::string& tail) { return s.size() >= tail.size() && s.compare(s.size() - tail.size(), tail.size(), tail) == 0; }
+
+void countriesBasemap(Scene& sc, const View& v, const RenderOptions& o) {
+    DPath land;
+    land.closed = true;
+    land.fill = o.land;
+    land.stroke = o.borders;
+    land.width = 0.6;
+    for (const auto& f : countries()) {
+        DPath one = land;
+        addPaths(v, f.geom, one, 4);
+        if (!one.parts.empty()) sc.ops.push_back(std::move(one));
+    }
+}
+
+// Picks and draws the basemap; returns what was drawn: none, countries, osm or pack.
+std::string drawBasemap(Scene& sc, const View& v, const RenderOptions& o, RenderInfo& info) {
+    const std::string basemap = lower(trim(o.basemap));
+    const std::string url = lower(o.tileUrl);
+    std::optional<fs::path> pack;
+    if (endsWith(basemap, ".pmtiles")) {
+        pack = fs::path(trim(o.basemap));
+    } else if ((basemap == "osm" || basemap == "tiles") && endsWith(url, ".pmtiles")) {
+        pack = fs::path(o.tileUrl);
+    } else if (endsWith(basemap, ".mbtiles") || ((basemap == "osm" || basemap == "tiles") && endsWith(url, ".mbtiles"))) {
+        info.warnings.push_back("MBTiles files can't be read directly (they need SQLite, which the maps app leaves out); convert it once with "
+                                "'pmtiles convert in.mbtiles out.pmtiles' and use the .pmtiles file. Showing the built-in country outlines");
+        countriesBasemap(sc, v, o);
+        return "countries";
+    } else if (basemap == "auto" || basemap == "pack") {
+        pack = bestMapPack();
+        if (!pack) {
+            if (basemap == "pack")
+                info.warnings.push_back("no map pack is installed (an offline edition has them: hub install maps --from <the edition folder>); "
+                                        "showing the built-in country outlines");
+            countriesBasemap(sc, v, o);
+            return "countries";
+        }
+    }
+    if (pack) {
+        if (pmtilesBasemap(sc, v, o, *pack, info)) return "pack";
+        countriesBasemap(sc, v, o);
+        return "countries";
+    }
+    if (basemap == "osm" || basemap == "tiles") {
+        sc.background = {0xf2, 0xef, 0xe9, 255};
+        auto g = osmBasemap(v, o, info);
+        Style st;
+        st.opacity = 1;
+        if (auto img = rasterize(v, *g, st)) sc.ops.push_back(DImage{0, 0, static_cast<double>(v.W), static_cast<double>(v.H), img});
+        info.attribution = "\xC2\xA9 OpenStreetMap contributors";
+        return "osm";
+    }
+    if (basemap == "countries" || basemap == "land") {
+        countriesBasemap(sc, v, o);
+        return "countries";
+    }
+    if (basemap != "none" && !basemap.empty())
+        info.warnings.push_back("unknown basemap '" + o.basemap + "' (use auto, countries, none, pack, osm or a .pmtiles file); drawing none");
+    return "none";
+}
+
 Scene buildScene(const Map& map, const RenderOptions& o, RenderInfo& info) {
     View v = makeView(map, o, info.warnings);
     Scene sc;
@@ -882,27 +1135,7 @@ Scene buildScene(const Map& map, const RenderOptions& o, RenderInfo& info) {
     info.width = v.W;
     info.height = v.H;
     info.bbox = viewLonLat(v);
-    const std::string basemap = lower(o.basemap);
-    if (basemap == "osm" || basemap == "tiles") {
-        sc.background = {0xf2, 0xef, 0xe9, 255};
-        auto g = osmBasemap(v, o, info);
-        Style st;
-        st.opacity = 1;
-        if (auto img = rasterize(v, *g, st)) sc.ops.push_back(DImage{0, 0, static_cast<double>(v.W), static_cast<double>(v.H), img});
-    } else if (basemap == "countries" || basemap == "land") {
-        DPath land;
-        land.closed = true;
-        land.fill = o.land;
-        land.stroke = o.borders;
-        land.width = 0.6;
-        for (const auto& f : countries()) {
-            DPath one = land;
-            addPaths(v, f.geom, one, 4);
-            if (!one.parts.empty()) sc.ops.push_back(std::move(one));
-        }
-    } else if (basemap != "none" && !basemap.empty()) {
-        info.warnings.push_back("unknown basemap '" + o.basemap + "' (use none, countries or osm); drawing none");
-    }
+    drawBasemap(sc, v, o, info);
     std::vector<Label> labels;
     for (const auto& l : map.layers) {
         if (!l.visible) continue;
@@ -919,11 +1152,10 @@ Scene buildScene(const Map& map, const RenderOptions& o, RenderInfo& info) {
     if (o.scaleBar) drawScaleBar(sc, v, info);
     else info.metresPerPixel = metresPerPixel(v, v.H / 2.0);
     if (o.northArrow) drawNorthArrow(sc, v);
-    if (basemap == "osm" || basemap == "tiles") {
-        const std::string attr = "\xC2\xA9 OpenStreetMap contributors";
-        const double w = textWidth(attr, 9, false);
+    if (!info.attribution.empty()) {
+        const double w = textWidth(info.attribution, 9, false);
         box(sc, v.W - w - 8, v.H - 15.0, w + 8, 15, {255, 255, 255, 200});
-        text(sc, v.W - 4.0, v.H - 4.0, attr, 9, {0x33, 0x33, 0x33, 255}, 2, false);
+        text(sc, v.W - 4.0, v.H - 4.0, info.attribution, 9, {0x33, 0x33, 0x33, 255}, 2, false);
     }
     return sc;
 }

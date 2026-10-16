@@ -2,12 +2,15 @@
 #pragma once
 
 #include <filesystem>
+#include <functional>
+#include <optional>
 #include <map>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "wetwaresuite/maps/maps.hpp"
+#include "wetwaresuite/maps/tiles.hpp"
 
 namespace wetwaresuite::maps::detail {
 
@@ -46,5 +49,29 @@ std::unique_ptr<XmlNode> parseXml(const std::string& text);  // throws std::runt
 
 // Polygon rings with no orientation info: outer rings and holes by nesting depth.
 std::vector<Polygon> assembleRings(std::vector<Ring> rings);
+
+// ---- the built-in style for Protomaps basemap vector tiles (vector_style.cpp) ----
+
+struct StyledPath {
+    std::vector<std::vector<std::pair<double, double>>> parts;  // pixels
+    bool closed = false;
+    std::optional<Color> fill, stroke;
+    double width = 1;
+    std::string dash;  // "", "dash" or "dot"
+    int order = 0;     // drawing order across all tiles (earth first, boundaries last)
+};
+struct StyledLabel {
+    double x = 0, y = 0;
+    std::string text;
+    double size = 11;
+    Color color;
+    bool bold = false;
+    double rank = 0;  // higher places first
+};
+// Tile units (0..extent) -> pixels.
+using TileToPixels = std::function<std::pair<double, double>(double, double)>;
+void styleVectorTile(const std::vector<MvtLayer>& layers, double zoom, const TileToPixels& toPx, int width, int height,
+                     std::vector<StyledPath>& paths, std::vector<StyledLabel>& labels);
+Color vectorWaterColor();
 
 }  // namespace wetwaresuite::maps::detail

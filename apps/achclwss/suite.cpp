@@ -1,6 +1,7 @@
 #include "suite.hpp"
 
 #include "achclwss/audio/commands.hpp"
+#include "achclwss/automate/automate.hpp"
 #include "achclwss/blueprint/blueprint.hpp"
 #include "achclwss/cad/cad.hpp"
 #include "achclwss/capture/capture.hpp"
@@ -8,6 +9,7 @@
 #include "achclwss/cut/cut.hpp"
 #include "achclwss/forge/forge.hpp"
 #include "achclwss/layout/layout.hpp"
+#include "achclwss/library/library.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
 #include "achclwss/slicer/slicer.hpp"
@@ -31,6 +33,8 @@ const std::set<std::string>& toolNames() {
         "audio",
         "cut",
         "capture",
+        "library",
+        "automate",
     };
     return names;
 }
@@ -54,6 +58,8 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("audio")) audio::registerCommands(session);
     if (want("cut")) cut::registerCommands(session);
     if (want("capture")) capture::registerCommands(session);
+    if (want("library")) library::registerCommands(session);
+    if (want("automate")) automate::registerCommands(session, [only](Session& fresh) { registerAll(fresh, only); });
 }
 
 }  // namespace achclwss::suite

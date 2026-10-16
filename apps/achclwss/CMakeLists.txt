@@ -9,6 +9,8 @@ target_link_libraries(achclwss_suite PUBLIC achclwss::layout)
 target_link_libraries(achclwss_suite PUBLIC achclwss::audio_tool)
 target_link_libraries(achclwss_suite PUBLIC achclwss::cut)
 target_link_libraries(achclwss_suite PUBLIC achclwss::capture)
+target_link_libraries(achclwss_suite PUBLIC achclwss::library)
+target_link_libraries(achclwss_suite PUBLIC achclwss::automate)
 
 add_executable(achclwss main.cpp)
 target_link_libraries(achclwss PRIVATE achclwss_suite achclwss::mcp)

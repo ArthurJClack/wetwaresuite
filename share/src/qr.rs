@@ -517,7 +517,7 @@ mod tests {
     /// input, version, error level and mask.
     #[test]
     fn matches_reference_encoder() {
-        let qr = QrCode::encode_with(b"achclwss", 1, Ecc::M, Some(2));
+        let qr = QrCode::encode_with(b"wetwaresuite", 1, Ecc::M, Some(2));
         assert_eq!(qr.to_ascii(), include_str!("../tests/data/qr-v1-m-mask2.txt"));
         let url = b"http://192.168.1.20:8740/?k=abcdefghijklmnopqrstuvwxyz234567";
         let qr = QrCode::encode_with(url, 5, Ecc::M, Some(5));

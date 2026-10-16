@@ -946,7 +946,23 @@ void testRealDataPack(const fs::path& dir) {
             for (int x = 0; x < (1 << z); ++x)
                 for (int y = 0; y < (1 << z); ++y) countriesTile(z, x, y, zc[z]);
         std::fprintf(stderr, "FAILED diag2: z1=%zu z2=%zu z3=%zu sq2=%zu area2=%.1f\n", zc[1], zc[2], zc[3], sq2.size(), sq2.empty() ? 0.0 : ringArea(sq2));
-        for (const auto& p : sq2) std::fprintf(stderr, "FAILED diag3: %d,%d\n", p.first, p.second);
+        for (const auto& f : countries()) {
+            if (f.props.at("name").text() != "France") continue;
+            for (const auto& poly : f.geom.polygons) {
+                std::vector<std::pair<double, double>> pts;
+                for (const auto& c : poly[0]) {
+                    double px = 0, py = 0;
+                    lonLatToTile(c.x, std::clamp(c.y, -85.0, 85.0), 3, px, py);
+                    pts.push_back({(px - 4) * 4096, (py - 2) * 4096});
+                }
+                const auto r = clipRing(pts, -64, 4160);
+                std::fprintf(stderr, "FAILED diag4: n=%zu p0=%.2f,%.2f p1=%.2f,%.2f clip=%zu area=%.1f c0=%.1f,%.1f\n", pts.size(), pts[0].first, pts[0].second,
+                             pts[1].first, pts[1].second, r.size(), r.empty() ? 0.0 : ringArea(r), r.empty() ? 0.0 : double(r[0].first), r.empty() ? 0.0 : double(r[0].second));
+            }
+        }
+        std::size_t again = 0;
+        countriesTile(3, 4, 2, again);
+        std::fprintf(stderr, "FAILED diag5: z3(4,2) earth=%zu\n", again);
         std::fprintf(stderr, "FAILED diag: earth=%zu countries=%zu polys=%zu pts=%zu z0earth=%zu z0bytes=%zu tile(10,50,3)=%.4f,%.4f clipsq=%zu area=%.1f\n",
                      earthFeatures, countries().size(), polys, pts, z0, t0.size(), tx, ty, sq.size(), sq.empty() ? 0.0 : ringArea(sq));
     }

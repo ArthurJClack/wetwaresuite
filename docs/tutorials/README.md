@@ -21,3 +21,4 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Toolkit](toolkit.md): identify any file from its contents, hex dumps, the standalone `achclwss-toolkit`.
 - [Library](library.md): index an asset drive, tag and rate, find duplicates and similar images, smart collections, thumbnails and contact sheets, asking Claude to find files.
 - [Automate](automate.md): scripts with variables, pipelines over folders, watch folders that process dropped files, the Python client, cron and Task Scheduler, pipelines from Claude.
+- [Beats](beats.md): music making: generate a beat from a genre and key, program drums on a step grid, bass and chords in the piano roll, synth sound design and effects, your own samples, MIDI in and out, stems and mastering.

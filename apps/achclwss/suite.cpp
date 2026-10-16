@@ -13,6 +13,7 @@
 #include "achclwss/layout/layout.hpp"
 #include "achclwss/levels/levels.hpp"
 #include "achclwss/library/library.hpp"
+#include "achclwss/notes/notes.hpp"
 #include "achclwss/office/office.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
@@ -47,6 +48,7 @@ const std::set<std::string>& toolNames() {
         "beats",
         "animate",
         "render",
+        "notes",
     };
     return names;
 }
@@ -81,6 +83,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("beats")) beats::registerCommands(session);
     if (want("animate")) animate::registerCommands(session);
     if (want("render")) render::registerCommands(session);
+    if (want("notes")) notes::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

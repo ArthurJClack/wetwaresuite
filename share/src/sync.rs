@@ -500,7 +500,7 @@ impl Engine {
         }
         let mut dir = path.parent().map(Path::to_path_buf);
         while let Some(d) = dir {
-            if d == self.local.root || !d.starts_with(&self.local.root) || std::fs::remove_dir(&d).is_err() {
+            if d == self.local.root || !d.starts_with(&self.local.root) || !paths::remove_empty_dir(&d) {
                 break;
             }
             dir = d.parent().map(Path::to_path_buf);

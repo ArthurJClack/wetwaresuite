@@ -931,6 +931,20 @@ void testRealDataPack(const fs::path& dir) {
             }
         }
     }
+    if (earthFeatures <= 177 * 2) {  // diagnostics for a windows-only failure
+        std::size_t polys = 0, pts = 0;
+        for (const auto& f : countries()) {
+            polys += f.geom.polygons.size();
+            for (const auto& poly : f.geom.polygons) for (const auto& ring : poly) pts += ring.size();
+        }
+        std::size_t z0 = 0;
+        const std::string t0 = countriesTile(0, 0, 0, z0);
+        double tx = 0, ty = 0;
+        lonLatToTile(10, 50, 3, tx, ty);
+        const auto sq = clipRing({{0, 0}, {5000, 0}, {5000, 5000}, {0, 5000}}, -64, 4160);
+        std::fprintf(stderr, "FAILED diag: earth=%zu countries=%zu polys=%zu pts=%zu z0earth=%zu z0bytes=%zu tile(10,50,3)=%.4f,%.4f clipsq=%zu area=%.1f\n",
+                     earthFeatures, countries().size(), polys, pts, z0, t0.size(), tx, ty, sq.size(), sq.empty() ? 0.0 : ringArea(sq));
+    }
     CHECK(tiles.size() == 85 && earthFeatures > 177 * 2);
     const std::string meta = R"j({"name":"natural earth z0-3","attribution":"Natural Earth (public domain)","vector_layers":[{"id":"water"},{"id":"earth"},{"id":"boundaries"},{"id":"places"}]})j";
     const fs::path file = dir / "ne.pmtiles";

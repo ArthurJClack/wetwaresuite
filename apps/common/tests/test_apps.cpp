@@ -124,6 +124,10 @@ int main() {
         CHECK(apps::routeForFile("blink.hex").app == "electronics");
         CHECK(apps::routeForFile("mystery.bin").app == "files");
         CHECK(apps::routeForFile("noext").app == "files");
+        CHECK(apps::routeForFile("main.rs").command == "code.open");
+        CHECK(apps::routeForFile("config.yaml").app == "system");
+        CHECK(apps::routeForFile("backup.tar.gz").app == "system");
+        CHECK(apps::routeForFile("readme.md").app == "office");  // documents stay in office
         CHECK(apps::sendRoute("image", "model")->ext == ".png");
         CHECK(apps::sendRoute("cad", "model")->ext == ".stl");
         CHECK(apps::sendRoute("sculpt", "game")->ext == ".glb");

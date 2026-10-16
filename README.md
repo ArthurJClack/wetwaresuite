@@ -24,6 +24,7 @@ install only what you need (`hub install image model --from <release folder>`); 
 | video | `wetwaresuite-video` | video editing and screen capture | cut, capture |
 | office | `wetwaresuite-office` | documents, sheets, slides, print layout, notes | office, layout, notes |
 | maps | `wetwaresuite-maps` | offline maps and GIS | maps |
+| system | `wetwaresuite-system` | calculator, code editor, file manager, terminal, system monitor, clock | calc, code, explorer, terminal, monitor, clock |
 | files | `wetwaresuite-files` | open, convert, find anything (always installed) | toolkit, convert, library, automate |
 | share | `wetwaresuite-share` | share and sync folders | share |
 
@@ -64,6 +65,12 @@ install only what you need (`hub install image model --from <release folder>`); 
 | `tools/notes/` | markdown notes and knowledge base: Obsidian-compatible vaults, wikilinks with rename-safe rewriting, backlinks, tags, frontmatter, templates, daily notes, tasks with due dates, ranked full-text search, link graph (JSON/DOT/PNG/SVG), HTML/PDF render and static site export |
 | `tools/maps/` | offline maps and lightweight GIS: GeoJSON/KML/GPX/CSV/Shapefile in and out, GeoTIFF and world-file rasters, WGS84/Web Mercator/UTM, geodesic measuring, buffer/simplify/clip/filter/joins, heatmaps, GPX track stats, styled PNG/SVG/PDF maps over built-in Natural Earth countries or OSM tiles |
 | `tools/type/` | font design: glyphs from shapes, SVG path data, SVG files or traced handwriting; components, transforms, oblique, embolden, overlap removal; auto-spacing and kerning; TTF/OTF/WOFF/UFO in, TTF/WOFF/SVG font out; proofs as PNG and PDF |
+| `tools/calc/` | calculator: exact fractions and big whole numbers, scientific functions, units and conversions (no currency), programmer mode (hex/bin/oct, bitwise, word sizes), statistics and regression on lists, solving equations and systems, integrals and derivatives, graphs to PNG, history and memory |
+| `tools/code/` | code editor for ~40 languages: highlighting, outlines, find/replace (regex) in a file or a whole folder, run files and build projects with the compilers already installed (CMake, Cargo, Go, npm, Make, .NET, Maven, Gradle...), errors as file:line rows, formatters, git status/diff/stage/commit |
+| `tools/explorer/` | file manager: browse, search by name/text/size/age, preview, copy/move/rename/delete with undo through its own trash, batch rename, zip/tar/tar.gz in and out, checksums, folder compare, duplicates, places |
+| `tools/terminal/` | terminal: the system shell (bash, zsh, sh, cmd, PowerShell) keeping its folder and variables between commands, typing into programs, stop, history, Tab completion |
+| `tools/monitor/` | system monitor: processor per core, memory, disks, processes (sort, filter, end), network speed, battery, system details, charts over time; straight from the OS on Linux, macOS and Windows |
+| `tools/clock/` | clock: world time for ~110 cities with summer-time rules, conversions, timers, stopwatch with laps, alarms saved between runs, date differences and working days, calendars |
 | `apps/app/` | `wetwaresuite-<app>`: one small binary per app (image, draw, model...), built from one shared main; each links only its own tools |
 | `apps/common/` | what every app shares: the app table, which app opens which file, the handoff folder and the `app.*` commands |
 | `apps/wetwaresuite/` | `wetwaresuite`: every tool in one binary (the window with no arguments; commands, batch scripts or an MCP server with them), plus the `wetwaresuite-gui` launcher |

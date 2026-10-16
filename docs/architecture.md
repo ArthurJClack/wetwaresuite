@@ -61,6 +61,7 @@ people install apps, not tools. an app is a few related tools in one binary:
 | video | cut, capture |
 | office | office, layout, notes |
 | maps | maps |
+| system | calc, code, explorer, terminal, monitor, clock |
 | files | toolkit, convert, library, automate (always installed) |
 | share | the Rust `wetwaresuite-share` |
 

@@ -49,7 +49,12 @@ constexpr const char* kInstructions =
     "handles GeoJSON/KML/GPX/Shapefile data in lon/lat and renders maps (maps_new returns map1), board_* makes "
     "whiteboards and diagrams (board_from_mermaid turns Mermaid text into a laid-out diagram), notes_* works on an "
     "Obsidian-style folder of Markdown notes (notes_search, notes_backlinks, notes_tasks), and type_* designs fonts "
-    "and exports TTF/WOFF (type_new returns font1; type_proof shows a specimen).";
+    "and exports TTF/WOFF (type_new returns font1; type_proof shows a specimen). System: calc_eval works out "
+    "expressions with exact fractions, units (\"5 km to miles\") and hex/bitwise maths; code_* edits source files "
+    "(code_open returns code1; code_edit replaces exact text), searches folders and runs or builds with the installed "
+    "compilers; explorer_* manages files with undo through its own trash and makes or unpacks zip/tar; terminal_* "
+    "runs shell commands (terminal_open returns term1; terminal_exec for one-offs); monitor_* reads processor, memory, "
+    "disks and processes; clock_* gives world time, timers, alarms and date maths.";
 
 void usage() {
     std::cout << "wetwaresuite " << kVersion << ": the whole suite, headless\n\n"

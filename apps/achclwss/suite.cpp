@@ -1,5 +1,6 @@
 #include "suite.hpp"
 
+#include "achclwss/cad/cad.hpp"
 #include "achclwss/convert/convert.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
@@ -9,7 +10,7 @@
 namespace achclwss::suite {
 
 const std::set<std::string>& toolNames() {
-    static const std::set<std::string> names = {"toolkit", "photo", "paint", "vector", "convert"};
+    static const std::set<std::string> names = {"toolkit", "photo", "paint", "vector", "convert", "cad"};
     return names;
 }
 
@@ -23,6 +24,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("paint")) paint::registerCommands(session);
     if (want("vector")) vector::registerCommands(session);
     if (want("convert")) convert::registerCommands(session);
+    if (want("cad")) cad::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

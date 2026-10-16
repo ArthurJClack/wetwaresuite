@@ -1,0 +1,10 @@
+add_library(achclwss_levels src/model.cpp src/io.cpp src/commands.cpp)
+add_library(achclwss::levels ALIAS achclwss_levels)
+target_include_directories(achclwss_levels PUBLIC include PRIVATE ${PROJECT_SOURCE_DIR}/third_party/stb)
+target_link_libraries(achclwss_levels PUBLIC achclwss::core achclwss::raster PRIVATE nlohmann_json::nlohmann_json)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_levels tests/test_levels.cpp)
+  target_link_libraries(test_levels PRIVATE achclwss::levels achclwss::mcp achclwss_check)
+  add_test(NAME levels COMMAND test_levels)
+endif()

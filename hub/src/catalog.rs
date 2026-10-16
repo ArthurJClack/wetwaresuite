@@ -60,7 +60,7 @@ pub const TOOLS: &[Tool] = &[
     planned("sculpt", "sculpt", "digital sculpting and retopology", 5, 15),
     planned("render", "render", "3D scenes and path-traced renders", 5, 20),
     planned("animate", "animate", "2D and 3D animation", 5, 15),
-    planned("levels", "levels", "game level and tilemap editor", 5, 10),
+    available("levels", "levels", "game level and tilemap editor", 5, 10),
     planned("beats", "beats", "music making: sequencer, synths, samples", 5, 15),
     planned("circuit", "circuit", "schematics and PCB layout", 6, 25),
     planned("flash", "flash", "flash firmware to Arduino, ESP32 and STM32", 6, 5),

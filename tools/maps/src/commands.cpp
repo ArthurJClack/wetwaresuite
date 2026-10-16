@@ -318,7 +318,7 @@ std::vector<ParamSpec> viewParams() {
             {"radius_km", ParamType::Number, "with center: how far to show around it", false},
             {"basemap", ParamType::String, "background: countries (offline Natural Earth outlines), none, or osm (online tiles, cached)", false,
              {"countries", "none", "osm"}, std::string("countries")},
-            {"tile_url", ParamType::String, "osm: tile server template with {z}/{x}/{y}", false, {}, std::string("https://tile.openstreetmap.org/{z}/{x}/{y}.png")},
+            {"tile_url", ParamType::String, "osm: tile server template with {z}/{x}/{y}, or a local tile folder template (e.g. tiles/{z}/{x}/{y}.png), which is never downloaded to", false, {}, std::string("https://tile.openstreetmap.org/{z}/{x}/{y}.png")},
             {"tile_cache", ParamType::String, "osm: tile cache folder (default: the user cache dir, wetwaresuite/tiles)", false},
             {"offline", ParamType::Bool, "osm: use cached tiles only, never download", false, {}, false},
             {"max_tiles", ParamType::Int, "osm: most tiles one render may use (zoom drops to fit)", false, {}, std::int64_t{64}},
@@ -364,8 +364,8 @@ bool viewOptions(const MapDoc& doc, const Params& p, RenderOptions& o, std::stri
     o.basemap = stringParam(p, "basemap", "countries");
     o.tileUrl = stringParam(p, "tile_url", o.tileUrl);
     if (o.tileUrl.find("{z}") == std::string::npos || o.tileUrl.find("{x}") == std::string::npos || o.tileUrl.find("{y}") == std::string::npos ||
-        o.tileUrl.rfind("http", 0) != 0) {
-        error = "tile_url needs http(s) and {z}, {x} and {y}";
+        o.tileUrl.empty()) {
+        error = "tile_url needs {z}, {x} and {y}: an http(s) tile server, or a local tile folder like D:/tiles/{z}/{x}/{y}.png";
         return false;
     }
     o.tileCache = stringParam(p, "tile_cache");

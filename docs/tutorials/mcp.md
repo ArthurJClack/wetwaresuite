@@ -98,6 +98,10 @@ cd hub && cargo build --release
 
 Without `--bin-dir` it uses the folder the `hub` binary itself is in, which is what you want once the suite is installed side by side. Paste the output into Claude Desktop's config, or pass the same command and args to `claude mcp add`.
 
+### Or let the hub do all of it
+
+`hub connect` finds Claude Desktop and Claude Code on your computer and adds the entry to their config files for you, with a backup first. Run it again any time; `hub connect --remove` takes it out. See [ai-connect.md](ai-connect.md), which also covers serving over HTTP (`wetwaresuite mcp --http`) to another computer or a container.
+
 ### The standalone toolkit server
 
 `wetwaresuite-toolkit` (built at `build/tools/toolkit/wetwaresuite-toolkit`) has its own tiny MCP server with just the file-identification tools:

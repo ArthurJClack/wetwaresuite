@@ -3,13 +3,14 @@
 #include "achclwss/convert/convert.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
+#include "achclwss/slicer/slicer.hpp"
 #include "achclwss/toolkit/detect.hpp"
 #include "achclwss/vector/vector.hpp"
 
 namespace achclwss::suite {
 
 const std::set<std::string>& toolNames() {
-    static const std::set<std::string> names = {"toolkit", "photo", "paint", "vector", "convert"};
+    static const std::set<std::string> names = {"toolkit", "photo", "paint", "vector", "convert", "slicer"};
     return names;
 }
 
@@ -23,6 +24,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("paint")) paint::registerCommands(session);
     if (want("vector")) vector::registerCommands(session);
     if (want("convert")) convert::registerCommands(session);
+    if (want("slicer")) slicer::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

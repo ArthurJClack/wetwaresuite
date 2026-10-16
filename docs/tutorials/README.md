@@ -9,4 +9,5 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Paint](paint.md): brush strokes with tablet pressure, presets, layers, blend modes, fills, saving `.ora`.
 - [Vector](vector.md): drawing shapes and paths, styling, SVG in and out, a full logo.
 - [Convert](convert.md): images, SVG, audio, video, office documents and markup, one file or a whole folder.
+- [Slicer](slicer.md): 3D models to G-code: printer and filament presets, infill, brim and supports, layer previews, parts from cad.
 - [Toolkit](toolkit.md): identify any file from its contents, hex dumps, the standalone `achclwss-toolkit`.

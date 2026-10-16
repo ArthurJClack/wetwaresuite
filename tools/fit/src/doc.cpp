@@ -349,7 +349,11 @@ std::string describeRef(const std::string& name, const Ref& r) {
 }
 
 std::string describePart(const std::string& name, const Part& p) {
-    return name + ": " + p.kind + ", " + (p.mesh ? mesh::describe(*p.mesh) : std::string("empty"));
+    if (!p.mesh || p.mesh->empty()) return name + ": " + p.kind + ", empty";
+    const Mesh& m = *p.mesh;
+    const Vec3 sz = mesh::bounds(m).size();
+    return name + ": " + p.kind + ", " + num(sz.x) + " x " + num(sz.y) + " x " + num(sz.z) + " mm, " + std::to_string(m.triangleCount()) +
+           " triangles, " + (isClosed(m) ? "closed (ready to print)" : "has holes");
 }
 
 void putPart(FitDoc& doc, const std::string& name, Mesh m, const std::string& kind, const Vec3& normal, double gap) {

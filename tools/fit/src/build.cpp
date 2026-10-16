@@ -9,6 +9,7 @@
 #include "wetwaresuite/fit/geom.hpp"
 #include "wetwaresuite/mesh/csg.hpp"
 #include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/mesh/topology.hpp"
 #include "wetwaresuite/sculpt/ops.hpp"
 
 namespace wetwaresuite::fit {
@@ -483,37 +484,46 @@ FitReport checkFit(const Bvh& scan, const Mesh& part, double range, double expec
     FitReport r;
     r.total = part.vertexCount();
     r.vertexGap.assign(part.vertexCount(), std::nan(""));
-    if (scan.empty()) return r;
+    if (scan.empty() || part.empty()) return r;
     const Mesh& sm = scan.mesh();
-    std::size_t behind = 0;
+    // Only the side of the part that faces the scan says anything about the
+    // fit: its normals run against the scan's. Apps don't agree on which way
+    // scan triangles face, so try both and take the side that sits closer.
+    const auto pn = mesh::vertexNormals(part);
+    struct Sample {
+        std::size_t vertex;
+        double distance, along, facing;  // along: (p - q) . scan normal
+    };
+    std::vector<Sample> samples;
     for (std::size_t i = 0; i < part.vertexCount(); ++i) {
         const auto q = scan.nearest(part.positions[i]);
         if (q.distance > range) continue;
         const Vec3 n = normalize(sm.faceNormal(q.tri));
-        // only straight behind counts: points off past the scan's open edge are just beside it
-        const Vec3 d = part.positions[i] - q.point;
-        const bool back = q.distance > 1e-9 && dot(d, n) < -0.5 * q.distance;
-        r.vertexGap[i] = back ? -q.distance : q.distance;
-        behind += back && q.distance > 0.05 ? 1 : 0;
-        ++r.near;
+        samples.push_back({i, q.distance, dot(part.positions[i] - q.point, n), dot(pn[i], n)});
     }
-    if (!r.near) return r;
-    // a part mostly "behind" the surface means the scan's triangles face the
-    // other way (apps don't agree on winding), not that the part is buried
-    if (behind * 2 > r.near) {
-        for (double& g : r.vertexGap)
-            if (!std::isnan(g)) g = -g;
+    double sumA = 0, sumB = 0;
+    std::size_t nA = 0, nB = 0;
+    for (const auto& s : samples) {
+        if (s.facing < -0.3) { sumA += s.distance; ++nA; }
+        if (s.facing > 0.3) { sumB += s.distance; ++nB; }
     }
+    const bool flipped = nB > 0 && (nA == 0 || sumB / static_cast<double>(nB) < sumA / static_cast<double>(nA));
     double sum = 0, mn = 1e300, mx = -1e300;
     std::size_t contact = 0, in = 0;
-    for (double g : r.vertexGap) {
-        if (std::isnan(g)) continue;
+    for (const auto& s : samples) {
+        const double facing = flipped ? -s.facing : s.facing, along = flipped ? -s.along : s.along;
+        if (facing >= -0.3) continue;
+        // behind the surface (not just beside its open edge) means poking in
+        const double g = along < -0.5 * s.distance ? -s.distance : s.distance;
+        r.vertexGap[s.vertex] = g;
+        ++r.near;
         sum += g;
         mn = std::min(mn, g);
         mx = std::max(mx, g);
         if (g < -0.05) ++in;
         else if (g <= expectedGap + 0.5) ++contact;
     }
+    if (!r.near) return r;
     r.minGap = mn;
     r.maxGap = mx;
     r.meanGap = sum / static_cast<double>(r.near);

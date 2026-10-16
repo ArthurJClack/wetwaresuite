@@ -13,7 +13,7 @@ const std::vector<App>& all() {
         {"draw", "vector art and logos, fonts, whiteboards and diagrams", {"vector", "type", "board"}, 0x2fb37a},
         {"model", "3D modeling and sculpting, rendered pictures, animation", {"sculpt", "render", "animate"}, 0xf08c2e},
         {"game", "game assets (meshes, sprites, textures) and game levels", {"forge", "levels"}, 0x5bbf3a},
-        {"cad", "precise parts, technical drawings and floor plans, 3D printing", {"cad", "blueprint", "slicer"}, 0x2f8fd6},
+        {"cad", "precise parts, technical drawings and floor plans, 3D printing, parts that fit 3D scans", {"cad", "blueprint", "slicer", "fit"}, 0x2f8fd6},
         {"electronics", "circuit diagrams, circuit boards and flashing microcontrollers", {"circuit", "flash"}, 0x14a89a},
         {"sound", "record and clean up audio, make music", {"audio", "beats"}, 0x9b6bff},
         {"video", "edit videos, take screenshots and record the screen", {"cut", "capture"}, 0xe5484d},
@@ -68,7 +68,7 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".tmx", {"game", "levels.open"}}, {".tmj", {"game", "levels.open"}}, {".ldtk", {"game", "levels.open"}},
         // cad
         {".stl", {"cad", "slicer.load"}}, {".3mf", {"cad", "slicer.load"}}, {".dxf", {"cad", "blueprint.open"}},
-        {".gcode", {"cad", ""}}, {".step", {"cad", ""}}, {".stp", {"cad", ""}}, {".achcad", {"cad", "cad.open"}},
+        {".gcode", {"cad", ""}}, {".step", {"cad", ""}}, {".stp", {"cad", ""}}, {".achcad", {"cad", "cad.open"}}, {".wwfit", {"cad", "fit.open"}},
         // electronics
         {".hex", {"electronics", ""}}, {".elf", {"electronics", ""}}, {".ino", {"electronics", ""}},
         {".gbr", {"electronics", ""}}, {".drl", {"electronics", ""}}, {".kicad_sch", {"electronics", ""}},
@@ -144,6 +144,9 @@ const std::vector<SendRoute>& sendRoutes() {
         {"cad", "game", "cad.save", "path", ".glb", "mesh", "forge.mesh_open", "opened as a game mesh"},
         {"cad", "image", "cad.save", "path", ".png", "picture", "photo.open", "a picture of the part"},
         {"blueprint", "draw", "blueprint.export", "path", ".svg", "drawing", "vector.open", "opened as vector art"},
+        {"fit", "model", "fit.export", "path", ".stl", "mesh", "sculpt.open", "the fitted parts, opened for sculpting; or render them with render.model path=FILE"},
+        {"fit", "game", "fit.export", "path", ".glb", "mesh", "forge.mesh_open", "the fitted parts as a game mesh"},
+        {"fit", "image", "fit.export", "path", ".png", "picture", "photo.open", "a picture of the scan and its parts"},
         {"blueprint", "office", "blueprint.export", "path", ".svg", "drawing", "", "place it on a page: layout.place_image doc=<layout> path=FILE"},
         // electronics
         {"circuit", "office", "circuit.export", "path", ".svg", "schematic", "", "place it on a page: layout.place_image doc=<layout> path=FILE"},
@@ -189,6 +192,7 @@ std::string toolGuide(const std::string& tool) {
         {"cad", "cad_* builds parametric parts in mm with z up (cad_new returns cad1; numeric fields take expressions over cad_param_set parameters; cad_save exports STL/3MF)."},
         {"blueprint", "blueprint_* makes technical drawings and floor plans in real units (mm, m, ft) with y up, drawn to a scale such as 1:50 (blueprint_new returns bp1; blueprint_export writes PDF/SVG/PNG to scale)."},
         {"slicer", "slicer_* turns a model into G-code for a 3D printer (slicer_slice_file is the one-shot)."},
+        {"fit", "fit_* designs car parts and mounts that fit a phone 3D scan, in mm with z up (fit_open returns fit1 and fixes metres and Y-up; clean with fit_remove_floor, fit_keep_largest, fit_fill_holes; fit_plane/fit_cylinder/fit_circle/fit_curve fit clean references to noisy patches; fit_plate, fit_block, fit_clamp, fit_phone_mount, fit_gauge_pod... build parts with a gap; fit_pick turns a u,v spot on a preview into a point; fit_check shows the gap; fit_export writes STL/3MF)."},
         {"circuit", "circuit_* draws schematics in mm and lays out PCBs (circuit_new returns ckt1; circuit_erc and circuit_drc check them; circuit_gerber writes fab files)."},
         {"flash", "flash_* finds boards on serial ports and flashes Arduino, ESP32 and STM32 firmware (flash_ports first; sim: boards let you try it without hardware)."},
         {"audio", "audio_* edits sound in seconds (audio_open returns aud1; audio_preview shows a waveform or spectrogram; audio_measure gives LUFS)."},

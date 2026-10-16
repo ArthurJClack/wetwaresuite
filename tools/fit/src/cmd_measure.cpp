@@ -132,7 +132,7 @@ void registerMeasure(Session& session) {
                     const std::size_t step = std::max<std::size_t>(1, sec.lines[pick].size() / 200);
                     for (std::size_t i = 0; i < sec.lines[pick].size(); i += step) {
                         const auto& q = sec.lines[pick][i];
-                        pts.insert(pts.end(), {q.x, q.y, q.z});
+                        for (double c : {q.x, q.y, q.z}) pts.push_back(std::abs(c) < 1e-9 ? 0.0 : c);
                     }
                     Result r = Result::success(msg, len);
                     r.with("lines", static_cast<std::int64_t>(sec.lines.size()))

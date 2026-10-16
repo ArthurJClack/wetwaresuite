@@ -18,7 +18,7 @@ install only what you need (`hub install image model --from <release folder>`); 
 | draw | `wetwaresuite-draw` | vector art, fonts, whiteboards | vector, type, board |
 | model | `wetwaresuite-model` | 3D modeling, renders, animation | sculpt, render, animate |
 | game | `wetwaresuite-game` | game assets and levels | forge, levels |
-| cad | `wetwaresuite-cad` | engineering, drafting, 3D printing | cad, blueprint, slicer |
+| cad | `wetwaresuite-cad` | engineering, drafting, 3D printing, parts that fit 3D scans | cad, blueprint, slicer, fit |
 | electronics | `wetwaresuite-electronics` | circuits and microcontrollers | circuit, flash |
 | sound | `wetwaresuite-sound` | audio editing and music | audio, beats |
 | video | `wetwaresuite-video` | video editing and screen capture | cut, capture |
@@ -54,6 +54,7 @@ install only what you need (`hub install image model --from <release folder>`); 
 | `tools/office/` | office suite: spreadsheets with formulas and charts (XLSX/CSV), documents (DOCX/Markdown/PDF), slide decks (PPTX/PDF), PDF merge/split/rotate/text |
 | `tools/convert/` | change a file's type: images and 3D meshes built in, audio/video via ffmpeg, docs via LibreOffice/pandoc |
 | `tools/levels/` | game levels and tilemaps: tilesets, tile and object layers, painting, auto-tiling, scatter, cave/dungeon/noise generators, collision, Tiled TMX/TMJ, LDtk, JSON, CSV, PNG |
+| `tools/fit/` | scan fit: phone 3D scans (OBJ/PLY/STL/glTF/points, metres and Y-up handled) cleaned up, robust plane/cylinder/circle/curve references, parts that hug the scan at a set gap (plates, blocks, clamps, strips, phone mounts, gauge pods, switch panels, speaker rings), gap checks, test slices, replayable `.wwfit` projects |
 | `tools/sculpt/` | digital sculpting: brush strokes with symmetry and masks, subdivision, voxel remesh, quadric decimation, quad retopology, heightmap displacement, STL/OBJ/PLY/glTF out |
 | `tools/beats/` | music making: step sequencer and piano roll, subtractive synth with presets, synthesized drum kit with sample slots, pitched sampler, arrangement by bar, effects, WAV/MP3 render, MIDI import/export, genre-based beat generator |
 | `tools/animate/` | 2D and 3D animation: keyframes with easing, shapes, text, images, frame-by-frame cels with onion skin, bone rigs, 3D meshes and camera; PNG sequences, sprite sheets with JSON atlases, GIF, mp4/webm (via ffmpeg) |

@@ -574,6 +574,10 @@ Section section(const Mesh& m, const Vec3& point, const Vec3& normalIn) {
         }
     }
     std::unordered_map<std::uint64_t, bool> used;
+    // a vertex right on the plane is reached from several edges: keep it once
+    auto addPoint = [](std::vector<Vec3>& line, const Vec3& q) {
+        if (line.empty() || length(q - line.back()) > 1e-9) line.push_back(q);
+    };
     auto walk = [&](std::uint64_t start) {
         std::vector<std::uint64_t> chain{start};
         used[start] = true;
@@ -600,7 +604,7 @@ Section section(const Mesh& m, const Vec3& point, const Vec3& normalIn) {
         if (used[k] || ls.size() != 1) continue;
         auto chain = walk(k);
         std::vector<Vec3> line;
-        for (auto c : chain) line.push_back(crossing[c]);
+        for (auto c : chain) addPoint(line, crossing[c]);
         if (line.size() >= 2) {
             out.lines.push_back(std::move(line));
             out.closed.push_back(false);
@@ -610,7 +614,7 @@ Section section(const Mesh& m, const Vec3& point, const Vec3& normalIn) {
         if (used[k]) continue;
         auto chain = walk(k);
         std::vector<Vec3> line;
-        for (auto c : chain) line.push_back(crossing[c]);
+        for (auto c : chain) addPoint(line, crossing[c]);
         if (line.size() >= 3) {
             const bool closed = std::find(links[chain.back()].begin(), links[chain.back()].end(), chain.front()) != links[chain.back()].end();
             out.lines.push_back(std::move(line));

@@ -20,6 +20,7 @@
 #include "achclwss/render/render.hpp"
 #include "achclwss/slicer/slicer.hpp"
 #include "achclwss/toolkit/detect.hpp"
+#include "achclwss/type/type.hpp"
 #include "achclwss/vector/vector.hpp"
 
 namespace achclwss::suite {
@@ -47,6 +48,7 @@ const std::set<std::string>& toolNames() {
         "beats",
         "animate",
         "render",
+        "type",
     };
     return names;
 }
@@ -81,6 +83,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("beats")) beats::registerCommands(session);
     if (want("animate")) animate::registerCommands(session);
     if (want("render")) render::registerCommands(session);
+    if (want("type")) typeface::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

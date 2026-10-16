@@ -1,4 +1,4 @@
-add_library(achclwss_core src/command.cpp src/workspace.cpp src/cli.cpp)
+add_library(achclwss_core src/command.cpp src/workspace.cpp src/cli.cpp src/process.cpp)
 add_library(achclwss::core ALIAS achclwss_core)
 target_include_directories(achclwss_core PUBLIC include)
 

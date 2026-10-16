@@ -25,6 +25,7 @@
 #include "achclwss/render/render.hpp"
 #include "achclwss/slicer/slicer.hpp"
 #include "achclwss/toolkit/detect.hpp"
+#include "achclwss/type/type.hpp"
 #include "achclwss/vector/vector.hpp"
 
 namespace achclwss::suite {
@@ -57,6 +58,7 @@ const std::set<std::string>& toolNames() {
         "board",
         "notes",
         "maps",
+        "type",
     };
     return names;
 }
@@ -96,6 +98,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("board")) board::registerCommands(session);
     if (want("notes")) notes::registerCommands(session);
     if (want("maps")) maps::registerCommands(session);
+    if (want("type")) typeface::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

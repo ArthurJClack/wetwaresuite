@@ -67,7 +67,7 @@ pub const TOOLS: &[Tool] = &[
     available("maps", "maps", "offline maps and GIS", 6, 15),
     available("board", "board", "whiteboard and diagrams", 6, 5),
     available("notes", "notes", "markdown notes and knowledge base", 6, 5),
-    planned("type", "type", "font design", 6, 8),
+    available("type", "type", "font design", 6, 8),
 ];
 
 pub fn find(id: &str) -> Option<&'static Tool> {

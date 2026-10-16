@@ -311,8 +311,11 @@ void testCommands() {
     const auto gcode = tmp("cube.gcode");
     r = session.run("slicer.export_gcode", {{"doc", std::string("print1")}, {"path", gcode.string()}});
     CHECK(r.ok && std::filesystem::file_size(gcode) > 1000);
-    std::ifstream in(gcode);
-    std::string text((std::istreambuf_iterator<char>(in)), {});
+    std::string text;
+    {
+        std::ifstream in(gcode);  // closed before the file is removed (Windows can't delete open files)
+        text.assign(std::istreambuf_iterator<char>(in), {});
+    }
     CHECK(text.find("M109 S240") != std::string::npos);  // PETG first layer
 
     r = session.run("slicer.preview_layer", {{"doc", std::string("print1")}, {"layer", std::int64_t{0}}});
@@ -344,9 +347,10 @@ void testCommands() {
     std::ostringstream o, e;
     cli::Batch batch(session);
     CHECK(batch.run(script, o, e) == 0);
-    std::filesystem::remove(stl);
-    std::filesystem::remove(gcode);
-    std::filesystem::remove(out);
+    std::error_code ec;
+    std::filesystem::remove(stl, ec);
+    std::filesystem::remove(gcode, ec);
+    std::filesystem::remove(out, ec);
 }
 
 void testMcp() {

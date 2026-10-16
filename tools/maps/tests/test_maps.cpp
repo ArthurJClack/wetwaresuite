@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -833,6 +834,113 @@ void testMcp(const fs::path& dir) {
 
 }  // namespace
 
+// ---- Jenks natural breaks -------------------------------------------------------------------
+
+double classCost(const std::vector<double>& v, std::size_t b, std::size_t e) {  // squared deviation of v[b..e)
+    double mean = 0;
+    for (std::size_t i = b; i < e; ++i) mean += v[i];
+    mean /= static_cast<double>(e - b);
+    double c = 0;
+    for (std::size_t i = b; i < e; ++i) c += (v[i] - mean) * (v[i] - mean);
+    return c;
+}
+
+// Total squared deviation when sorted values are split at the class tops in `breaks`.
+double breaksCost(const std::vector<double>& sorted, const std::vector<double>& breaks) {
+    double c = 0;
+    std::size_t b = 0;
+    for (std::size_t k = 1; k < breaks.size(); ++k) {
+        std::size_t e = b;
+        while (e < sorted.size() && (sorted[e] <= breaks[k] || k + 1 == breaks.size())) ++e;
+        if (e > b) c += classCost(sorted, b, e);
+        b = e;
+    }
+    return c;
+}
+
+// The true optimum by trying every way to cut n sorted values into k runs.
+double bruteForce(const std::vector<double>& v, int k) {
+    double best = 1e300;
+    std::vector<std::size_t> cuts;
+    std::function<void(std::size_t, int, double)> go = [&](std::size_t start, int left, double acc) {
+        if (left == 1) {
+            best = std::min(best, acc + classCost(v, start, v.size()));
+            return;
+        }
+        for (std::size_t e = start + 1; e + static_cast<std::size_t>(left - 1) <= v.size(); ++e) go(e, left - 1, acc + classCost(v, start, e));
+    };
+    go(0, k, 0);
+    return best;
+}
+
+void testJenks() {
+    // three obvious groups
+    auto b = jenksBreaks({22, 1, 11, 2, 20, 3, 12, 10, 21}, 3);
+    CHECK(b == (std::vector<double>{1, 3, 12, 22}));
+    // simple-statistics' ckmeans example: [-1 x4], [2 x3], [4, 5, 6]
+    b = jenksBreaks({-1, 2, -1, 2, 4, 5, 6, -1, 2, -1}, 3);
+    CHECK(b == (std::vector<double>{-1, -1, 2, 6}));
+    // fewer distinct values than classes, one class, nothing usable
+    CHECK(jenksBreaks({5, 5, 7}, 4) == (std::vector<double>{5, 5, 7}));
+    CHECK(jenksBreaks({3, 9, 4}, 1) == (std::vector<double>{3, 9}));
+    CHECK(jenksBreaks({std::nan(""), INFINITY}, 3).empty());
+    CHECK(jenksBreaks({}, 3).empty());
+    // the optimum, checked against every possible split
+    std::mt19937 rng(11);
+    bool optimal = true;
+    for (int trial = 0; trial < 60; ++trial) {
+        std::vector<double> v;
+        const int n = 6 + static_cast<int>(rng() % 9);
+        for (int i = 0; i < n; ++i) v.push_back(static_cast<double>(rng() % 1000) / 10.0 + (trial % 3 == 0 ? 1e6 : 0));  // + an offset: precision
+        std::sort(v.begin(), v.end());
+        for (int k = 2; k <= std::min(5, n); ++k) {
+            const auto jb = jenksBreaks(v, k);
+            optimal = optimal && jb.front() == v.front() && jb.back() == v.back() && std::abs(breaksCost(v, jb) - bruteForce(v, k)) <= 1e-6 * (1 + bruteForce(v, k));
+        }
+    }
+    CHECK(optimal);
+    // big inputs: 300k values in three bands, merged into runs, still fast and still finds the gaps
+    std::vector<double> big;
+    std::uniform_real_distribution<double> u(0, 1);
+    for (int i = 0; i < 300000; ++i) big.push_back((i % 3) * 100 + u(rng) * 10);
+    const auto t0 = std::chrono::steady_clock::now();
+    b = jenksBreaks(big, 3);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    CHECK(b.size() == 4 && b[1] < 10 && b[2] > 100 && b[2] < 110 && b[3] > 200);
+    CHECK(ms < 5000);
+    b = jenksBreaks(big, 3, 64);  // only 64 runs: the gaps are still run edges
+    CHECK(b.size() == 4 && b[1] < 10 && b[2] > 100 && b[2] < 110 && b[3] > 200);
+    // and through maps.style: a graduated layer with method=jenks
+    Layer l;
+    l.name = "pts";
+    for (double x : {1.0, 2.0, 3.0, 10.0, 11.0, 12.0, 20.0, 21.0, 22.0}) {
+        Feature f;
+        f.geom.type = GeomType::Point;
+        f.geom.points.push_back({x, 0});
+        f.props["v"] = Prop::number(x);
+        l.features.push_back(f);
+    }
+    l.style.mode = "graduated";
+    l.style.field = "v";
+    l.style.classes = 3;
+    l.style.method = "jenks";
+    auto cls = styleClasses(l);
+    CHECK(cls.size() == 3 && cls[0].lo == 1 && cls[0].hi == 3 && cls[1].hi == 12 && cls[2].hi == 22);
+    l.style.method = "natural";
+    CHECK(styleClasses(l).size() == 3 && styleClasses(l)[1].hi == 12);
+    // a class that is only the minimum survives the duplicate-break clean-up
+    for (int i = 0; i < 6; ++i) {
+        Feature f;
+        f.geom.type = GeomType::Point;
+        f.geom.points.push_back({0, 0});
+        f.props["v"] = Prop::number(0);
+        l.features.push_back(f);
+    }
+    l.style.method = "quantile";  // tops 0, 10, 22: the first class is just the zeros
+    cls = styleClasses(l);
+    CHECK(cls.size() == 3 && cls[0].lo == 0 && cls[0].hi == 0 && cls[1].hi == 10);
+}
+
 int main() {
     const fs::path dir = tempDir();
     // map packs are looked up under $WETWARESUITE_HOME: keep the user's own out of the tests
@@ -846,6 +954,7 @@ int main() {
     testRasters(dir);
     testTiffCodecs();
     testAnalysis();
+    testJenks();
     testRendering(dir);
     testCommands(dir);
     testPmtiles(dir);

@@ -1,5 +1,6 @@
 #include "suite.hpp"
 
+#include "achclwss/blueprint/blueprint.hpp"
 #include "achclwss/convert/convert.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
@@ -14,6 +15,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("photo")) photo::registerCommands(session);
     if (want("paint")) paint::registerCommands(session);
     if (want("vector")) vector::registerCommands(session);
+    if (want("blueprint")) blueprint::registerCommands(session);
     if (want("convert")) convert::registerCommands(session);
 }
 

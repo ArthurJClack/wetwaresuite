@@ -21,7 +21,9 @@ constexpr const char* kInstructions =
     "Every edit is undoable with undo/redo, and `documents` lists what's open. Coordinates are pixels from the "
     "top-left. Colours accept #rrggbb, #rrggbbaa, rgb(r,g,b) or names. Strokes take points as a flat [x1,y1,x2,y2,...] "
     "list. convert_file changes file formats; convert_formats shows what's available. toolkit_inspect identifies "
-    "any file.";
+    "any file. blueprint_* tools are the exception to pixel coordinates: technical drawings and floor plans in real "
+    "units (mm, m, ft...) with y pointing up, drawn to a scale such as 1:50 (blueprint_new returns bp1; "
+    "blueprint_list and blueprint_measure read exact values; blueprint_export writes PDF/SVG/PNG to scale).";
 
 void usage() {
     std::cout << "achclwss " << kVersion << ": the whole suite, headless\n\n"

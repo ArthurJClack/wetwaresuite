@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr const char* kVersion = "0.4.0";
+constexpr const char* kVersion = "0.5.0";
 
 constexpr const char* kInstructions =
     "ACHCLWSS is a creative suite you drive with tools. Workflow: open or create a document (photo_open, photo_new, "
@@ -31,7 +31,12 @@ constexpr const char* kInstructions =
     "(cut_new returns cut1; cut_preview shows a frame; cut_render exports), capture_screenshot without output returns "
     "an image of the screen, office_* handles spreadsheets with formulas, documents, slide decks and PDF tools, "
     "layout_* builds print layouts exported to PDF, library_* indexes and searches asset folders, and automate_* runs "
-    "batch scripts, pipelines and folder watches.";
+    "batch scripts, pipelines and folder watches. 3D art and games: sculpt_* sculpts meshes with brush strokes along "
+    "point paths (sculpt_new returns sculpt1; strokes accept space=screen points on a preview), render_* builds "
+    "scenes and path-traces them (render_new returns scene1; render_render without output returns the image), "
+    "animate_* keyframes 2D layers, cels, bone rigs and 3D meshes and exports GIF, sprite sheets or video, "
+    "levels_* edits tilemaps and generates caves and dungeons from a seed (Tiled TMX/TMJ, LDtk), and beats_* makes "
+    "music from step patterns, notes and chords (beats_generate makes a starter song; beats_render writes audio).";
 
 void usage() {
     std::cout << "achclwss " << kVersion << ": the whole suite, headless\n\n"

@@ -28,6 +28,9 @@ const fn planned(id: &'static str, name: &'static str, summary: &'static str, ph
 /// The `achclwss` binary serves every built tool over MCP with `achclwss mcp`.
 pub const SUITE: &str = "achclwss";
 
+/// `share` is its own small Rust binary (no C++ core), with its own MCP server.
+pub const SHARE: &str = "achclwss-share";
+
 const fn available(id: &'static str, name: &'static str, summary: &'static str, phase: u8, approx_mb: u32) -> Tool {
     Tool { id, name, summary, phase, approx_mb, status: Status::Available, mcp_binary: Some(SUITE) }
 }
@@ -46,6 +49,15 @@ pub const TOOLS: &[Tool] = &[
     available("paint", "paint", "digital painting with pen pressure and layers", 2, 4),
     available("convert", "convert", "change any file's type: images, audio, video, docs", 2, 2),
     planned("vector", "vector", "vector design, SVG/AI/EPS", 2, 10),
+    Tool {
+        id: "share",
+        name: "share",
+        summary: "share and live-sync folders over LAN or internet",
+        phase: 2,
+        approx_mb: 1,
+        status: Status::Available,
+        mcp_binary: Some(SHARE),
+    },
     planned("cad", "cad", "precision parametric 2D/3D CAD", 3, 45),
     planned("blueprint", "blueprint", "technical drafting and floor plans", 3, 8),
     planned("slicer", "slicer", "3D printing slicer", 3, 20),

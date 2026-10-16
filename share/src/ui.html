@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shared folder</title>
+<style>
+:root{--bg:#f7f7f5;--panel:#fff;--text:#1d1d1b;--muted:#6b6b66;--line:#e4e4df;--accent:#2b6cb0;--hover:#f0f3f7;--danger:#c53030;--ok:#2f855a}
+@media (prefers-color-scheme:dark){:root{--bg:#161615;--panel:#1f1f1e;--text:#ececea;--muted:#9a9a94;--line:#33332f;--accent:#63a4e8;--hover:#262a30;--danger:#fc8181;--ok:#68d391}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:2;background:var(--panel);border-bottom:1px solid var(--line);padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+h1{font-size:16px;margin:0 12px 0 0;font-weight:600;white-space:nowrap}
+.crumbs{flex:1 1 220px;min-width:0;overflow-x:auto;white-space:nowrap;color:var(--muted)}
+.crumbs a{color:var(--accent);text-decoration:none}
+.crumbs a:hover{text-decoration:underline}
+input[type=search]{flex:0 1 200px;min-width:120px;padding:6px 10px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--text);font:inherit}
+button,.btn{font:inherit;padding:6px 12px;border:1px solid var(--line);border-radius:6px;background:var(--panel);color:var(--text);cursor:pointer;text-decoration:none;white-space:nowrap}
+button:hover,.btn:hover{background:var(--hover)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+main{max-width:1000px;margin:0 auto;padding:12px 16px 80px}
+table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+th,td{padding:8px 10px;text-align:left;border-bottom:1px solid var(--line)}
+th{font-weight:500;color:var(--muted);font-size:13px;cursor:pointer;user-select:none}
+tr:last-child td{border-bottom:none}
+tbody tr:hover{background:var(--hover)}
+td.name{overflow-wrap:anywhere}
+td.name a{color:var(--text);text-decoration:none}
+td.name a:hover{color:var(--accent)}
+td.size,td.date{color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+td.act{white-space:nowrap;text-align:right}
+td.act button,td.act a{padding:2px 8px;font-size:13px}
+.icon{display:inline-block;width:1.4em}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+#drop{position:fixed;inset:0;background:rgba(43,108,176,.18);border:3px dashed var(--accent);display:none;align-items:center;justify-content:center;font-size:22px;z-index:5;pointer-events:none}
+#drop.on{display:flex}
+#status{position:fixed;left:16px;right:16px;bottom:16px;max-width:600px;margin:0 auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px 14px;display:none;box-shadow:0 4px 18px rgba(0,0,0,.15)}
+#status.on{display:block}
+.bar{height:6px;background:var(--line);border-radius:3px;margin-top:6px;overflow:hidden}
+.bar div{height:100%;width:0;background:var(--accent);transition:width .15s}
+.ro{font-size:12px;color:var(--muted);border:1px solid var(--line);border-radius:10px;padding:1px 8px}
+@media (max-width:600px){td.date,th.date{display:none}h1{width:100%}td.name{min-width:9em}td.act{white-space:normal}td.act button,td.act a{display:inline-block;margin:2px 0}th,td{padding:8px 6px}}
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Shared folder</h1>
+  <div class="crumbs" id="crumbs"></div>
+  <input type="search" id="filter" placeholder="Filter" aria-label="Filter files">
+  <a class="btn" id="zip" href="#">Download all</a>
+  <span id="writeTools" hidden>
+    <button id="mkdir">New folder</button>
+    <button class="primary" id="upload">Upload</button>
+  </span>
+  <span class="ro" id="ro" hidden>read-only</span>
+  <input type="file" id="picker" multiple hidden>
+</header>
+<main>
+  <table>
+    <thead><tr><th data-k="name">Name</th><th data-k="size" class="size">Size</th><th data-k="mtime" class="date">Modified</th><th></th></tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+</main>
+<div id="drop">Drop files or folders to upload</div>
+<div id="status"><div id="statusText"></div><div class="bar"><div id="barFill"></div></div></div>
+<script>
+"use strict";
+const $ = id => document.getElementById(id);
+let info = {}, entries = [], sortKey = "name", sortDir = 1;
+const enc = p => p.split("/").map(encodeURIComponent).join("/");
+const cur = () => decodeURIComponent(location.hash.replace(/^#\/?/, "")).replace(/\/+$/, "");
+const join = (a, b) => a ? a + "/" + b : b;
+function size(n){ if(n < 1024) return n + " B"; const u=["KB","MB","GB","TB"]; let i=-1; do{ n/=1024; i++; }while(n>=1024 && i<3); return n.toFixed(n<10?1:0)+" "+u[i]; }
+function date(s){ if(!s) return ""; const d=new Date(s*1000); return d.toLocaleDateString()+" "+d.toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); }
+async function api(method, url, body){
+  const r = await fetch(url, {method, body, headers: {"X-Share": "1"}, credentials: "same-origin"});
+  const j = await r.json().catch(() => ({}));
+  if(!r.ok) throw new Error(j.error || ("HTTP " + r.status));
+  return j;
+}
+function status(text, frac){
+  $("status").classList.toggle("on", text != null);
+  $("statusText").textContent = text || "";
+  $("barFill").style.width = ((frac || 0) * 100) + "%";
+}
+async function load(){
+  const path = cur();
+  try{
+    const j = await api("GET", "/api/list?path=" + encodeURIComponent(path));
+    entries = j.entries;
+  }catch(e){ entries = []; status("Can't open this folder: " + e.message); setTimeout(() => status(null), 3000); }
+  crumbs(path); render();
+  $("zip").href = "/zip/" + enc(path);
+  $("zip").textContent = path ? "Download folder" : "Download all";
+}
+function crumbs(path){
+  const c = $("crumbs"); c.textContent = "";
+  const parts = path ? path.split("/") : [];
+  const a = document.createElement("a"); a.href = "#/"; a.textContent = info.folder || "share"; c.appendChild(a);
+  let acc = "";
+  for(const p of parts){ acc = join(acc, p); c.append(" / "); const l=document.createElement("a"); l.href="#/"+enc(acc); l.textContent=p; c.appendChild(l); }
+}
+function render(){
+  const f = $("filter").value.toLowerCase(), path = cur(), tb = $("rows");
+  tb.textContent = "";
+  const list = entries.filter(e => e.name.toLowerCase().includes(f)).sort((a, b) =>
+    (b.dir - a.dir) || sortDir * (sortKey === "name" ? a.name.localeCompare(b.name, undefined, {numeric:true, sensitivity:"base"}) : (a[sortKey] - b[sortKey])));
+  if(path){ list.unshift({name:"..", dir:true, up:true}); }
+  if(!list.length){ const tr=tb.insertRow(); const td=tr.insertCell(); td.colSpan=4; td.className="empty"; td.textContent = f ? "Nothing matches." : (info.writable ? "Empty folder. Drop files here to upload." : "Empty folder."); return; }
+  for(const e of list){
+    const tr = tb.insertRow(), rel = e.up ? path.split("/").slice(0, -1).join("/") : join(path, e.name);
+    const n = tr.insertCell(); n.className = "name";
+    const a = document.createElement("a");
+    a.href = e.dir ? "#/" + enc(rel) : (info.single ? "/f/" + enc(e.name) : "/f/" + enc(rel));
+    if(!e.dir){ a.target = "_blank"; a.rel = "noopener"; }
+    const ic = document.createElement("span"); ic.className = "icon"; ic.textContent = e.dir ? "\u{1F4C1}" : "\u{1F4C4}";
+    a.append(ic, e.name); n.appendChild(a);
+    const s = tr.insertCell(); s.className = "size"; s.textContent = e.dir ? "" : size(e.size);
+    const d = tr.insertCell(); d.className = "date"; d.textContent = e.up ? "" : date(e.mtime);
+    const act = tr.insertCell(); act.className = "act";
+    if(e.up) continue;
+    const dl = document.createElement("a"); dl.className = "btn";
+    dl.href = e.dir ? "/zip/" + enc(rel) : "/f/" + enc(rel) + "?dl=1"; dl.textContent = e.dir ? "zip" : "download"; act.appendChild(dl);
+    if(info.writable){
+      const rn = document.createElement("button"); rn.textContent = "rename";
+      rn.onclick = async () => { const to = prompt("New name", e.name); if(!to || to === e.name) return;
+        try{ await api("POST", "/api/move?from=" + encodeURIComponent(rel) + "&to=" + encodeURIComponent(join(path, to))); load(); }catch(x){ alert(x.message); } };
+      const del = document.createElement("button"); del.textContent = "delete";
+      del.onclick = async () => { if(!confirm("Delete " + e.name + (e.dir ? " and everything in it" : "") + "?")) return;
+        try{ await api("DELETE", "/f/" + enc(rel)); load(); }catch(x){ alert(x.message); } };
+      act.append(" ", rn, " ", del);
+    }
+  }
+}
+function put(rel, file, done, total){
+  return new Promise((resolve, reject) => {
+    const x = new XMLHttpRequest();
+    x.open("PUT", "/f/" + enc(rel));
+    x.setRequestHeader("X-Share", "1");
+    if(file.lastModified) x.setRequestHeader("X-Mtime", String(Math.floor(file.lastModified / 1000)));
+    x.upload.onprogress = ev => status("Uploading " + rel + " (" + size(done + ev.loaded) + " of " + size(total) + ")", (done + ev.loaded) / Math.max(total, 1));
+    x.onload = () => x.status < 300 ? resolve() : reject(new Error((JSON.parse(x.responseText || "{}").error) || ("HTTP " + x.status)));
+    x.onerror = () => reject(new Error("network error"));
+    x.send(file);
+  });
+}
+async function uploadAll(items){
+  if(!items.length) return;
+  const total = items.reduce((t, i) => t + i.file.size, 0);
+  let done = 0, failed = 0;
+  for(const it of items){
+    try{ await put(join(cur(), it.path), it.file, done, total); }catch(e){ failed++; status("Failed: " + it.path + ": " + e.message); await new Promise(r => setTimeout(r, 1500)); }
+    done += it.file.size;
+  }
+  status(failed ? failed + " upload(s) failed" : "Uploaded " + items.length + " file(s)", 1);
+  setTimeout(() => status(null), 2000);
+  load();
+}
+function walkEntry(entry, prefix, out){
+  return new Promise(resolve => {
+    if(entry.isFile){ entry.file(f => { out.push({path: prefix + f.name, file: f}); resolve(); }, () => resolve()); }
+    else if(entry.isDirectory){
+      const r = entry.createReader(), all = [];
+      const more = () => r.readEntries(async batch => {
+        if(!batch.length){ for(const e of all) await walkEntry(e, prefix + entry.name + "/", out); resolve(); }
+        else { all.push(...batch); more(); }
+      }, () => resolve());
+      more();
+    } else resolve();
+  });
+}
+async function boot(){
+  try{ info = await api("GET", "/api/info"); }catch(e){ document.body.textContent = "This share is no longer available: " + e.message; return; }
+  document.title = info.folder + " on " + info.host;
+  $("title").textContent = info.folder + " · " + info.host;
+  $("writeTools").hidden = !info.writable; $("ro").hidden = info.writable;
+  if(info.single) $("zip").hidden = true;
+  load();
+}
+window.addEventListener("hashchange", load);
+$("filter").addEventListener("input", render);
+document.querySelectorAll("th[data-k]").forEach(th => th.onclick = () => { const k = th.dataset.k; sortDir = sortKey === k ? -sortDir : 1; sortKey = k; render(); });
+$("upload").onclick = () => $("picker").click();
+$("picker").onchange = () => { uploadAll([...$("picker").files].map(f => ({path: f.name, file: f}))); $("picker").value = ""; };
+$("mkdir").onclick = async () => { const n = prompt("Folder name"); if(!n) return; try{ await api("POST", "/api/mkdir?path=" + encodeURIComponent(join(cur(), n))); load(); }catch(e){ alert(e.message); } };
+let depth = 0;
+window.addEventListener("dragenter", e => { if(!info.writable) return; e.preventDefault(); depth++; $("drop").classList.add("on"); });
+window.addEventListener("dragleave", () => { if(--depth <= 0){ depth = 0; $("drop").classList.remove("on"); } });
+window.addEventListener("dragover", e => { if(info.writable) e.preventDefault(); });
+window.addEventListener("drop", async e => {
+  if(!info.writable) return;
+  e.preventDefault(); depth = 0; $("drop").classList.remove("on");
+  const out = [], items = [...(e.dataTransfer.items || [])];
+  const entriesList = items.map(i => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+  if(entriesList.length){ for(const en of entriesList) await walkEntry(en, "", out); }
+  else for(const f of e.dataTransfer.files) out.push({path: f.name, file: f});
+  uploadAll(out);
+});
+boot();
+</script>
+</body>
+</html>

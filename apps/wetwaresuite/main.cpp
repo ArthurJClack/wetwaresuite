@@ -8,11 +8,12 @@
 
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
+#include "app_commands.hpp"
 #include "suite.hpp"
 
 namespace {
 
-constexpr const char* kVersion = "0.6.0";
+constexpr const char* kVersion = "0.7.0";
 
 constexpr const char* kInstructions =
     "wetwaresuite is a creative suite you drive with tools. Workflow: open or create a document (photo_open, photo_new, "
@@ -110,9 +111,12 @@ int main(int argc, char** argv) {
         return args.empty() ? 2 : 0;
     }
 
+    apps::setSelfPath(argv[0]);
     Session session;
     suite::registerAll(session);
+    apps::registerCommands(session, "suite");
     const std::string cmd = args[0];
+    const std::string instructions = std::string(kInstructions) + apps::handoffInstructions("suite");
 
     try {
         if (cmd == "--version") {
@@ -120,7 +124,7 @@ int main(int argc, char** argv) {
             return 0;
         }
         if (cmd == "list") {
-            if (args.size() > 1 && !suite::toolNames().count(args[1])) {
+            if (args.size() > 1 && args[1] != "app" && !suite::toolNames().count(args[1])) {
                 std::cerr << "no tool called " << args[1] << "; tools: " << joinedTools() << "\n";
                 return 2;
             }
@@ -159,11 +163,12 @@ int main(int argc, char** argv) {
                 }
                 Session filtered;
                 suite::registerAll(filtered, keep);
-                mcp::Server server(filtered, {"wetwaresuite", kVersion, kInstructions});
+                apps::registerCommands(filtered, "suite");
+                mcp::Server server(filtered, {"wetwaresuite", kVersion, instructions});
                 server.run(std::cin, std::cout);
                 return 0;
             }
-            mcp::Server server(session, {"wetwaresuite", kVersion, kInstructions});
+            mcp::Server server(session, {"wetwaresuite", kVersion, instructions});
             server.run(std::cin, std::cout);
             return 0;
         }

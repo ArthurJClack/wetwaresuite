@@ -25,11 +25,11 @@ target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::maps)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::type)
 
 add_executable(wetwaresuite main.cpp)
-target_link_libraries(wetwaresuite PRIVATE wetwaresuite_suite wetwaresuite::mcp)
+target_link_libraries(wetwaresuite PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::mcp)
 install(TARGETS wetwaresuite RUNTIME DESTINATION bin)
 
 if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_suite tests/test_suite.cpp)
-  target_link_libraries(test_suite PRIVATE wetwaresuite_suite wetwaresuite::mcp nlohmann_json::nlohmann_json wetwaresuite_check)
+  target_link_libraries(test_suite PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::mcp nlohmann_json::nlohmann_json wetwaresuite_check)
   add_test(NAME suite COMMAND test_suite)
 endif()

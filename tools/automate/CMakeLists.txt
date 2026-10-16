@@ -12,12 +12,12 @@ if(WETWARESUITE_BUILD_TESTS)
 
   # the Python client's tests, against the real wetwaresuite binary
   find_package(Python3 COMPONENTS Interpreter QUIET)
-  if(Python3_Interpreter_FOUND)
+  if(Python3_Interpreter_FOUND AND WETWARESUITE_BUILD_SUITE)
     add_test(NAME automate_python
              COMMAND ${Python3_EXECUTABLE} -m unittest discover -s ${PROJECT_SOURCE_DIR}/python/tests -t ${PROJECT_SOURCE_DIR}/python -v)
     set_tests_properties(automate_python PROPERTIES
       ENVIRONMENT "WETWARESUITE_BIN=$<TARGET_FILE:wetwaresuite>;PYTHONPATH=${PROJECT_SOURCE_DIR}/python;PYTHONDONTWRITEBYTECODE=1")
   else()
-    message(STATUS "python3 not found: skipping the Python client tests")
+    message(STATUS "python3 or the all-in-one binary missing: skipping the Python client tests")
   endif()
 endif()

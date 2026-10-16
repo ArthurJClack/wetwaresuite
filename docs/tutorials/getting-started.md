@@ -39,6 +39,8 @@ build/apps/wetwaresuite/wetwaresuite          (Linux and macOS)
 build/apps/wetwaresuite/Release/wetwaresuite.exe   (Windows with Visual Studio)
 ```
 
+It also makes one small program per app in `build/bin/` (`wetwaresuite-image`, `wetwaresuite-model`, ...). They have the same commands as the all-in-one binary, just fewer of them; see [the apps](apps.md) to install or build only the ones you need.
+
 The rest of the tutorials just write `wetwaresuite`. Either put the folder on your `PATH`:
 
 ```sh

@@ -1,9 +1,12 @@
 # wetwaresuite tutorials
 
-Hands-on guides to the suite. Every example was run against the real `wetwaresuite` binary. There is no GUI yet: everything is a command, and the coming GUI will call the same commands.
+Hands-on guides to the suite. Every example was run against the real binaries: the all-in-one `wetwaresuite` or the per-app programs like `wetwaresuite-image`, which share the same commands. There is no GUI yet: everything is a command, and the coming GUI will call the same commands.
 
 - [Getting started](getting-started.md): build from source, find commands with `list` and `help`, write arguments, and understand document ids and undo.
 - [Headless and batch](headless-and-batch.md): batch scripts with variables and comments, shell loops, CI and cron, exit codes.
+- [The apps](apps.md): which app does what, installing only the ones you need, building only some.
+- [Workflows](workflows.md): moving work between apps step by step: a texture from image onto a model and into a game, a cad part sculpted and printed, music for a video, a logo on a poster.
+- [Offline editions](offline-editions.md): everything on a USB stick (1 to 256 GB) with fonts, starter files, materials and world maps; install with no internet.
 - [Using wetwaresuite with Claude (MCP)](mcp.md): connect Claude Code or Claude Desktop, what Claude sees, example prompts, troubleshooting.
 - [Photo](photo.md): resize folders for the web, fix dark photos, crop, rotate, frame, effects.
 - [Paint](paint.md): brush strokes with tablet pressure, presets, layers, blend modes, fills, saving `.ora`.

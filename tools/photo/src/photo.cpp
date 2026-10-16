@@ -3,12 +3,15 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <chrono>
+#include <cstdio>
 #include <filesystem>
 
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/document.hpp"
 #include "wetwaresuite/raster/ops.hpp"
 #include "heal.hpp"
+#include "wetwaresuite/raster/parallel.hpp"
 
 namespace wetwaresuite::photo {
 
@@ -64,6 +67,60 @@ std::string lowerExt(const fs::path& p) {
     if (!e.empty() && e[0] == '.') e.erase(0, 1);
     std::transform(e.begin(), e.end(), e.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
     return e;
+}
+
+// A test picture with gradients and soft edges, so every operation has real work to do.
+Image benchmarkImage(int n) {
+    Image img(n, n);
+    for (int y = 0; y < n; ++y) {
+        for (int x = 0; x < n; ++x) {
+            const auto v = static_cast<std::uint8_t>((x * 255) / std::max(1, n - 1));
+            const auto u = static_cast<std::uint8_t>((y * 255) / std::max(1, n - 1));
+            img.set(x, y, {v, u, static_cast<std::uint8_t>((x ^ y) & 255), static_cast<std::uint8_t>(128 + ((x + y) & 127))});
+        }
+    }
+    return img;
+}
+
+Result runBenchmark(const Params& p) {
+    const int n = static_cast<int>(intParam(p, "size", 2048));
+    if (n < 16 || n > 16384) return Result::failure("size must be 16..16384");
+    const int threads = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "threads", 0), 0, 256));
+    const int previous = setThreadCount(threads);
+    using Clock = std::chrono::steady_clock;
+    auto time = [](const auto& fn) {
+        const auto t0 = Clock::now();
+        fn();
+        return std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+    };
+    const Image src = benchmarkImage(n);
+    Result r = Result::success("");
+    std::string msg = std::to_string(n) + "x" + std::to_string(n) + " px on " + std::to_string(threadCount()) +
+                      (threadCount() == 1 ? " thread:" : " threads:");
+    auto report = [&](const std::string& key, const std::string& label, double ms) {
+        r.with(key, std::round(ms * 10) / 10);
+        char buf[64];
+        std::snprintf(buf, sizeof buf, " %.1f ms", ms);
+        msg += "\n  " + label + buf;
+    };
+    report("blur_ms", "blur (radius 8)", time([&] {
+        Image img = src;
+        boxBlur(img, 8);
+    }));
+    report("resize_bilinear_ms", "resize to half, bilinear", time([&] { (void)resize(src, n / 2, n / 2, Filter::Bilinear); }));
+    report("resize_area_ms", "resize to a quarter, area", time([&] { (void)resize(src, n / 4, n / 4, Filter::Area); }));
+    report("resize_lanczos_ms", "resize to half, lanczos", time([&] { (void)resize(src, n / 2, n / 2, Filter::Lanczos); }));
+    report("composite_ms", "blend 3 layers", time([&] {
+        std::vector<Layer> layers = {{"a", src}, {"b", src, 0.5, Blend::Multiply}, {"c", src, 0.7, Blend::Screen}};
+        (void)composite(layers, n, n);
+    }));
+    report("adjust_ms", "saturation adjust", time([&] {
+        Image img = src;
+        adjust(img, Adjust::Saturation, 30);
+    }));
+    setThreadCount(previous);
+    r.message = msg;
+    return r.with("size", static_cast<std::int64_t>(n)).with("threads", static_cast<std::int64_t>(threads > 0 ? threads : threadCount()));
 }
 
 }  // namespace
@@ -201,7 +258,10 @@ void registerCommands(Session& session) {
               {"width", ParamType::Int, "new width in px (0 = keep aspect)", false},
               {"height", ParamType::Int, "new height in px (0 = keep aspect)", false},
               {"percent", ParamType::Number, "scale by a percentage instead, e.g. 50", false},
-              {"filter", ParamType::String, "resampling filter", false, {"bilinear", "nearest"}, std::string("bilinear")},
+              {"filter", ParamType::String,
+               "resampling filter: bilinear (smooth, default; averages areas when shrinking a lot), area (average), "
+               "lanczos (sharpest) or nearest (blocky)",
+               false, filterNames(), std::string("bilinear")},
               previewParam()},
              true},
             imageCommand(session, [](ImageDoc& doc, const Params& p) {
@@ -220,7 +280,7 @@ void registerCommands(Session& session) {
                 }
                 int nw = std::max(1, static_cast<int>(std::lround(w))), nh = std::max(1, static_cast<int>(std::lround(h)));
                 if (nw > 30000 || nh > 30000) return Result::failure("result would be larger than 30000 px");
-                Filter f = stringParam(p, "filter", "bilinear") == "nearest" ? Filter::Nearest : Filter::Bilinear;
+                Filter f = parseFilter(stringParam(p, "filter", "bilinear")).value_or(Filter::Bilinear);
                 transformAll(doc, [&](const Image& img) { return resize(img, nw, nh, f); });
                 return docResult("resized to " + std::to_string(nw) + "x" + std::to_string(nh), doc, p);
             }));
@@ -376,6 +436,17 @@ void registerCommands(Session& session) {
                         .with("a", static_cast<std::int64_t>(c.a));
                 },
                 false));
+
+    reg.add({"photo.benchmark",
+             "Speed test",
+             "Time the main picture operations (blur, resize, layer blending, colour adjust) on a generated test "
+             "image and report milliseconds for each. Nothing is opened or saved.",
+             {{"size", ParamType::Int, "test image width and height in px", false, {}, std::int64_t{2048}},
+              {"threads", ParamType::Int, "threads to use (0 = all CPU cores)", false, {}, std::int64_t{0}}},
+             false},
+            [](const Params& p) {
+                return std::make_unique<FunctionAction>([p] { return runBenchmark(p); });
+            });
 
     reg.add({"photo.batch",
              "Batch process folder",

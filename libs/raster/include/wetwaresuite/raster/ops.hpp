@@ -10,7 +10,12 @@
 
 namespace wetwaresuite::raster {
 
-enum class Filter { Nearest, Bilinear };
+// Nearest: blocky, fastest. Bilinear: smooth, the default. Area: averages whole source pixels
+// (best for shrinking a lot; falls back to bilinear when enlarging). Lanczos: Lanczos-3, the
+// sharpest for both shrinking and enlarging, a little slower.
+enum class Filter { Nearest, Bilinear, Area, Lanczos };
+const std::vector<std::string>& filterNames();  // "nearest", "bilinear", "area", "lanczos"
+std::optional<Filter> parseFilter(const std::string& name);
 
 // Bilinear downscales by more than 2x average whole source areas so they don't alias.
 Image resize(const Image& img, int width, int height, Filter filter = Filter::Bilinear);

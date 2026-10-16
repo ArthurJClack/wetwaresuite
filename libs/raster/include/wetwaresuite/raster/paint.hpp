@@ -29,6 +29,8 @@ std::vector<StrokePoint> smooth(const std::vector<StrokePoint>& points, double a
 
 // Paints a stroke. Overlapping dabs build up to the brush opacity, never past it.
 void stroke(Image& target, const Brush& brush, const std::vector<StrokePoint>& points);
+// The pixels stroke() may change (clipped to the image), so undo can save just that area.
+PixelRect strokeBounds(const Image& target, const Brush& brush, const std::vector<StrokePoint>& points);
 
 // Flood fill from (x, y) with colours within tolerance (0..255). contiguous = false
 // replaces every matching pixel in the image. Returns the number of pixels filled.

@@ -1,0 +1,10 @@
+add_library(achclwss_audio_tool src/common.cpp src/file_commands.cpp src/edit_commands.cpp src/project_commands.cpp)
+add_library(achclwss::audio_tool ALIAS achclwss_audio_tool)
+target_include_directories(achclwss_audio_tool PUBLIC include)
+target_link_libraries(achclwss_audio_tool PUBLIC achclwss::audio)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_audio tests/test_audio.cpp)
+  target_link_libraries(test_audio PRIVATE achclwss::audio_tool achclwss::mcp nlohmann_json::nlohmann_json achclwss_check)
+  add_test(NAME audio COMMAND test_audio)
+endif()

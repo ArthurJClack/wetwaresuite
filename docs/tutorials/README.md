@@ -12,5 +12,6 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [CAD](cad.md): parametric parts with expressions, holes, patterns and booleans; a bracket you resize by changing one number, STL export, measuring.
 - [Convert](convert.md): images, SVG, audio, video, office documents and markup, one file or a whole folder.
 - [Asset forge](forge.md): game assets: models to glb with the right up axis, scale and LODs, sprite sheets and atlases, tileable textures and normal maps, pixel art.
+- [Audio](audio.md): clean up a voice recording to podcast loudness, build an episode from music and voice tracks with ducking and fades, batch-normalize samples, spectrograms, pitch and tempo changes.
 - [Slicer](slicer.md): 3D models to G-code: printer and filament presets, infill, brim and supports, layer previews, parts from cad.
 - [Toolkit](toolkit.md): identify any file from its contents, hex dumps, the standalone `achclwss-toolkit`.

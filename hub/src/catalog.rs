@@ -53,7 +53,7 @@ pub const TOOLS: &[Tool] = &[
     available("audio", "audio", "multitrack and spectral audio editing", 4, 12),
     available("cut", "cut", "video editing", 4, 20),
     available("capture", "capture", "screen recording and screenshots", 4, 5),
-    planned("office", "office", "documents, spreadsheets, slides, PDF", 4, 250),
+    available("office", "office", "documents, spreadsheets, slides, PDF", 4, 5),
     available("layout", "layout", "print layout and publishing", 4, 10),
     available("library", "library", "asset browser for every format", 4, 3),
     available("automate", "automate", "Python scripting across tools", 4, 20),

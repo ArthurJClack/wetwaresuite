@@ -48,4 +48,4 @@ open files live in the session's `Workspace` as documents with short ids (`img1`
 1. foundation: core, MCP, hub, toolkit, CI on windows/mac/linux
 2. 2D creative: photo, paint, vector, convert on a shared raster engine, one headless `achclwss` binary
 3. precision and 3D: cad, blueprint, slicer, asset forge on a shared mesh engine (`libs/mesh`)
-4. media, office and the rest
+4. media, office and the rest: audio (`libs/audio`), cut, capture, office (`libs/pdf`), layout (`libs/pdfdoc`), library, automate (plus a Python client in `python/`)

@@ -12,7 +12,7 @@
 
 namespace {
 
-constexpr const char* kVersion = "0.3.0";
+constexpr const char* kVersion = "0.4.0";
 
 constexpr const char* kInstructions =
     "ACHCLWSS is a creative suite you drive with tools. Workflow: open or create a document (photo_open, photo_new, "
@@ -26,7 +26,12 @@ constexpr const char* kInstructions =
     "blueprint_list and blueprint_measure read exact values; blueprint_export writes PDF/SVG/PNG to scale). 3D work is in mm with z up: cad_* builds parametric parts "
     "(cad_new returns cad1; numeric fields take expressions over cad_param_set parameters; cad_save exports STL/3MF), "
     "slicer_* turns a model into G-code (slicer_slice_file is the one-shot), forge_* prepares game assets (meshes, "
-    "LODs, sprite sheets, textures).";
+    "LODs, sprite sheets, textures). Media and office: audio_* edits sound in seconds (audio_open returns aud1; "
+    "audio_preview shows a waveform or spectrogram; audio_measure gives LUFS), cut_* edits video on a timeline "
+    "(cut_new returns cut1; cut_preview shows a frame; cut_render exports), capture_screenshot without output returns "
+    "an image of the screen, office_* handles spreadsheets with formulas, documents, slide decks and PDF tools, "
+    "layout_* builds print layouts exported to PDF, library_* indexes and searches asset folders, and automate_* runs "
+    "batch scripts, pipelines and folder watches.";
 
 void usage() {
     std::cout << "achclwss " << kVersion << ": the whole suite, headless\n\n"

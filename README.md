@@ -28,6 +28,7 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 | `tools/capture/` | screenshots of a screen, monitor or region, screen recordings with sound, webcam snapshots (via ffmpeg, grim on Wayland) |
 | `tools/library/` | asset browser for every format: index folders, search by type, size, tags and ratings, duplicates, similar images, thumbnails and contact sheets, collections |
 | `tools/automate/` | scripting across tools: batch scripts with variables, pipelines that loop over files, folder watching, and a Python client (`python/achclwss`) |
+| `tools/office/` | office suite: spreadsheets with formulas and charts (XLSX/CSV), documents (DOCX/Markdown/PDF), slide decks (PPTX/PDF), PDF merge/split/rotate/text |
 | `tools/convert/` | change a file's type: images and 3D meshes built in, audio/video via ffmpeg, docs via LibreOffice/pandoc |
 | `apps/achclwss/` | `achclwss`: one headless binary that runs every command, batch scripts, or an MCP server |
 | `hub/` | `hub`: lists tools, prints the MCP config for Claude |

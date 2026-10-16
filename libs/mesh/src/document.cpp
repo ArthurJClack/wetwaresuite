@@ -1,0 +1,114 @@
+#include "achclwss/mesh/document.hpp"
+
+#include <cstdio>
+
+#include "achclwss/raster/codec.hpp"
+
+namespace achclwss::mesh {
+
+namespace {
+
+std::string fmt(double v) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%.4g", v);
+    return buf;
+}
+
+}  // namespace
+
+std::string describe(const Mesh& m) {
+    std::string s = std::to_string(m.triangleCount()) + " triangles, " + std::to_string(m.vertexCount()) + " vertices";
+    if (m.empty()) return s;
+    const Bounds b = bounds(m);
+    const Vec3 sz = b.size();
+    s += ", size " + fmt(sz.x) + " x " + fmt(sz.y) + " x " + fmt(sz.z) + " at (" + fmt(b.min.x) + ", " + fmt(b.min.y) + ", " +
+         fmt(b.min.z) + ")";
+    s += isWatertight(m) ? ", watertight" : ", open";
+    return s;
+}
+
+std::string MeshDoc::summary() const {
+    std::string s = describe(mesh);
+    if (!path.empty()) s += ", " + path;
+    return s;
+}
+
+std::unique_ptr<Attachment> MeshDoc::preview() const {
+    return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(render(mesh, 512, 512, previewOptions)), "preview.png"});
+}
+
+std::shared_ptr<MeshDoc> newMesh(Mesh mesh) {
+    auto doc = std::make_shared<MeshDoc>();
+    doc->mesh = std::move(mesh);
+    return doc;
+}
+
+std::shared_ptr<MeshDoc> openMesh(const std::filesystem::path& path) {
+    auto doc = newMesh(load(path));
+    doc->path = path.string();
+    return doc;
+}
+
+void saveMesh(const MeshDoc& doc, const std::filesystem::path& path, const SaveOptions& options) { save(path, doc.mesh, options); }
+
+Result MeshEdit::apply() {
+    before_ = doc_->mesh;
+    Result r;
+    try {
+        r = fn_(*doc_);
+    } catch (const std::exception& e) {
+        r = Result::failure(e.what());
+    }
+    if (!r.ok) revert();
+    return r;
+}
+
+void MeshEdit::revert() { doc_->mesh = before_; }
+
+ParamSpec docParam() { return {"doc", ParamType::String, "id of an open mesh, e.g. mesh1", true}; }
+
+ParamSpec previewParam() { return {"preview", ParamType::Bool, "attach a PNG render of the result", false, {}, false}; }
+
+ParamSpec viewParam() {
+    return {"view", ParamType::String, "camera for renders and previews", false, viewNames(), std::string("iso")};
+}
+
+ActionFactory meshCommand(Session& session, std::function<Result(MeshDoc&, const Params&)> edit, bool undoable) {
+    return [&session, edit, undoable](const Params& p) -> std::unique_ptr<Action> {
+        const std::string id = stringParam(p, "doc");
+        auto doc = session.workspace().getAs<MeshDoc>(id);
+        if (!doc) {
+            return std::make_unique<FunctionAction>([id] { return Result::failure("no open mesh called '" + id + "'"); });
+        }
+        if (!undoable) {
+            return std::make_unique<FunctionAction>([doc, edit, p] {
+                try {
+                    return edit(*doc, p);
+                } catch (const std::exception& e) {
+                    return Result::failure(e.what());
+                }
+            });
+        }
+        return std::make_unique<MeshEdit>(doc, [edit, p](MeshDoc& d) { return edit(d, p); });
+    };
+}
+
+Result& maybePreview(Result& r, const MeshDoc& doc, const Params& p) {
+    if (!r.ok || !boolParam(p, "preview", false)) return r;
+    RenderOptions o = doc.previewOptions;
+    if (auto v = parseView(stringParam(p, "view", "iso"))) o.view = *v;
+    r.attach({"image/png", raster::encodePng(render(doc.mesh, 512, 512, o)), "preview.png"});
+    return r;
+}
+
+Result meshResult(const std::string& message, const MeshDoc& doc, const Params& p) {
+    Result r = Result::success(message);
+    const Vec3 sz = bounds(doc.mesh).size();
+    r.with("doc", stringParam(p, "doc"))
+        .with("triangles", static_cast<std::int64_t>(doc.mesh.triangleCount()))
+        .with("vertices", static_cast<std::int64_t>(doc.mesh.vertexCount()))
+        .with("size", NumberList{sz.x, sz.y, sz.z});
+    return maybePreview(r, doc, p);
+}
+
+}  // namespace achclwss::mesh

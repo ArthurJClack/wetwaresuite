@@ -1,6 +1,7 @@
 // circuit.* board commands (outline, placement, traces, routing, pours, rules), checks,
 // fabrication output and the simulator.
 #include <set>
+#include <sstream>
 
 #include "wetwaresuite/raster/ora.hpp"
 #include "cmd_common.hpp"

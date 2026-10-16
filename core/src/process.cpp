@@ -1,5 +1,6 @@
 #include "wetwaresuite/core/process.hpp"
 
+#include <cctype>
 #include <cerrno>
 #include <cstdlib>
 
@@ -8,11 +9,19 @@
 #define NOMINMAX
 #include <windows.h>
 #else
+#include <fcntl.h>
+#include <poll.h>
+#include <signal.h>
 #include <spawn.h>
 #include <sys/wait.h>
 #include <unistd.h>
+
+#include <chrono>
+#include <cstring>
 extern char** environ;
 #endif
+#include <chrono>
+#include <thread>
 
 namespace wetwaresuite {
 
@@ -173,6 +182,416 @@ ProcessResult runProgram(const std::vector<std::string>& args) {
     result.exitCode = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
 #endif
     return result;
+}
+
+// ---- ChildProcess ------------------------------------------------------------------
+
+namespace {
+
+double secondsSince(std::chrono::steady_clock::time_point t) {
+    return std::chrono::duration<double>(std::chrono::steady_clock::now() - t).count();
+}
+
+}  // namespace
+
+#ifdef _WIN32
+
+struct ChildProcess::Impl {
+    HANDLE proc = nullptr;
+    HANDLE job = nullptr;
+    HANDLE out = nullptr;
+    HANDLE in = nullptr;
+    DWORD pid = 0;
+    int code = -1;
+    bool ended = true;
+};
+
+ChildProcess::ChildProcess() : impl_(new Impl) {}
+
+ChildProcess::~ChildProcess() {
+    kill();
+    if (impl_->out) CloseHandle(impl_->out);
+    if (impl_->in) CloseHandle(impl_->in);
+    if (impl_->proc) CloseHandle(impl_->proc);
+    if (impl_->job) CloseHandle(impl_->job);
+    delete impl_;
+}
+
+bool ChildProcess::start(const std::vector<std::string>& args, const std::filesystem::path& cwd, std::string& error,
+                         const std::vector<std::pair<std::string, std::string>>& env) {
+    if (args.empty()) {
+        error = "nothing to run";
+        return false;
+    }
+    if (!impl_->ended) {
+        error = "it's already running";
+        return false;
+    }
+    auto program = findProgram(args[0]);
+    if (!program) {
+        error = "couldn't find " + args[0] + " (is it installed and on PATH?)";
+        return false;
+    }
+    std::vector<std::string> full = args;
+    full[0] = program->string();
+    std::string ext = program->extension().string();
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    if (ext == ".bat" || ext == ".cmd") full.insert(full.begin(), {"cmd.exe", "/d", "/c"});
+
+    SECURITY_ATTRIBUTES sa{sizeof(sa), nullptr, TRUE};
+    HANDLE outRead = nullptr, outWrite = nullptr, inRead = nullptr, inWrite = nullptr;
+    if (!CreatePipe(&outRead, &outWrite, &sa, 0)) {
+        error = "couldn't make a pipe";
+        return false;
+    }
+    if (!CreatePipe(&inRead, &inWrite, &sa, 0)) {
+        CloseHandle(outRead);
+        CloseHandle(outWrite);
+        error = "couldn't make a pipe";
+        return false;
+    }
+    SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
+    SetHandleInformation(inWrite, HANDLE_FLAG_INHERIT, 0);
+
+    std::wstring cmd;
+    for (const auto& a : full) cmd += (cmd.empty() ? L"" : L" ") + quoteArg(widen(a));
+    STARTUPINFOW si{};
+    si.cb = sizeof(si);
+    si.dwFlags = STARTF_USESTDHANDLES;
+    si.hStdOutput = outWrite;
+    si.hStdError = outWrite;
+    si.hStdInput = inRead;
+    PROCESS_INFORMATION pi{};
+    // the extra variables are set here for the child to inherit, then put back
+    std::vector<std::pair<std::wstring, std::wstring>> saved;
+    for (const auto& [k, v] : env) {
+        std::wstring key = widen(k);
+        wchar_t old[32768];
+        DWORD n = GetEnvironmentVariableW(key.c_str(), old, 32768);
+        saved.emplace_back(key, n > 0 && n < 32768 ? std::wstring(old, n) : std::wstring(1, L'\0'));
+        SetEnvironmentVariableW(key.c_str(), widen(v).c_str());
+    }
+    std::wstring dir = cwd.empty() ? std::wstring() : cwd.wstring();
+    BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr,
+                             dir.empty() ? nullptr : dir.c_str(), &si, &pi);
+    const DWORD startError = GetLastError();
+    for (const auto& [k, v] : saved) SetEnvironmentVariableW(k.c_str(), v.size() == 1 && v[0] == L'\0' ? nullptr : v.c_str());
+    CloseHandle(outWrite);
+    CloseHandle(inRead);
+    if (!ok) {
+        CloseHandle(outRead);
+        CloseHandle(inWrite);
+        error = "couldn't start " + args[0] + " (Windows error " + std::to_string(startError) + ")";
+        return false;
+    }
+    if (impl_->job) CloseHandle(impl_->job);
+    impl_->job = CreateJobObjectW(nullptr, nullptr);
+    if (impl_->job) {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION li{};
+        li.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        SetInformationJobObject(impl_->job, JobObjectExtendedLimitInformation, &li, sizeof(li));
+        AssignProcessToJobObject(impl_->job, pi.hProcess);
+    }
+    ResumeThread(pi.hThread);
+    CloseHandle(pi.hThread);
+    if (impl_->proc) CloseHandle(impl_->proc);
+    if (impl_->out) CloseHandle(impl_->out);
+    if (impl_->in) CloseHandle(impl_->in);
+    impl_->proc = pi.hProcess;
+    impl_->pid = pi.dwProcessId;
+    impl_->out = outRead;
+    impl_->in = inWrite;
+    impl_->code = -1;
+    impl_->ended = false;
+    return true;
+}
+
+std::string ChildProcess::read() {
+    std::string got;
+    if (!impl_->out) return got;
+    char buf[4096];
+    for (;;) {
+        DWORD avail = 0;
+        if (!PeekNamedPipe(impl_->out, nullptr, 0, nullptr, &avail, nullptr)) {
+            CloseHandle(impl_->out);  // the other end is closed: everything has been read
+            impl_->out = nullptr;
+            break;
+        }
+        if (avail == 0) break;
+        DWORD n = 0;
+        if (!ReadFile(impl_->out, buf, avail < sizeof buf ? avail : static_cast<DWORD>(sizeof buf), &n, nullptr) || n == 0) break;
+        got.append(buf, n);
+    }
+    return got;
+}
+
+std::string ChildProcess::readFor(double seconds) {
+    const auto start = std::chrono::steady_clock::now();
+    std::string got = read();
+    while (got.empty() && impl_->out && secondsSince(start) < seconds) {
+        Sleep(5);
+        got = read();
+        if (got.empty() && !running()) {
+            got = read();
+            break;
+        }
+    }
+    if (got.empty() && !impl_->out) Sleep(10);  // nothing more can arrive: just let the time pass
+    return got;
+}
+
+bool ChildProcess::write(const std::string& text) {
+    if (!impl_->in) return false;
+    DWORD n = 0;
+    return WriteFile(impl_->in, text.data(), static_cast<DWORD>(text.size()), &n, nullptr) && n == text.size();
+}
+
+void ChildProcess::closeInput() {
+    if (impl_->in) CloseHandle(impl_->in);
+    impl_->in = nullptr;
+}
+
+bool ChildProcess::running() {
+    if (impl_->ended || !impl_->proc) return false;
+    if (WaitForSingleObject(impl_->proc, 0) != WAIT_OBJECT_0) return true;
+    DWORD code = 0;
+    GetExitCodeProcess(impl_->proc, &code);
+    impl_->code = static_cast<int>(code);
+    impl_->ended = true;
+    return false;
+}
+
+int ChildProcess::exitCode() const { return impl_->ended ? impl_->code : -1; }
+
+void ChildProcess::kill() {
+    if (!running()) return;
+    if (impl_->job) TerminateJobObject(impl_->job, 1);
+    else TerminateProcess(impl_->proc, 1);
+    WaitForSingleObject(impl_->proc, 2000);
+    running();
+    if (!impl_->ended) {
+        impl_->ended = true;
+        impl_->code = 1;
+    }
+}
+
+long long ChildProcess::pid() const { return static_cast<long long>(impl_->pid); }
+
+#else
+
+struct ChildProcess::Impl {
+    pid_t pid = -1;
+    int out = -1;
+    int in = -1;
+    int code = -1;
+    bool ended = true;
+};
+
+namespace {
+
+void closeOnExec(int fd) { fcntl(fd, F_SETFD, fcntl(fd, F_GETFD) | FD_CLOEXEC); }
+
+bool makePipe(int fds[2]) {
+    if (pipe(fds) != 0) return false;
+    closeOnExec(fds[0]);
+    closeOnExec(fds[1]);
+    return true;
+}
+
+}  // namespace
+
+ChildProcess::ChildProcess() : impl_(new Impl) {}
+
+ChildProcess::~ChildProcess() {
+    kill();
+    if (impl_->out >= 0) close(impl_->out);
+    if (impl_->in >= 0) close(impl_->in);
+    delete impl_;
+}
+
+bool ChildProcess::start(const std::vector<std::string>& args, const std::filesystem::path& cwd, std::string& error,
+                         const std::vector<std::pair<std::string, std::string>>& env) {
+    if (args.empty()) {
+        error = "nothing to run";
+        return false;
+    }
+    if (!impl_->ended) {
+        error = "it's already running";
+        return false;
+    }
+    auto program = findProgram(args[0]);
+    if (!program) {
+        error = "couldn't find " + args[0] + " (is it installed and on PATH?)";
+        return false;
+    }
+    static const bool ignorePipe = [] {
+        signal(SIGPIPE, SIG_IGN);  // writing to a program that has ended must not end us
+        return true;
+    }();
+    (void)ignorePipe;
+    int outp[2], inp[2], status[2];
+    if (!makePipe(outp)) {
+        error = "couldn't make a pipe";
+        return false;
+    }
+    if (!makePipe(inp)) {
+        close(outp[0]);
+        close(outp[1]);
+        error = "couldn't make a pipe";
+        return false;
+    }
+    if (!makePipe(status)) {
+        for (int fd : {outp[0], outp[1], inp[0], inp[1]}) close(fd);
+        error = "couldn't make a pipe";
+        return false;
+    }
+    const std::string path = program->string();
+    const std::string dir = cwd.string();
+    std::vector<char*> argv;
+    for (const auto& a : args) argv.push_back(const_cast<char*>(a.c_str()));
+    argv.push_back(nullptr);
+    pid_t pid = fork();
+    if (pid == 0) {
+        setpgid(0, 0);  // its own group, so kill() reaches everything it starts
+        int err = 0;
+        if (!dir.empty() && chdir(dir.c_str()) != 0) err = errno;
+        if (!err) {
+            dup2(inp[0], STDIN_FILENO);
+            dup2(outp[1], STDOUT_FILENO);
+            dup2(outp[1], STDERR_FILENO);
+            signal(SIGPIPE, SIG_DFL);
+            for (const auto& [k, v] : env) setenv(k.c_str(), v.c_str(), 1);
+            execv(path.c_str(), argv.data());
+            err = errno;
+        }
+        ssize_t w = ::write(status[1], &err, sizeof err);
+        (void)w;
+        _exit(127);
+    }
+    close(outp[1]);
+    close(inp[0]);
+    close(status[1]);
+    if (pid < 0) {
+        close(outp[0]);
+        close(inp[1]);
+        close(status[0]);
+        error = "couldn't start " + args[0];
+        return false;
+    }
+    int err = 0;
+    ssize_t n;
+    while ((n = ::read(status[0], &err, sizeof err)) < 0 && errno == EINTR) {
+    }
+    close(status[0]);
+    if (n == static_cast<ssize_t>(sizeof err)) {
+        int st = 0;
+        waitpid(pid, &st, 0);
+        close(outp[0]);
+        close(inp[1]);
+        error = "couldn't start " + args[0] + ": " + std::strerror(err);
+        return false;
+    }
+    fcntl(outp[0], F_SETFL, fcntl(outp[0], F_GETFL) | O_NONBLOCK);
+    if (impl_->out >= 0) close(impl_->out);
+    if (impl_->in >= 0) close(impl_->in);
+    impl_->pid = pid;
+    impl_->out = outp[0];
+    impl_->in = inp[1];
+    impl_->code = -1;
+    impl_->ended = false;
+    return true;
+}
+
+std::string ChildProcess::read() {
+    std::string got;
+    if (impl_->out < 0) return got;
+    char buf[4096];
+    for (;;) {
+        ssize_t n = ::read(impl_->out, buf, sizeof buf);
+        if (n > 0) {
+            got.append(buf, static_cast<std::size_t>(n));
+            continue;
+        }
+        if (n < 0 && errno == EINTR) continue;
+        if (n == 0) {  // every writer has closed it: all output is in
+            close(impl_->out);
+            impl_->out = -1;
+        }
+        break;
+    }
+    return got;
+}
+
+std::string ChildProcess::readFor(double seconds) {
+    std::string got = read();
+    if (!got.empty()) return got;
+    if (impl_->out < 0) {  // nothing more can arrive: just let the time pass
+        std::this_thread::sleep_for(std::chrono::duration<double>(seconds < 0.01 ? (seconds > 0 ? seconds : 0) : 0.01));
+        return got;
+    }
+    pollfd p{impl_->out, POLLIN, 0};
+    int ms = static_cast<int>(seconds * 1000);
+    if (poll(&p, 1, ms < 0 ? 0 : ms) > 0) got = read();
+    return got;
+}
+
+bool ChildProcess::write(const std::string& text) {
+    if (impl_->in < 0) return false;
+    std::size_t done = 0;
+    while (done < text.size()) {
+        ssize_t n = ::write(impl_->in, text.data() + done, text.size() - done);
+        if (n < 0 && errno == EINTR) continue;
+        if (n <= 0) return false;
+        done += static_cast<std::size_t>(n);
+    }
+    return true;
+}
+
+void ChildProcess::closeInput() {
+    if (impl_->in >= 0) close(impl_->in);
+    impl_->in = -1;
+}
+
+bool ChildProcess::running() {
+    if (impl_->ended || impl_->pid <= 0) return false;
+    int status = 0;
+    pid_t r = waitpid(impl_->pid, &status, WNOHANG);
+    if (r == 0) return true;
+    if (r == impl_->pid) impl_->code = WIFEXITED(status) ? WEXITSTATUS(status) : 128 + (WIFSIGNALED(status) ? WTERMSIG(status) : 0);
+    impl_->ended = true;
+    return false;
+}
+
+int ChildProcess::exitCode() const { return impl_->ended ? impl_->code : -1; }
+
+void ChildProcess::kill() {
+    if (!running()) return;
+    ::kill(-impl_->pid, SIGKILL);
+    ::kill(impl_->pid, SIGKILL);
+    int status = 0;
+    while (waitpid(impl_->pid, &status, 0) < 0 && errno == EINTR) {
+    }
+    impl_->code = 128 + SIGKILL;
+    impl_->ended = true;
+}
+
+long long ChildProcess::pid() const { return static_cast<long long>(impl_->pid); }
+
+#endif
+
+bool ChildProcess::wait(double seconds, std::string& output) {
+    const auto start = std::chrono::steady_clock::now();
+    for (;;) {
+        double left = seconds - secondsSince(start);
+        output += readFor(left < 0.05 ? (left > 0 ? left : 0) : 0.05);
+        if (!running()) {
+            // what it wrote just before it ended (programs it started may still hold the pipe: don't wait for them)
+            output += readFor(0.05);
+            output += read();
+            return true;
+        }
+        if (secondsSince(start) >= seconds) return false;
+    }
 }
 
 }  // namespace wetwaresuite

@@ -13,12 +13,12 @@ inline int summary(const char* suite) {
 }
 }  // namespace check
 
-#define CHECK(expr)                                                              \
+#define CHECK(...)                                                              \
     do {                                                                         \
-        if (expr) {                                                              \
+        if (__VA_ARGS__) {                                                              \
             ++check::passed;                                                     \
         } else {                                                                 \
             ++check::failures;                                                   \
-            std::printf("FAILED %s:%d: %s\n", __FILE__, __LINE__, #expr);        \
+            std::printf("FAILED %s:%d: %s\n", __FILE__, __LINE__, #__VA_ARGS__);        \
         }                                                                        \
     } while (0)

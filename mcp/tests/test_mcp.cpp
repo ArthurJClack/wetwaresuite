@@ -49,7 +49,7 @@ int main() {
 
     json list = call(server, {{"jsonrpc", "2.0"}, {"id", 2}, {"method", "tools/list"}});
     const auto& tools = list["result"]["tools"];
-    CHECK(tools.size() == 4);
+    CHECK(tools.size() == 5);
     CHECK(tools[0]["name"] == "doc_set_title");
     CHECK(tools[0]["inputSchema"]["required"][0] == "title");
 

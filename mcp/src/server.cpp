@@ -2,6 +2,8 @@
 #include "achclwss/mcp/server.hpp"
 
 #include <array>
+#include <cstdio>
+#include <cstdlib>
 #include <istream>
 #include <ostream>
 
@@ -244,6 +246,23 @@ std::optional<std::string> Server::handle(const std::string& line) {
         std::string error;
         if (!toParams(params.value("arguments", json::object()), args, error)) {
             return rpcResult(id, textResult(error, true)).dump();
+        }
+        // a number sent for a string param (e.g. a cad expression field) means its text
+        if (const auto* info = session_.registry().find(commandId)) {
+            for (const auto& spec : info->params) {
+                auto it = args.find(spec.name);
+                if (spec.type == ParamType::String && it != args.end() &&
+                    (std::holds_alternative<std::int64_t>(it->second) || std::holds_alternative<double>(it->second))) {
+                    std::string text = toText(it->second);
+                    if (auto d = std::get_if<double>(&it->second)) {
+                        char buf[40];
+                        std::snprintf(buf, sizeof buf, "%.15g", *d);
+                        if (std::strtod(buf, nullptr) != *d) std::snprintf(buf, sizeof buf, "%.17g", *d);
+                        text = buf;
+                    }
+                    it->second = text;
+                }
+            }
         }
         Result result;
         try {

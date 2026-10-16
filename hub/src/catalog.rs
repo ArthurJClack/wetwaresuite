@@ -46,7 +46,7 @@ pub const TOOLS: &[Tool] = &[
     available("paint", "paint", "digital painting with pen pressure and layers", 2, 4),
     available("convert", "convert", "change any file's type: images, audio, video, docs", 2, 2),
     planned("vector", "vector", "vector design, SVG/AI/EPS", 2, 10),
-    planned("cad", "cad", "precision parametric 2D/3D CAD", 3, 45),
+    available("cad", "cad", "precision parametric CAD: feature tree, expressions, holes, patterns, STL/3MF", 3, 3),
     available("blueprint", "blueprint", "technical drafting and floor plans: DXF, PDF to scale", 3, 2),
     available("slicer", "slicer", "3D printing slicer: STL/3MF to G-code", 3, 20),
     available("forge", "asset forge", "game assets: meshes, textures, sprites", 3, 25),

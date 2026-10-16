@@ -63,7 +63,7 @@ int main() {
     CHECK(title == "untitled");
 
     json bad = call(server, {{"jsonrpc", "2.0"}, {"id", 5}, {"method", "tools/call"},
-                             {"params", {{"name", "doc_set_title"}, {"arguments", {{"title", 3}}}}}});
+                             {"params", {{"name", "doc_set_title"}, {"arguments", {{"title", true}}}}}});
     CHECK(bad["result"]["isError"] == true);
 
     json unknown = call(server, {{"jsonrpc", "2.0"}, {"id", 6}, {"method", "nope"}});

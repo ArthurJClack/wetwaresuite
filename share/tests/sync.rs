@@ -94,7 +94,8 @@ fn live_two_way_sync() {
     // delete both ways (and empty folders go with the last file)
     std::fs::remove_file(b.join("assets/img/logo.svg")).unwrap();
     times.push(("delete peer->host", wait_for("delete b->a", || !a.join("assets/img/logo.svg").exists())));
-    assert!(!a.join("assets").exists(), "empty folders left by a sync delete are removed");
+    // the file goes first and its emptied folders right after, so wait for those too
+    wait_for("empty folders left by a sync delete are removed", || !a.join("assets").exists());
     std::fs::remove_file(a.join("src/lib.rs")).unwrap();
     times.push(("delete host->peer", wait_for("delete a->b", || !b.join("src/lib.rs").exists())));
     // a 1 MB file

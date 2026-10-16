@@ -6,6 +6,7 @@ target_link_libraries(achclwss_suite PUBLIC achclwss::forge)
 target_link_libraries(achclwss_suite PUBLIC achclwss::slicer)
 target_link_libraries(achclwss_suite PUBLIC achclwss::cad)
 target_link_libraries(achclwss_suite PUBLIC achclwss::layout)
+target_link_libraries(achclwss_suite PUBLIC achclwss::audio_tool)
 
 add_executable(achclwss main.cpp)
 target_link_libraries(achclwss PRIVATE achclwss_suite achclwss::mcp)

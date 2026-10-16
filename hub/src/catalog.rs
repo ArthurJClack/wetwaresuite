@@ -50,7 +50,7 @@ pub const TOOLS: &[Tool] = &[
     available("blueprint", "blueprint", "technical drafting and floor plans: DXF, PDF to scale", 3, 2),
     available("slicer", "slicer", "3D printing slicer: STL/3MF to G-code", 3, 20),
     available("forge", "asset forge", "game assets: meshes, textures, sprites", 3, 25),
-    planned("audio", "audio", "multitrack and spectral audio editing", 4, 12),
+    available("audio", "audio", "multitrack and spectral audio editing", 4, 12),
     planned("cut", "cut", "video editing", 4, 20),
     planned("capture", "capture", "screen recording and screenshots", 4, 5),
     planned("office", "office", "documents, spreadsheets, slides, PDF", 4, 250),

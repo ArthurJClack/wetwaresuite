@@ -6,6 +6,15 @@
 
 namespace achclwss::cli {
 
+namespace {
+
+// A backslash only escapes characters that mean something on a command line, so Windows
+// paths like C:\Users\me\a.png can be written as they are.
+// UNC paths like \\server\share stay intact too.
+bool escapable(char c) { return c == '"' || c == '$' || c == '#' || std::isspace(static_cast<unsigned char>(c)); }
+
+}  // namespace
+
 std::vector<std::string> split(const std::string& line) {
     std::vector<std::string> tokens;
     std::string current;
@@ -13,7 +22,7 @@ std::vector<std::string> split(const std::string& line) {
     bool any = false;
     for (std::size_t i = 0; i < line.size(); ++i) {
         char c = line[i];
-        if (c == '\\' && i + 1 < line.size()) {
+        if (c == '\\' && i + 1 < line.size() && escapable(line[i + 1])) {
             current += line[++i];
             any = true;
         } else if (c == '"') {
@@ -140,7 +149,7 @@ Result Batch::runLine(const std::string& rawLine) {
     bool quoted = false;
     for (std::size_t i = 0; i < line.size(); ++i) {
         char c = line[i];
-        if (c == '\\') {
+        if (c == '\\' && i + 1 < line.size() && escapable(line[i + 1])) {
             ++i;
         } else if (c == '"') {
             quoted = !quoted;

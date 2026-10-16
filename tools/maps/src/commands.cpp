@@ -316,9 +316,12 @@ std::vector<ParamSpec> viewParams() {
             {"bbox", ParamType::NumberList, "area to show as min_lon,min_lat,max_lon,max_lat (default: all visible layers plus a margin)", false},
             {"center", ParamType::NumberList, "lat,lon to centre on (with radius_km)", false},
             {"radius_km", ParamType::Number, "with center: how far to show around it", false},
-            {"basemap", ParamType::String, "background: countries (offline Natural Earth outlines), none, or osm (online tiles, cached)", false,
-             {"countries", "none", "osm"}, std::string("countries")},
-            {"tile_url", ParamType::String, "osm: tile server template with {z}/{x}/{y}, or a local tile folder template (e.g. tiles/{z}/{x}/{y}.png), which is never downloaded to", false, {}, std::string("https://tile.openstreetmap.org/{z}/{x}/{y}.png")},
+            {"basemap", ParamType::String,
+             "background: auto (an installed map pack, else countries), countries (built-in Natural Earth outlines), none, pack (the most "
+             "detailed installed map pack), a .pmtiles file on disk (vector or raster map tiles, read in place, never downloaded), or osm "
+             "(online tiles, cached; the only choice that can use the internet)",
+             false, {}, std::string("auto")},
+            {"tile_url", ParamType::String, "osm: tile server template with {z}/{x}/{y}, a local tile folder template (e.g. tiles/{z}/{x}/{y}.png) or a .pmtiles file; local ones are never downloaded to", false, {}, std::string("https://tile.openstreetmap.org/{z}/{x}/{y}.png")},
             {"tile_cache", ParamType::String, "osm: tile cache folder (default: the user cache dir, wetwaresuite/tiles)", false},
             {"offline", ParamType::Bool, "osm: use cached tiles only, never download", false, {}, false},
             {"max_tiles", ParamType::Int, "osm: most tiles one render may use (zoom drops to fit)", false, {}, std::int64_t{64}},
@@ -361,11 +364,13 @@ bool viewOptions(const MapDoc& doc, const Params& p, RenderOptions& o, std::stri
         }
         o.crs = *c;
     }
-    o.basemap = stringParam(p, "basemap", "countries");
+    o.basemap = stringParam(p, "basemap", "auto");
     o.tileUrl = stringParam(p, "tile_url", o.tileUrl);
-    if (o.tileUrl.find("{z}") == std::string::npos || o.tileUrl.find("{x}") == std::string::npos || o.tileUrl.find("{y}") == std::string::npos ||
-        o.tileUrl.empty()) {
-        error = "tile_url needs {z}, {x} and {y}: an http(s) tile server, or a local tile folder like D:/tiles/{z}/{x}/{y}.png";
+    const std::string urlExt = lower(fs::path(o.tileUrl).extension().string());
+    const bool tileFile = urlExt == ".pmtiles" || urlExt == ".mbtiles";
+    if (!tileFile && (o.tileUrl.find("{z}") == std::string::npos || o.tileUrl.find("{x}") == std::string::npos ||
+                      o.tileUrl.find("{y}") == std::string::npos)) {
+        error = "tile_url needs {z}, {x} and {y}: an http(s) tile server, or a local tile folder like D:/tiles/{z}/{x}/{y}.png (or give a .pmtiles file)";
         return false;
     }
     o.tileCache = stringParam(p, "tile_cache");
@@ -402,6 +407,12 @@ Result renderResult(const std::string& message, const RenderInfo& info, const Re
         r.with("zoom", static_cast<std::int64_t>(info.zoom))
             .with("tiles_used", static_cast<std::int64_t>(info.tilesUsed))
             .with("tiles_fetched", static_cast<std::int64_t>(info.tilesFetched));
+    }
+    if (!info.tileSource.empty()) {
+        r.with("tile_source", info.tileSource);
+        r.message += "\nmap pack: " + info.tileSource + ", zoom " + std::to_string(info.zoom) + ", " + std::to_string(info.tilesUsed) + " tiles" +
+                     (info.attribution.empty() ? std::string() : " (" + info.attribution + ")");
+    } else if (info.zoom >= 0) {
         r.message += "\nOSM tiles: zoom " + std::to_string(info.zoom) + ", " + std::to_string(info.tilesUsed) + " used, " +
                      std::to_string(info.tilesFetched) + " downloaded (map data \xC2\xA9 OpenStreetMap contributors, ODbL)";
     }
@@ -1667,6 +1678,64 @@ void registerTrackCommands(Session& session) {
             }, false));
 }
 
+std::string zoomText(int a, int b) { return a == b ? std::to_string(a) : std::to_string(a) + "-" + std::to_string(b); }
+
+void registerTilesCommands(Session& session) {
+    auto& reg = session.registry();
+    reg.add({"maps.tiles_info", "Map Tiles Info",
+             "Describe an offline map tile file (.pmtiles) or, with no path, the installed map packs: area, zoom levels, tile format "
+             "(vector mvt, png, jpg), compression, layers and credit. Use the file with maps.render basemap=<path>.",
+             {{"path", ParamType::String, "a .pmtiles file (default: the most detailed installed map pack)", false}}, false, true},
+            plainCommand([](const Params& p) {
+                fs::path path = stringParam(p, "path");
+                const auto packs = findMapPacks();
+                if (path.empty()) {
+                    const auto best = bestMapPack();
+                    if (!best)
+                        return Result::failure("no map pack is installed in " + packsDir().string() +
+                                               ". Install one from an offline edition: hub install maps --from <the edition folder> "
+                                               "(or pass path= to a .pmtiles file)");
+                    path = *best;
+                }
+                const std::string ext = lower(path.extension().string());
+                if (ext == ".mbtiles")
+                    return Result::failure("MBTiles files need SQLite, which the maps app leaves out: convert it once with "
+                                           "'pmtiles convert in.mbtiles out.pmtiles' and use the .pmtiles file");
+                const auto reader = openPmtiles(path);
+                const TilesInfo info = describePmtiles(*reader);
+                const PmtilesHeader& h = info.header;
+                const BBox b{h.minLon, h.minLat, h.maxLon, h.maxLat};
+                std::string layers;
+                for (const auto& l : info.layers) layers += (layers.empty() ? "" : ",") + l;
+                std::string msg = path.string() + ": " + std::string(toString(h.tileType)) + " tiles" + (h.tileType == TileType::Mvt ? " (vector)" : "") +
+                                  ", zoom " + zoomText(h.minZoom, h.maxZoom) + ", area " + bboxText(b) + " (lon,lat), " +
+                                  std::to_string(h.addressedTiles) + " tiles, " + std::string(toString(h.tileCompression)) + " compressed";
+                if (!info.name.empty()) msg += "\nname: " + info.name;
+                if (!layers.empty()) msg += "\nlayers: " + layers;
+                if (!info.attribution.empty()) msg += "\ncredit: " + info.attribution;
+                if (h.tileType != TileType::Mvt && h.tileType != TileType::Png && h.tileType != TileType::Jpeg)
+                    msg += "\nwarning: the maps app can't draw " + std::string(toString(h.tileType)) + " tiles (only vector, PNG and JPEG)";
+                if (h.tileCompression == TileCompression::Brotli || h.tileCompression == TileCompression::Zstd)
+                    msg += "\nwarning: the maps app can't read " + std::string(toString(h.tileCompression)) + " tiles (only gzip or none)";
+                if (packs.size() > 1) {
+                    msg += "\ninstalled map packs:";
+                    for (const auto& pk : packs) msg += "\n  " + pk.string();
+                }
+                Result r = Result::success(msg, path.string());
+                r.with("path", path.string())
+                    .with("format", std::string(toString(h.tileType)))
+                    .with("compression", std::string(toString(h.tileCompression)))
+                    .with("min_zoom", static_cast<std::int64_t>(h.minZoom))
+                    .with("max_zoom", static_cast<std::int64_t>(h.maxZoom))
+                    .with("bbox", bboxText(b))
+                    .with("center", fmt(h.centerLat, 6) + "," + fmt(h.centerLon, 6))
+                    .with("tiles", static_cast<std::int64_t>(h.addressedTiles))
+                    .with("layers", layers)
+                    .with("attribution", info.attribution);
+                return r;
+            }));
+}
+
 void registerRenderCommands(Session& session) {
     auto& reg = session.registry();
     std::vector<ParamSpec> renderParams = {docParam(), {"path", ParamType::String, "output .png, .jpg, .svg or .pdf", true},
@@ -1676,7 +1745,8 @@ void registerRenderCommands(Session& session) {
     for (auto& s : viewParams()) renderParams.push_back(s);
     reg.add({"maps.render", "Render Map",
              "Draw the map to a file: .png/.jpg (antialiased raster), .svg or .pdf (vector). Visible layers bottom to top over "
-             "a basemap (countries = offline Natural Earth outlines; osm = OpenStreetMap tiles, downloaded with curl only when "
+             "a basemap (auto = an installed map pack if there is one, else countries; countries = built-in Natural Earth outlines; "
+             "a .pmtiles file = offline map tiles from disk; osm = OpenStreetMap tiles, downloaded with curl only when "
              "asked, one at a time, cached under the user cache dir; offline=true uses the cache only), with a scale bar, north "
              "arrow, legend, optional graticule and title. Choose the projection with crs= and the area with bbox= or "
              "center=+radius_km=.",
@@ -1734,6 +1804,7 @@ void registerCommands(Session& session) {
     registerSpatialCommands(session);
     registerTrackCommands(session);
     registerRenderCommands(session);
+    registerTilesCommands(session);
 }
 
 }  // namespace wetwaresuite::maps

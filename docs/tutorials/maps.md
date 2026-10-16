@@ -7,13 +7,13 @@
 
 It reads and writes GeoJSON, KML, GPX, CSV with lat/lon columns, Shapefile and WKT with its own code. Its measurements are geodesic on the WGS84 ellipsoid. It reprojects between WGS84, Web Mercator and UTM. It buffers, simplifies, clips, filters, joins and builds heatmaps. It renders PNG, JPG, SVG and PDF maps with a scale bar, north arrow, legend and graticule.
 
-**Nothing needs the internet.** The default background is a built-in public-domain Natural Earth 1:110m country map. OpenStreetMap tiles are only downloaded when you ask for `basemap=osm`.
+**Nothing needs the internet.** The default background is an installed map pack (street-level offline maps from an [offline edition](offline-editions.md), Task 8) when you have one, and otherwise a built-in public-domain Natural Earth 1:110m country map. OpenStreetMap tiles are only downloaded when you ask for `basemap=osm`.
 
 Each task below is shown three ways:
 
 - **CLI**: single `wetwaresuite` commands. A map only lives inside one process, so one-shot commands are for looking at files (`maps.open path=hike.gpx`) and for measurements that need no map (`maps.measure`, `maps.transform`). For short edits, pipe a few lines into `wetwaresuite batch`.
 - **Batch**: a script for multi-step work, using `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP, and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools maps` serves the 35 maps tools.
+- **Claude**: a prompt for Claude over MCP, and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools maps` serves the 36 maps tools.
 
 Every example was run against the real binary in a folder that held three small files: `cafes.csv` (15 Paris cafés with `name,lat,lon,rating,seats`), `trips.csv` (made-up days spent per country, keyed by ISO code) and `hike.gpx` (a 12 km loop near Chamonix with elevation and times). Outputs are copied from those runs. Repeated fields are cut where marked `...`.
 
@@ -488,9 +488,99 @@ $ printf 'maps.new -> m\nmaps.add_countries doc=$m\nmaps.contains doc=$m lat=-33
 
 **Claude.** *"Which European countries have more than 200 people per km²? Map population density across Europe."* Claude calls `maps_add_countries` (`where="continent == 'Europe'"`), `maps_calc` twice, and `maps_features` with `where="density > 200"`. It then styles with `maps_style mode=graduated field=density` and checks the result with `maps_preview crs=auto`.
 
-## Task 8: OpenStreetMap tiles
+## Task 8: street maps with no internet (map packs)
 
-The built-in countries are fine for world and country maps, but for a city you want streets. `basemap=osm` draws OpenStreetMap tiles under your layers:
+The built-in countries are fine for world and country maps. For towns, roads and streets, install a **map pack**. A map pack is one big file of map tiles (a `.pmtiles` file) that sits on your disk. The maps app reads it straight from there, so it works on a computer that is never online. Map packs come on the [offline editions](offline-editions.md) (the USB-stick versions of wetwaresuite):
+
+| pack | shows | size |
+| --- | --- | --- |
+| `maps-world-low` | countries, big cities, coastlines, lakes (zoom 0-6) | about 250 MB |
+| `maps-world-mid` | towns and main roads (zoom 0-10) | about 6 GB |
+| `maps-world-high` | streets in most places (zoom 0-12) | about 30 GB |
+| `maps-planet` | the full map, down to buildings and footpaths (zoom 0-15) | about 125 GB |
+
+The map data is from OpenStreetMap, cut by Protomaps. It needs credit: the maps app prints the credit in the corner of every map it draws.
+
+### Step 1: install a map pack
+
+1. Plug in the USB stick with the offline edition (or unpack the edition's archive).
+2. Open a terminal (on Windows: the Start menu, type `cmd`, press Enter).
+3. Run the hub that's on the stick, and ask for the maps app. Its map pack comes along:
+
+   ```sh
+   /media/usb/wetwaresuite-32gb/bin/hub install maps --from /media/usb/wetwaresuite-32gb
+   ```
+
+   On Windows, with the stick as drive E:
+
+   ```bat
+   E:\wetwaresuite-32gb\bin\hub.exe install maps --from E:\wetwaresuite-32gb
+   ```
+
+   Nothing is downloaded. The pack is copied into your wetwaresuite folder, under `packs/` (`~/.local/share/wetwaresuite/packs` on Linux, `~/Library/Application Support/wetwaresuite/packs` on a Mac, `%APPDATA%\wetwaresuite\packs` on Windows).
+4. Check that the maps app can see it:
+
+   ```sh
+   wetwaresuite maps.tiles_info
+   ```
+
+   It answers with something like this (your folder and numbers will differ):
+
+   ```text
+   /home/me/.local/share/wetwaresuite/packs/maps-world-mid/world.pmtiles: mvt tiles (vector), zoom 0-10, area -180,-85.05113,180,85.05113 (lon,lat), ... tiles, gzip compressed
+   layers: boundaries,buildings,earth,landcover,landuse,places,pois,roads,water
+   credit: Protomaps © OpenStreetMap
+   ```
+
+   If it says *no map pack is installed*, the install in step 3 didn't include one. Run it again, and check that the edition has a `packs/maps-world-...` folder.
+
+### Step 2: open a map
+
+With a pack installed you don't have to change anything: the default background, `basemap=auto`, uses the most detailed pack you have and only falls back to the built-in countries when there is none.
+
+**In the window** ([the wetwaresuite window](gui.md)): open a map file (for example `cafes.csv`), then search for **Preview Map** or **Render Map**. Leave **Basemap** as `auto`, set **Center** to a place (`48.857,2.342` for Paris) and **Radius km** to `2`, and press **Run**. To use a particular map file, type its path in **Basemap**, for example `E:\maps\france.pmtiles`.
+
+**Batch** (`pack.txt`):
+
+```text
+# pack.txt: the cafés over an offline street map
+maps.open path=cafes.csv -> m
+maps.style doc=$m label=name fill=#c0392b
+maps.render doc=$m path=paris-pack.png width=800
+maps.render doc=$m path=paris-pack.pdf width=800 basemap=pack
+maps.render doc=$m path=paris-file.png width=800 basemap=/media/usb/wetwaresuite-32gb/packs/maps-world-mid/world.pmtiles
+```
+
+The first render prints something like:
+
+```text
+rendered 800x654 png to paris-pack.png
+map pack: /home/me/.local/share/wetwaresuite/packs/maps-world-mid/world.pmtiles, zoom 10, 12 tiles (Protomaps © OpenStreetMap)
+warning: zoomed in past the map pack's detail (zoom 10); a bigger pack shows more
+...
+```
+
+**CLI.**
+
+```sh
+$ printf 'maps.open path=cafes.csv -> m\nmaps.render doc=$m path=paris.png center=48.857,2.342 radius_km=2\n' | wetwaresuite batch
+```
+
+**Claude.** *"Show the cafés on a street map."* Claude calls `maps_preview` (the installed pack is used by itself) or `maps_tiles_info` first to see what area and zoom levels your packs cover. Nothing goes online.
+
+How it works:
+
+- `basemap=` takes `auto` (the default: the most detailed installed pack, else the countries), `pack` (the most detailed installed pack, with a plain warning if there is none), the path of any `.pmtiles` file, `countries`, `none` or `osm` (Task 9).
+- Running the apps straight from the stick without installing? The packs on the stick aren't in your wetwaresuite folder, so give the file: `basemap=E:\wetwaresuite-32gb\packs\maps-world-low\world.pmtiles`.
+- The tiles are **vector tiles** (Mapbox Vector Tiles, the Protomaps basemap layers): the app draws them itself with a built-in light style. Land, water, parks, woods and other land use are filled, buildings are shown when zoomed in, roads get colours and widths by type and zoom, borders are dashed, and towns and countries are labelled. Because they are drawn, not pictures, `.svg` and `.pdf` renders stay sharp.
+- `.pmtiles` files of **pictures** (PNG or JPEG tiles, for example aerial photos or a scanned map you packed yourself) work too. They are placed like the `tile_url=` folder tiles in Task 9. WebP and AVIF tiles can't be shown.
+- The zoom level follows the map scale and drops until the view needs at most `max_tiles=` tiles (64 by default). Zoomed in past the pack's deepest level, the app keeps drawing that level bigger, and tells you a bigger pack would show more. Places outside a pack's area stay blank, with a warning.
+- **MBTiles** files are SQLite databases, which the maps app doesn't read. Convert one once, on any computer, with the free [`pmtiles`](https://github.com/protomaps/go-pmtiles/releases) tool: `pmtiles convert in.mbtiles out.pmtiles`. Then use `out.pmtiles`. (Or unpack it to a `{z}/{x}/{y}.png` folder for `tile_url=`, see Task 9.)
+- Only gzip-compressed or uncompressed `.pmtiles` files can be read. The map packs are gzip. A file made with brotli or zstd compression gives a plain message saying so.
+
+## Task 9: OpenStreetMap tiles
+
+For the latest online map, `basemap=osm` draws OpenStreetMap tiles under your layers. This is the only background that can use the internet, and only when you ask for it:
 
 ```text
 # osm.txt: the cafés over OpenStreetMap tiles
@@ -508,7 +598,7 @@ How it works:
 - After the first failed download, the render stops trying, draws the missing area blank and warns you. The render still succeeds.
 - "© OpenStreetMap contributors" is printed on the map, as the licence requires.
 - `tile_url=` points at another server that uses `{z}/{x}/{y}` (for example your own tile server). Respect its usage terms.
-- `tile_url=` can also be a **folder of tiles on your disk**, for example `tile_url=D:/maps/tiles/{z}/{x}/{y}.png` (tiles you exported from another program, copied from a friend, or kept from an earlier `tile_cache=`). Those are read straight from the folder and never downloaded, with or without `offline=true`. MBTiles files are SQLite databases: unpack one to a `{z}/{x}/{y}.png` folder first with a tool such as `mb-util`, and make sure it writes XYZ rows (counted from the top), not TMS rows (counted from the bottom).
+- `tile_url=` can also be a **folder of tiles on your disk**, for example `tile_url=D:/maps/tiles/{z}/{x}/{y}.png` (tiles you exported from another program, copied from a friend, or kept from an earlier `tile_cache=`). Those are read straight from the folder and never downloaded, with or without `offline=true`. `tile_url=` can be a `.pmtiles` file too (same as `basemap=` with that file, Task 8). MBTiles files are SQLite databases, which the app doesn't read: convert one with `pmtiles convert in.mbtiles out.pmtiles` (Task 8), or unpack it to a `{z}/{x}/{y}.png` folder with a tool such as `mb-util`, making sure it writes XYZ rows (counted from the top), not TMS rows (counted from the bottom).
 
 The run for this tutorial had no access to tile.openstreetmap.org, so it shows the offline behaviour:
 
@@ -564,12 +654,12 @@ Colours are `#rrggbb`, `#rgb`, `#rrggbbaa` or CSS names such as `red`. Layer ord
 | `crs` | `webmercator` | `webmercator`, `wgs84` (plate carrée), `utm33n`..., `EPSG:...`, or `auto` (UTM of the centre) |
 | `bbox` | the visible layers plus a margin | `min_lon,min_lat,max_lon,max_lat` |
 | `center`, `radius_km` | | frame an area around `lat,lon` |
-| `basemap` | `countries` | `countries` (offline), `none`, `osm` |
-| `background`, `land` | `#dde8f0`, `#f4f1ea` | sea and land colours |
+| `basemap` | `auto` | `auto` (an installed map pack, else countries), `countries`, `none`, `pack`, a `.pmtiles` file (all offline), `osm` (online) |
+| `background`, `land` | `#dde8f0`, `#f4f1ea` | sea and land colours of the countries basemap (map packs use their own style) |
 | `scale_bar`, `north_arrow`, `legend`, `labels` | `true` | map furniture; the scale bar is true at the centre |
 | `graticule`, `graticule_step` | `false`, automatic | latitude/longitude lines with labels |
 | `title` | the map's title | text across the top |
-| `tile_url`, `tile_cache`, `offline`, `max_tiles` | | OSM tiles (Task 8) |
+| `tile_url`, `tile_cache`, `offline`, `max_tiles` | | OSM tiles (Task 9); `max_tiles` also limits map packs |
 
 ## Command reference
 
@@ -593,10 +683,11 @@ Colours are `#rrggbb`, `#rgb`, `#rrggbbaa` or CSS names such as `red`. Layer ord
 | `maps.track_stats`, `maps.profile` | GPS track statistics; elevation chart |
 | `maps.raster_add`, `maps.raster_sample`, `maps.raster_save` | add a GeoTIFF or placed image; read values; write GeoTIFF or PNG + world file |
 | `maps.render`, `maps.preview` | draw to a file; draw to an attachment |
+| `maps.tiles_info` | describe a `.pmtiles` file or the installed map packs: area, zooms, format, layers, credit |
 
 ## MCP
 
-`wetwaresuite mcp --tools maps` serves the 35 maps tools (`maps_new`, `maps_import`, ..., `maps_render`). Every edit takes `preview=true`, which attaches a PNG of the whole map to the result. `maps_preview` renders any view without writing a file, and `maps_profile` without `path=` returns the elevation chart as an image. Results carry the numbers as structured fields, so Claude can do arithmetic on distances or areas without parsing text.
+`wetwaresuite mcp --tools maps` serves the 36 maps tools (`maps_new`, `maps_import`, ..., `maps_render`). Every edit takes `preview=true`, which attaches a PNG of the whole map to the result. `maps_preview` renders any view without writing a file, and `maps_profile` without `path=` returns the elevation chart as an image. Results carry the numbers as structured fields, so Claude can do arithmetic on distances or areas without parsing text.
 
 Example prompts:
 
@@ -611,10 +702,11 @@ Example prompts:
 - **Buffers** of lines and polygons are traced from a grid of `resolution=` cells (600 by default) across the layer's extent. Their edges are accurate to about one cell, so a buffer of a whole country is only good to a few hundred metres. Raise `resolution=` for precision. Point buffers are exact geodesic circles.
 - **Clip** cuts to a lon/lat rectangle only. There is no polygon-by-polygon intersection, union or difference beyond buffer dissolve.
 - **Areas** are on the authalic sphere (about 0.1 % from the ellipsoidal value), with polygon edges taken as great circles.
-- **The built-in countries** are Natural Earth 1:110m with coordinates rounded to 0.001°. That is right for world and continent maps, but coarse at city scale (coastlines are kilometres off). Use your own data or `basemap=osm` for close-ups. Disputed borders follow Natural Earth's de-facto choices.
+- **The built-in countries** are Natural Earth 1:110m with coordinates rounded to 0.001°. That is right for world and continent maps, but coarse at city scale (coastlines are kilometres off). Use a map pack (Task 8), your own data or `basemap=osm` for close-ups. Disputed borders follow Natural Earth's de-facto choices.
 - **GeoTIFF**: no BigTIFF, no planar-configuration (separate band) files, no JPEG-compressed TIFFs, no overviews. Only the first image is read. GeoKeys are limited to EPSG 4326, 3857 and UTM codes; for anything else, pass `crs=` or the raster is placed by `bbox=`. Rasters are resampled with nearest neighbour.
 - **KML**: no NetworkLinks, GroundOverlays, KMZ archives or 3D models; styles are not read. **GPX**: extensions such as heart rate are ignored. **Shapefiles**: no MultiPatch; M values are dropped; `.dbf` fields are written as text, numbers or logicals, with names cut to 10 characters.
 - **Feature properties** are kept in alphabetical order of field name, so CSV and DBF exports may reorder columns.
 - **OpenStreetMap tiles** need `curl` and the network, and are drawn at the nearest zoom level, so some scaling blur is possible. Tile servers' usage policies forbid bulk downloading. The tile code has only been tested against a pre-filled cache: the tutorial run had no access to the tile server.
+- **Map packs** are drawn with one built-in style: no road names, shields, icons or points of interest, only place names. Road and boundary lines are drawn per tile, so a dashed border can restart its dash at a tile edge. Place names come from the tiles' `name` field (the local name). The planet pack's deepest detail is zoom 15; beyond that, the map is the same data drawn bigger. The map pack reader and style were tested with small packs the tests build themselves; the run for this tutorial had no full Protomaps pack, so the outputs in Task 8 are examples.
 - **Labels** in PNG and PDF output use the built-in Helvetica font with the Western European (WinAnsi) characters. Other scripts (Cyrillic, Greek, CJK, ...) come out as `?`. SVG output keeps the text and shows it with the viewer's fonts. Labels that would overlap are dropped, not moved.
 - **Size**: everything is in memory, which is fine for tens of thousands of features. Big national datasets are slow to buffer and render.

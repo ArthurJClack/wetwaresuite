@@ -1,10 +1,12 @@
 // The GUI's window-free logic, tested against made-up and real (photo, paint) commands.
 #include <algorithm>
+#include <cmath>
 
 #include "check.hpp"
 #include "wetwaresuite/gui/logic.hpp"
 #include "wetwaresuite/paint/paint.hpp"
 #include "wetwaresuite/photo/photo.hpp"
+#include "wetwaresuite/raster/document.hpp"
 
 using namespace wetwaresuite;
 using namespace wetwaresuite::gui;
@@ -209,6 +211,124 @@ void testColoursRecentMessages() {
     CHECK(!toolBlurb("paint").empty() && !toolBlurb("unknown").empty());
 }
 
+const NumberList* listOf(const Params& p, const std::string& key) {
+    auto it = p.find(key);
+    return it == p.end() ? nullptr : std::get_if<NumberList>(&it->second);
+}
+
+void testThinStroke() {
+    CHECK(thinStroke({}, 1).empty());
+    CHECK((thinStroke({5, 5}, 1) == std::vector<double>{5, 5}));
+    // 1000 points 0.1 px apart: about one per px is kept, ends included
+    std::vector<double> line;
+    for (int i = 0; i < 1000; ++i) line.insert(line.end(), {i * 0.1, 20.0});
+    auto thin = thinStroke(line, 1);
+    CHECK(thin.size() / 2 >= 95 && thin.size() / 2 <= 102);
+    CHECK(thin[0] == 0 && thin[1] == 20 && std::abs(thin[thin.size() - 2] - 99.9) < 1e-9);
+    // a cap on the count keeps evenly spaced points
+    thin = thinStroke(line, 1, 10);
+    CHECK(thin.size() == 20);
+    CHECK(thin[0] == 0 && std::abs(thin[18] - 99.9) < 1e-9);
+    // repeated points collapse to one
+    CHECK(thinStroke({3, 3, 3, 3, 3, 3}, 1).size() == 2);
+}
+
+void testHealSource() {
+    HealSource src;
+    double ox = 0, oy = 0;
+    CHECK(!src.offsetFor(1, 1, ox, oy));
+    src.pick(100, 50);
+    // the first stroke fixes the offset from where it starts
+    CHECK(src.offsetFor(40, 50, ox, oy) && ox == 60 && oy == 0);
+    // later strokes keep it, like an aligned clone brush
+    CHECK(src.offsetFor(10, 10, ox, oy) && ox == 60 && oy == 0);
+    src.pick(0, 0);
+    CHECK(src.offsetFor(10, 10, ox, oy) && ox == -10 && oy == -10);
+    src.forget();
+    CHECK(!src.picked && !src.offsetFor(1, 1, ox, oy));
+}
+
+void testRetouchParams() {
+    Params p;
+    std::string error;
+    // smooth heal: a stroke with half the brush size as radius, no source
+    CHECK(healStrokeParams("img1", {10, 10, 20, 10}, 10, 100, 100, nullptr, p, error));
+    CHECK(toText(p.at("shape")) == "stroke" && toText(p.at("doc")) == "img1");
+    CHECK(std::get<double>(p.at("radius")) == 5.0);
+    CHECK(!p.count("from_x") && listOf(p, "points") && listOf(p, "points")->size() == 4);
+    // tiny brushes still send a usable radius
+    CHECK(healStrokeParams("img1", {10, 10}, 0.5, 100, 100, nullptr, p, error) && std::get<double>(p.at("radius")) == 1.0);
+    // with a source: from_x/from_y are the middle of the area plus the offset
+    const double offset[2] = {40, -5};
+    CHECK(healStrokeParams("img1", {10, 10, 20, 10}, 10, 100, 100, offset, p, error));
+    // area spans x 5..24, y 5..14: middle (14, 9)
+    CHECK(std::get<std::int64_t>(p.at("from_x")) == 54 && std::get<std::int64_t>(p.at("from_y")) == 4);
+    // a source that runs off the picture is refused in plain words
+    const double far[2] = {90, 0};
+    CHECK(!healStrokeParams("img1", {10, 10, 20, 10}, 10, 100, 100, far, p, error));
+    CHECK(error.find("edge") != std::string::npos);
+    // nothing painted, or off the picture
+    CHECK(!removeStrokeParams("img1", {}, 10, 100, 100, p, error) && !error.empty());
+    CHECK(!removeStrokeParams("img1", {500, 500, 600, 600}, 10, 100, 100, p, error));
+    CHECK(error.find("outside") != std::string::npos);
+    // long strokes are thinned to a sane count
+    std::vector<double> scribble;
+    for (int i = 0; i < 5000; ++i) scribble.insert(scribble.end(), {50 + 40 * std::cos(i * 0.01), 50 + 40 * std::sin(i * 0.013)});
+    CHECK(removeStrokeParams("img1", scribble, 6, 100, 100, p, error));
+    CHECK(listOf(p, "points")->size() / 2 <= 400);
+}
+
+// The params the canvas sends really run, change the picture and undo in one step.
+void testRetouchCommands() {
+    Session session;
+    photo::registerCommands(session);
+    paint::registerCommands(session);
+    CHECK(session.run("photo.new", {{"width", std::int64_t{80}}, {"height", std::int64_t{60}}}).ok);
+    // a dark blemish
+    CHECK(session.run("paint.stroke", {{"doc", std::string("img1")}, {"points", NumberList{30, 30, 34, 30}}, {"size", 6.0},
+                                        {"color", std::string("#000000")}})
+              .ok);
+    auto doc = session.workspace().getAs<raster::ImageDoc>("img1");
+    CHECK(doc != nullptr);
+    if (!doc) return;
+    doc->takeChanges();
+    auto red = [&] { return static_cast<int>(doc->image.layers[0].image.pixel(32, 30)[0]); };
+    CHECK(red() < 60);
+    const auto steps = session.history().labels().size();
+
+    Params p;
+    std::string error;
+    CHECK(healStrokeParams("img1", {29, 30, 35, 30}, 12, 80, 60, nullptr, p, error));
+    Result r = session.run("photo.heal", p);
+    CHECK(r.ok);
+    CHECK(red() > 200);
+    CHECK(session.history().labels().size() == steps + 1);
+    const auto changes = doc->takeChanges();
+    CHECK(changes.all || !changes.rect.empty());
+    CHECK(session.history().undo() && red() < 60);
+
+    // healing with a source copies from the clean spot to the right
+    HealSource src;
+    src.pick(60, 30);
+    double off[2] = {0, 0};
+    CHECK(src.offsetFor(29, 30, off[0], off[1]));
+    CHECK(healStrokeParams("img1", {29, 30, 35, 30}, 12, 80, 60, off, p, error));
+    CHECK(session.run("photo.heal", p).ok && red() > 200);
+    CHECK(session.history().undo());
+
+    // remove object
+    CHECK(removeStrokeParams("img1", {29, 30, 35, 30}, 12, 80, 60, p, error));
+    CHECK(session.run("photo.remove_object", p).ok && red() > 200);
+    CHECK(session.history().labels().size() == steps + 1);
+    CHECK(session.history().undo() && red() < 60);
+
+    // too big an area says so in plain words
+    CHECK(session.run("photo.new", {{"width", std::int64_t{600}}, {"height", std::int64_t{600}}}).ok);
+    CHECK(removeStrokeParams("img2", {100, 300, 500, 300}, 400, 600, 600, p, error));
+    Result big = session.run("photo.remove_object", p);
+    CHECK(!big.ok && friendlyError(big.message).find("limit") != std::string::npos);
+}
+
 }  // namespace
 
 int main() {
@@ -218,5 +338,9 @@ int main() {
     testForms();
     testRealCommands();
     testColoursRecentMessages();
+    testThinStroke();
+    testHealSource();
+    testRetouchParams();
+    testRetouchCommands();
     return check::summary("gui_logic");
 }

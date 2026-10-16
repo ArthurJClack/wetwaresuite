@@ -231,12 +231,46 @@ All three need to know *where*. Coordinates are pixels from the top-left corner 
 
 Make the area a little bigger than the thing you're fixing: a few pixels of margin all round give the best result.
 
-### In the window
+### In the window: just paint over it
 
-1. Open your picture (**Open a file** on the home screen).
-2. Press **Ctrl+K** and type `heal`, `remove` or `seamless`. Pick **Healing brush**, **Remove object** or **Seamless clone**.
-3. Fill in the area: choose the **shape**, then the position and size. For a healing brush, also fill in **from x** and **from y**: a clean spot nearby that has the right kind of texture (skin next to the pimple, sky next to the dust spot). Leave them on **Automatic** to fill smoothly from the edges instead, which is fine for spots on smooth areas.
-4. Press **Run**. Not happy? Press **Ctrl+Z**, change the numbers, and run again.
+The easiest way: no numbers at all. Open your picture (**Open a file** on the home screen). Above the picture you'll see the tools **Move, Brush, Eraser, Fill, Heal, Remove**. Hold the mouse still over any of them to read what it does.
+
+**Heal: make a spot, pimple or scratch disappear**
+
+1. Click **Heal**.
+2. Set **Size** so the circle under your mouse is a little bigger than the spot. (Scroll the mouse wheel over the picture to zoom in first; it helps.)
+3. Paint over the spot: press, drag over it, let go. A light blue line shows where you painted. When you let go, the window shows **Working...** for a moment and the spot is gone.
+
+That fills the spot smoothly from the colours around it, which is perfect for skin, sky and other smooth areas. For textured areas (grass, fabric, a brick wall) tell it where to copy texture from:
+
+4. Hold **Alt** (**Option** on a Mac) and click a clean spot nearby that looks like what should be there. If you use a pen or a touch screen, press **Pick source** instead, then tap the clean spot.
+5. Now paint over the blemish. A white circle shows where the texture is being copied from; it moves along with your brush, staying the same distance away (just like the clone or healing brush in other photo editors).
+6. To go back to smooth filling, press **Forget source**.
+
+If the window says the spot to copy from is too close to the edge, Alt+click a spot further inside the picture.
+
+**Remove: make a whole object disappear**
+
+1. Click **Remove**.
+2. Set **Size**, then paint over the thing you want gone (a person in the background, a sign, a wire) in one go. It turns see-through red so you can see what you've covered. Cover it completely, with a little margin.
+3. Not right? Press **Clear** and paint again (or just paint again: the new stroke replaces the old one).
+4. Press **Remove**. The window shows **Working...**, then the red area is filled with picture from around it.
+
+Tick **Remove when I let go** to skip step 4: it removes as soon as you finish painting.
+
+Remove works on small and medium areas (about 60000 pixels, roughly 245 by 245). If you paint a bigger area, the window tells you so in plain words; remove the thing in a few smaller parts instead.
+
+**Every heal stroke and every Remove is one step.** Press **Ctrl+Z** to take back just the last one, and **Ctrl+Y** to redo it.
+
+### In the window: with exact numbers
+
+Prefer to type the area in?
+
+1. Press **Ctrl+K** and type `heal`, `remove` or `seamless`. Pick **Healing brush**, **Remove object** or **Seamless clone**.
+2. Fill in the area: choose the **shape**, then the position and size. For a healing brush, also fill in **from x** and **from y**: a clean spot nearby that has the right kind of texture (skin next to the pimple, sky next to the dust spot). Leave them on **Automatic** to fill smoothly from the edges instead, which is fine for spots on smooth areas.
+3. Press **Run**. Not happy? Press **Ctrl+Z**, change the numbers, and run again.
+
+Seamless clone has no painting tool yet; use it this way.
 
 ### On the command line and in scripts
 

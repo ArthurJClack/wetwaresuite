@@ -557,4 +557,119 @@ std::string toolTitle(const std::string& tool) {
     return capitalise(tool);
 }
 
+// ---- retouching by painting -----------------------------------------------------
+
+std::vector<double> thinStroke(const std::vector<double>& points, double minStep, std::size_t maxPoints) {
+    const std::size_t n = points.size() / 2;
+    if (n == 0) return {};
+    std::vector<double> kept{points[0], points[1]};
+    const double step2 = minStep * minStep;
+    for (std::size_t i = 1; i < n; ++i) {
+        const double x = points[2 * i], y = points[2 * i + 1];
+        const double dx = x - kept[kept.size() - 2], dy = y - kept.back();
+        if (dx * dx + dy * dy < step2 && i + 1 < n) continue;
+        if (dx * dx + dy * dy < step2 && kept.size() > 2) {
+            kept[kept.size() - 2] = x;  // the end is too close to the last kept point: move that one
+            kept.back() = y;
+            continue;
+        }
+        if (dx == 0 && dy == 0) continue;
+        kept.push_back(x);
+        kept.push_back(y);
+    }
+    const std::size_t m = kept.size() / 2;
+    maxPoints = std::max<std::size_t>(maxPoints, 2);
+    if (m <= maxPoints) return kept;
+    std::vector<double> out;
+    out.reserve(maxPoints * 2);
+    for (std::size_t k = 0; k < maxPoints; ++k) {
+        const std::size_t i = k * (m - 1) / (maxPoints - 1);
+        out.push_back(kept[2 * i]);
+        out.push_back(kept[2 * i + 1]);
+    }
+    return out;
+}
+
+void HealSource::pick(double px, double py) {
+    picked = true;
+    x = px;
+    y = py;
+    anchored = false;
+    dx = dy = 0;
+}
+
+bool HealSource::offsetFor(double sx, double sy, double& ox, double& oy) {
+    if (!picked) return false;
+    if (!anchored) {
+        dx = x - sx;
+        dy = y - sy;
+        anchored = true;
+    }
+    ox = dx;
+    oy = dy;
+    return true;
+}
+
+namespace {
+
+struct StrokeBox {
+    double x0 = 0, y0 = 0, x1 = 0, y1 = 0;  // inclusive pixel bounds of the brushed area, clamped to the picture
+};
+
+// The common half of both commands: radius, thinned points, and the area the
+// stroke covers (to check it's on the picture).
+bool strokeArea(const std::string& doc, const std::vector<double>& points, double brushSize, int width, int height, Params& out,
+                StrokeBox& box, std::string& error) {
+    if (points.size() < 2) {
+        error = "Paint over the area first.";
+        return false;
+    }
+    const double radius = std::clamp(brushSize / 2, 1.0, 1000.0);
+    std::vector<double> pts = thinStroke(points, std::max(1.0, radius / 4));
+    double minX = pts[0], maxX = pts[0], minY = pts[1], maxY = pts[1];
+    for (std::size_t i = 0; i + 1 < pts.size(); i += 2) {
+        minX = std::min(minX, pts[i]), maxX = std::max(maxX, pts[i]);
+        minY = std::min(minY, pts[i + 1]), maxY = std::max(maxY, pts[i + 1]);
+    }
+    box.x0 = std::max(0.0, std::floor(minX - radius));
+    box.y0 = std::max(0.0, std::floor(minY - radius));
+    box.x1 = std::min(width - 1.0, std::ceil(maxX + radius) - 1);
+    box.y1 = std::min(height - 1.0, std::ceil(maxY + radius) - 1);
+    if (width < 1 || height < 1 || box.x1 < box.x0 || box.y1 < box.y0) {
+        error = "That stroke is outside the picture.";
+        return false;
+    }
+    // a little rounding keeps the numbers short in the history and in scripts
+    for (auto& v : pts) v = std::round(v * 10) / 10;
+    out = Params{{"doc", doc}, {"shape", std::string("stroke")}, {"points", NumberList(pts)}, {"radius", radius}};
+    return true;
+}
+
+}  // namespace
+
+bool healStrokeParams(const std::string& doc, const std::vector<double>& points, double brushSize, int width, int height,
+                      const double* offset, Params& out, std::string& error) {
+    StrokeBox box;
+    if (!strokeArea(doc, points, brushSize, width, height, out, box, error)) return false;
+    if (!offset) return true;
+    const double ox = std::round(offset[0]), oy = std::round(offset[1]);
+    // the source area is the brushed area moved by the offset: it has to be on the picture
+    if (box.x0 + ox < 0 || box.y0 + oy < 0 || box.x1 + ox > width - 1 || box.y1 + oy > height - 1) {
+        error = "The spot to copy from is too close to the edge of the picture for this stroke. "
+                "Alt+click (or use Pick source) on a spot further inside, or paint a shorter stroke.";
+        return false;
+    }
+    // photo.heal copies the middle of the area from (from_x, from_y)
+    const auto cx = static_cast<std::int64_t>((box.x0 + box.x1) / 2), cy = static_cast<std::int64_t>((box.y0 + box.y1) / 2);
+    out["from_x"] = cx + static_cast<std::int64_t>(ox);
+    out["from_y"] = cy + static_cast<std::int64_t>(oy);
+    return true;
+}
+
+bool removeStrokeParams(const std::string& doc, const std::vector<double>& points, double brushSize, int width, int height,
+                        Params& out, std::string& error) {
+    StrokeBox box;
+    return strokeArea(doc, points, brushSize, width, height, out, box, error);
+}
+
 }  // namespace wetwaresuite::gui

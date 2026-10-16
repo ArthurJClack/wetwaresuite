@@ -73,6 +73,8 @@ int main() {
         CHECK(o4.str().find("colour #ff0000ff") != std::string::npos);
 
         CHECK(cli::split("a \"b c\" d\\ e").size() == 3);
+        auto win = cli::split(R"(photo.open path=C:\Users\me\new\a.png other=\\server\share x=\$y)");
+        CHECK(win.size() == 4 && win[1] == R"(path=C:\Users\me\new\a.png)" && win[2] == R"(other=\\server\share)" && win[3] == "x=$y");
         bool threw = false;
         try {
             cli::split("unterminated \"quote");

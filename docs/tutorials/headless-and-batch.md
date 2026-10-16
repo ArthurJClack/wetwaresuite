@@ -71,7 +71,7 @@ paint.fill doc=$art x=5 y=5 color=#87ceeb   # sky blue
 
 ### Quoting and escapes
 
-Values with spaces go in double quotes. A backslash makes the next character literal.
+Values with spaces go in double quotes. A backslash before `"`, `$`, `#` or a space makes that character literal; any other backslash is kept as it is, so Windows paths like `C:\Users\me\photo.png` work unquoted.
 
 ```text
 paint.layer_add doc=$art name="sky layer"

@@ -24,6 +24,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime};
 
+use crate::delta;
 use crate::http::{Client, ReqBody, Target};
 use crate::index::Index;
 use crate::json::Json;
@@ -45,6 +46,9 @@ pub struct Options {
     pub host: String,
     /// Where the base state is saved; `None` keeps it in memory only.
     pub state_dir: Option<PathBuf>,
+    /// Send only the changed blocks of big edited files when the peer can
+    /// (see `delta`); off means always whole files.
+    pub delta: bool,
 }
 
 impl Options {
@@ -57,6 +61,7 @@ impl Options {
             log: None,
             host: util::hostname(),
             state_dir: default_state_dir(),
+            delta: true,
         }
     }
 }
@@ -89,6 +94,13 @@ pub struct Stats {
     pub last_change: Option<SystemTime>,
     pub events: VecDeque<String>,
     pub peer_host: String,
+    /// Files sent or received as block deltas instead of whole.
+    pub delta_files: u64,
+    /// Deltas that failed their checks and were resent whole.
+    pub delta_fallbacks: u64,
+    /// File bytes actually sent and received (bodies, not headers).
+    pub bytes_up: u64,
+    pub bytes_down: u64,
 }
 
 impl Stats {
@@ -103,6 +115,10 @@ impl Stats {
             .with("conflicts", self.conflicts)
             .with("rounds", self.rounds)
             .with("peer_host", self.peer_host.as_str())
+            .with("delta_files", self.delta_files)
+            .with("delta_fallbacks", self.delta_fallbacks)
+            .with("bytes_up", self.bytes_up)
+            .with("bytes_down", self.bytes_down)
             .with("last_error", self.last_error.clone())
             .with("last_change_unix", self.last_change.map(util::unix_secs))
             .with("recent", self.events.iter().map(Json::from).collect::<Vec<_>>())
@@ -175,6 +191,8 @@ pub struct Engine {
     pub stats: Arc<Mutex<Stats>>,
     state_file: Option<PathBuf>,
     peer_key: String,
+    /// The host advertised block deltas (`"delta": 1` in /api/info).
+    peer_delta: bool,
 }
 
 impl Engine {
@@ -195,6 +213,7 @@ impl Engine {
             let key = sha256::digest_hex(format!("{}\n{peer_key}", root.display()).as_bytes());
             d.join(format!("{}.json", &key[..24]))
         });
+        let peer_delta = opts.delta && info.get("delta").and_then(Json::as_u64).unwrap_or(0) >= 1;
         let mut engine = Engine {
             local: Index::new(&root, opts.include_heavy),
             opts,
@@ -205,6 +224,7 @@ impl Engine {
             stats: Arc::new(Mutex::new(Stats { peer_host: info.str_or("host", "?").to_string(), ..Default::default() })),
             state_file,
             peer_key,
+            peer_delta,
         };
         engine.load_state();
         Ok(engine)
@@ -296,7 +316,14 @@ impl Engine {
         // download into a temp file first, then swap it in only if the local file didn't move meanwhile
         let dir = dest.parent().unwrap_or(&self.local.root).to_path_buf();
         let tmp = dir.join(format!("{}sync-{}", crate::ignore::TEMP_PREFIX, sha256::hex(&crate::rand::bytes::<6>()?)));
-        let n = crate::client::download(&mut self.client, rel, &tmp, None)?;
+        let n = match self.pull_delta(rel, &tmp) {
+            Some(n) => n,
+            None => {
+                let n = crate::client::download(&mut self.client, rel, &tmp, None)?;
+                self.stats.lock().unwrap().bytes_down += n;
+                n
+            }
+        };
         if !self.local_unchanged(rel) {
             let _ = std::fs::remove_file(&tmp);
             return Ok(()); // edited here mid-transfer; the next round sorts it out
@@ -312,19 +339,119 @@ impl Engine {
         Ok(())
     }
 
+    /// True when a file of this size is worth a delta with this peer.
+    fn delta_worthy(&self, size: u64) -> bool {
+        self.peer_delta && (delta::MIN_SIZE..=delta::MAX_SIZE).contains(&size)
+    }
+
+    fn note_fallback(&self, rel: &str, why: &str) {
+        self.stats.lock().unwrap().delta_fallbacks += 1;
+        self.event(format!("delta for {rel} failed ({why}); sending the whole file"));
+    }
+
+    /// Downloads `rel` into `tmp` as a delta against our copy. `None` means
+    /// "do a whole download instead" (no copy here, old host, any error).
+    fn pull_delta(&mut self, rel: &str, tmp: &Path) -> Option<u64> {
+        let basis = paths::join(&self.local.root, rel);
+        let size = std::fs::metadata(&basis).ok().filter(|m| m.is_file())?.len();
+        if !self.delta_worthy(size) {
+            return None;
+        }
+        let sig = delta::Signature::of_file(&basis).ok()?.encode();
+        let mut d = Vec::new();
+        let target = format!("/api/sync/delta?path={}", util::percent_encode(rel));
+        let resp = self.client.call("POST", &target, &[("X-Sync", "1")], ReqBody::Bytes(&sig), &mut d);
+        match resp {
+            Ok(r) if r.status == 200 => {}
+            Ok(_) => return None, // too big there, gone, ...: whole file
+            Err(_) => return None,
+        }
+        {
+            let mut s = self.stats.lock().unwrap();
+            s.bytes_up += sig.len() as u64;
+            s.bytes_down += d.len() as u64;
+        }
+        delta::maybe_corrupt(&mut d);
+        match delta::apply_to_file(&basis, &d, tmp) {
+            Ok(_) => {
+                self.stats.lock().unwrap().delta_files += 1;
+                std::fs::metadata(tmp).ok().map(|m| m.len())
+            }
+            Err(e) => {
+                self.note_fallback(rel, &e.to_string());
+                None
+            }
+        }
+    }
+
+    /// Uploads `rel` as a delta against the host's copy, which must still be
+    /// `if_match`. `None` means "do a whole upload instead".
+    fn push_delta(&mut self, rel: &str, path: &Path, size: u64, if_match: &str) -> Option<io::Result<(u16, Vec<u8>)>> {
+        if !self.delta_worthy(size) {
+            return None;
+        }
+        let enc = util::percent_encode(rel);
+        let mut sig = Vec::new();
+        let r = self.client.call("GET", &format!("/api/sync/sig?path={enc}"), &[], ReqBody::None, &mut sig).ok()?;
+        if r.status != 200 || r.header("x-hash") != Some(if_match) {
+            return None; // changed there since the manifest: let the normal path report it
+        }
+        let sig = delta::Signature::decode(&sig).ok()?;
+        let data = std::fs::read(path).ok()?;
+        let mut d = delta::delta(&sig, &data);
+        if d.len() as u64 >= size {
+            return None; // nothing in common: the whole file is no bigger
+        }
+        delta::maybe_corrupt(&mut d);
+        let mut out = Vec::new();
+        let target = format!("/api/sync/patch?path={enc}");
+        let headers = [("If-Match", if_match), ("X-Sync", "1")];
+        let resp = match self.client.call("PUT", &target, &headers, ReqBody::Bytes(&d), &mut out) {
+            Ok(r) => r,
+            Err(e) => return Some(Err(e)),
+        };
+        {
+            let mut s = self.stats.lock().unwrap();
+            s.bytes_down += sig.blocks.len() as u64 * 36 + 20;
+            s.bytes_up += d.len() as u64;
+        }
+        match resp.status {
+            200 | 201 => {
+                self.stats.lock().unwrap().delta_files += 1;
+                Some(Ok((resp.status, out)))
+            }
+            412 => Some(Ok((412, out))),
+            _ => {
+                self.note_fallback(rel, &crate::http::http_error(resp.status, &out).to_string());
+                None
+            }
+        }
+    }
+
     fn push(&mut self, rel: &str, if_match: Option<&str>) -> io::Result<bool> {
         let path = paths::join(&self.local.root, rel);
         let size = std::fs::metadata(&path)?.len();
         let im = if_match.unwrap_or("none").to_string();
-        let mut out = Vec::new();
-        let resp = self.client.call(
-            "PUT",
-            &format!("/f/{}", util::encode_path(rel)),
-            &[("If-Match", &im), ("X-Sync", "1")],
-            ReqBody::File(&path),
-            &mut out,
-        )?;
-        match resp.status {
+        let delta_result = match if_match {
+            Some(h) => self.push_delta(rel, &path, size, h),
+            None => None,
+        };
+        let (status, out) = match delta_result {
+            Some(r) => r?,
+            None => {
+                let mut out = Vec::new();
+                let resp = self.client.call(
+                    "PUT",
+                    &format!("/f/{}", util::encode_path(rel)),
+                    &[("If-Match", &im), ("X-Sync", "1")],
+                    ReqBody::File(&path),
+                    &mut out,
+                )?;
+                self.stats.lock().unwrap().bytes_up += size;
+                (resp.status, out)
+            }
+        };
+        match status {
             201 | 200 => {
                 let j = Json::parse(&String::from_utf8_lossy(&out)).unwrap_or(Json::Null);
                 let hash = j.str_or("hash", "").to_string();

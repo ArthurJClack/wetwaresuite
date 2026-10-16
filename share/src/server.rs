@@ -29,7 +29,7 @@ use crate::paths::{self, PathError};
 use crate::sha256::{self, Sha256};
 use crate::util::{self, unix_secs};
 use crate::zip::ZipWriter;
-use crate::{discovery, rand};
+use crate::{delta, discovery, rand};
 
 pub type Logger = Arc<dyn Fn(&str) + Send + Sync>;
 
@@ -572,6 +572,9 @@ fn handle(shared: &Arc<Shared>, req: &Request, body: &mut dyn Read) -> Response 
             Err(e) => perr(e),
         },
         ("GET", "/api/sync/manifest") => manifest(shared, req),
+        ("GET", "/api/sync/sig") => sync_signature(shared, &q("path")),
+        ("POST", "/api/sync/delta") => sync_delta(shared, req, &q("path"), body),
+        ("PUT", "/api/sync/patch") => sync_patch(shared, req, &q("path"), body),
         ("POST", "/api/done") => {
             let n = shared.done_count.fetch_add(1, Ordering::Relaxed) + 1;
             shared.log(&format!("{} finished a transfer ({n})", req.peer.ip()));
@@ -620,6 +623,9 @@ fn info(shared: &Shared) -> Json {
         .with("kind", shared.cfg.kind.as_str())
         .with("max_upload", shared.cfg.max_upload)
         .with("include_heavy", shared.cfg.include_heavy)
+        // capability flag: this host speaks block deltas (/api/sync/sig, delta, patch);
+        // peers that don't see it keep sending whole files
+        .with("delta", 1u64)
 }
 
 fn deny_write(shared: &Shared) -> Option<Response> {
@@ -1134,6 +1140,114 @@ fn manifest(shared: &Arc<Shared>, req: &Request) -> Response {
         out.set("files", files);
     }
     Response::json(200, &out)
+}
+
+// ---------------------------------------------------------------- block deltas
+
+fn read_body(req: &Request, body: &mut dyn Read, cap: u64) -> Result<Vec<u8>, Response> {
+    if req.content_length > cap {
+        return Err(Response::error(413, "too large for a delta; send the whole file"));
+    }
+    let mut buf = Vec::with_capacity(req.content_length as usize);
+    match body.take(req.content_length).read_to_end(&mut buf) {
+        Ok(n) if n as u64 == req.content_length => Ok(buf),
+        _ => Err(Response::error(400, "request body was cut short")),
+    }
+}
+
+/// A delta-capable file of ours, or the reason to send it whole.
+fn delta_file(shared: &Shared, rel: &str) -> Result<PathBuf, Response> {
+    let path = resolve_read(shared, rel).map_err(perr)?;
+    match std::fs::metadata(&path) {
+        Ok(m) if m.is_file() && m.len() <= delta::MAX_SIZE => Ok(path),
+        Ok(m) if m.is_file() => Err(Response::error(413, "too large for a delta; send the whole file")),
+        Ok(_) => Err(Response::error(400, "not a file")),
+        Err(e) => Err(ioerr(e)),
+    }
+}
+
+/// `GET /api/sync/sig?path=`: block signature of our copy, so the peer can
+/// send only what changed. `X-Hash` is the SHA-256 of the signed bytes.
+fn sync_signature(shared: &Shared, rel: &str) -> Response {
+    let path = match delta_file(shared, rel) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    let signed = (|| -> io::Result<(delta::Signature, String)> {
+        let data = std::fs::read(&path)?;
+        let sig = delta::Signature::of_reader(&mut &data[..], data.len() as u64)?;
+        Ok((sig, sha256::digest_hex(&data)))
+    })();
+    match signed {
+        Ok((sig, hash)) => Response::bytes(200, "application/octet-stream", sig.encode()).header("X-Hash", &hash),
+        Err(e) => ioerr(e),
+    }
+}
+
+/// `POST /api/sync/delta?path=` with the peer's signature: the delta that
+/// turns the peer's copy into ours.
+fn sync_delta(shared: &Shared, req: &Request, rel: &str, body: &mut dyn Read) -> Response {
+    let sig = match read_body(req, body, delta::MAX_SIGNATURE) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    let sig = match delta::Signature::decode(&sig) {
+        Ok(s) => s,
+        Err(e) => return Response::error(400, &e.to_string()),
+    };
+    let path = match delta_file(shared, rel) {
+        Ok(p) => p,
+        Err(r) => return r,
+    };
+    match std::fs::read(&path) {
+        Ok(data) => Response::bytes(200, "application/octet-stream", delta::delta(&sig, &data)),
+        Err(e) => ioerr(e),
+    }
+}
+
+/// `PUT /api/sync/patch?path=` with a delta against our copy (which must
+/// still match `If-Match`). Rebuilt into a temp file, checked against the
+/// delta's SHA-256, then renamed into place; 422 means "send it whole".
+fn sync_patch(shared: &Shared, req: &Request, rel: &str, body: &mut dyn Read) -> Response {
+    if let Some(r) = deny_write(shared) {
+        return r;
+    }
+    let rel = match paths::clean_rel(rel) {
+        Ok(r) if !r.is_empty() => r,
+        Ok(_) => return Response::error(400, "no file name"),
+        Err(e) => return perr(e),
+    };
+    let d = match read_body(req, body, shared.cfg.max_upload.min(delta::MAX_SIZE + (1 << 20))) {
+        Ok(b) => b,
+        Err(r) => return r,
+    };
+    let target = match paths::resolve_for_write(&shared.root, &rel) {
+        Ok(t) => t,
+        Err(e) => return perr(e),
+    };
+    if !target.is_file() {
+        return Response::error(404, "nothing to patch here; send the whole file");
+    }
+    if let Some(r) = precondition(req, &target) {
+        return r;
+    }
+    let dir = target.parent().unwrap_or(&shared.root).to_path_buf();
+    let tmp = dir.join(format!("{}patch-{}", crate::ignore::TEMP_PREFIX, sha256::hex(&rand::bytes::<6>().unwrap_or([9; 6]))));
+    let hash = match delta::apply_to_file(&target, &d, &tmp) {
+        Ok(h) => h,
+        Err(e) if e.kind() == io::ErrorKind::InvalidData => {
+            return Response::error(422, &format!("{e}; send the whole file"));
+        }
+        Err(e) => return ioerr(e),
+    };
+    let size = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+    if let Err(e) = std::fs::rename(&tmp, &target) {
+        let _ = std::fs::remove_file(&tmp);
+        return ioerr(e);
+    }
+    shared.bytes_in.fetch_add(req.content_length, Ordering::Relaxed);
+    shared.bump_sync(&[&rel], true);
+    Response::json(201, &Json::obj().with("path", rel).with("size", size).with("hash", hash).with("delta", true))
 }
 
 pub mod ui {

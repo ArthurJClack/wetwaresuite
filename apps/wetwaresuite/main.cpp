@@ -1,5 +1,6 @@
 // wetwaresuite: every tool in one headless binary. Run single commands, batch
 // scripts, or serve everything to Claude over MCP.
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <set>
@@ -9,6 +10,8 @@
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
 #include "app_commands.hpp"
+#include "gui_launch.hpp"
+#include "launch.hpp"
 #include "wetwaresuite/mcp/transport.hpp"
 #include "suite.hpp"
 
@@ -50,6 +53,7 @@ constexpr const char* kInstructions =
 void usage() {
     std::cout << "wetwaresuite " << kVersion << ": the whole suite, headless\n\n"
               << "usage:\n"
+                 "  wetwaresuite                          open the window with every tool (also: wetwaresuite <files>, open <files>, gui)\n"
                  "  wetwaresuite list [tool]              list commands (optionally for one tool, e.g. photo)\n"
                  "  wetwaresuite help <command>           show a command's parameters\n"
                  "  wetwaresuite run <command> key=value  run one command, e.g. run convert.file input=a.png output=a.jpg\n"
@@ -108,15 +112,31 @@ int help(const wetwaresuite::Session& session, const std::string& id) {
 int main(int argc, char** argv) {
     using namespace wetwaresuite;
     std::vector<std::string> args(argv + 1, argv + argc);
-    if (args.empty() || args[0] == "--help" || args[0] == "-h") {
+    if (!args.empty() && (args[0] == "--help" || args[0] == "-h")) {
         usage();
-        return args.empty() ? 2 : 0;
+        return 0;
     }
 
-    apps::setSelfPath(argv[0]);
+    if (argc > 0) apps::setSelfPath(argv[0]);
     Session session;
     suite::registerAll(session);
     apps::registerCommands(session, "suite");
+
+    // no arguments, `open`/`gui`, or files dragged onto the program: the window
+    auto isFile = [](const std::string& a) {
+        std::error_code ec;
+        return std::filesystem::is_regular_file(a, ec);
+    };
+    auto isCommand = [&session](const std::string& a) { return session.registry().find(a) != nullptr; };
+    apps::Launch launch = apps::decideLaunch(args, isFile, isCommand);
+    if (launch.kind == apps::LaunchKind::Gui) {
+        if (!launch.error.empty()) {
+            std::cerr << "wetwaresuite: " << launch.error << "\n";
+            return 2;
+        }
+        gui::RunOptions options{launch.screenshot, launch.files, launch.action};
+        return apps::runGui(session, apps::guiInfo("suite"), options, usage);
+    }
     const std::string cmd = args[0];
     const std::string instructions = std::string(kInstructions) + apps::handoffInstructions("suite");
 

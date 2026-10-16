@@ -204,6 +204,7 @@ void Shell::onEvent(const SDL_Event& e) {
         case SDL_EVENT_MOUSE_MOTION:
             if (canvas_.stroking && !canvas_.usedPen && e.motion.which != SDL_PEN_MOUSEID) addStrokePoint({e.motion.x, e.motion.y}, 1.0f);
             break;
+        case SDL_EVENT_WINDOW_FOCUS_GAINED: refreshInbox(); break;  // another app may have sent something
         case SDL_EVENT_DROP_FILE:
             if (e.drop.data) openFile(e.drop.data);
             break;

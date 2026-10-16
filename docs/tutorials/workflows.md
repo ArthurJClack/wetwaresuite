@@ -20,6 +20,8 @@ Two more help you find your way:
 | --- | --- |
 | `app.open_with path=<file>` | says which app opens a file and the command to open it there |
 | `app.installed` | lists which apps you have and where they are |
+| `app.targets doc=<id>` | lists the apps an open document can be sent to, and which are installed (the window's Send to... list) |
+| `app.launch app=<app> [path=<file>]` | starts another installed app in its own window, optionally opening a file |
 
 The handoff folder is in your personal wetwaresuite folder:
 
@@ -62,7 +64,44 @@ Any file can also be sent as it is: `app.send path=photo.jpg to=image`.
 
 ## With the windows (GUI)
 
-The desktop windows for the apps are being built on these same commands. When they arrive, "Send to" in an app will run `app.send`, and the other app picks it up with `app.receive`. Until then, use the command line below; the steps are the same.
+Every app opens a window when you double-click it, and the window has the same handoff built in.
+Here is walkthrough 1 (below) with the mouse instead of typing:
+
+1. **Start image** by double-clicking `wetwaresuite-image`.
+2. Press **Start something new**, pick **New canvas (Paint)**, set the size (256 by 256) and press
+   **Run**. Paint your texture with the **Brush** above the picture.
+3. Press **Send to...** next to the picture's name and click **Model**. The right side says
+   **Sent to Model**: image saved your picture as a PNG texture in the handoff folder.
+4. Press **Open Model now** under that message (or double-click `wetwaresuite-model` yourself).
+5. In Model's window the home screen shows *A texture from Image is waiting: crate.png.* Press
+   **Open it**. Because a texture isn't something you open on its own, the right side tells you
+   what to do with it, for example which action puts it on a model's material. Search for that
+   action (Ctrl+K); the result also shows where the texture's file is, so you can pick it with the
+   form's **Browse...** button.
+6. To go on to **game**, open or make your model, press **Send to...** again and pick **Game**.
+
+A few things to know:
+
+- **Send to...** only lists the apps that can use the kind of file you have open. Apps you haven't
+  installed are greyed out with *not installed*.
+- The inbox banner checks again every time you switch to a window, so you can keep two apps open
+  side by side and send work back and forth. **Not now** hides it for a while; nothing is lost.
+- If you open or drop a file that belongs to another app (a `.wav` in image, an `.stl` in model), a
+  banner offers **Open in Sound** (or whichever app it is) and starts that app with the file.
+- In the all-in-one `wetwaresuite` window every app is there already: **Send to...** converts the
+  file and opens the result right away in the same window.
+
+The buttons run exactly the commands below (`app.targets`, `app.send`, `app.inbox`,
+`app.receive`, `app.open_with`, `app.launch`), so a window, a script and Claude can pass work to
+each other: something Claude sends from `wetwaresuite-image mcp` shows up in the model window's
+banner, and a file you send from a window shows up in `wetwaresuite-model app.inbox`.
+
+To start another app from the command line (it opens in its own window and keeps running on its own):
+
+```sh
+wetwaresuite-image app.launch app=model                  # just start it
+wetwaresuite-image app.launch app=model path=head.obj    # and open a file there
+```
 
 ## Walkthrough 1: a crate texture, on a model, into a game
 

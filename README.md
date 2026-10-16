@@ -66,11 +66,11 @@ install only what you need (`hub install image model --from <release folder>`); 
 | `tools/type/` | font design: glyphs from shapes, SVG path data, SVG files or traced handwriting; components, transforms, oblique, embolden, overlap removal; auto-spacing and kerning; TTF/OTF/WOFF/UFO in, TTF/WOFF/SVG font out; proofs as PNG and PDF |
 | `apps/app/` | `wetwaresuite-<app>`: one small binary per app (image, draw, model...), built from one shared main; each links only its own tools |
 | `apps/common/` | what every app shares: the app table, which app opens which file, the handoff folder and the `app.*` commands |
-| `apps/wetwaresuite/` | `wetwaresuite`: one headless binary that runs every command, batch scripts, or an MCP server |
+| `apps/wetwaresuite/` | `wetwaresuite`: every tool in one binary (the window with no arguments; commands, batch scripts or an MCP server with them), plus the `wetwaresuite-gui` launcher |
 | `share/` | `wetwaresuite-share`: share a folder with any browser (link, QR, code), live-sync code between machines, send files; LAN or internet |
 | `hub/` | `hub`: lists and installs apps offline from a folder or archive, makes offline editions (1-256 GB), prints the MCP config for Claude |
 
-everything runs headless today. the GUI is a thin layer that calls the same commands and lands after the command set for each phase.
+every app opens its window when double-clicked (Dear ImGui on SDL3, works offline and without a GPU) and stays a headless CLI when given arguments. the window is a thin layer that calls the same commands, including "Send to..." and the handoff inbox between apps.
 
 ## build
 

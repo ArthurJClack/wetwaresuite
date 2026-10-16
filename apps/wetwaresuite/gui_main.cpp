@@ -1,41 +1,26 @@
 // wetwaresuite-gui: the desktop window over every tool, or over one app's tools
-// (`--app image` is photo + paint, a preview of the per-app builds).
+// (`--app image` is photo + paint, the same window wetwaresuite-image opens).
+// It goes through the same apps::runGui as every app binary, so the window,
+// the handoff menu and the inbox behave the same however it was started.
 //   wetwaresuite-gui                    every tool
 //   wetwaresuite-gui --app image a.png  photo + paint, opening a.png
 //   wetwaresuite-gui mcp                the same commands for Claude over MCP
 #include <cstdlib>
 #include <iostream>
-#include <map>
 #include <set>
 #include <string>
 #include <vector>
 
+#include "app_commands.hpp"
+#include "apps.hpp"
+#include "gui_launch.hpp"
+#include "launch.hpp"
 #include "suite.hpp"
-#include "wetwaresuite/gui/gui.hpp"
 #include "wetwaresuite/mcp/server.hpp"
 
 using namespace wetwaresuite;
 
 namespace {
-
-struct Preset {
-    std::string title;
-    std::vector<std::string> tools;  // empty = every tool
-    std::uint32_t accent;
-    std::string about;
-};
-
-const std::map<std::string, Preset>& presets() {
-    static const std::map<std::string, Preset> p = {
-        {"all", {"wetwaresuite", {}, 0x3d7eff, "every tool in one window"}},
-        {"image", {"wetwaresuite image", {"photo", "paint"}, 0xe0559a, "photo editing and painting"}},
-        {"vector", {"wetwaresuite vector", {"vector", "convert"}, 0x2fb37a, "vector drawing and file conversion"}},
-        {"3d", {"wetwaresuite 3d", {"cad", "forge", "sculpt", "render", "slicer"}, 0xf08c2e, "3D parts, models and prints"}},
-        {"sound", {"wetwaresuite sound", {"audio", "beats"}, 0x9b6bff, "sound editing and music"}},
-        {"office", {"wetwaresuite office", {"office", "layout", "notes"}, 0x1f9bd1, "documents, layouts and notes"}},
-    };
-    return p;
-}
 
 void usage() {
     std::cout << "usage: wetwaresuite-gui [--app NAME] [--tools a,b] [files...]\n"
@@ -63,10 +48,13 @@ std::vector<std::string> splitList(const std::string& text) {
     return out;
 }
 
+bool knownApp(const std::string& name) { return name == "all" || (name != "share" && apps::find(name)); }
+
 }  // namespace
 
 int main(int argc, char** argv) {
     std::vector<std::string> args(argv + 1, argv + argc);
+    if (argc > 0) apps::setSelfPath(argv[0]);
     bool mcpMode = false;
     std::string appName = "all";
     std::vector<std::string> tools;
@@ -84,7 +72,9 @@ int main(int argc, char** argv) {
             usage();
             return 0;
         } else if (a == "--list-apps") {
-            for (const auto& [name, p] : presets()) std::cout << name << "\t" << p.about << "\n";
+            std::cout << "all\tevery tool in one window\n";
+            for (const auto& app : apps::all())
+                if (app.id != "share") std::cout << app.id << "\t" << app.summary << "\n";
             return 0;
         } else if (a == "mcp" && i == 0) {
             mcpMode = true;
@@ -96,6 +86,8 @@ int main(int argc, char** argv) {
             options.action = next("a command id, e.g. photo.resize");
         } else if (a == "--screenshot") {
             options.screenshot = next("a file name");
+        } else if (a.rfind("-psn_", 0) == 0) {
+            continue;  // old macOS Finder argument
         } else if (!a.empty() && a[0] == '-') {
             std::cerr << "unknown option " << a << "\n";
             usage();
@@ -104,12 +96,13 @@ int main(int argc, char** argv) {
             options.open.push_back(a);
         }
     }
-    auto preset = presets().find(appName);
-    if (preset == presets().end()) {
+    if (!knownApp(appName)) {
         std::cerr << "no app called " << appName << "; try --list-apps\n";
         return 2;
     }
-    gui::AppInfo app{preset->second.title, tools.empty() ? preset->second.tools : tools, preset->second.accent};
+    const std::string self = appName == "all" ? "suite" : appName;
+    gui::AppInfo app = apps::guiInfo(self);
+    if (!tools.empty()) app.tools = tools;
     for (const auto& t : app.tools) {
         if (!suite::toolNames().count(t)) {
             std::cerr << "no tool called " << t << "\n";
@@ -119,10 +112,11 @@ int main(int argc, char** argv) {
 
     Session session;
     suite::registerAll(session, std::set<std::string>(app.tools.begin(), app.tools.end()));
+    apps::registerCommands(session, self);
     if (mcpMode) {
-        mcp::Server server(session, app.name, "0.1.0");
+        mcp::Server server(session, app.name, apps::kVersion);
         server.run(std::cin, std::cout);
         return 0;
     }
-    return gui::run(session, app, options);
+    return apps::runGui(session, app, options, usage);
 }

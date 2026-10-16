@@ -9,19 +9,19 @@ namespace wetwaresuite::apps {
 
 const std::vector<App>& all() {
     static const std::vector<App> table = {
-        {"image", "edit photos, paint pictures and make textures", {"photo", "paint"}},
-        {"draw", "vector art and logos, fonts, whiteboards and diagrams", {"vector", "type", "board"}},
-        {"model", "3D modeling and sculpting, rendered pictures, animation", {"sculpt", "render", "animate"}},
-        {"game", "game assets (meshes, sprites, textures) and game levels", {"forge", "levels"}},
-        {"cad", "precise parts, technical drawings and floor plans, 3D printing", {"cad", "blueprint", "slicer"}},
-        {"electronics", "circuit diagrams, circuit boards and flashing microcontrollers", {"circuit", "flash"}},
-        {"sound", "record and clean up audio, make music", {"audio", "beats"}},
-        {"video", "edit videos, take screenshots and record the screen", {"cut", "capture"}},
-        {"office", "documents, spreadsheets, slides, PDFs, print layouts and notes", {"office", "layout", "notes"}},
-        {"maps", "offline maps, GPS tracks and map data", {"maps"}},
+        {"image", "edit photos, paint pictures and make textures", {"photo", "paint"}, 0xe0559a},
+        {"draw", "vector art and logos, fonts, whiteboards and diagrams", {"vector", "type", "board"}, 0x2fb37a},
+        {"model", "3D modeling and sculpting, rendered pictures, animation", {"sculpt", "render", "animate"}, 0xf08c2e},
+        {"game", "game assets (meshes, sprites, textures) and game levels", {"forge", "levels"}, 0x5bbf3a},
+        {"cad", "precise parts, technical drawings and floor plans, 3D printing", {"cad", "blueprint", "slicer"}, 0x2f8fd6},
+        {"electronics", "circuit diagrams, circuit boards and flashing microcontrollers", {"circuit", "flash"}, 0x14a89a},
+        {"sound", "record and clean up audio, make music", {"audio", "beats"}, 0x9b6bff},
+        {"video", "edit videos, take screenshots and record the screen", {"cut", "capture"}, 0xe5484d},
+        {"office", "documents, spreadsheets, slides, PDFs, print layouts and notes", {"office", "layout", "notes"}, 0x1f9bd1},
+        {"maps", "offline maps, GPS tracks and map data", {"maps"}, 0x3aa76d},
         {"files", "open, convert, find and batch-process any file (always installed)",
-         {"toolkit", "convert", "library", "automate"}, true},
-        {"share", "share and live-sync folders with other devices", {"share"}},
+         {"toolkit", "convert", "library", "automate"}, 0x8a8f98, true},
+        {"share", "share and live-sync folders with other devices", {"share"}, 0xd4a017},
     };
     return table;
 }

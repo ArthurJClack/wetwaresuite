@@ -16,6 +16,17 @@ extern const unsigned int kUiFontSize;
 
 bool available() { return true; }
 
+bool canOpenWindow(std::string& why) {
+    // a quick probe: video starts only when there is a screen (or SDL_VIDEO_DRIVER=offscreen)
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        why = std::string("there is no screen to show it on (") + SDL_GetError() + ")";
+        SDL_Quit();
+        return false;
+    }
+    SDL_Quit();
+    return true;
+}
+
 int run(Session& session, const AppInfo& app) { return run(session, app, {}); }
 
 namespace {

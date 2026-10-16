@@ -3,7 +3,8 @@
 #
 #   wetwaresuite_gui_logic  window-free logic (search, forms, ...); always built, unit tested
 #   wetwaresuite_gui        wetwaresuite::gui::run(); a stub that explains itself when SDL3 is missing
-#   wetwaresuite-gui        launcher: every tool, or --app image for photo + paint
+#                           or WETWARESUITE_GUI is off. Every app binary links it (apps/common).
+# The wetwaresuite-gui launcher is built in apps/wetwaresuite next to the all-in-one.
 #
 # SDL3 comes from find_package(SDL3) when installed, else the pinned release
 # below is downloaded once at configure time (never at run time). With no network
@@ -16,23 +17,29 @@ else()
   set(WETWARESUITE_GUI_WARNINGS -Wall -Wextra -Wpedantic -Wno-missing-field-initializers)
 endif()
 
-add_library(wetwaresuite_gui_logic src/logic.cpp)
+add_library(wetwaresuite_gui_logic src/logic.cpp src/handoff.cpp)
 target_include_directories(wetwaresuite_gui_logic PUBLIC include)
 target_link_libraries(wetwaresuite_gui_logic PUBLIC wetwaresuite::core)
 
+if(WETWARESUITE_BUILD_TESTS)
+  add_executable(test_gui_handoff tests/test_handoff.cpp)
+  target_link_libraries(test_gui_handoff PRIVATE wetwaresuite_gui_logic wetwaresuite_check)
+  add_test(NAME gui_handoff COMMAND test_gui_handoff)
+endif()
 if(WETWARESUITE_BUILD_TESTS AND TARGET wetwaresuite_photo AND TARGET wetwaresuite_paint)
   add_executable(test_gui_logic tests/test_logic.cpp)
   target_link_libraries(test_gui_logic PRIVATE wetwaresuite_gui_logic wetwaresuite::photo wetwaresuite::paint wetwaresuite_check)
   add_test(NAME gui_logic COMMAND test_gui_logic)
 endif()
 
+set(_ww_sdl "")
+if(WETWARESUITE_GUI)
 # ---- SDL3 ----------------------------------------------------------------------
 set(WETWARESUITE_SDL3_VERSION 3.2.24)
 set(WETWARESUITE_SDL3_SHA256 81cc0fc17e5bf2c1754eeca9af9c47a76789ac5efdd165b3b91cbbe4b90bfb76)
 set(WETWARESUITE_SDL3_URL
     https://github.com/libsdl-org/SDL/releases/download/release-${WETWARESUITE_SDL3_VERSION}/SDL3-${WETWARESUITE_SDL3_VERSION}.tar.gz)
 
-set(_ww_sdl "")
 find_package(SDL3 CONFIG QUIET COMPONENTS SDL3)
 if(SDL3_FOUND AND TARGET SDL3::SDL3)
   set(_ww_sdl SDL3::SDL3)
@@ -122,6 +129,8 @@ else()
   endif()
 endif()
 
+endif()  # WETWARESUITE_GUI
+
 # ---- the window -------------------------------------------------------------------
 if(_ww_sdl)
   set(_imgui ${PROJECT_SOURCE_DIR}/third_party/imgui)
@@ -142,7 +151,7 @@ if(_ww_sdl)
     DEPENDS ${_imgui}/fonts/Roboto-Medium.ttf ${CMAKE_CURRENT_SOURCE_DIR}/embed.cmake
     COMMENT "Embedding the UI font")
 
-  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/canvas.cpp src/window.cpp ${_font_cpp})
+  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/canvas.cpp src/handoff_panels.cpp src/window.cpp ${_font_cpp})
   target_compile_options(wetwaresuite_gui PRIVATE ${WETWARESUITE_GUI_WARNINGS})
   target_link_libraries(wetwaresuite_gui PUBLIC wetwaresuite_gui_logic PRIVATE wetwaresuite_imgui wetwaresuite::raster)
   message(STATUS "gui: window enabled (${_ww_sdl})")
@@ -150,20 +159,11 @@ else()
   add_library(wetwaresuite_gui src/stub.cpp)
   target_compile_options(wetwaresuite_gui PRIVATE ${WETWARESUITE_GUI_WARNINGS})
   target_link_libraries(wetwaresuite_gui PUBLIC wetwaresuite_gui_logic)
-  message(STATUS "gui: no SDL3, building the stub (apps say there's no window)")
+  if(NOT WETWARESUITE_GUI)
+    target_compile_definitions(wetwaresuite_gui PRIVATE WW_GUI_DISABLED=1)
+    message(STATUS "gui: WETWARESUITE_GUI is off, building the stub (apps say there's no window)")
+  else()
+    message(STATUS "gui: no SDL3, building the stub (apps say there's no window)")
+  endif()
 endif()
 add_library(wetwaresuite::gui ALIAS wetwaresuite_gui)
-
-# the all-in-one launcher needs every tool, so it only builds with the all-in-one suite
-if(TARGET wetwaresuite_suite)
-add_executable(wetwaresuite-gui app/main.cpp)
-target_compile_options(wetwaresuite-gui PRIVATE ${WETWARESUITE_GUI_WARNINGS})
-target_link_libraries(wetwaresuite-gui PRIVATE wetwaresuite_gui wetwaresuite_suite wetwaresuite::mcp)
-install(TARGETS wetwaresuite-gui RUNTIME DESTINATION bin)
-
-if(WETWARESUITE_BUILD_TESTS)
-  # the launcher must start and answer without a screen
-  add_test(NAME gui_launcher_help COMMAND wetwaresuite-gui --help)
-  add_test(NAME gui_launcher_apps COMMAND wetwaresuite-gui --list-apps)
-endif()
-endif()

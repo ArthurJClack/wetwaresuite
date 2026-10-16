@@ -159,6 +159,23 @@ pub fn resolve_for_write(root: &Path, rel: &str) -> Result<PathBuf, PathError> {
     Ok(p)
 }
 
+/// Removes `dir` if it is empty. On Windows a folder that another thread is
+/// still listing can refuse removal for a moment, so an empty folder gets a
+/// few short retries; a folder with anything in it is left alone at once.
+pub fn remove_empty_dir(dir: &Path) -> bool {
+    for _ in 0..20 {
+        if std::fs::remove_dir(dir).is_ok() {
+            return true;
+        }
+        let empty = std::fs::read_dir(dir).is_ok_and(|mut it| it.next().is_none());
+        if !empty {
+            return false;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    false
+}
+
 /// Joins a cleaned relative path onto the root without touching the disk.
 pub fn join(root: &Path, rel: &str) -> PathBuf {
     let mut p = root.to_path_buf();

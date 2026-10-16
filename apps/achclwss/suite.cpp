@@ -1,6 +1,7 @@
 #include "suite.hpp"
 
 #include "achclwss/audio/commands.hpp"
+#include "achclwss/beats/beats.hpp"
 #include "achclwss/automate/automate.hpp"
 #include "achclwss/blueprint/blueprint.hpp"
 #include "achclwss/cad/cad.hpp"
@@ -41,6 +42,7 @@ const std::set<std::string>& toolNames() {
         "office",
         "levels",
         "sculpt",
+        "beats",
     };
     return names;
 }
@@ -51,6 +53,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (tools.count("convert")) tools.insert("vector");
     if (tools.count("forge")) tools.insert("photo");
     if (tools.count("sculpt")) tools.insert("photo");
+    if (tools.count("beats")) tools.insert("audio");
     auto want = [&](const char* tool) { return only.empty() || tools.count(tool) > 0; };
     if (want("toolkit")) toolkit::registerCommands(session.registry());
     if (want("photo")) photo::registerCommands(session);
@@ -70,6 +73,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("office")) office::registerCommands(session);
     if (want("levels")) levels::registerCommands(session);
     if (want("sculpt")) sculpt::registerCommands(session);
+    if (want("beats")) beats::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

@@ -30,6 +30,7 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 | `tools/automate/` | scripting across tools: batch scripts with variables, pipelines that loop over files, folder watching, and a Python client (`python/achclwss`) |
 | `tools/office/` | office suite: spreadsheets with formulas and charts (XLSX/CSV), documents (DOCX/Markdown/PDF), slide decks (PPTX/PDF), PDF merge/split/rotate/text |
 | `tools/convert/` | change a file's type: images and 3D meshes built in, audio/video via ffmpeg, docs via LibreOffice/pandoc |
+| `tools/animate/` | 2D and 3D animation: keyframes with easing, shapes, text, images, frame-by-frame cels with onion skin, bone rigs, 3D meshes and camera; PNG sequences, sprite sheets with JSON atlases, GIF, mp4/webm (via ffmpeg) |
 | `apps/achclwss/` | `achclwss`: one headless binary that runs every command, batch scripts, or an MCP server |
 | `hub/` | `hub`: lists tools, prints the MCP config for Claude |
 

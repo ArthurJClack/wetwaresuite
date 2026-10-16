@@ -21,3 +21,4 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Toolkit](toolkit.md): identify any file from its contents, hex dumps, the standalone `achclwss-toolkit`.
 - [Library](library.md): index an asset drive, tag and rate, find duplicates and similar images, smart collections, thumbnails and contact sheets, asking Claude to find files.
 - [Automate](automate.md): scripts with variables, pipelines over folders, watch folders that process dropped files, the Python client, cron and Task Scheduler, pipelines from Claude.
+- [Animate](animate.md): 2D and 3D animation: a bouncing ball with easing and squash, a logo sting, a cutout rig on bones, hand-drawn cels with onion skin, a 3D turntable; GIFs, sprite sheets with JSON atlases, PNG sequences and video.

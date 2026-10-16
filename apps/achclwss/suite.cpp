@@ -1,5 +1,6 @@
 #include "suite.hpp"
 
+#include "achclwss/animate/animate.hpp"
 #include "achclwss/audio/commands.hpp"
 #include "achclwss/automate/automate.hpp"
 #include "achclwss/blueprint/blueprint.hpp"
@@ -37,6 +38,7 @@ const std::set<std::string>& toolNames() {
         "library",
         "automate",
         "office",
+        "animate",
     };
     return names;
 }
@@ -63,6 +65,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("library")) library::registerCommands(session);
     if (want("automate")) automate::registerCommands(session, [only](Session& fresh) { registerAll(fresh, only); });
     if (want("office")) office::registerCommands(session);
+    if (want("animate")) animate::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

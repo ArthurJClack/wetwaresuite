@@ -62,7 +62,11 @@ You can also skip the hub completely: the apps are plain programs, so copying `w
 
 ## Using an app
 
-Every app has the same command line:
+Double-click an app (or start it with no arguments) and it opens its window; drag a file onto it to
+open that file. The window is explained in [the window (GUI)](gui.md), and passing work between
+app windows in [workflows](workflows.md#with-the-windows-gui).
+
+Every app also has the same command line:
 
 ```sh
 wetwaresuite-image list                     # every command in this app

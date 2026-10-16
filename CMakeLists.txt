@@ -6,7 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(WETWARESUITE_BUILD_TESTS "Build unit tests" ON)
-# the desktop window (Dear ImGui + SDL3); without SDL3 it builds a stub that says so
+# the desktop window (Dear ImGui + SDL3) every app opens when double-clicked;
+# off, or without SDL3, the apps get a stub that says there's no window
 option(WETWARESUITE_GUI "Build the desktop GUI (gui/)" ON)
 
 if(MSVC)
@@ -103,12 +104,11 @@ foreach(t toolkit vector blueprint photo paint convert forge slicer cad layout a
 endforeach()
 message(STATUS "wetwaresuite apps: ${WETWARESUITE_ENABLED_APPS}; all-in-one: ${WETWARESUITE_BUILD_SUITE}")
 
+# the window every app opens when started without arguments; with
+# WETWARESUITE_GUI off (or no SDL3) a stub that says why there's no window
+add_subdirectory(gui)
 add_subdirectory(apps/common)
 add_subdirectory(apps/app)
 if(WETWARESUITE_BUILD_SUITE)
   add_subdirectory(apps/wetwaresuite)
-endif()
-
-if(WETWARESUITE_GUI)
-  add_subdirectory(gui)
 endif()

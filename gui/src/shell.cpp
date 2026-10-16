@@ -68,6 +68,14 @@ Shell::Shell(Session& session, const AppInfo& app, SDL_Window* window, SDL_Rende
         std::string prefix = c.id.substr(0, c.id.find('.'));
         if (std::find(tools_.begin(), tools_.end(), prefix) != tools_.end()) commands_.push_back(c);
     }
+    // a tool this build doesn't carry gets no empty card
+    tools_.erase(std::remove_if(tools_.begin(), tools_.end(), [this](const std::string& t) { return toolCommands(t, commands_).empty(); }),
+                 tools_.end());
+    handoff_ = hasHandoff(session_);
+    if (handoff_) {
+        self_ = fieldText(session_.run("app.installed", {}), "self");
+        refreshInbox();
+    }
     if (const auto* paintStroke = find("paint.stroke")) {
         for (const auto& p : paintStroke->params) {
             if (p.name == "brush" && !p.choices.empty()) {
@@ -173,6 +181,8 @@ void Shell::openFile(const std::string& path) {
     resultFor_ = "Open a file";
     if (candidates.empty()) {
         result_ = Result::failure("This app can't open files. Try \"New\" instead.");
+        suggestOtherApp(path, false);
+        if (suggestion_.show) result_ = Result::failure(suggestion_.text);
         return;
     }
     std::string firstError;
@@ -181,11 +191,14 @@ void Shell::openFile(const std::string& path) {
         if (r.ok) {
             r.message = sentence(r.message);
             result_ = std::move(r);
+            suggestOtherApp(path, true);
             return;
         }
         if (firstError.empty()) firstError = r.message;
     }
     result_ = Result::failure("Couldn't open " + path + ": " + friendlyError(firstError));
+    suggestOtherApp(path, false);
+    if (suggestion_.show) result_ = Result::failure(suggestion_.text);  // the banner says what to do instead
 }
 
 // ---- native file dialogs --------------------------------------------------------

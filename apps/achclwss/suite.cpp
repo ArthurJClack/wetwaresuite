@@ -13,6 +13,7 @@
 #include "achclwss/office/office.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
+#include "achclwss/sculpt/sculpt.hpp"
 #include "achclwss/slicer/slicer.hpp"
 #include "achclwss/toolkit/detect.hpp"
 #include "achclwss/vector/vector.hpp"
@@ -37,6 +38,7 @@ const std::set<std::string>& toolNames() {
         "library",
         "automate",
         "office",
+        "sculpt",
     };
     return names;
 }
@@ -46,6 +48,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (tools.count("paint")) tools.insert("photo");
     if (tools.count("convert")) tools.insert("vector");
     if (tools.count("forge")) tools.insert("photo");
+    if (tools.count("sculpt")) tools.insert("photo");
     auto want = [&](const char* tool) { return only.empty() || tools.count(tool) > 0; };
     if (want("toolkit")) toolkit::registerCommands(session.registry());
     if (want("photo")) photo::registerCommands(session);
@@ -63,6 +66,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("library")) library::registerCommands(session);
     if (want("automate")) automate::registerCommands(session, [only](Session& fresh) { registerAll(fresh, only); });
     if (want("office")) office::registerCommands(session);
+    if (want("sculpt")) sculpt::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

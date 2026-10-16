@@ -13,6 +13,7 @@ target_link_libraries(achclwss_suite PUBLIC achclwss::library)
 target_link_libraries(achclwss_suite PUBLIC achclwss::automate)
 target_link_libraries(achclwss_suite PUBLIC achclwss::office)
 target_link_libraries(achclwss_suite PUBLIC achclwss::levels)
+target_link_libraries(achclwss_suite PUBLIC achclwss::sculpt)
 
 add_executable(achclwss main.cpp)
 target_link_libraries(achclwss PRIVATE achclwss_suite achclwss::mcp)

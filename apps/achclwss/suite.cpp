@@ -2,6 +2,7 @@
 
 #include "achclwss/blueprint/blueprint.hpp"
 #include "achclwss/convert/convert.hpp"
+#include "achclwss/forge/forge.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
 #include "achclwss/toolkit/detect.hpp"
@@ -17,6 +18,7 @@ const std::set<std::string>& toolNames() {
         "vector",
         "blueprint",
         "convert",
+        "forge",
     };
     return names;
 }
@@ -25,6 +27,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     std::set<std::string> tools = only;
     if (tools.count("paint")) tools.insert("photo");
     if (tools.count("convert")) tools.insert("vector");
+    if (tools.count("forge")) tools.insert("photo");
     auto want = [&](const char* tool) { return only.empty() || tools.count(tool) > 0; };
     if (want("toolkit")) toolkit::registerCommands(session.registry());
     if (want("photo")) photo::registerCommands(session);
@@ -32,6 +35,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("vector")) vector::registerCommands(session);
     if (want("blueprint")) blueprint::registerCommands(session);
     if (want("convert")) convert::registerCommands(session);
+    if (want("forge")) forge::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

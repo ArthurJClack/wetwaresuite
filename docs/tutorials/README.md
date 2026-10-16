@@ -9,4 +9,5 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Paint](paint.md): brush strokes with tablet pressure, presets, layers, blend modes, fills, saving `.ora`.
 - [Vector](vector.md): drawing shapes and paths, styling, SVG in and out, a full logo.
 - [Convert](convert.md): images, SVG, audio, video, office documents and markup, one file or a whole folder.
+- [Asset forge](forge.md): game assets: models to glb with the right up axis, scale and LODs, sprite sheets and atlases, tileable textures and normal maps, pixel art.
 - [Toolkit](toolkit.md): identify any file from its contents, hex dumps, the standalone `achclwss-toolkit`.

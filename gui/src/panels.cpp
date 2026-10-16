@@ -302,6 +302,8 @@ void Shell::leftPanel() {
 void Shell::homeView() {
     const float unit = ImGui::GetFontSize();
     ImGui::BeginChild("home", {0, 0}, ImGuiChildFlags_None);
+    inboxBannerView();
+    suggestionBannerView();
     heading("What would you like to do?", 1.6f);
     ImGui::Spacing();
     const ImVec2 big{unit * 11, unit * 3};
@@ -374,8 +376,10 @@ void Shell::documentView() {
         return;
     }
     heading(doc->path.empty() ? currentDoc_ : currentDoc_ + "  " + fileName(doc->path), 1.1f);
+    sendButton();
     ImGui::SameLine();
     ImGui::TextDisabled("%s", doc->summary().c_str());
+    suggestionBannerView();
     canvasToolbar();
     canvasView();
 }
@@ -395,6 +399,7 @@ void Shell::rightPanel() {
         ImGui::PopTextWrapPos();
         ImGui::PopStyleColor();
         for (const auto& line : resultLines(*result_)) wrappedMuted(line);
+        launchOfferView();
         if (scrollToResult_) {
             ImGui::SetScrollHereY(1.0f);
             scrollToResult_ = false;

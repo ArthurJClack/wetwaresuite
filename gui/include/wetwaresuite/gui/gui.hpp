@@ -32,4 +32,8 @@ int run(Session& session, const AppInfo& app, const RunOptions& options);
 // True when this build has a working window (SDL3 + Dear ImGui linked in).
 bool available();
 
+// True when a window can open right now: this build has one and there is a screen
+// to show it on. Otherwise `why` says, in plain words, why not.
+bool canOpenWindow(std::string& why);
+
 }  // namespace wetwaresuite::gui

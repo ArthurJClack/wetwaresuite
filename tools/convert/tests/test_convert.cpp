@@ -2,18 +2,18 @@
 #include <filesystem>
 #include <fstream>
 
-#include "achclwss/convert/convert.hpp"
-#include "achclwss/core/process.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/convert/convert.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 namespace fs = std::filesystem;
 
 int main() {
-    auto dir = fs::temp_directory_path() / "achclwss_test_convert";
+    auto dir = fs::temp_directory_path() / "wetwaresuite_test_convert";
     fs::remove_all(dir);
     fs::create_directories(dir / "pics");
     raster::Image img(64, 32, {10, 200, 30, 255});

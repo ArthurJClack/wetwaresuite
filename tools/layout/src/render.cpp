@@ -7,12 +7,12 @@
 #include <mutex>
 #include <system_error>
 
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/ops.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/ops.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 #include "internal.hpp"
 
-namespace achclwss::layout {
+namespace wetwaresuite::layout {
 
 using pdfdoc::Pt;
 using Poly = std::vector<Pt>;
@@ -577,4 +577,4 @@ raster::Image renderPage(const LayoutDoc& doc, int pageIndex, const RenderOption
     return img;
 }
 
-}  // namespace achclwss::layout
+}  // namespace wetwaresuite::layout

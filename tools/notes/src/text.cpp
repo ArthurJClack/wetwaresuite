@@ -4,9 +4,9 @@
 #include <cstdio>
 #include <ctime>
 
-#include "achclwss/notes/notes.hpp"
+#include "wetwaresuite/notes/notes.hpp"
 
-namespace achclwss::notes {
+namespace wetwaresuite::notes {
 
 fs::path toPath(const std::string& utf8) { return fs::path(std::u8string(utf8.begin(), utf8.end())); }
 
@@ -614,4 +614,4 @@ std::vector<std::string> frontmatterAliases(const Frontmatter& fm) {
     return out;
 }
 
-}  // namespace achclwss::notes
+}  // namespace wetwaresuite::notes

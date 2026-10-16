@@ -1,9 +1,9 @@
 // Reading one note: links, tags, headings and tasks, skipping code and comments.
 #include <cctype>
 
-#include "achclwss/notes/notes.hpp"
+#include "wetwaresuite/notes/notes.hpp"
 
-namespace achclwss::notes {
+namespace wetwaresuite::notes {
 
 namespace {
 
@@ -385,4 +385,4 @@ std::optional<std::pair<std::size_t, std::size_t>> sectionRange(const std::strin
     return std::nullopt;
 }
 
-}  // namespace achclwss::notes
+}  // namespace wetwaresuite::notes

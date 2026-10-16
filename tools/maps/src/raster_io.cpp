@@ -8,11 +8,11 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::maps {
+namespace wetwaresuite::maps {
 
 namespace fs = std::filesystem;
 using namespace detail;
@@ -607,4 +607,4 @@ std::vector<std::string> writeRaster(const Grid& g, const fs::path& path, const 
     return files;
 }
 
-}  // namespace achclwss::maps
+}  // namespace wetwaresuite::maps

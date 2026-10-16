@@ -1,4 +1,4 @@
-#include "achclwss/mesh/io.hpp"
+#include "wetwaresuite/mesh/io.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -12,7 +12,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 namespace {
 
@@ -175,7 +175,7 @@ Mesh readStl(const std::string& bytes) {
 std::string writeStl(const Mesh& m, bool ascii) {
     std::string out;
     if (ascii) {
-        out = "solid achclwss\n";
+        out = "solid wetwaresuite\n";
         for (std::size_t t = 0; t < m.triangleCount(); ++t) {
             const Vec3 n = normalize(m.faceNormal(t));
             out += "  facet normal ";
@@ -189,11 +189,11 @@ std::string writeStl(const Mesh& m, bool ascii) {
             }
             out += "    endloop\n  endfacet\n";
         }
-        out += "endsolid achclwss\n";
+        out += "endsolid wetwaresuite\n";
         return out;
     }
     out.reserve(84 + 50 * m.triangleCount());
-    std::string header = "binary STL written by achclwss";
+    std::string header = "binary STL written by wetwaresuite";
     header.resize(80, ' ');
     out += header;
     putU32(out, static_cast<std::uint32_t>(m.triangleCount()));
@@ -301,7 +301,7 @@ Mesh readObj(const std::string& text) {
 }
 
 std::string writeObj(const Mesh& m) {
-    std::string out = "# written by achclwss\no mesh\n";
+    std::string out = "# written by wetwaresuite\no mesh\n";
     for (const auto& p : m.positions) {
         out += "v "; num(out, p.x); out += ' '; num(out, p.y); out += ' '; num(out, p.z); out += '\n';
     }
@@ -529,7 +529,7 @@ std::string writePly(const Mesh& m, bool ascii) {
     const bool n = m.hasNormals(), t = m.hasUvs();
     std::string out = "ply\nformat ";
     out += ascii ? "ascii" : "binary_little_endian";
-    out += " 1.0\ncomment written by achclwss\nelement vertex " + std::to_string(m.positions.size()) +
+    out += " 1.0\ncomment written by wetwaresuite\nelement vertex " + std::to_string(m.positions.size()) +
            "\nproperty float x\nproperty float y\nproperty float z\n";
     if (n) out += "property float nx\nproperty float ny\nproperty float nz\n";
     if (t) out += "property float s\nproperty float t\n";
@@ -683,4 +683,4 @@ void save(const std::filesystem::path& path, const Mesh& mesh, const SaveOptions
     if (!out) throw std::runtime_error("failed writing " + path.string());
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

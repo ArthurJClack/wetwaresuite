@@ -9,17 +9,17 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/levels/levels.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/levels/levels.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "check.hpp"
 
 // Defined by stb_image_write inside libs/raster.
 extern "C" unsigned char* stbi_zlib_compress(unsigned char* data, int data_len, int* out_len, int quality);
 
-using namespace achclwss;
-using namespace achclwss::levels;
+using namespace wetwaresuite;
+using namespace wetwaresuite::levels;
 namespace fs = std::filesystem;
 
 namespace {
@@ -27,7 +27,7 @@ namespace {
 fs::path tempDir() {
     // unique per run, so parallel test runs (two build dirs) don't share files
     const auto stamp = static_cast<unsigned long long>(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-    fs::path d = fs::temp_directory_path() / ("achclwss_levels_test_" + std::to_string(stamp));
+    fs::path d = fs::temp_directory_path() / ("wetwaresuite_levels_test_" + std::to_string(stamp));
     fs::remove_all(d);
     fs::create_directories(d);
     return d;
@@ -497,7 +497,7 @@ void testFiles(const fs::path& dir) {
     CHECK(tmx.find("<point/>") != std::string::npos);
     saveMap(m, dir / "plain.json", "json");
     sameMap(m, loadMap(dir / "plain.json"));
-    CHECK(readAll(dir / "plain.json").find("\"format\": \"achclwss-level\"") != std::string::npos);
+    CHECK(readAll(dir / "plain.json").find("\"format\": \"wetwaresuite-level\"") != std::string::npos);
     CHECK(formatFor(dir / "plain.json") == "json");
     CHECK(formatFor(dir / "maps" / "a_csv.tmj") == "tmj");
     saveMap(m, dir / "lite.ldtk", "ldtk");

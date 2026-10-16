@@ -10,10 +10,10 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 
-namespace achclwss::vector {
+namespace wetwaresuite::vector {
 
 namespace {
 
@@ -633,4 +633,4 @@ void saveDoc(const VectorDoc& doc, const std::filesystem::path& path, double sca
     raster::save(render(doc, scale), path, quality);
 }
 
-}  // namespace achclwss::vector
+}  // namespace wetwaresuite::vector

@@ -4,7 +4,7 @@
 #include <map>
 #include <utility>
 
-namespace achclwss::audio::detail {
+namespace wetwaresuite::audio::detail {
 
 namespace {
 
@@ -142,4 +142,4 @@ std::vector<float> istft(const Spectra& frames, int fftSize, std::size_t length)
     return out;
 }
 
-}  // namespace achclwss::audio::detail
+}  // namespace wetwaresuite::audio::detail

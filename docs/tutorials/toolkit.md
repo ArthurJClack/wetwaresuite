@@ -2,10 +2,10 @@
 
 The toolkit is the suite's "open anything" helper. Today it does two things well:
 
-- **inspect**: identify a file from its contents (not just its name) and say which ACHCLWSS tool opens it;
+- **inspect**: identify a file from its contents (not just its name) and say which wetwaresuite tool opens it;
 - **hex**: show a file's raw bytes as hex and text.
 
-It comes in two forms: as the `toolkit.*` commands inside the `achclwss` binary, and as a small standalone binary, `achclwss-toolkit`. There is no GUI yet; when it arrives, the toolkit's "open with" and hex views will call these same commands.
+It comes in two forms: as the `toolkit.*` commands inside the `wetwaresuite` binary, and as a small standalone binary, `wetwaresuite-toolkit`. There is no GUI yet; when it arrives, the toolkit's "open with" and hex views will call these same commands.
 
 ## Task 1: identify a mystery file
 
@@ -14,7 +14,7 @@ Downloads often arrive with useless names like `download.dat`. The toolkit reads
 **CLI.**
 
 ```sh
-$ achclwss toolkit.inspect path=download.dat
+$ wetwaresuite toolkit.inspect path=download.dat
 format: MP3 audio
 category: audio
 opens in: audio
@@ -28,7 +28,7 @@ The fields:
 | --- | --- |
 | `format` | what the file really is |
 | `category` | `image`, `raw`, `vector`, `cad`, `3d`, `texture`, `audio`, `video`, `document`, `spreadsheet`, `archive`, `executable`, `binary`, ... |
-| `opens in` | the ACHCLWSS tool for it: `photo`, `paint`, `vector`, `cad`, `asset forge`, `audio`, `cut`, `office` or `toolkit`. Some of these are planned tools (see `hub list`); for those, [convert](convert.md) can often change the file into something you can use today. |
+| `opens in` | the wetwaresuite tool for it: `photo`, `paint`, `vector`, `cad`, `asset forge`, `audio`, `cut`, `office` or `toolkit`. Some of these are planned tools (see `hub list`); for those, [convert](convert.md) can often change the file into something you can use today. |
 | `mime` | the MIME type, handy for web servers and scripts |
 | `size` | file size in bytes |
 
@@ -41,7 +41,7 @@ One limitation: Office files (`.docx`, `.xlsx`, `.pptx`) and OpenDocument files 
 ```sh
 for f in downloads/*; do
   printf '%-30s ' "$f"
-  achclwss toolkit.inspect path="$f" | sed -n 's/^format: //p'
+  wetwaresuite toolkit.inspect path="$f" | sed -n 's/^format: //p'
 done
 ```
 
@@ -62,7 +62,7 @@ Claude calls `toolkit_inspect`, and may follow up with `toolkit_hex` to look at 
 ## Task 2: look at the raw bytes
 
 ```sh
-$ achclwss toolkit.hex path=talk.mp4 length=32
+$ wetwaresuite toolkit.hex path=talk.mp4 length=32
 00000000  00 00 00 20 66 74 79 70  69 73 6f 6d 00 00 02 00  |... ftypisom....|
 00000010  69 73 6f 6d 69 73 6f 32  61 76 63 31 6d 70 34 31  |isomiso2avc1mp41|
 ```
@@ -70,39 +70,39 @@ $ achclwss toolkit.hex path=talk.mp4 length=32
 Each row shows the offset (in hex), 16 bytes in hex, and the same bytes as text (`.` for anything unprintable). `offset` starts somewhere other than the beginning and `length` sets how many bytes to show (default 256, maximum 65536). Integers can be written in hex too:
 
 ```sh
-achclwss toolkit.hex path=talk.mp4 offset=0x10 length=16
+wetwaresuite toolkit.hex path=talk.mp4 offset=0x10 length=16
 ```
 
 This is useful for checking a file header by eye, spotting a truncated download (all zeros at the end), or confirming what `inspect` reported.
 
-## The standalone `achclwss-toolkit`
+## The standalone `wetwaresuite-toolkit`
 
-The build also produces `build/tools/toolkit/achclwss-toolkit`, a small binary with only these two commands and a shorter syntax (positional arguments instead of `key=value`):
+The build also produces `build/tools/toolkit/wetwaresuite-toolkit`, a small binary with only these two commands and a shorter syntax (positional arguments instead of `key=value`):
 
 ```sh
-$ achclwss-toolkit inspect talk.mp4
+$ wetwaresuite-toolkit inspect talk.mp4
 format: MP4 video
 category: video
 opens in: cut
 mime: video/mp4
 size: 2043957 bytes
 
-$ achclwss-toolkit hex talk.mp4 4 8
+$ wetwaresuite-toolkit hex talk.mp4 4 8
 00000004  66 74 79 70 69 73 6f 6d                           |ftypisom|
 
-$ achclwss-toolkit --version
-achclwss-toolkit 0.1.0
+$ wetwaresuite-toolkit --version
+wetwaresuite-toolkit 0.1.0
 ```
 
 `hex` takes `<file> [offset] [length]`. Exit codes match the main binary: 0 on success, 1 when the command fails (for example `cannot read nope: No such file or directory`), 2 for a usage error.
 
-It also has its own MCP server, `achclwss-toolkit mcp`, which offers just `toolkit_inspect` and `toolkit_hex` (plus the `undo`, `redo`, `history` and `documents` session tools). Use it if you only want Claude to identify files; otherwise `achclwss mcp` includes these tools along with everything else. Setup is the same as in [mcp.md](mcp.md):
+It also has its own MCP server, `wetwaresuite-toolkit mcp`, which offers just `toolkit_inspect` and `toolkit_hex` (plus the `undo`, `redo`, `history` and `documents` session tools). Use it if you only want Claude to identify files; otherwise `wetwaresuite mcp` includes these tools along with everything else. Setup is the same as in [mcp.md](mcp.md):
 
 ```sh
-claude mcp add achclwss-toolkit -- /path/to/achclwss/build/tools/toolkit/achclwss-toolkit mcp
+claude mcp add wetwaresuite-toolkit -- /path/to/wetwaresuite/build/tools/toolkit/wetwaresuite-toolkit mcp
 ```
 
-You can also serve only the toolkit from the main binary with `achclwss mcp --tools toolkit`.
+You can also serve only the toolkit from the main binary with `wetwaresuite mcp --tools toolkit`.
 
 ## Command reference
 

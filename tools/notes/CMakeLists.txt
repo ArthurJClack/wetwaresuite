@@ -1,4 +1,4 @@
-add_library(achclwss_notes
+add_library(wetwaresuite_notes
   src/text.cpp
   src/parse.cpp
   src/vault.cpp
@@ -11,13 +11,13 @@ add_library(achclwss_notes
   src/cmd_tasks.cpp
   src/cmd_links.cpp
   src/cmd_export.cpp)
-add_library(achclwss::notes ALIAS achclwss_notes)
-target_include_directories(achclwss_notes PUBLIC include)
-target_link_libraries(achclwss_notes PUBLIC achclwss::core achclwss::raster
-  PRIVATE achclwss::pdf achclwss::office nlohmann_json::nlohmann_json)
+add_library(wetwaresuite::notes ALIAS wetwaresuite_notes)
+target_include_directories(wetwaresuite_notes PUBLIC include)
+target_link_libraries(wetwaresuite_notes PUBLIC wetwaresuite::core wetwaresuite::raster
+  PRIVATE wetwaresuite::pdf wetwaresuite::office nlohmann_json::nlohmann_json)
 
-if(ACHCLWSS_BUILD_TESTS)
+if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_notes tests/test_notes.cpp)
-  target_link_libraries(test_notes PRIVATE achclwss::notes achclwss::mcp nlohmann_json::nlohmann_json achclwss_check)
+  target_link_libraries(test_notes PRIVATE wetwaresuite::notes wetwaresuite::mcp nlohmann_json::nlohmann_json wetwaresuite_check)
   add_test(NAME notes COMMAND test_notes)
 endif()

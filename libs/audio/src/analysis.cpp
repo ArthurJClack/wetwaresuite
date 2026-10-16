@@ -1,5 +1,5 @@
 // Levels, BS.1770 loudness, and waveform / spectrogram pictures.
-#include "achclwss/audio/analysis.hpp"
+#include "wetwaresuite/audio/analysis.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -9,7 +9,7 @@
 #include "draw.hpp"
 #include "internal.hpp"
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 using detail::kPi;
 using raster::Color;
@@ -378,4 +378,4 @@ Image spectrogram(const Buffer& b, Range r, const SpectrogramStyle& st) {
     return img;
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio

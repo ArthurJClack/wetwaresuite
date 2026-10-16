@@ -1,8 +1,8 @@
-#include "achclwss/forge/forge.hpp"
+#include "wetwaresuite/forge/forge.hpp"
 
 #include "common.hpp"
 
-namespace achclwss::forge {
+namespace wetwaresuite::forge {
 
 void registerCommands(Session& session) {
     detail::registerMeshCommands(session);
@@ -10,4 +10,4 @@ void registerCommands(Session& session) {
     detail::registerSpriteCommands(session);
 }
 
-}  // namespace achclwss::forge
+}  // namespace wetwaresuite::forge

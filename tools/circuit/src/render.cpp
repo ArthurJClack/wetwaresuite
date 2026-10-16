@@ -10,11 +10,11 @@
 #include <set>
 #include <sstream>
 
-#include "achclwss/circuit/circuit.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 #include "geom.hpp"
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 using raster::Color;
 
@@ -389,7 +389,7 @@ pdf::Page schematicPage(const Circuit& c, const SheetStyle& style) {
             auto sym = symbolOf(p);
             if (sym && !sym->power) ++parts;
         }
-        const std::string info = std::to_string(parts) + " parts, " + std::to_string(nl.nets.size()) + " nets  -  achclwss circuit";
+        const std::string info = std::to_string(parts) + " parts, " + std::to_string(nl.nets.size()) + " nets  -  wetwaresuite circuit";
         pdf::Font f;
         page.text(page.width - pdf::textWidth(f, info, 0.6 * kUnit) - 1 * kUnit, ty + 1.0 * kUnit, info, f, 0.6 * kUnit, rgb(0x707080));
     }
@@ -709,4 +709,4 @@ std::string pcbSvg(const Circuit& c, const Netlist& nl, const PcbStyle& style) {
     return cv.str();
 }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

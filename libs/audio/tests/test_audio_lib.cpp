@@ -2,15 +2,15 @@
 #include <filesystem>
 #include <fstream>
 
-#include "achclwss/audio/analysis.hpp"
-#include "achclwss/audio/dsp.hpp"
-#include "achclwss/audio/io.hpp"
-#include "achclwss/audio/project.hpp"
-#include "achclwss/core/process.hpp"
+#include "wetwaresuite/audio/analysis.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
+#include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/audio/project.hpp"
+#include "wetwaresuite/core/process.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::audio;
+using namespace wetwaresuite;
+using namespace wetwaresuite::audio;
 namespace fs = std::filesystem;
 
 namespace {
@@ -51,7 +51,7 @@ double frequency(const Buffer& b, int ch = 0) {
 }  // namespace
 
 int main() {
-    const fs::path dir = fs::temp_directory_path() / "achclwss_test_audio_lib";
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_test_audio_lib";
     fs::remove_all(dir);
     fs::create_directories(dir);
 

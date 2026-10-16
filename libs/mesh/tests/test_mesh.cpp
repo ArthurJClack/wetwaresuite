@@ -4,17 +4,17 @@
 #include <filesystem>
 #include <fstream>
 
-#include "achclwss/mesh/csg.hpp"
-#include "achclwss/mesh/document.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/ops.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/mesh/render.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/mesh/csg.hpp"
+#include "wetwaresuite/mesh/document.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/ops.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/mesh/render.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::mesh;
+using namespace wetwaresuite;
+using namespace wetwaresuite::mesh;
 namespace fs = std::filesystem;
 
 namespace {
@@ -295,7 +295,7 @@ int main() {
 
     // ---- IO round trips ----
     {
-        auto dir = fs::temp_directory_path() / "achclwss_test_mesh";
+        auto dir = fs::temp_directory_path() / "wetwaresuite_test_mesh";
         fs::remove_all(dir);
         fs::create_directories(dir);
         Mesh shape = booleanDifference(box({20, 10, 5}), cylinder(2, 10, 24));

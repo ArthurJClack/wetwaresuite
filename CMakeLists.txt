@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.21)
-project(achclwss VERSION 0.1.0 LANGUAGES CXX)
+project(wetwaresuite VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-option(ACHCLWSS_BUILD_TESTS "Build unit tests" ON)
+option(WETWARESUITE_BUILD_TESTS "Build unit tests" ON)
 
 if(MSVC)
   add_compile_options(/W4 /permissive- /utf-8)
@@ -21,7 +21,7 @@ FetchContent_Declare(
   DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
 FetchContent_MakeAvailable(nlohmann_json)
 
-if(ACHCLWSS_BUILD_TESTS)
+if(WETWARESUITE_BUILD_TESTS)
   enable_testing()
 endif()
 
@@ -59,4 +59,4 @@ add_subdirectory(tools/board)
 add_subdirectory(tools/notes)
 add_subdirectory(tools/maps)
 add_subdirectory(tools/type)
-add_subdirectory(apps/achclwss)
+add_subdirectory(apps/wetwaresuite)

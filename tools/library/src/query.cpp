@@ -17,10 +17,10 @@
 #include <functional>
 #include <set>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/library/library.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/library/library.hpp"
 
-namespace achclwss::library {
+namespace wetwaresuite::library {
 
 namespace {
 
@@ -551,4 +551,4 @@ bool matches(const Catalog& catalog, const Item& item, const std::string& query,
     return true;
 }
 
-}  // namespace achclwss::library
+}  // namespace wetwaresuite::library

@@ -7,16 +7,16 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/mesh/document.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/mesh/topology.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/sculpt/sculpt.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/mesh/document.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/mesh/topology.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/sculpt/sculpt.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 using json = nlohmann::ordered_json;
 namespace fs = std::filesystem;
 using mesh::Vec3;
@@ -68,7 +68,7 @@ std::shared_ptr<sculpt::SculptDoc> docIn(Session& s, const std::string& id) { re
 }  // namespace
 
 int main() {
-    auto dir = fs::temp_directory_path() / "achclwss_test_sculpt";
+    auto dir = fs::temp_directory_path() / "wetwaresuite_test_sculpt";
     fs::remove_all(dir);
     fs::create_directories(dir);
 
@@ -466,7 +466,7 @@ int main() {
     {
         Session ms;
         sculpt::registerCommands(ms);
-        mcp::Server server(ms, {"achclwss", "test", "sculpt"});
+        mcp::Server server(ms, {"wetwaresuite", "test", "sculpt"});
         json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
         bool sawStroke = false;
         for (const auto& t : list) {

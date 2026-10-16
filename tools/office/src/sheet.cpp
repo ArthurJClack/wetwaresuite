@@ -6,10 +6,10 @@
 #include <cstdio>
 #include <cstdlib>
 
-#include "achclwss/office/sheet.hpp"
+#include "wetwaresuite/office/sheet.hpp"
 #include "text.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 // ---- values --------------------------------------------------------------------
 
@@ -752,4 +752,4 @@ void Workbook::deleteSheet(int sheet) {
     if (active < 0) active = 0;
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

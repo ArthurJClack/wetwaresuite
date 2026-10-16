@@ -3,5 +3,5 @@
 version = 4
 
 [[package]]
-name = "achclwss-hub"
+name = "wetwaresuite-hub"
 version = "0.1.0"

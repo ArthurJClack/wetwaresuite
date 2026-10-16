@@ -1,0 +1,2 @@
+# QR reference matrices are compared byte for byte in tests
+tests/data/*.txt text eol=lf

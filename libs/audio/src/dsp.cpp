@@ -4,11 +4,11 @@
 #include <random>
 #include <stdexcept>
 
-#include "achclwss/audio/analysis.hpp"
-#include "achclwss/audio/dsp.hpp"
+#include "wetwaresuite/audio/analysis.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
 #include "internal.hpp"
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 using detail::kPi;
 
@@ -529,4 +529,4 @@ std::vector<Region> splitOnSilence(const Buffer& b, double thresholdDb, double m
     return out;
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio

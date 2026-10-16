@@ -5,7 +5,7 @@
 #include <cstddef>
 #include <vector>
 
-namespace achclwss::audio::detail {
+namespace wetwaresuite::audio::detail {
 
 // Interleaved float samples; false when the bytes aren't that format.
 struct Decoded {
@@ -18,4 +18,4 @@ bool decodeMp3(const unsigned char* data, std::size_t size, Decoded& out);
 bool decodeFlac(const unsigned char* data, std::size_t size, Decoded& out);
 bool decodeVorbis(const unsigned char* data, std::size_t size, Decoded& out);
 
-}  // namespace achclwss::audio::detail
+}  // namespace wetwaresuite::audio::detail

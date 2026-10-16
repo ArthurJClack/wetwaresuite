@@ -4,9 +4,9 @@
 #include <map>
 #include <stdexcept>
 
-#include "achclwss/beats/song.hpp"
+#include "wetwaresuite/beats/song.hpp"
 
-namespace achclwss::beats {
+namespace wetwaresuite::beats {
 
 namespace {
 
@@ -354,4 +354,4 @@ Song importMidi(const std::string& d, const std::string& name) {
     return s;
 }
 
-}  // namespace achclwss::beats
+}  // namespace wetwaresuite::beats

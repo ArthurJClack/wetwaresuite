@@ -1,6 +1,6 @@
 # Getting started
 
-This tutorial takes you from a fresh checkout to running your first commands. By the end you will know how to build ACHCLWSS, find any command and its parameters, pass arguments correctly, and understand how documents, ids and undo work.
+This tutorial takes you from a fresh checkout to running your first commands. By the end you will know how to build wetwaresuite, find any command and its parameters, pass arguments correctly, and understand how documents, ids and undo work.
 
 There is no graphical interface yet. Everything in the suite is a *command* (for example `photo.resize` or `paint.stroke`), and the GUI that arrives later will be a thin layer of buttons that call exactly these commands. So what you learn here keeps working when the GUI lands: the same commands drive the CLI, batch scripts, Claude over MCP, and (later) the GUI.
 
@@ -35,35 +35,35 @@ ctest --test-dir build --output-on-failure
 The build produces one binary that contains the whole suite:
 
 ```
-build/apps/achclwss/achclwss          (Linux and macOS)
-build/apps/achclwss/Release/achclwss.exe   (Windows with Visual Studio)
+build/apps/wetwaresuite/wetwaresuite          (Linux and macOS)
+build/apps/wetwaresuite/Release/wetwaresuite.exe   (Windows with Visual Studio)
 ```
 
-The rest of the tutorials just write `achclwss`. Either put the folder on your `PATH`:
+The rest of the tutorials just write `wetwaresuite`. Either put the folder on your `PATH`:
 
 ```sh
-export PATH="$PWD/build/apps/achclwss:$PATH"
+export PATH="$PWD/build/apps/wetwaresuite:$PATH"
 ```
 
 or call it by its full path. Check that it runs:
 
 ```sh
-$ achclwss --version
-achclwss 0.2.0
+$ wetwaresuite --version
+wetwaresuite 0.2.0
 ```
 
-There is also a small standalone `build/tools/toolkit/achclwss-toolkit` binary; see the [toolkit tutorial](toolkit.md).
+There is also a small standalone `build/tools/toolkit/wetwaresuite-toolkit` binary; see the [toolkit tutorial](toolkit.md).
 
 ## 2. Find commands with `list`
 
 ```sh
-$ achclwss list
+$ wetwaresuite list
 ```
 
 prints every command, grouped by tool. To see one tool only, name it:
 
 ```sh
-$ achclwss list photo
+$ wetwaresuite list photo
 photo
   photo.adjust  Adjust colours
   photo.batch  Batch process folder  (read-only/output)
@@ -77,7 +77,7 @@ The tools available today are `photo`, `paint`, `vector`, `convert` and `toolkit
 ## 3. Read a command's parameters with `help`
 
 ```sh
-$ achclwss help photo.resize
+$ wetwaresuite help photo.resize
 photo.resize: Resize image
 Scale the whole image. Give width, height or both; with only one, the other keeps the aspect ratio.
 
@@ -104,14 +104,14 @@ How to read it:
 There are two equivalent ways:
 
 ```sh
-achclwss run toolkit.inspect path=photo.jpg
-achclwss toolkit.inspect path=photo.jpg
+wetwaresuite run toolkit.inspect path=photo.jpg
+wetwaresuite toolkit.inspect path=photo.jpg
 ```
 
 Output looks like this:
 
 ```
-$ achclwss toolkit.inspect path=dark.jpg
+$ wetwaresuite toolkit.inspect path=dark.jpg
 format: JPEG image
 category: image
 opens in: photo
@@ -126,7 +126,7 @@ Most commands print a one-line message followed by `key: value` lines with the d
 Every argument is `key=value`, with no spaces around the `=`. Unknown keys are rejected with a hint showing the correct usage, which catches typos early:
 
 ```
-$ achclwss run photo.open file=dark.jpg
+$ wetwaresuite run photo.open file=dark.jpg
 error: unknown parameter 'file' for photo.open (try: photo.open path=<string>)
 ```
 
@@ -166,11 +166,11 @@ Anything else is rejected with a clear message, for example `'navy' isn't a colo
 
 ### Quoting
 
-On the command line your shell splits words before ACHCLWSS sees them, so quote values that contain spaces or characters the shell treats specially, such as parentheses:
+On the command line your shell splits words before wetwaresuite sees them, so quote values that contain spaces or characters the shell treats specially, such as parentheses:
 
 ```sh
-achclwss convert.file input="My Photos/cat.png" output="My Photos/cat.jpg"
-achclwss photo.batch input_dir=raw output_dir=web effect=sepia     # no quotes needed
+wetwaresuite convert.file input="My Photos/cat.png" output="My Photos/cat.jpg"
+wetwaresuite photo.batch input_dir=raw output_dir=web effect=sepia     # no quotes needed
 ```
 
 and in a shell, `background="rgb(10,20,30)"` needs the quotes because of the parentheses. Batch scripts have their own simple quoting rules; see [headless and batch](headless-and-batch.md).
@@ -180,7 +180,7 @@ and in a shell, `background="rgb(10,20,30)"` needs the quotes because of the par
 Commands that open or create something give you a document id:
 
 ```
-$ achclwss run photo.open path=dark.jpg
+$ wetwaresuite run photo.open path=dark.jpg
 opened dark.jpg as img1
 doc: img1
 width: 1200
@@ -190,13 +190,13 @@ layers: 1
 
 You then pass that id as `doc=img1` to every command that edits it. Images get ids `img1`, `img2`, ... and vector drawings get `vec1`, `vec2`, ... (see the [vector tutorial](vector.md)). Ids are handed out in order and are not reused after a document is closed, so after closing `img1` the next one is `img2`. Photo and paint share the same kind of document: you can open a photo and paint on it, or paint a picture and run photo effects on it.
 
-Important: open documents live in memory inside one running `achclwss` process. A single `achclwss run ...` starts, runs one command and exits, so a document it opened is gone by the next command:
+Important: open documents live in memory inside one running `wetwaresuite` process. A single `wetwaresuite run ...` starts, runs one command and exits, so a document it opened is gone by the next command:
 
 ```
-$ achclwss run photo.open path=dark.jpg
+$ wetwaresuite run photo.open path=dark.jpg
 opened dark.jpg as img1
 ...
-$ achclwss run photo.resize doc=img1 width=10
+$ wetwaresuite run photo.resize doc=img1 width=10
 no open image called 'img1' (use photo.open or paint.new first)
 ```
 
@@ -208,7 +208,7 @@ That gives you a simple rule of thumb:
 Here is the multi-step version as a batch script, fed on stdin:
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 photo.open path=dark.jpg -> pic
 photo.levels doc=$pic auto=true
 photo.resize doc=$pic width=800
@@ -223,7 +223,7 @@ EOF
 Every editing command is recorded in one shared history for the whole session (across all open documents). You can step back and forward through it:
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 photo.new width=100 height=50 background=white -> img
 photo.effect doc=$img kind=invert
 photo.pick_color doc=$img x=5 y=5
@@ -254,5 +254,5 @@ Things to know:
 ## Where next
 
 - [Headless and batch](headless-and-batch.md): scripts, variables, CI and cron.
-- [Using ACHCLWSS with Claude (MCP)](mcp.md): let Claude drive every command.
+- [Using wetwaresuite with Claude (MCP)](mcp.md): let Claude drive every command.
 - Per tool: [photo](photo.md), [paint](paint.md), [vector](vector.md), [convert](convert.md), [toolkit](toolkit.md).

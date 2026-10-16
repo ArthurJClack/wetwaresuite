@@ -13,9 +13,9 @@
 #include <map>
 #include <stdexcept>
 
-#include "achclwss/cut/cut.hpp"
+#include "wetwaresuite/cut/cut.hpp"
 
-namespace achclwss::cut {
+namespace wetwaresuite::cut {
 
 namespace fs = std::filesystem;
 
@@ -588,4 +588,4 @@ RenderPlan planRender(const Timeline& tl, const RenderRequest& rq) {
     return plan;
 }
 
-}  // namespace achclwss::cut
+}  // namespace wetwaresuite::cut

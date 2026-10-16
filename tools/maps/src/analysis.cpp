@@ -7,9 +7,9 @@
 #include <stdexcept>
 #include <unordered_map>
 
-#include "achclwss/maps/maps.hpp"
+#include "wetwaresuite/maps/maps.hpp"
 
-namespace achclwss::maps {
+namespace wetwaresuite::maps {
 
 namespace {
 
@@ -1230,4 +1230,4 @@ std::shared_ptr<Grid> heatmap(const std::vector<Feature>& features, const Heatma
     return g;
 }
 
-}  // namespace achclwss::maps
+}  // namespace wetwaresuite::maps

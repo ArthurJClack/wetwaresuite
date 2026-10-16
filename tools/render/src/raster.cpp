@@ -6,7 +6,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::render::detail {
+namespace wetwaresuite::render::detail {
 
 namespace {
 
@@ -237,4 +237,4 @@ raster::Image rasterize(const World& w, const CameraF& cam, const RenderOptions&
     return toImage(c2, v2, ow, oh, w, o.exposure);
 }
 
-}  // namespace achclwss::render::detail
+}  // namespace wetwaresuite::render::detail

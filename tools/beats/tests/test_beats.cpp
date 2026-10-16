@@ -6,17 +6,17 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/audio/analysis.hpp"
-#include "achclwss/audio/document.hpp"
-#include "achclwss/audio/dsp.hpp"
-#include "achclwss/audio/io.hpp"
-#include "achclwss/beats/beats.hpp"
-#include "achclwss/core/process.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/audio/analysis.hpp"
+#include "wetwaresuite/audio/document.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
+#include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/beats/beats.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 using json = nlohmann::ordered_json;
 namespace fs = std::filesystem;
 
@@ -54,7 +54,7 @@ double rmsOf(const audio::Buffer& b, double from, double to) {
 }  // namespace
 
 int main() {
-    const fs::path dir = fs::temp_directory_path() / "achclwss_test_beats";
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_test_beats";
     fs::remove_all(dir);
     fs::create_directories(dir);
 
@@ -347,7 +347,7 @@ int main() {
     {
         Session ms;
         beats::registerCommands(ms);
-        mcp::Server server(ms, {"achclwss", "test", "beats"});
+        mcp::Server server(ms, {"wetwaresuite", "test", "beats"});
         json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
         bool sawGenerate = false;
         for (const auto& t : list) {

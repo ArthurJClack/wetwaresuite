@@ -3,9 +3,9 @@
 #include <cctype>
 #include <cstdio>
 
-#include "achclwss/type/type.hpp"
+#include "wetwaresuite/type/type.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 const std::vector<std::string>& macGlyphNames() {
     static const std::vector<std::string> names = {
@@ -188,4 +188,4 @@ double Font::kern(const std::string& left, const std::string& right) const {
     return it == kerning.end() ? 0.0 : it->second;
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

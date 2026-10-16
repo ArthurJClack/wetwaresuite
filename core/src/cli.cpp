@@ -1,10 +1,10 @@
-#include "achclwss/core/cli.hpp"
+#include "wetwaresuite/core/cli.hpp"
 
 #include <cctype>
 #include <istream>
 #include <ostream>
 
-namespace achclwss::cli {
+namespace wetwaresuite::cli {
 
 namespace {
 
@@ -232,4 +232,4 @@ int Batch::run(std::istream& in, std::ostream& out, std::ostream& err, bool keep
     return failures;
 }
 
-}  // namespace achclwss::cli
+}  // namespace wetwaresuite::cli

@@ -1,10 +1,10 @@
-#include "achclwss/mesh/topology.hpp"
+#include "wetwaresuite/mesh/topology.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <unordered_map>
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 Adjacency vertexTriangles(const Mesh& m) {
     Adjacency a;
@@ -123,4 +123,4 @@ double rayTriangle(const Vec3& o, const Vec3& d, const Vec3& a, const Vec3& b, c
     return t >= 0 ? t : -1;
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

@@ -3,14 +3,14 @@
 #include <cmath>
 #include <cstdio>
 
-#include "achclwss/forge/forge.hpp"
-#include "achclwss/forge/meshops.hpp"
-#include "achclwss/mesh/document.hpp"
-#include "achclwss/mesh/ops.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/forge/forge.hpp"
+#include "wetwaresuite/forge/meshops.hpp"
+#include "wetwaresuite/mesh/document.hpp"
+#include "wetwaresuite/mesh/ops.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "common.hpp"
 
-namespace achclwss::forge::detail {
+namespace wetwaresuite::forge::detail {
 
 using mesh::Mesh;
 using mesh::MeshDoc;
@@ -584,4 +584,4 @@ void registerMeshCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::forge::detail
+}  // namespace wetwaresuite::forge::detail

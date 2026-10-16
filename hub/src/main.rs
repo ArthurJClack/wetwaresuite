@@ -1,4 +1,4 @@
-//! hub: the ACHCLWSS install manager. Lists tools, writes Claude's MCP config,
+//! hub: the wetwaresuite install manager. Lists tools, writes Claude's MCP config,
 //! and will install tools once release packages are published.
 
 mod catalog;
@@ -16,6 +16,7 @@ fn usage() {
          list                       show every tool and its status\n  \
          install <tool>             install a tool\n  \
          mcp-config [--bin-dir DIR] print the MCP config that connects Claude to installed tools\n  \
+         share [ARGS...]            run wetwaresuite-share: share or live-sync a folder (`hub share help`)\n  \
          --version"
     );
 }
@@ -105,8 +106,31 @@ fn default_bin_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// Runs `wetwaresuite-share` from next to the hub (or PATH) with the given args.
+fn share(args: &[String]) -> ExitCode {
+    let local = default_bin_dir().join(exe_name(catalog::SHARE));
+    let program = if local.is_file() { local } else { PathBuf::from(exe_name(catalog::SHARE)) };
+    match std::process::Command::new(&program).args(args).status() {
+        Ok(status) => match status.code() {
+            Some(0) => ExitCode::SUCCESS,
+            Some(c) => ExitCode::from(u8::try_from(c).unwrap_or(1)),
+            None => ExitCode::FAILURE,
+        },
+        Err(e) => {
+            eprintln!(
+                "can't run {}: {e}. Build it with `cd share && cargo build --release` and put it next to hub or on PATH",
+                program.display()
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("share") {
+        return share(&args[1..]);
+    }
     match args.iter().map(String::as_str).collect::<Vec<_>>().as_slice() {
         ["list"] => list(),
         ["install", tool] => return install(tool),
@@ -134,8 +158,10 @@ mod tests {
     #[test]
     fn mcp_config_lists_available_tools() {
         let config = mcp_config(Path::new("bin"));
-        assert!(config.contains("\"achclwss\": {"));
+        assert!(config.contains("\"wetwaresuite\": {"));
+        assert!(config.contains("\"wetwaresuite-share\": {"));
         assert!(config.contains("\"args\": [\"mcp\"]"));
-        assert_eq!(config.matches("\"command\"").count(), 1);
+        // one entry per MCP binary: the suite, and the standalone share tool
+        assert_eq!(config.matches("\"command\"").count(), 2);
     }
 }

@@ -4,7 +4,7 @@
 // guided by first-hit albedo, normals and depth.
 #include "internal.hpp"
 
-namespace achclwss::render::detail {
+namespace wetwaresuite::render::detail {
 
 namespace {
 
@@ -310,4 +310,4 @@ raster::Image pathTrace(const World& w, const CameraF& cam, const RenderOptions&
     return toImage(color, cov, W, H, w, o.exposure);
 }
 
-}  // namespace achclwss::render::detail
+}  // namespace wetwaresuite::render::detail

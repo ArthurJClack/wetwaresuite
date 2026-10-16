@@ -5,15 +5,15 @@
 #include <map>
 #include <nlohmann/json.hpp>
 
-#include "achclwss/forge/forge.hpp"
-#include "achclwss/forge/texture.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
-#include "achclwss/raster/ops.hpp"
+#include "wetwaresuite/forge/forge.hpp"
+#include "wetwaresuite/forge/texture.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/raster/ops.hpp"
 #include "common.hpp"
 #include "images.hpp"
 
-namespace achclwss::forge::detail {
+namespace wetwaresuite::forge::detail {
 
 using raster::ImageDoc;
 using json = nlohmann::ordered_json;
@@ -164,7 +164,7 @@ void registerSpriteCommands(Session& session) {
                     }
                     fs::path atlas = p.count("atlas") ? fs::path(stringParam(p, "atlas")) : fs::path(output).replace_extension(".json");
                     json doc = {{"frames", framesJson},
-                                {"meta", json{{"app", "achclwss forge"},
+                                {"meta", json{{"app", "wetwaresuite forge"},
                                               {"version", "1.0"},
                                               {"image", output.filename().string()},
                                               {"format", "RGBA8888"},
@@ -294,4 +294,4 @@ void registerSpriteCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::forge::detail
+}  // namespace wetwaresuite::forge::detail

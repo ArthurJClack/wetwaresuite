@@ -6,13 +6,13 @@
 #include <nlohmann/json.hpp>
 #include <stdexcept>
 
-#include "achclwss/animate/animate.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/animate/animate.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::animate {
+namespace wetwaresuite::animate {
 
 namespace fs = std::filesystem;
 using json = nlohmann::ordered_json;
@@ -452,7 +452,7 @@ Color parseColorJson(const json& j, const std::string& what) {
 
 std::string toJson(const AnimDoc& doc) {
     json j;
-    j["format"] = "achclwss-animate";
+    j["format"] = "wetwaresuite-animate";
     j["version"] = 1;
     j["width"] = doc.settings.width;
     j["height"] = doc.settings.height;
@@ -514,8 +514,8 @@ std::shared_ptr<AnimDoc> fromJson(const std::string& text, const fs::path& baseD
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not valid JSON: ") + e.what());
     }
-    if (!j.is_object() || j.value("format", std::string()) != "achclwss-animate") {
-        throw std::runtime_error("not an ACHCLWSS animation (.anim.json) file");
+    if (!j.is_object() || j.value("format", std::string()) != "wetwaresuite-animate") {
+        throw std::runtime_error("not an wetwaresuite animation (.anim.json) file");
     }
     try {
         auto doc = std::make_shared<AnimDoc>();
@@ -623,4 +623,4 @@ void AnimEdit::revert() {
     doc_->nextLayer = before_.nextLayer;
 }
 
-}  // namespace achclwss::animate
+}  // namespace wetwaresuite::animate

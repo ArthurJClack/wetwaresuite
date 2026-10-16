@@ -10,10 +10,10 @@
 #include <set>
 #include <stdexcept>
 
-#include "achclwss/pdf/page.hpp"
+#include "wetwaresuite/pdf/page.hpp"
 #include "internal.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 namespace {
 
@@ -933,4 +933,4 @@ std::string toSvgFont(const Font& font) {
     return out;
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

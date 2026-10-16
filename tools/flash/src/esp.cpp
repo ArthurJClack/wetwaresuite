@@ -3,10 +3,10 @@
 #include <chrono>
 #include <cstdio>
 
-#include "achclwss/flash/protocol.hpp"
+#include "wetwaresuite/flash/protocol.hpp"
 #include "internal.hpp"
 
-namespace achclwss::flash {
+namespace wetwaresuite::flash {
 
 namespace slip {
 Bytes encode(const Bytes& packet) {
@@ -360,4 +360,4 @@ void EspLoader::finish(bool reboot) {
     command(esp::kFlashEnd, p);
 }
 
-}  // namespace achclwss::flash
+}  // namespace wetwaresuite::flash

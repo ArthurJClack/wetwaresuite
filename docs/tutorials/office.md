@@ -11,9 +11,9 @@ All of the formats above are handled inside the suite, with no other programs. `
 
 There is no GUI yet; the GUI that comes later will call these same commands. Each task below is shown three ways:
 
-- **CLI**: single `achclwss` commands that read files and write files.
+- **CLI**: single `wetwaresuite` commands that read files and write files.
 - **Batch**: a script for multi-step work with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools office` serves just the office tools.
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools office` serves just the office tools.
 
 Every example below was run against the real binary, and the outputs are copied from those runs. Where an output was long it is shortened, and the cut is marked.
 
@@ -24,19 +24,19 @@ Every example below was run against the real binary, and the outputs are copied 
 **One-shot commands with `file=`.** The commands that only read take `file=` instead of `doc=`: they load the file, answer, and forget it. This works for info, get, find, calc, preview, chart, word count and export. It is how the CLI examples work without a batch script:
 
 ```sh
-achclwss office.sheet_calc file=orders.csv formula="SUMIF(D:D,\"shipped\",C:C)"
-achclwss office.doc_word_count file=report.docx
-achclwss office.deck_export file=talk.md path=talk.png
+wetwaresuite office.sheet_calc file=orders.csv formula="SUMIF(D:D,\"shipped\",C:C)"
+wetwaresuite office.doc_word_count file=report.docx
+wetwaresuite office.deck_export file=talk.md path=talk.png
 ```
 
 **Several lines in one argument.** CSV text, bullets, list items and table rows have one item per line. A command line cannot hold a real line break, so write `\n` and it becomes one. Inside a batch file write `\\n`, because the batch reader removes one level of backslashes, and write `\"` for a quote inside a quoted value. Over MCP, Claude sends real line breaks. Every such parameter also has a `_file` twin (`csv_file=`, `text_file=`, `bullets_file=`, `markdown_file=`, `outline_file=`) that reads the text from a file instead.
 
 **Previews.** Each kind has a preview command (`office.sheet_preview`, `office.doc_preview`, `office.deck_preview`) that returns a PNG drawn exactly as the PDF export draws it. Most editing commands also take `preview=true`, which attaches a picture of the result. Claude uses these to check its own work.
 
-**Built in or LibreOffice.** `achclwss office.formats` shows what is built in, and whether LibreOffice and pdftoppm were found:
+**Built in or LibreOffice.** `wetwaresuite office.formats` shows what is built in, and whether LibreOffice and pdftoppm were found:
 
 ```sh
-$ achclwss office.formats
+$ wetwaresuite office.formats
 spreadsheets (office.sheet_*): read csv ods tab tsv xlsm xlsx; write csv html pdf tsv xlsx
   through LibreOffice: read dbf fods numbers sxc xls xlsb xlt xltx; write fods ods xls
 documents (office.doc_*): read docx htm html markdown md odt txt; write docx htm html markdown md pdf txt
@@ -69,14 +69,14 @@ Total,=SUM(B2:B5),=SUM(C2:C5),=SUM(D2:D5),=SUM(E2:E5)
 Then convert it, look at the results, chart it, and ask a question without changing anything:
 
 ```sh
-$ achclwss office.convert input=budget.csv output=budget.xlsx
+$ wetwaresuite office.convert input=budget.csv output=budget.xlsx
 converted budget.csv to budget.xlsx (built-in, 1 sheet(s), 5 KB)
 budget.xlsx
 output: budget.xlsx
 backend: built-in
 bytes: 5469
 
-$ achclwss office.sheet_get file=budget.xlsx
+$ wetwaresuite office.sheet_get file=budget.xlsx
 A1:E6 (6 rows x 5 cols)
 	A	B	C	D	E
 1	Category	Jan	Feb	Mar	Total
@@ -89,7 +89,7 @@ range: A1:E6
 rows: 6
 cols: 5
 
-$ achclwss office.sheet_chart file=budget.xlsx range=A1:D5 title="Spending by month" path=budget-chart.png
+$ wetwaresuite office.sheet_chart file=budget.xlsx range=A1:D5 title="Spending by month" path=budget-chart.png
 bar chart of A1:D5: 3 series x 4 categories (Jan, Feb, Mar); wrote budget-chart.png
 budget-chart.png
 path: budget-chart.png
@@ -97,7 +97,7 @@ series: 3
 categories: 4
 attachment: chart.png (29436 bytes)
 
-$ achclwss office.sheet_calc file=budget.xlsx formula="AVERAGE(E2:E5)"
+$ wetwaresuite office.sheet_calc file=budget.xlsx formula="AVERAGE(E2:E5)"
 =AVERAGE(E2:E5) -> 1395
 1395
 value: 1395
@@ -139,7 +139,7 @@ office.sheet_save doc=$b path=budget-q1.pdf
 ```
 
 ```sh
-$ achclwss batch budget.txt
+$ wetwaresuite batch budget.txt
 created sheet1: 1 sheet: Budget (empty)
 ...
 set A1:D5 (20 cells); A1 = Category
@@ -192,7 +192,7 @@ office.sheet_save doc=$b
 ```
 
 ```sh
-$ achclwss batch change.txt
+$ wetwaresuite batch change.txt
 opened sheet1: 1 sheet: Budget A1:F7 - budget-q1.xlsx; 13 formulas
 ...
 set C3; C3 = $410.00
@@ -253,7 +253,7 @@ You want a clean table with a proper id, the customer's name and region, one spe
 **CLI.** Look at the data first and ask questions straight from the CSV:
 
 ```sh
-$ achclwss office.sheet_info file=orders.csv
+$ wetwaresuite office.sheet_info file=orders.csv
 orders.csv: 1 sheet(s)
   1. orders (active): A1:D9 (9 rows x 4 cols), 36 cells, 0 formulas
      row 1: Order | Customer | Amount | Status
@@ -264,13 +264,13 @@ formulas: 0
 errors: 0
 path: orders.csv
 
-$ achclwss office.sheet_calc file=orders.csv formula="SUMIF(D:D,\"shipped\",C:C)"
+$ wetwaresuite office.sheet_calc file=orders.csv formula="SUMIF(D:D,\"shipped\",C:C)"
 =SUMIF(D:D,"shipped",C:C) -> 3335.5
 3335.5
 value: 3335.5
 type: number
 
-$ achclwss office.sheet_find file=orders.csv query=c-002
+$ wetwaresuite office.sheet_find file=orders.csv query=c-002
 2 cell(s) match "c-002":
   orders!B2:  c-002 
   orders!B6: c-002
@@ -278,7 +278,7 @@ $ achclwss office.sheet_find file=orders.csv query=c-002
 count: 2
 first: orders!B2
 
-$ achclwss office.convert input=orders.csv output=orders.xlsx
+$ wetwaresuite office.convert input=orders.csv output=orders.xlsx
 converted orders.csv to orders.xlsx (built-in, 1 sheet(s), 6 KB)
 ...
 ```
@@ -328,7 +328,7 @@ office.sheet_save doc=$o path=orders-clean.csv sheet=orders
 ```
 
 ```sh
-$ achclwss batch cleanup.txt
+$ wetwaresuite batch cleanup.txt
 opened sheet1: 1 sheet: orders A1:D9 - orders.csv
 ...
 added sheet Customers at position 2
@@ -443,18 +443,18 @@ fixed; groceries and fun moved the most. The raw numbers are in
 Then convert it:
 
 ```sh
-$ achclwss office.convert input=q1-budget.md output=q1-budget.pdf
+$ wetwaresuite office.convert input=q1-budget.md output=q1-budget.pdf
 converted q1-budget.md to q1-budget.pdf (built-in, 11 blocks, 27 KB)
 q1-budget.pdf
 output: q1-budget.pdf
 backend: built-in
 bytes: 27937
 
-$ achclwss office.convert input=q1-budget.md output=q1-budget.docx
+$ wetwaresuite office.convert input=q1-budget.md output=q1-budget.docx
 converted q1-budget.md to q1-budget.docx (built-in, 11 blocks, 46 KB)
 ...
 
-$ achclwss office.doc_word_count file=q1-budget.md
+$ wetwaresuite office.doc_word_count file=q1-budget.md
 106 words, 582 characters (504 without spaces), 14 paragraphs, 2 page(s); about 1 min to read
 106
 words: 106
@@ -463,12 +463,12 @@ characters_no_spaces: 504
 paragraphs: 14
 pages: 2
 
-$ achclwss office.doc_export file=q1-budget.md path=q1-budget-page1.png dpi=80
+$ wetwaresuite office.doc_export file=q1-budget.md path=q1-budget-page1.png dpi=80
 exported page 1 of 2 to q1-budget-page1.png
 q1-budget-page1.png
 path: q1-budget-page1.png
 
-$ achclwss office.convert input=q1-budget.docx output=q1-budget.odt
+$ wetwaresuite office.convert input=q1-budget.docx output=q1-budget.odt
 converted q1-budget.docx to q1-budget.odt (built-in + LibreOffice, 11 blocks, 51 KB)
 ...
 ```
@@ -507,7 +507,7 @@ office.doc_export doc=$d path=writeup-p1.png page=1 dpi=80
 ```
 
 ```sh
-$ achclwss batch writeup.txt
+$ wetwaresuite batch writeup.txt
 created doc1: "Q1 household budget", 0 blocks
 ...
 added 4. list (4 items): Rent stayed at $1,200 a month / Groceries peaked in March / Fun spending doubled / one con...
@@ -601,7 +601,7 @@ build-team@example.com
 ```
 
 ```sh
-$ achclwss office.deck_info file=talk.md
+$ wetwaresuite office.deck_info file=talk.md
 talk.md: "Moving to the new build system", 5 slide(s), theme teal, 16:9
   1. title: "Moving to the new build system" / Platform team, October 2026
   2. content: "Why change", 4 bullet(s), notes
@@ -612,15 +612,15 @@ doc: talk.md
 slides: 5
 theme: teal
 
-$ achclwss office.convert input=talk.md output=talk.pptx
+$ wetwaresuite office.convert input=talk.md output=talk.pptx
 converted talk.md to talk.pptx (built-in, 5 slides, 41 KB)
 ...
 
-$ achclwss office.convert input=talk.md output=talk.pdf
+$ wetwaresuite office.convert input=talk.md output=talk.pdf
 converted talk.md to talk.pdf (built-in, 5 slides, 4 KB)
 ...
 
-$ achclwss office.deck_export file=talk.md path=talk.png width=640
+$ wetwaresuite office.deck_export file=talk.md path=talk.png width=640
 exported 5 slides as talk-1.png ... talk-5.png
 talk-1.png
 files: 5
@@ -667,7 +667,7 @@ office.deck_export doc=$t path=talk-built.md
 ```
 
 ```sh
-$ achclwss batch talk.txt
+$ wetwaresuite batch talk.txt
 created deck1: "Moving to the new build system", 0 slides, theme teal
 ...
 added slide 1. title: "Moving to the new build system" / Platform team, October 2026
@@ -724,12 +724,12 @@ You want to combine the report and part of the slide deck into one handout, spli
 **CLI.** The PDF commands work on files directly; there is nothing to open.
 
 ```sh
-$ achclwss office.pdf_info path=talk.pdf
+$ wetwaresuite office.pdf_info path=talk.pdf
 talk.pdf: 5 page(s), PDF 1.4
 title: Moving to the new build system
 author: Platform team
-creator: ACHCLWSS office
-producer: ACHCLWSS
+creator: wetwaresuite office
+producer: wetwaresuite
   pages 1-5: 960 x 540 pt (16:9)
 has extractable text
 5
@@ -739,13 +739,13 @@ encrypted: false
 width: 960
 height: 540
 
-$ achclwss office.pdf_merge inputs="q1-budget.pdf; talk.pdf[2-4]" output=pack.pdf
+$ wetwaresuite office.pdf_merge inputs="q1-budget.pdf; talk.pdf[2-4]" output=pack.pdf
 merged q1-budget.pdf + talk.pdf[2-4] -> pack.pdf (5 pages)
 pack.pdf
 output: pack.pdf
 pages: 5
 
-$ achclwss office.pdf_split path=pack.pdf output=parts/pack-{n}.pdf
+$ wetwaresuite office.pdf_split path=pack.pdf output=parts/pack-{n}.pdf
 split pack.pdf into 5 files:
   parts/pack-1.pdf: pages 1
   parts/pack-2.pdf: pages 2
@@ -756,25 +756,25 @@ parts/pack-1.pdf
 files: 5
 first: parts/pack-1.pdf
 
-$ achclwss office.pdf_split path=pack.pdf ranges="1-2; 3-" output=parts/section.pdf
+$ wetwaresuite office.pdf_split path=pack.pdf ranges="1-2; 3-" output=parts/section.pdf
 split pack.pdf into 2 files:
   parts/section-1.pdf: pages 1-2
   parts/section-2.pdf: pages 3-5
 ...
 
-$ achclwss office.pdf_extract path=talk.pdf pages="5,1" output=bookends.pdf
+$ wetwaresuite office.pdf_extract path=talk.pdf pages="5,1" output=bookends.pdf
 extracted pages 5,1 -> bookends.pdf (2 pages)
 ...
 
-$ achclwss office.pdf_rotate path=bookends.pdf pages=2 angle=90 output=rotated.pdf
+$ wetwaresuite office.pdf_rotate path=bookends.pdf pages=2 angle=90 output=rotated.pdf
 rotated pages 2 by 90 degrees -> rotated.pdf (2 pages)
 ...
 
-$ achclwss office.pdf_delete_pages path=pack.pdf pages=last output=pack-short.pdf
+$ wetwaresuite office.pdf_delete_pages path=pack.pdf pages=last output=pack-short.pdf
 deleted pages 5 -> pack-short.pdf (4 pages)
 ...
 
-$ achclwss office.pdf_text path=pack.pdf pages=3
+$ wetwaresuite office.pdf_text path=pack.pdf pages=3
 --- page 3 ---
 Why change
 
@@ -786,16 +786,16 @@ Why change
 2
 pages: 1
 
-$ achclwss office.pdf_from_images images="budget-chart.png, budget-pie.png" output=charts.pdf page=a4
+$ wetwaresuite office.pdf_from_images images="budget-chart.png, budget-pie.png" output=charts.pdf page=a4
 made charts.pdf from 2 image(s)
 ...
 
-$ achclwss office.pdf_render path=lo/talk-built.pdf page=4 dpi=50 output=lo-page4.png
+$ wetwaresuite office.pdf_render path=lo/talk-built.pdf page=4 dpi=50 output=lo-page4.png
 page 4 of 5 at 50 dpi (667x375); wrote lo-page4.png
 output: lo-page4.png
 attachment: page4.png (13574 bytes)
 
-$ achclwss office.convert input=pack.pdf output=pack.txt
+$ wetwaresuite office.convert input=pack.pdf output=pack.txt
 converted pack.pdf to pack.txt (built-in, 5 pages of text, 1 KB)
 ...
 ```
@@ -814,7 +814,7 @@ office.pdf_split path=handout.pdf every=2 output=print/sheet-{n}.pdf
 ```
 
 ```sh
-$ achclwss batch handout.txt
+$ wetwaresuite batch handout.txt
 exported talk.pdf (5 slides)
 ...
 exported q1-budget.pdf (2 pages)
@@ -822,7 +822,7 @@ exported q1-budget.pdf (2 pages)
 merged q1-budget.pdf + talk.pdf[2-4] -> handout.pdf (5 pages)
 ...
 handout.pdf: 5 page(s), PDF 1.7
-producer: ACHCLWSS
+producer: wetwaresuite
   pages 1-2: 595.3 x 841.9 pt (A4)
   pages 3-5: 960 x 540 pt (16:9)
 has extractable text
@@ -847,7 +847,7 @@ Claude calls `office_pdf_info` on each input to check the page counts, then `off
 Connect the server once, with just the office tools:
 
 ```sh
-claude mcp add achclwss-office -- /path/to/achclwss/build/apps/achclwss/achclwss mcp --tools office
+claude mcp add wetwaresuite-office -- /path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite mcp --tools office
 ```
 
 (or add `"args": ["mcp", "--tools", "office"]` in Claude Desktop's config, see [mcp.md](mcp.md)). Claude then sees 63 `office_*` tools plus `undo`, `redo`, `history` and `documents`. A whole afternoon's work can be one request:

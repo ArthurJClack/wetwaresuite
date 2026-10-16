@@ -1,11 +1,11 @@
 #include <filesystem>
 
-#include "achclwss/paint/paint.hpp"
-#include "achclwss/photo/photo.hpp"
-#include "achclwss/raster/document.hpp"
+#include "wetwaresuite/paint/paint.hpp"
+#include "wetwaresuite/photo/photo.hpp"
+#include "wetwaresuite/raster/document.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 namespace fs = std::filesystem;
 
 namespace {
@@ -84,7 +84,7 @@ int main() {
     CHECK(doc->image.layers.size() == 1);
 
     // round trip through .ora keeps layers
-    auto dir = fs::temp_directory_path() / "achclwss_test_paint";
+    auto dir = fs::temp_directory_path() / "wetwaresuite_test_paint";
     fs::create_directories(dir);
     CHECK(s.run("paint.layer_add", {{"doc", id}, {"name", std::string("Top")}}).ok);
     CHECK(s.run("photo.save", {{"doc", id}, {"path", (dir / "art.ora").string()}}).ok);

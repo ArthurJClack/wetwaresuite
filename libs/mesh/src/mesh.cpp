@@ -1,11 +1,11 @@
-#include "achclwss/mesh/mesh.hpp"
+#include "wetwaresuite/mesh/mesh.hpp"
 
 #include <algorithm>
 #include <unordered_map>
 
 #include "internal.hpp"
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 using detail::edgeKey;
 
@@ -229,4 +229,4 @@ Mesh unweld(const Mesh& mesh) {
     return out;
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

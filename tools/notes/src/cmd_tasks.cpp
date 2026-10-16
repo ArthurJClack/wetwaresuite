@@ -6,7 +6,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::notes::detail {
+namespace wetwaresuite::notes::detail {
 
 using nlohmann::json;
 
@@ -247,4 +247,4 @@ void registerTaskCommands(CommandRegistry& reg, const StatePtr& st) {
     registerEdit(reg, st);
 }
 
-}  // namespace achclwss::notes::detail
+}  // namespace wetwaresuite::notes::detail

@@ -3,15 +3,15 @@
 #include <cmath>
 #include <cstdio>
 
-#include "achclwss/forge/forge.hpp"
-#include "achclwss/forge/texture.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
-#include "achclwss/raster/ops.hpp"
+#include "wetwaresuite/forge/forge.hpp"
+#include "wetwaresuite/forge/texture.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/raster/ops.hpp"
 #include "common.hpp"
 #include "images.hpp"
 
-namespace achclwss::forge::detail {
+namespace wetwaresuite::forge::detail {
 
 using raster::ImageDoc;
 
@@ -455,4 +455,4 @@ void registerImageCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::forge::detail
+}  // namespace wetwaresuite::forge::detail

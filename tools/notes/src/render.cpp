@@ -2,9 +2,9 @@
 #include <cctype>
 #include <map>
 
-#include "achclwss/notes/notes.hpp"
+#include "wetwaresuite/notes/notes.hpp"
 
-namespace achclwss::notes {
+namespace wetwaresuite::notes {
 
 namespace {
 
@@ -963,4 +963,4 @@ std::string htmlPage(const std::string& title, const std::string& body, const st
            "<main>\n" + body + "</main>\n</body>\n</html>\n";
 }
 
-}  // namespace achclwss::notes
+}  // namespace wetwaresuite::notes

@@ -3,9 +3,9 @@
 
 #include <string>
 
-#include "achclwss/office/sheet.hpp"
+#include "wetwaresuite/office/sheet.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 // Formula text as stored in .xlsx files (newer functions carry an "_xlfn." prefix) and back.
 std::string fileFormula(const std::string& formula, bool toFile);
@@ -16,4 +16,4 @@ std::string odfFormula(const std::string& formula);
 // COUNTIF-style criteria: ">100", "<>done", "North", "a*" (wildcards), "" (blank).
 bool matchesCriteria(const CellValue& v, const std::string& criteria);
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

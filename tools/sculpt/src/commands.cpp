@@ -6,13 +6,13 @@
 #include <filesystem>
 #include <fstream>
 
-#include "achclwss/mesh/document.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
-#include "achclwss/sculpt/sculpt.hpp"
+#include "wetwaresuite/mesh/document.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/sculpt/sculpt.hpp"
 
-namespace achclwss::sculpt {
+namespace wetwaresuite::sculpt {
 
 namespace fs = std::filesystem;
 using mesh::MeshDoc;
@@ -239,7 +239,7 @@ std::string addDoc(Session& s, std::shared_ptr<SculptDoc> doc) { return s.worksp
 // ---- OBJ with quads ----
 
 std::string writeQuadObj(const Mesh& m) {
-    std::string out = "# achclwss sculpt\n";
+    std::string out = "# wetwaresuite sculpt\n";
     char buf[128];
     for (const auto& p : m.positions) {
         std::snprintf(buf, sizeof buf, "v %.6g %.6g %.6g\n", p.x, p.y, p.z);
@@ -924,4 +924,4 @@ void registerCommands(Session& session) {
     registerOutputCommands(session);
 }
 
-}  // namespace achclwss::sculpt
+}  // namespace wetwaresuite::sculpt

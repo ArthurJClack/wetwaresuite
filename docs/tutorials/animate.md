@@ -13,7 +13,7 @@ There is no GUI yet; the GUI that comes later will call these same commands. Eac
 
 ## What you need
 
-Nothing for drawing, previews, PNG sequences, sprite sheets and GIFs: they are all rendered and encoded inside `achclwss` (the GIF encoder is built in). Video export (`animate.export_video`, mp4/webm/mov/mkv) hands the frames to [ffmpeg](https://ffmpeg.org), which must be on your `PATH` (`sudo apt install ffmpeg`, `brew install ffmpeg`, `winget install ffmpeg`). Without it, that one command says so and suggests the GIF or PNG export instead.
+Nothing for drawing, previews, PNG sequences, sprite sheets and GIFs: they are all rendered and encoded inside `wetwaresuite` (the GIF encoder is built in). Video export (`animate.export_video`, mp4/webm/mov/mkv) hands the frames to [ffmpeg](https://ffmpeg.org), which must be on your `PATH` (`sudo apt install ffmpeg`, `brew install ffmpeg`, `winget install ffmpeg`). Without it, that one command says so and suggests the GIF or PNG export instead.
 
 ## How it works
 
@@ -71,7 +71,7 @@ animate.render doc=$a frame=12 output=bounce-12.png
 `anchor_y=1` puts the ball's anchor at its bottom, so `y=200` means "resting on the floor" (the floor's top edge is at 200) and the squash keys flatten it onto the floor instead of around its middle.
 
 ```sh
-$ achclwss batch bounce.txt
+$ wetwaresuite batch bounce.txt
 created anim1 (320x240 24fps 24 frames (1s), 1 layers, 0 elements)
 ...
 keyed at frame 12: e2 ellipse "ball" x=160 anchor_y=1 width=50 height=50 color=#e4572eff keys: y@0,12
@@ -89,10 +89,10 @@ rendered frame 12 to bounce-12.png (320x240)
 
 `animate.values` is how you check motion without looking: halfway through the fall (frame 6) the ball is at y=104, well short of the linear halfway point (130), because ease-in starts slowly.
 
-**CLI.** An animation only lives inside one process, so from the shell you pipe lines into `achclwss batch`. Re-exporting the saved file as a video and as a full-size sheet for a game:
+**CLI.** An animation only lives inside one process, so from the shell you pipe lines into `wetwaresuite batch`. Re-exporting the saved file as a video and as a full-size sheet for a game:
 
 ```sh
-$ printf 'animate.open path=bounce.anim.json -> a\nanimate.export_video doc=$a output=bounce.mp4\nanimate.export_sheet doc=$a output=sprites/ball.png name=bounce columns=6\n' | achclwss batch
+$ printf 'animate.open path=bounce.anim.json -> a\nanimate.export_video doc=$a output=bounce.mp4\nanimate.export_sheet doc=$a output=sprites/ball.png name=bounce columns=6\n' | wetwaresuite batch
 opened anim1 (320x240 24fps 24 frames (1s), 1 layers, 2 elements, bounce.anim.json)
 ...
 encoded bounce.mp4 (24 frames at 24fps)
@@ -115,7 +115,7 @@ The atlas is the TexturePacker "hash" JSON that Phaser, PixiJS and most engine i
     ...
   },
   "animations": {"bounce": ["bounce_0000", "bounce_0001", ...]},
-  "meta": {"app": "achclwss animate", "image": "ball.png", "format": "RGBA8888",
+  "meta": {"app": "wetwaresuite animate", "image": "ball.png", "format": "RGBA8888",
            "size": {"w": 1920, "h": 960}, "scale": "1", "frameRate": 24.0,
            "frameTags": [{"name": "bounce", "from": 0, "to": 23, "direction": "forward"}]}
 }
@@ -154,7 +154,7 @@ animate.save doc=$a path=sting.anim.json
 ```
 
 ```sh
-$ achclwss batch logo.txt
+$ wetwaresuite batch logo.txt
 ...
 keyed at frame 20: e1 image "logo" source=logo.png (200x200) y=170 width=160 color=#ffffffff keys: x@0,20
 keyed at frame 40: e1 image "logo" source=logo.png (200x200) y=170 width=160 color=#ffffffff keys: rotation@0,40 x@0,20
@@ -175,7 +175,7 @@ Things to notice:
 - The spin is keyed 0 at frame 20 and 360 at frame 40, so it starts only after the slide. (The `rotation=360 frame=40` call made a frame-0 key of 0 automatically; the extra key at 20 holds it still until then.)
 - Colours interpolate channel by channel, alpha included, so `color=#ffffff00` to `#ffffffff` fades too.
 
-**CLI.** Render one more frame of a saved sting, or change its length: `printf 'animate.open path=sting.anim.json -> a\nanimate.render doc=$a frame=30 output=check.png\n' | achclwss batch`.
+**CLI.** Render one more frame of a saved sting, or change its length: `printf 'animate.open path=sting.anim.json -> a\nanimate.render doc=$a frame=30 output=check.png\n' | wetwaresuite batch`.
 
 **Claude.** *"Animate logo.png sliding in from the left with a bit of overshoot, then one spin, and fade in 'ACME TOOLS' underneath. 2 seconds at 30 fps, mp4."* Claude adds the image and text with `animate_element_add`, keys them with `animate_element_set` (`frame`, `bezier`) and `animate_key_set`, checks the overshoot with `animate_values`, looks with `animate_preview` and exports with `animate_export_video`.
 
@@ -215,7 +215,7 @@ How the rig fits together:
 - `order=front` restacks the body above the arm pieces so the shoulder joint is hidden.
 
 ```sh
-$ achclwss batch arm.txt
+$ wetwaresuite batch arm.txt
 ...
 keyed at frame 12: e3 bone "lower" parent=e2 x=80 y=0 length=70 color=#e0457bff keys: rotation@0,12
 ...
@@ -230,7 +230,7 @@ saved arm.anim.json
 
 To use pictures instead of shapes, add `kind=image source=forearm.png parent=lower` elements and set their anchors to where the joint is on the picture, e.g. `anchor_x=0.1 anchor_y=0.5`.
 
-**CLI.** Check the rig of the saved file at the extreme pose: `printf 'animate.open path=arm.anim.json -> a\nanimate.preview doc=$a frame=24 bones=true\n' | achclwss batch` (the preview is attached as a PNG; over the CLI you get its size; use `animate.render ... output=x.png bones=true` to get a file).
+**CLI.** Check the rig of the saved file at the extreme pose: `printf 'animate.open path=arm.anim.json -> a\nanimate.preview doc=$a frame=24 bones=true\n' | wetwaresuite batch` (the preview is attached as a PNG; over the CLI you get its size; use `animate.render ... output=x.png bones=true` to get a file).
 
 **Claude.** *"Build a simple cutout arm with an upper arm and forearm on bones and make it wave twice in two seconds. Show me the rig."* Claude adds two `bone` elements (the second with `parent`), parents shapes to them, keys the bones' `rotation`, and calls `animate_preview` with `bones: true` and `frames: [0, 12, 24, 36]`.
 
@@ -258,7 +258,7 @@ animate.save doc=$a path=hut.anim.json
 ```
 
 ```sh
-$ achclwss batch flip.txt
+$ wetwaresuite batch flip.txt
 created anim1 (128x128 12fps 6 frames (0.5s), 1 layers, 0 elements)
 added cel e1 on L1
 filled on e1 at frame 0 (new drawing); drawings at 0
@@ -279,7 +279,7 @@ saved hut.anim.json
 - `animate.cel` manages drawings: `action=blank` (an empty drawing, so nothing shows from there), `action=delete` (the previous drawing holds again), `action=copy from=0` (reuse a drawing, for cycles), `action=import path=drawing.png` (one image) or `path=folder/` (every image in name order, `hold=2` for twos).
 - A cel is also an ordinary element: move, scale, fade or tint (`color`) it with keys, or parent it to a bone.
 
-**CLI.** Bring in frames drawn elsewhere and make a GIF: `printf 'animate.new width=256 height=256 fps=12 frames=24 -> a\nanimate.element_add doc=$a kind=cel -> c\nanimate.cel doc=$a element=$c action=import frame=0 path=sketches hold=2\nanimate.export_gif doc=$a output=sketches.gif\n' | achclwss batch`.
+**CLI.** Bring in frames drawn elsewhere and make a GIF: `printf 'animate.new width=256 height=256 fps=12 frames=24 -> a\nanimate.element_add doc=$a kind=cel -> c\nanimate.cel doc=$a element=$c action=import frame=0 path=sketches hold=2\nanimate.export_gif doc=$a output=sketches.gif\n' | wetwaresuite batch`.
 
 **Claude.** *"Draw a little hut on a 128 px transparent canvas that stretches up and settles over three drawings on twos, show me frame 2 with onion skin, then export a sprite strip."* Claude calls `animate_element_add` with `kind: cel`, `animate_draw` per stroke and fill, `animate_preview` with `onion: 1` to compare drawings, then `animate_export_sheet` with `columns: 6`.
 
@@ -308,7 +308,7 @@ animate.save doc=$a path=turntable.anim.json
 ```
 
 ```sh
-$ achclwss batch turntable.txt
+$ wetwaresuite batch turntable.txt
 created anim1 (480x270 24fps 48 frames (2s), 1 layers, 0 elements)
 added mesh e1 on L1
 added mesh e2 on L1
@@ -330,7 +330,7 @@ wrote turntable.gif (48 frames, 240x135, 196 KB)
 - Use your own models with `source=part.stl` (or OBJ, PLY, OFF, glTF/GLB, 3MF), for example a part exported from `cad`.
 - A 3D layer is just a layer: 2D layers above or below it composite as usual, so titles, logos and backgrounds mix with 3D.
 
-**CLI.** Animate an existing model in a few lines: `printf 'animate.new layer=3d -> a\nanimate.element_add doc=$a kind=mesh source=bracket.stl -> m\nanimate.element_set doc=$a element=$m rotation=360 frame=47\nanimate.export_gif doc=$a output=bracket.gif scale=0.5\n' | achclwss batch` (no camera, so the view frames the model).
+**CLI.** Animate an existing model in a few lines: `printf 'animate.new layer=3d -> a\nanimate.element_add doc=$a kind=mesh source=bracket.stl -> m\nanimate.element_set doc=$a element=$m rotation=360 frame=47\nanimate.export_gif doc=$a output=bracket.gif scale=0.5\n' | wetwaresuite batch` (no camera, so the view frames the model).
 
 **Claude.** *"Make a 2-second turntable of bracket.stl on a dark background with the camera slowly pushing in, as a webm."* Claude creates a `3d` animation, adds the mesh and a camera with `animate_element_add`, keys `rotation` and the camera's position with `animate_element_set`, checks with `animate_preview` (`every: 12`) and calls `animate_export_video`.
 
@@ -352,7 +352,7 @@ animate.settings doc=$a frames=48
 ```
 
 ```sh
-$ achclwss batch --keep-going fix.txt
+$ wetwaresuite batch --keep-going fix.txt
 opened anim1 (320x240 24fps 24 frames (1s), 1 layers, 2 elements, bounce.anim.json)
 anim1: 320x240 24fps, frames 0..23 (1s), background #f4f1eaff
 L1 "Layer 1" (2d)
@@ -385,7 +385,7 @@ Every command is an MCP tool (`animate.key_set` is `animate_key_set`). The ones 
 - `animate_preview`: one frame as an image, or `frames: [0, 6, 12, 18]` / `every: 6` for a contact strip with frame numbers, which shows a whole motion in one picture. `onion` and `bones` work here too.
 - `preview: true` on any edit (`element_add`, `element_set`, `key_set`, `draw`, `cel`, `layer_set`, `settings`) attaches the frame that edit is about (its `frame`, else frame 0).
 - `animate_values` for exact numbers, `animate_info` and `animate_key_list` for structure.
-- The open animation is also an MCP resource (`achclwss://doc/anim1`) whose preview is frame 0.
+- The open animation is also an MCP resource (`wetwaresuite://doc/anim1`) whose preview is frame 0.
 
 A typical exchange: *"Make the ball in anim1 hang in the air for a moment at the top."* Claude reads `animate_key_list`, adds `animate_key_set` keys on `y` at frames 20 and 23 with the same value (a hold) and `ease: "ease-out"` on the first, then checks `animate_preview` with `frames: [18, 20, 22, 23]`.
 

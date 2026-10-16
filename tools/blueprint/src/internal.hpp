@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/blueprint/blueprint.hpp"
+#include "wetwaresuite/blueprint/blueprint.hpp"
 
-namespace achclwss::blueprint::detail {
+namespace wetwaresuite::blueprint::detail {
 
 std::vector<unsigned> utf8Decode(const std::string& text);  // invalid bytes are read as Latin-1
 std::string utf8Encode(unsigned codepoint);
@@ -22,4 +22,4 @@ std::vector<SheetItem> sheetItems(const Drawing& doc);
 // Compact number text for messages and files: up to `decimals`, no trailing zeros.
 std::string num(double v, int decimals = 4);
 
-}  // namespace achclwss::blueprint::detail
+}  // namespace wetwaresuite::blueprint::detail

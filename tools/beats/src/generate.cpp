@@ -8,9 +8,9 @@
 #include <cstdlib>
 #include <stdexcept>
 
-#include "achclwss/beats/song.hpp"
+#include "wetwaresuite/beats/song.hpp"
 
-namespace achclwss::beats {
+namespace wetwaresuite::beats {
 
 namespace {
 
@@ -427,4 +427,4 @@ std::string generate(Song& s, const GenerateOptions& o) {
     return std::string(g->name) + " in " + s.key + " at " + buf + " bpm, " + std::to_string(bars) + " bars: " + made + "; chords " + progText;
 }
 
-}  // namespace achclwss::beats
+}  // namespace wetwaresuite::beats

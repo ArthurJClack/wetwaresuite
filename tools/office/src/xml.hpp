@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-namespace achclwss::office::xml {
+namespace wetwaresuite::office::xml {
 
 struct Node {
     std::string name;  // qualified element name; empty for a text node
@@ -59,4 +59,4 @@ private:
     void finishTag();
 };
 
-}  // namespace achclwss::office::xml
+}  // namespace wetwaresuite::office::xml

@@ -11,11 +11,11 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::board {
+namespace wetwaresuite::board {
 
 using namespace detail;
 using json = nlohmann::json;
@@ -157,7 +157,7 @@ std::string toExcalidraw(const Board& b) {
             if (z && z != a) bound[z->id].push_back({{"type", "arrow"}, {"id", e.id}});
             if (e.route == "elbow") o["elbowed"] = true;
             if (e.route == "curved") o["roundness"] = {{"type", 2}};
-            o["customData"] = {{"achclwss", {{"route", e.route}}}};
+            o["customData"] = {{"wetwaresuite", {{"route", e.route}}}};
             els.push_back(o);
             if (!e.text.empty()) {
                 const Pt mid = pointAt(pts, length(pts) / 2);
@@ -228,7 +228,7 @@ std::string toExcalidraw(const Board& b) {
         o = exBase(b, e, s, type);
         if (e.kind == Kind::Rounded || e.kind == Kind::Stadium || e.kind == Kind::Cylinder) o["roundness"] = {{"type", 3}};
         if (e.kind == Kind::Note && !s.stroke) o["strokeColor"] = hex6(s.fill);
-        o["customData"] = {{"achclwss", {{"type", toString(e.kind)}, {"name", e.name}}}};
+        o["customData"] = {{"wetwaresuite", {{"type", toString(e.kind)}, {"name", e.name}}}};
         els.push_back(o);
         if (!e.text.empty()) {
             json t = exText(b, e, s, e.id + "-label", e.id, textArea(e, s));
@@ -244,7 +244,7 @@ std::string toExcalidraw(const Board& b) {
     json doc;
     doc["type"] = "excalidraw";
     doc["version"] = 2;
-    doc["source"] = "https://github.com/achclwss";
+    doc["source"] = "https://github.com/wetwaresuite";
     doc["elements"] = els;
     doc["appState"] = {{"viewBackgroundColor", hex6(boardBackground(b))}, {"gridSize", nullptr}, {"name", b.title}};
     doc["files"] = files;
@@ -346,9 +346,9 @@ Board fromExcalidraw(const std::string& text) {
         if (jnum(o, "roughness", 0) > 0) anyRough = true;
         if (type == "rectangle" || type == "ellipse" || type == "diamond") {
             e.kind = type == "ellipse" ? Kind::Ellipse : type == "diamond" ? Kind::Diamond : (o.contains("roundness") && !o["roundness"].is_null() ? Kind::Rounded : Kind::Rect);
-            if (o.contains("customData") && o["customData"].is_object() && o["customData"].contains("achclwss")) {
-                if (auto k = parseKind(jstr(o["customData"]["achclwss"], "type"))) e.kind = *k;
-                e.name = jstr(o["customData"]["achclwss"], "name");
+            if (o.contains("customData") && o["customData"].is_object() && o["customData"].contains("wetwaresuite")) {
+                if (auto k = parseKind(jstr(o["customData"]["wetwaresuite"], "type"))) e.kind = *k;
+                e.name = jstr(o["customData"]["wetwaresuite"], "name");
             }
             exStyle(e, o, true);
         } else if (type == "frame" || type == "magicframe") {
@@ -439,12 +439,12 @@ Board fromExcalidraw(const std::string& text) {
         c.from = bindingId("startBinding");
         c.to = bindingId("endBinding");
         std::string route = o.value("elbowed", false) ? "elbow" : (o.contains("roundness") && !o["roundness"].is_null() ? "curved" : "straight");
-        if (o.contains("customData") && o["customData"].is_object() && o["customData"].contains("achclwss")) {
-            const std::string r = jstr(o["customData"]["achclwss"], "route");
+        if (o.contains("customData") && o["customData"].is_object() && o["customData"].contains("wetwaresuite")) {
+            const std::string r = jstr(o["customData"]["wetwaresuite"], "route");
             if (!r.empty()) route = r;
         }
         c.route = route;
-        const bool ours = o.contains("customData") && o["customData"].is_object() && o["customData"].contains("achclwss");
+        const bool ours = o.contains("customData") && o["customData"].is_object() && o["customData"].contains("wetwaresuite");
         if (pts.size() > 2 && (route == "straight" || (route == "curved" && !ours))) c.waypoints.assign(pts.begin() + 1, pts.end() - 1);
         parentOf(c, o);
         idMap[exId] = b.add(c);
@@ -745,8 +745,8 @@ void anchorXY(const std::string& anchor, double& x, double& y) {
 std::string toDrawio(const Board& b) {
     std::ostringstream s;
     const std::string title = b.title.empty() ? "Board" : b.title;
-    s << "<mxfile host=\"achclwss\" agent=\"ACHCLWSS board\" version=\"24.7.0\" type=\"device\">\n";
-    s << "  <diagram id=\"achclwss-board\" name=\"" << xmlEsc(title) << "\">\n";
+    s << "<mxfile host=\"wetwaresuite\" agent=\"wetwaresuite board\" version=\"24.7.0\" type=\"device\">\n";
+    s << "  <diagram id=\"wetwaresuite-board\" name=\"" << xmlEsc(title) << "\">\n";
     s << "    <mxGraphModel dx=\"1000\" dy=\"800\" grid=\"1\" gridSize=\"10\" guides=\"1\" tooltips=\"1\" connect=\"1\" arrows=\"1\" fold=\"1\" "
          "page=\"0\" pageScale=\"1\" pageWidth=\"1169\" pageHeight=\"827\" background=\""
       << hex6(boardBackground(b)) << "\" math=\"0\" shadow=\"0\">\n      <root>\n        <mxCell id=\"0\" />\n";
@@ -1157,4 +1157,4 @@ Board fromDrawio(const std::string& text) {
     return b;
 }
 
-}  // namespace achclwss::board
+}  // namespace wetwaresuite::board

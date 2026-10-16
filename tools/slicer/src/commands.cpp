@@ -7,14 +7,14 @@
 #include <fstream>
 #include <memory>
 
-#include "achclwss/mesh/document.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/mesh/render.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/slicer/slicer.hpp"
+#include "wetwaresuite/mesh/document.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/mesh/render.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/slicer/slicer.hpp"
 
-namespace achclwss::slicer {
+namespace wetwaresuite::slicer {
 
 namespace fs = std::filesystem;
 
@@ -728,4 +728,4 @@ void registerCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::slicer
+}  // namespace wetwaresuite::slicer

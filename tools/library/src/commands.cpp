@@ -17,10 +17,10 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/library/library.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/library/library.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
-namespace achclwss::library {
+namespace wetwaresuite::library {
 
 using nlohmann::json;
 
@@ -1857,4 +1857,4 @@ void registerCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::library
+}  // namespace wetwaresuite::library

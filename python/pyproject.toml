@@ -3,9 +3,9 @@ requires = ["setuptools>=61"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "achclwss"
+name = "wetwaresuite"
 version = "0.6.0"
-description = "Drive the ACHCLWSS creative suite from Python: every command as a method, previews as bytes"
+description = "Drive the wetwaresuite creative suite from Python: every command as a method, previews as bytes"
 readme = "README.md"
 requires-python = ">=3.8"
 license = { text = "GPL-3.0-only" }
@@ -18,4 +18,4 @@ classifiers = [
 ]
 
 [tool.setuptools]
-packages = ["achclwss"]
+packages = ["wetwaresuite"]

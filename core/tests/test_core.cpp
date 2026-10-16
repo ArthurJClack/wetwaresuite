@@ -1,7 +1,7 @@
-#include "achclwss/core/command.hpp"
+#include "wetwaresuite/core/command.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 
 namespace {
 

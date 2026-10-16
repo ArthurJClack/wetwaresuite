@@ -4,7 +4,7 @@
 
 There is no GUI yet. Every task below is done with commands, and the GUI that comes later will call exactly these commands from its buttons and sliders. Each task is shown three ways:
 
-- **CLI**: a single `achclwss` command, for jobs that read files and write files.
+- **CLI**: a single `wetwaresuite` command, for jobs that read files and write files.
 - **Batch**: a script for multi-step edits (see [headless and batch](headless-and-batch.md)).
 - **Claude**: a prompt for Claude over MCP and the tools it will call (see [mcp.md](mcp.md)).
 
@@ -17,7 +17,7 @@ You have a folder of 6000-pixel camera JPEGs and want light copies for a website
 **CLI.** `photo.batch` does the whole folder in one command. Originals stay as they are; results go to the output folder, which is created if needed:
 
 ```sh
-$ achclwss photo.batch input_dir=photos output_dir=web max_size=1600 quality=82
+$ wetwaresuite photo.batch input_dir=photos output_dir=web max_size=1600 quality=82
 processed 3 of 3 images into web
 processed: 3
 failed: 0
@@ -26,7 +26,7 @@ failed: 0
 `max_size` fits each image within 1600 px on its longest side (portrait and landscape alike) and never enlarges smaller images. Add `recursive=true` to include subfolders (the folder structure is kept), `auto_contrast=true` to give flat photos some punch, or an effect:
 
 ```sh
-achclwss photo.batch input_dir=photos output_dir=thumbs max_size=300 format=png effect=grayscale
+wetwaresuite photo.batch input_dir=photos output_dir=thumbs max_size=300 format=png effect=grayscale
 ```
 
 Run it again and results that already exist are skipped; pass `overwrite=true` to redo them. A source image is never replaced, even if `output_dir` is the input folder.
@@ -67,7 +67,7 @@ photo.save doc=$pic path=dark-fixed.jpg quality=90
 ```
 
 ```sh
-achclwss batch fix-dark.txt
+wetwaresuite batch fix-dark.txt
 ```
 
 Other useful tools for this job:
@@ -80,7 +80,7 @@ Other useful tools for this job:
 **CLI.** For a whole folder of dark photos, `photo.batch` has auto contrast built in:
 
 ```sh
-achclwss photo.batch input_dir=party output_dir=party-fixed auto_contrast=true
+wetwaresuite photo.batch input_dir=party output_dir=party-fixed auto_contrast=true
 ```
 
 **Claude.**
@@ -144,7 +144,7 @@ photo.effect doc=$p kind=noise amount=8
 photo.save doc=$p path=portrait-old.jpg
 ```
 
-**CLI** (a whole folder): `achclwss photo.batch input_dir=in output_dir=out effect=sharpen effect_amount=1`
+**CLI** (a whole folder): `wetwaresuite photo.batch input_dir=in output_dir=out effect=sharpen effect_amount=1`
 
 **Claude.** "Give /home/me/portrait.jpg an old-photo look and save it as portrait-old.jpg" leads to `photo_open`, `photo_effect` (`sepia`, then `noise`) with previews, and `photo_save`.
 
@@ -177,7 +177,7 @@ The extension of `path` picks the format:
 | `.jpg` / `.jpeg` | no | `quality` 1..100 (default 90); transparency becomes white |
 | `.bmp`, `.tga`, `.ppm` | no | |
 
-Other formats (WebP, TIFF, AVIF, HEIC) go through [convert](convert.md): save a PNG, then `achclwss convert.file input=out.png output=out.webp`.
+Other formats (WebP, TIFF, AVIF, HEIC) go through [convert](convert.md): save a PNG, then `wetwaresuite convert.file input=out.png output=out.webp`.
 
 In a CLI run, `photo.preview` (and `preview=true`) only reports the size of the PNG it made; previews are meant for Claude. To look at a result yourself, save it.
 

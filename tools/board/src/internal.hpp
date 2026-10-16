@@ -7,10 +7,10 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/board/board.hpp"
-#include "achclwss/pdf/fonts.hpp"
+#include "wetwaresuite/board/board.hpp"
+#include "wetwaresuite/pdf/fonts.hpp"
 
-namespace achclwss::board::detail {
+namespace wetwaresuite::board::detail {
 
 constexpr double kLineHeight = 1.25;
 constexpr double kPi = 3.14159265358979323846;
@@ -61,4 +61,4 @@ std::vector<ParamSpec> renderParamSpecs();
 RenderOptions renderOptionsFrom(const Params& p);
 std::unique_ptr<Action> createBoardAction(Session& s, std::function<Result(std::shared_ptr<BoardDoc>&)> make);
 
-}  // namespace achclwss::board::detail
+}  // namespace wetwaresuite::board::detail

@@ -4,7 +4,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::layout {
+namespace wetwaresuite::layout {
 
 std::vector<Issue> preflight(const LayoutDoc& doc, double minDpi) {
     std::vector<Issue> out;
@@ -144,4 +144,4 @@ std::vector<Issue> preflight(const LayoutDoc& doc, double minDpi) {
     return out;
 }
 
-}  // namespace achclwss::layout
+}  // namespace wetwaresuite::layout

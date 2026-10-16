@@ -7,9 +7,9 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/cut/cut.hpp"
+#include "wetwaresuite/cut/cut.hpp"
 
-namespace achclwss::cut {
+namespace wetwaresuite::cut {
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
@@ -410,4 +410,4 @@ MediaInfo parseProbe(const std::string& text) {
     return m;
 }
 
-}  // namespace achclwss::cut
+}  // namespace wetwaresuite::cut

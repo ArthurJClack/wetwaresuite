@@ -4,13 +4,13 @@
 #include <cmath>
 #include <set>
 
-#include "achclwss/office/chart.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/office/chart.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "commands.hpp"
 #include "sheet_internal.hpp"
 #include "text.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 namespace {
 
@@ -1120,4 +1120,4 @@ void registerSheetCommands(Session& session) {
             }));
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

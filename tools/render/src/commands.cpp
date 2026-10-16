@@ -5,13 +5,13 @@
 #include <filesystem>
 #include <set>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/mesh/document.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/mesh/document.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::render {
+namespace wetwaresuite::render {
 
 namespace fs = std::filesystem;
 using detail::hexColor;
@@ -1223,4 +1223,4 @@ void registerCommands(Session& session) {
     registerModelCommand(session);
 }
 
-}  // namespace achclwss::render
+}  // namespace wetwaresuite::render

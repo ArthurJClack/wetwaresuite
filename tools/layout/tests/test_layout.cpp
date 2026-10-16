@@ -6,15 +6,15 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/layout/layout.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/pdfdoc/fonts.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/layout/layout.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/pdfdoc/fonts.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::layout;
+using namespace wetwaresuite;
+using namespace wetwaresuite::layout;
 
 namespace {
 
@@ -46,7 +46,7 @@ std::string slurp(const std::filesystem::path& p) {
 std::shared_ptr<LayoutDoc> docOf(Session& s, const std::string& id = "lay1") { return s.workspace().getAs<LayoutDoc>(id); }
 
 std::filesystem::path tempDir() {
-    auto dir = std::filesystem::temp_directory_path() / "achclwss_layout_test";
+    auto dir = std::filesystem::temp_directory_path() / "wetwaresuite_layout_test";
     std::filesystem::remove_all(dir);
     std::filesystem::create_directories(dir);
     return dir;

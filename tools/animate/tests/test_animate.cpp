@@ -5,15 +5,15 @@
 #include <sstream>
 
 #include "../../../core/tests/check.hpp"
-#include "achclwss/animate/animate.hpp"
-#include "achclwss/core/cli.hpp"
-#include "achclwss/core/process.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/animate/animate.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "stb_image.h"
 
-using namespace achclwss;
-using namespace achclwss::animate;
+using namespace wetwaresuite;
+using namespace wetwaresuite::animate;
 namespace fs = std::filesystem;
 
 namespace {
@@ -37,7 +37,7 @@ double num(const Result& r, const std::string& key) {
 }
 
 fs::path scratch(const std::string& name) {
-    fs::path d = fs::temp_directory_path() / ("achclwss-test-animate-" + name);
+    fs::path d = fs::temp_directory_path() / ("wetwaresuite-test-animate-" + name);
     fs::remove_all(d);
     fs::create_directories(d);
     return d;

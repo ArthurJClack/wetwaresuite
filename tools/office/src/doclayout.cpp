@@ -4,12 +4,12 @@
 #include <algorithm>
 #include <cmath>
 
-#include "achclwss/office/doc.hpp"
+#include "wetwaresuite/office/doc.hpp"
 #include "text.hpp"
 
 #include "textlayout.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 namespace textlayout {
 
@@ -467,4 +467,4 @@ std::vector<pdf::Page> layoutDocument(const TextDocument& doc) {
     return L.pages;
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

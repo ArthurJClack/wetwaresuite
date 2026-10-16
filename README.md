@@ -1,4 +1,6 @@
-# ACHCLWSS
+# wetwaresuite
+
+_the all-in-one lightweight software suite_
 
 a lightweight, high-compatibility software suite: cad, blueprints, photo, paint, audio, video, game assets, office and a universal file toolkit, all on one shared core, installed tool by tool through the hub. every tool can be driven by claude over MCP.
 
@@ -27,7 +29,7 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 | `tools/cut/` | video editing: timeline of tracks and clips, trims, speed, picture-in-picture, transitions, titles, colour, music; one-shot trim/join/GIF/subtitles (via ffmpeg) |
 | `tools/capture/` | screenshots of a screen, monitor or region, screen recordings with sound, webcam snapshots (via ffmpeg, grim on Wayland) |
 | `tools/library/` | asset browser for every format: index folders, search by type, size, tags and ratings, duplicates, similar images, thumbnails and contact sheets, collections |
-| `tools/automate/` | scripting across tools: batch scripts with variables, pipelines that loop over files, folder watching, and a Python client (`python/achclwss`) |
+| `tools/automate/` | scripting across tools: batch scripts with variables, pipelines that loop over files, folder watching, and a Python client (`python/wetwaresuite`) |
 | `tools/office/` | office suite: spreadsheets with formulas and charts (XLSX/CSV), documents (DOCX/Markdown/PDF), slide decks (PPTX/PDF), PDF merge/split/rotate/text |
 | `tools/convert/` | change a file's type: images and 3D meshes built in, audio/video via ffmpeg, docs via LibreOffice/pandoc |
 | `tools/levels/` | game levels and tilemaps: tilesets, tile and object layers, painting, auto-tiling, scatter, cave/dungeon/noise generators, collision, Tiled TMX/TMJ, LDtk, JSON, CSV, PNG |
@@ -41,7 +43,8 @@ a lightweight, high-compatibility software suite: cad, blueprints, photo, paint,
 | `tools/notes/` | markdown notes and knowledge base: Obsidian-compatible vaults, wikilinks with rename-safe rewriting, backlinks, tags, frontmatter, templates, daily notes, tasks with due dates, ranked full-text search, link graph (JSON/DOT/PNG/SVG), HTML/PDF render and static site export |
 | `tools/maps/` | offline maps and lightweight GIS: GeoJSON/KML/GPX/CSV/Shapefile in and out, GeoTIFF and world-file rasters, WGS84/Web Mercator/UTM, geodesic measuring, buffer/simplify/clip/filter/joins, heatmaps, GPX track stats, styled PNG/SVG/PDF maps over built-in Natural Earth countries or OSM tiles |
 | `tools/type/` | font design: glyphs from shapes, SVG path data, SVG files or traced handwriting; components, transforms, oblique, embolden, overlap removal; auto-spacing and kerning; TTF/OTF/WOFF/UFO in, TTF/WOFF/SVG font out; proofs as PNG and PDF |
-| `apps/achclwss/` | `achclwss`: one headless binary that runs every command, batch scripts, or an MCP server |
+| `apps/wetwaresuite/` | `wetwaresuite`: one headless binary that runs every command, batch scripts, or an MCP server |
+| `share/` | `wetwaresuite-share`: share a folder with any browser (link, QR, code), live-sync code between machines, send files; LAN or internet |
 | `hub/` | `hub`: lists tools, prints the MCP config for Claude |
 
 everything runs headless today. the GUI is a thin layer that calls the same commands and lands after the command set for each phase.
@@ -55,29 +58,38 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ctest --test-dir build -C Release
 
-cd hub && cargo build --release
+(cd hub && cargo build --release)
+(cd share && cargo build --release)
 ```
 
 ## try it
 
 ```sh
-achclwss=./build/apps/achclwss/achclwss
-$achclwss list
-$achclwss help photo.resize
-$achclwss convert.file input=song.wav output=song.mp3
-$achclwss photo.batch input_dir=holiday output_dir=web max_size=1600 format=jpg
+wetwaresuite=./build/apps/wetwaresuite/wetwaresuite
+$wetwaresuite list
+$wetwaresuite help photo.resize
+$wetwaresuite convert.file input=song.wav output=song.mp3
+$wetwaresuite photo.batch input_dir=holiday output_dir=web max_size=1600 format=jpg
 echo 'paint.new width=200 height=120 -> art
 paint.stroke doc=$art points=10,60,190,60 brush=ink size=8
-photo.save doc=$art path=line.png' | $achclwss batch
+photo.save doc=$art path=line.png' | $wetwaresuite batch
 ```
 
 hook it up to Claude:
 
 ```sh
-claude mcp add achclwss -- "$PWD/build/apps/achclwss/achclwss" mcp
+claude mcp add wetwaresuite -- "$PWD/build/apps/wetwaresuite/wetwaresuite" mcp
 ```
 
-or run `hub mcp-config --bin-dir "$PWD/build/apps/achclwss"` and paste the output into Claude Desktop's config.
+share and sync folders (see [docs/tutorials/share.md](docs/tutorials/share.md)):
+
+```sh
+cd share && cargo build --release
+./target/release/wetwaresuite-share serve ~/some/folder      # prints a link, QR code and pairing code
+claude mcp add wetwaresuite-share -- "$PWD/target/release/wetwaresuite-share" mcp
+```
+
+or run `hub mcp-config --bin-dir "$PWD/build/apps/wetwaresuite"` and paste the output into Claude Desktop's config.
 
 ## tutorials
 

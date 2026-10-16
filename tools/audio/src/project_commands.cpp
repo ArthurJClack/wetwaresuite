@@ -4,7 +4,7 @@
 
 #include "common.hpp"
 
-namespace achclwss::audio::tool {
+namespace wetwaresuite::audio::tool {
 
 namespace {
 
@@ -404,4 +404,4 @@ void registerProjectCommands(Session& session) {
                 false));
 }
 
-}  // namespace achclwss::audio::tool
+}  // namespace wetwaresuite::audio::tool

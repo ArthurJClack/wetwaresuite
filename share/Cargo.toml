@@ -1,0 +1,22 @@
+[package]
+name = "wetwaresuite-share"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.87"
+license = "GPL-3.0-or-later"
+description = "Share and live-sync folders over LAN or internet, for the wetwaresuite suite"
+
+[lib]
+name = "share"
+path = "src/lib.rs"
+
+[[bin]]
+name = "wetwaresuite-share"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

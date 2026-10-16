@@ -29,7 +29,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace achclwss::audio::detail {
+namespace wetwaresuite::audio::detail {
 
 bool decodeVorbis(const unsigned char* data, std::size_t size, Decoded& out) {
     int error = 0;
@@ -52,4 +52,4 @@ bool decodeVorbis(const unsigned char* data, std::size_t size, Decoded& out) {
     return out.rate > 0;
 }
 
-}  // namespace achclwss::audio::detail
+}  // namespace wetwaresuite::audio::detail

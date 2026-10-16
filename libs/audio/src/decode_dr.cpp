@@ -26,7 +26,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace achclwss::audio::detail {
+namespace wetwaresuite::audio::detail {
 
 bool decodeMp3(const unsigned char* data, std::size_t size, Decoded& out) {
     drmp3_config config{};
@@ -52,4 +52,4 @@ bool decodeFlac(const unsigned char* data, std::size_t size, Decoded& out) {
     return channels > 0 && rate > 0;
 }
 
-}  // namespace achclwss::audio::detail
+}  // namespace wetwaresuite::audio::detail

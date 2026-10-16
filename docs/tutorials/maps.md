@@ -11,9 +11,9 @@ It reads and writes GeoJSON, KML, GPX, CSV with lat/lon columns, Shapefile and W
 
 Each task below is shown three ways:
 
-- **CLI**: single `achclwss` commands. A map only lives inside one process, so one-shot commands are for looking at files (`maps.open path=hike.gpx`) and for measurements that need no map (`maps.measure`, `maps.transform`). For short edits, pipe a few lines into `achclwss batch`.
+- **CLI**: single `wetwaresuite` commands. A map only lives inside one process, so one-shot commands are for looking at files (`maps.open path=hike.gpx`) and for measurements that need no map (`maps.measure`, `maps.transform`). For short edits, pipe a few lines into `wetwaresuite batch`.
 - **Batch**: a script for multi-step work, using `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP, and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools maps` serves the 35 maps tools.
+- **Claude**: a prompt for Claude over MCP, and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools maps` serves the 35 maps tools.
 
 Every example was run against the real binary in a folder that held three small files: `cafes.csv` (15 Paris cafés with `name,lat,lon,rating,seats`), `trips.csv` (made-up days spent per country, keyed by ISO code) and `hike.gpx` (a 12 km loop near Chamonix with elevation and times). Outputs are copied from those runs. Repeated fields are cut where marked `...`.
 
@@ -84,7 +84,7 @@ maps.save doc=$m path=trips.achmap
 ```
 
 ```text
-$ achclwss batch trips.txt
+$ wetwaresuite batch trips.txt
 created map1: 0 layers, 0 features, "Where I've been"
 ...
 added 177 countries as countries
@@ -115,13 +115,13 @@ The PNG uses Web Mercator, the projection of web maps. The PDF uses `crs=wgs84` 
 **CLI.** Look at the saved project, render it again, or export only the visited countries:
 
 ```sh
-$ achclwss maps.open path=trips.achmap
+$ wetwaresuite maps.open path=trips.achmap
 opened trips.achmap as map1: 1 layer, 177 features, "Where I've been", trips.achmap
 0: countries (177 polygons, graduated by days)
    fields: continent, iso_a3, name, pop_est, days, last_visit
 ...
-$ printf 'maps.open path=trips.achmap -> m\nmaps.render doc=$m path=trips-small.jpg width=600 legend=false\n' | achclwss batch
-$ printf 'maps.new -> m\nmaps.add_countries doc=$m\nmaps.join doc=$m csv=trips.csv key=iso_a3 csv_key=code\nmaps.export doc=$m path=out/visited.geojson where="days > 0" precision=3\n' | achclwss batch
+$ printf 'maps.open path=trips.achmap -> m\nmaps.render doc=$m path=trips-small.jpg width=600 legend=false\n' | wetwaresuite batch
+$ printf 'maps.new -> m\nmaps.add_countries doc=$m\nmaps.join doc=$m csv=trips.csv key=iso_a3 csv_key=code\nmaps.export doc=$m path=out/visited.geojson where="days > 0" precision=3\n' | wetwaresuite batch
 ...
 wrote 12 features of countries to out/visited.geojson
 ```
@@ -135,29 +135,29 @@ These need no map, so they are one-shot commands.
 **CLI.** The distance and bearings from Paris to New York, the length of a route through Brussels to Amsterdam, the area of a box around Paris, and the Eiffel Tower in UTM and Web Mercator:
 
 ```sh
-$ achclwss maps.measure from=48.8566,2.3522 to=40.7128,-74.0060
+$ wetwaresuite maps.measure from=48.8566,2.3522 to=40.7128,-74.0060
 5852.9 km, initial bearing 291.83°, final bearing 233.72°
 ...
-$ achclwss maps.measure points=48.8566,2.3522,50.8503,4.3517,52.3676,4.9041
+$ wetwaresuite maps.measure points=48.8566,2.3522,50.8503,4.3517,52.3676,4.9041
 length 437.4 km over 2 segments
 ...
-$ achclwss maps.measure points=48.90,2.25,48.90,2.42,48.81,2.42,48.81,2.25 polygon=true
+$ wetwaresuite maps.measure points=48.90,2.25,48.90,2.42,48.81,2.42,48.81,2.25 polygon=true
 area 124.9 km², perimeter 44.968 km
 ...
-$ achclwss maps.transform points=2.2945,48.8584
+$ wetwaresuite maps.transform points=2.2945,48.8584
 WGS84 to UTM 31N (EPSG:32631):
 2.2945,48.8584 -> 448252.001,5411954.91
 ...
-$ achclwss maps.transform points=448252,5411935 from=utm31n to=wgs84
+$ wetwaresuite maps.transform points=448252,5411935 from=utm31n to=wgs84
 UTM 31N to WGS84 (EPSG:4326):
 448252,5411935 -> 2.2945025,48.85822091
 ...
-$ achclwss maps.transform points=2.2945,48.8584,-0.1246,51.5007 to=webmercator
+$ wetwaresuite maps.transform points=2.2945,48.8584,-0.1246,51.5007 to=webmercator
 WGS84 to Web Mercator (EPSG:3857):
 2.2945,48.8584 -> 255422.572,6250868.901
 -0.1246,51.5007 -> -13870.409,6710344.26
 ...
-$ achclwss maps.transform points=2.2945,48.8584 to=EPSG:32630
+$ wetwaresuite maps.transform points=2.2945,48.8584 to=EPSG:32630
 WGS84 to UTM 30N (EPSG:32630):
 2.2945,48.8584 -> 888275.411,5425243.062
 ```
@@ -201,7 +201,7 @@ maps.raster_save doc=$m layer="cafes heatmap" path=out/heat.png
 ```
 
 ```text
-$ achclwss batch cafes.txt
+$ wetwaresuite batch cafes.txt
 ...
 imported 15 features into cafes (15 points)
 fields: name, rating, seats
@@ -239,12 +239,12 @@ The shapefile export reprojects to UTM 31N and writes a matching `.prj`. Outer r
 **CLI.** Open the CSV and list the best cafés:
 
 ```sh
-$ achclwss maps.open path=cafes.csv
+$ wetwaresuite maps.open path=cafes.csv
 opened cafes.csv as map1: 1 layer, 15 features
 0: cafes (15 points)
    fields: name, rating, seats
 ...
-$ printf 'maps.open path=cafes.csv -> m\nmaps.features doc=$m where="rating >= 4.6" fields=name,rating\n' | achclwss batch
+$ printf 'maps.open path=cafes.csv -> m\nmaps.features doc=$m where="rating >= 4.6" fields=name,rating\n' | wetwaresuite batch
 ```
 
 **Claude.** *"Here's cafes.csv. Show me the cafés with a heatmap weighted by seats, and shade everything within a 5 minute walk."* Claude calls `maps_open`, `maps_heatmap` (`weight=seats`), `maps_buffer` (`distance=400 dissolve=true`) and `maps_preview`. *"Which café is closest to the Louvre?"* `maps_nearest lat=48.8606 lon=2.3376`.
@@ -254,7 +254,7 @@ $ printf 'maps.open path=cafes.csv -> m\nmaps.features doc=$m where="rating >= 4
 **CLI.** A GPX file opens as one layer per kind of data: tracks, routes and waypoints.
 
 ```sh
-$ achclwss maps.open path=hike.gpx
+$ wetwaresuite maps.open path=hike.gpx
 opened hike.gpx as map1: 2 layers, 3 features
 0: hike tracks (1 line)
    fields: name
@@ -262,7 +262,7 @@ opened hike.gpx as map1: 2 layers, 3 features
    fields: name, ele
 map1
 ...
-$ printf 'maps.open path=hike.gpx -> m\nmaps.track_stats doc=$m hysteresis=15\n' | achclwss batch
+$ printf 'maps.open path=hike.gpx -> m\nmaps.track_stats doc=$m hysteresis=15\n' | wetwaresuite batch
 ...
 hike tracks: 12.378 km over 241 points
 elevation: +610.7 m / -601.1 m, 1029.9 to 1660.6 m
@@ -345,7 +345,7 @@ A PNG/JPG is placed by its world file (`.pgw`, `.jgw`, `.pngw`, `.jpgw`, `.wld`)
 **CLI.**
 
 ```sh
-$ achclwss maps.open path=out/heat.tif
+$ wetwaresuite maps.open path=out/heat.tif
 opened out/heat.tif as map1: 1 layer, 0 features, 1 raster
 0: heat (400x344 value grid (0 to 296.078), Web Mercator)
 ```
@@ -357,16 +357,16 @@ opened out/heat.tif as map1: 1 layer, 0 features, 1 raster
 **CLI.** `maps.open` reads any supported file. Conversions are two lines piped into batch:
 
 ```sh
-$ achclwss maps.open path=out/walk.shp
+$ wetwaresuite maps.open path=out/walk.shp
 opened out/walk.shp as map1: 1 layer, 1 feature
 0: walk (1 polygon)
    fields: count
 ...
 bbox: 2.313517,48.839704,2.377084,48.874898
-$ printf 'maps.open path=out/walk.shp -> m\nmaps.export doc=$m path=out/walk.geojson\n' | achclwss batch
+$ printf 'maps.open path=out/walk.shp -> m\nmaps.export doc=$m path=out/walk.geojson\n' | wetwaresuite batch
 ...
 wrote 1 feature of walk to out/walk.geojson
-$ printf 'maps.open path=hike.gpx -> m\nmaps.export doc=$m layer="hike tracks" path=out/hike.kml\nmaps.export doc=$m layer="hike waypoints" path=out/waypoints.csv\n' | achclwss batch
+$ printf 'maps.open path=hike.gpx -> m\nmaps.export doc=$m layer="hike tracks" path=out/hike.kml\nmaps.export doc=$m layer="hike waypoints" path=out/waypoints.csv\n' | wetwaresuite batch
 ...
 wrote 1 feature of hike tracks to out/hike.kml
 ...
@@ -384,7 +384,7 @@ Chamonix;334180;5085090;1035
 ```
 
 ```sh
-$ printf 'maps.new -> m\nmaps.import doc=$m path=stations.csv crs=utm32n lat=northing lon=easting\nmaps.features doc=$m\nmaps.export doc=$m path=out/stations.geojson precision=5\n' | achclwss batch
+$ printf 'maps.new -> m\nmaps.import doc=$m path=stations.csv crs=utm32n lat=northing lon=easting\nmaps.features doc=$m\nmaps.export doc=$m path=out/stations.geojson precision=5\n' | wetwaresuite batch
 ...
 imported 3 features into stations (3 points)
 ...
@@ -399,7 +399,7 @@ wrote 3 features of stations to out/stations.geojson
 
 ```sh
 for f in *.gpx; do
-  printf 'maps.open path=%s -> m\nmaps.export doc=$m layer=0 path=%s.geojson\n' "$f" "${f%.gpx}" | achclwss batch
+  printf 'maps.open path=%s -> m\nmaps.export doc=$m layer=0 path=%s.geojson\n' "$f" "${f%.gpx}" | wetwaresuite batch
 done
 ```
 
@@ -483,7 +483,7 @@ The areas are of the 1:110m outlines, so they are only roughly right. France's p
 **CLI.** Which country is a point in:
 
 ```sh
-$ printf 'maps.new -> m\nmaps.add_countries doc=$m\nmaps.contains doc=$m lat=-33.87 lon=151.21\n' | achclwss batch
+$ printf 'maps.new -> m\nmaps.add_countries doc=$m\nmaps.contains doc=$m lat=-33.87 lon=151.21\n' | wetwaresuite batch
 ```
 
 **Claude.** *"Which European countries have more than 200 people per km²? Map population density across Europe."* Claude calls `maps_add_countries` (`where="continent == 'Europe'"`), `maps_calc` twice, and `maps_features` with `where="density > 200"`. It then styles with `maps_style mode=graduated field=density` and checks the result with `maps_preview crs=auto`.
@@ -502,8 +502,8 @@ maps.render doc=$m path=paris-offline.png width=800 basemap=osm tile_cache=tiles
 
 How it works:
 
-- Tiles are downloaded with `curl`, which must be on your PATH. They are fetched one at a time, with a `User-Agent` naming ACHCLWSS, as the [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/) asks.
-- Tiles are cached under the user cache folder (`~/.cache/achclwss/tiles`, `~/Library/Caches/achclwss/tiles` or `%LOCALAPPDATA%\achclwss\cache\tiles`), or under `tile_cache=`. They are reused for 30 days. `offline=true` never downloads and uses whatever is cached.
+- Tiles are downloaded with `curl`, which must be on your PATH. They are fetched one at a time, with a `User-Agent` naming wetwaresuite, as the [OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/) asks.
+- Tiles are cached under the user cache folder (`~/.cache/wetwaresuite/tiles`, `~/Library/Caches/wetwaresuite/tiles` or `%LOCALAPPDATA%\wetwaresuite\cache\tiles`), or under `tile_cache=`. They are reused for 30 days. `offline=true` never downloads and uses whatever is cached.
 - The zoom level follows the map scale and drops until the view needs at most `max_tiles=` tiles (64 by default). This keeps one render from fetching hundreds of tiles.
 - After the first failed download, the render stops trying, draws the missing area blank and warns you. The render still succeeds.
 - "© OpenStreetMap contributors" is printed on the map, as the licence requires.
@@ -527,7 +527,7 @@ OSM tiles are Web Mercator pictures, so `basemap=osm` always renders in Web Merc
 **CLI.**
 
 ```sh
-$ printf 'maps.open path=cafes.csv -> m\nmaps.render doc=$m path=paris-osm.png basemap=osm\n' | achclwss batch
+$ printf 'maps.open path=cafes.csv -> m\nmaps.render doc=$m path=paris-osm.png basemap=osm\n' | wetwaresuite batch
 ```
 
 **Claude.** *"Show the cafés on a street map."* Claude calls `maps_preview` with `basemap=osm`. Only ask for this when you are online and happy to fetch tiles: by default everything Claude does with maps stays offline.
@@ -572,7 +572,7 @@ Colours are `#rrggbb`, `#rgb`, `#rrggbbaa` or CSS names such as `red`. Layer ord
 
 ## Command reference
 
-`achclwss help maps.<command>` prints every parameter. In brief:
+`wetwaresuite help maps.<command>` prints every parameter. In brief:
 
 | command | what it does |
 | --- | --- |
@@ -595,7 +595,7 @@ Colours are `#rrggbb`, `#rgb`, `#rrggbbaa` or CSS names such as `red`. Layer ord
 
 ## MCP
 
-`achclwss mcp --tools maps` serves the 35 maps tools (`maps_new`, `maps_import`, ..., `maps_render`). Every edit takes `preview=true`, which attaches a PNG of the whole map to the result. `maps_preview` renders any view without writing a file, and `maps_profile` without `path=` returns the elevation chart as an image. Results carry the numbers as structured fields, so Claude can do arithmetic on distances or areas without parsing text.
+`wetwaresuite mcp --tools maps` serves the 35 maps tools (`maps_new`, `maps_import`, ..., `maps_render`). Every edit takes `preview=true`, which attaches a PNG of the whole map to the result. `maps_preview` renders any view without writing a file, and `maps_profile` without `path=` returns the elevation chart as an image. Results carry the numbers as structured fields, so Claude can do arithmetic on distances or areas without parsing text.
 
 Example prompts:
 

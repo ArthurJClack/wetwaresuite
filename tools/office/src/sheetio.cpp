@@ -4,13 +4,13 @@
 #include <set>
 #include <stdexcept>
 
-#include "achclwss/office/sheet.hpp"
-#include "achclwss/raster/ora.hpp"
+#include "wetwaresuite/office/sheet.hpp"
+#include "wetwaresuite/raster/ora.hpp"
 #include "sheet_internal.hpp"
 #include "text.hpp"
 #include "xml.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 // ---- CSV ------------------------------------------------------------------------
 
@@ -773,4 +773,4 @@ Workbook readOds(const std::string& bytes) {
     return wb;
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

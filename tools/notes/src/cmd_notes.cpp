@@ -5,7 +5,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::notes::detail {
+namespace wetwaresuite::notes::detail {
 
 namespace {
 
@@ -246,4 +246,4 @@ void registerNoteCommands(CommandRegistry& reg, const StatePtr& st) {
     registerMove(reg, st);
 }
 
-}  // namespace achclwss::notes::detail
+}  // namespace wetwaresuite::notes::detail

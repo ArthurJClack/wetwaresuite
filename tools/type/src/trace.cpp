@@ -5,11 +5,11 @@
 #include <cmath>
 #include <unordered_map>
 
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 #include "internal.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 std::vector<Polygon> traceOutlines(const Image& img, const TraceOptions& o) {
     const int W = img.width(), H = img.height();
@@ -211,4 +211,4 @@ Image gridTemplate(const Font& font, const std::vector<std::uint32_t>& chars, in
     return img;
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

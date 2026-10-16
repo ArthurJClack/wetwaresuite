@@ -3,13 +3,13 @@
 #include <algorithm>
 #include <cmath>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/pdf/reader.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/pdf/reader.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "commands.hpp"
 #include "text.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 namespace {
 
@@ -312,7 +312,7 @@ void registerPdfCommands(Session& session) {
                 if (page < 1 || page > f.pageCount()) return Result::failure("page must be 1.." + std::to_string(f.pageCount()));
                 const double dpi = std::clamp(numberParam(p, "dpi", 100), 10.0, 1200.0);
                 std::error_code ec;
-                fs::path dir = fs::temp_directory_path(ec) / ("achclwss-office-render-" + std::to_string(std::hash<std::string>{}(path + std::to_string(page))));
+                fs::path dir = fs::temp_directory_path(ec) / ("wetwaresuite-office-render-" + std::to_string(std::hash<std::string>{}(path + std::to_string(page))));
                 fs::create_directories(dir, ec);
                 fs::path prefix = dir / "page";
                 auto r = runProgram({exe->string(), "-png", "-r", std::to_string(static_cast<int>(dpi)), "-f", std::to_string(page), "-l", std::to_string(page),
@@ -338,4 +338,4 @@ void registerPdfCommands(Session& session) {
             }));
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

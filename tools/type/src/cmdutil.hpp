@@ -8,7 +8,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::typeface::cmd {
+namespace wetwaresuite::typeface::cmd {
 
 using Edit = std::function<Result(FontDoc&, const Params&)>;
 
@@ -53,4 +53,4 @@ void registerSpacingCommands(Session& session);
 void registerOutputCommands(Session& session);
 void registerTraceCommands(Session& session);
 
-}  // namespace achclwss::typeface::cmd
+}  // namespace wetwaresuite::typeface::cmd

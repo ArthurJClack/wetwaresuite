@@ -6,13 +6,13 @@
 #include <sstream>
 #include <thread>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/flash/flash.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/image.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/flash/flash.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/image.hpp"
 #include "internal.hpp"
 
-namespace achclwss::flash {
+namespace wetwaresuite::flash {
 
 namespace {
 
@@ -496,4 +496,4 @@ void registerCommands(Session& session) {
     registerMonitor(session);
 }
 
-}  // namespace achclwss::flash
+}  // namespace wetwaresuite::flash

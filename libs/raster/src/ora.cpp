@@ -1,4 +1,4 @@
-#include "achclwss/raster/ora.hpp"
+#include "wetwaresuite/raster/ora.hpp"
 
 #include <array>
 #include <cctype>
@@ -8,10 +8,10 @@
 #include <map>
 #include <stdexcept>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "stb_image.h"
 
-namespace achclwss::raster {
+namespace wetwaresuite::raster {
 
 namespace {
 
@@ -278,4 +278,4 @@ LayeredImage loadOra(const std::filesystem::path& path) {
     return out;
 }
 
-}  // namespace achclwss::raster
+}  // namespace wetwaresuite::raster

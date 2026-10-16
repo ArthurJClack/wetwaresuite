@@ -5,14 +5,14 @@
 #include <memory>
 #include <string>
 
-#include "achclwss/layout/layout.hpp"
-#include "achclwss/pdfdoc/fonts.hpp"
+#include "wetwaresuite/layout/layout.hpp"
+#include "wetwaresuite/pdfdoc/fonts.hpp"
 
-namespace achclwss::vector {
+namespace wetwaresuite::vector {
 class VectorDoc;
 }
 
-namespace achclwss::layout {
+namespace wetwaresuite::layout {
 
 constexpr double kPi = 3.14159265358979323846;
 constexpr double kPtToMm = 25.4 / 72.0;
@@ -72,4 +72,4 @@ Box frameBounds(const Frame& f);
 std::string num(double v, int decimals = 2);
 std::string lower(std::string s);
 
-}  // namespace achclwss::layout
+}  // namespace wetwaresuite::layout

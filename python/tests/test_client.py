@@ -1,5 +1,5 @@
 """Tests for the Python client. The ones that need the suite run against the
-real binary ($ACHCLWSS_BIN, or achclwss on PATH / in ../build) and are
+real binary ($WETWARESUITE_BIN, or wetwaresuite on PATH / in ../build) and are
 skipped when it can't be found."""
 
 import os
@@ -7,21 +7,21 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import achclwss
-from achclwss.client import Result, _decode, _to_arg
+import wetwaresuite
+from wetwaresuite.client import Result, _decode, _to_arg
 
 PNG = b"\x89PNG\r\n\x1a\n"
 
 
 def binary():
     try:
-        return achclwss.find_binary()
-    except achclwss.AchclwssError:
+        return wetwaresuite.find_binary()
+    except wetwaresuite.WetwaresuiteError:
         return None
 
 
 BIN = binary()
-needs_binary = unittest.skipUnless(BIN and os.path.isfile(BIN), "achclwss binary not found (set ACHCLWSS_BIN)")
+needs_binary = unittest.skipUnless(BIN and os.path.isfile(BIN), "wetwaresuite binary not found (set WETWARESUITE_BIN)")
 
 
 class Offline(unittest.TestCase):
@@ -57,7 +57,7 @@ class Offline(unittest.TestCase):
 class WithSuite(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.suite = achclwss.Suite(BIN, timeout=60)
+        cls.suite = wetwaresuite.Suite(BIN, timeout=60)
         cls.tmp = tempfile.TemporaryDirectory()
         cls.dir = Path(cls.tmp.name)
 
@@ -103,10 +103,10 @@ class WithSuite(unittest.TestCase):
 
     def test_errors(self):
         s = self.suite
-        with self.assertRaises(achclwss.CommandError) as ctx:
+        with self.assertRaises(wetwaresuite.CommandError) as ctx:
             s.photo.open(path=str(self.dir / "missing.png"))
         self.assertFalse(ctx.exception.result.ok)
-        quiet = achclwss.Suite(BIN, tools=["photo"], raise_errors=False)
+        quiet = wetwaresuite.Suite(BIN, tools=["photo"], raise_errors=False)
         try:
             r = quiet.photo.open(path=str(self.dir / "missing.png"))
             self.assertFalse(r.ok)
@@ -140,19 +140,19 @@ class WithSuite(unittest.TestCase):
         self.assertTrue((self.dir / "v.png").is_file())
 
     def test_context_manager(self):
-        with achclwss.Suite(BIN, tools=["toolkit"]) as s:
+        with wetwaresuite.Suite(BIN, tools=["toolkit"]) as s:
             self.assertIn("toolkit.inspect", s.commands())
             proc = s._proc
         self.assertIsNotNone(proc.poll())
 
     def test_run_batch(self):
         out = self.dir / "batch.png"
-        r = achclwss.run_batch(f'photo.new width=10 height=10 -> a\nphoto.save doc=$a path="{out}"\n', binary=BIN)
+        r = wetwaresuite.run_batch(f'photo.new width=10 height=10 -> a\nphoto.save doc=$a path="{out}"\n', binary=BIN)
         self.assertTrue(r.ok and out.is_file())
         self.assertIn("img1", r.output)
-        with self.assertRaises(achclwss.AchclwssError):
-            achclwss.run_batch("photo.resize doc=nope width=3", binary=BIN)
-        failed = achclwss.run_batch("photo.resize doc=nope width=3", binary=BIN, check=False)
+        with self.assertRaises(wetwaresuite.WetwaresuiteError):
+            wetwaresuite.run_batch("photo.resize doc=nope width=3", binary=BIN)
+        failed = wetwaresuite.run_batch("photo.resize doc=nope width=3", binary=BIN, check=False)
         self.assertFalse(failed.ok)
         self.assertIn("line 1", failed.errors)
 

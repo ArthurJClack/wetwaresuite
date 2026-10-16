@@ -10,10 +10,10 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/circuit/circuit.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 using json = nlohmann::json;
 
@@ -122,7 +122,7 @@ std::string mapKicadPart(const std::string& partIn, int& pins) {
 
 std::string toJson(const Circuit& c) {
     json j;
-    j["format"] = "achclwss-circuit";
+    j["format"] = "wetwaresuite-circuit";
     j["version"] = 1;
     j["title"] = c.title;
     json parts = json::array();
@@ -438,4 +438,4 @@ Result CircuitEdit::apply() {
 
 void CircuitEdit::revert() { doc_->circuit = before_; }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

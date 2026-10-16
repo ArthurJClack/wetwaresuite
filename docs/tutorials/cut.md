@@ -3,7 +3,7 @@
 `cut` is a video editor without a screen. You build a **timeline** out of clips, stills, titles and music, look at single frames to check it, and render it to MP4, WebM, MOV, a GIF or just the sound. For quick jobs on one file (trim it, join two, make a GIF, burn in subtitles) there are one-shot commands that need no timeline at all:
 
 ```sh
-achclwss cut.gif input=interview.mp4 output=wave.gif start=3 duration=2.5
+wetwaresuite cut.gif input=interview.mp4 output=wave.gif start=3 duration=2.5
 ```
 
 There is no GUI yet; the GUI that comes later will call these same commands. Each task below shows the CLI way, the batch-script way and the "ask Claude" way. Every CLI and batch example here was run against the real binary (outputs are copied from those runs; long `key: value` lists are shortened with `...`).
@@ -22,7 +22,7 @@ There is no GUI yet; the GUI that comes later will call these same commands. Eac
 `ffprobe` comes with it. Without ffmpeg, the commands that need it fail with that advice instead of doing something half-way:
 
 ```sh
-$ achclwss cut.gif input=interview.mp4 output=x.gif
+$ wetwaresuite cut.gif input=interview.mp4 output=x.gif
 video editing needs ffmpeg, which isn't installed (or isn't on PATH). Install it, it's free: Debian/Ubuntu `sudo apt install ffmpeg`, macOS `brew install ffmpeg`, Windows `winget install ffmpeg`.
 ```
 
@@ -51,7 +51,7 @@ The sample files in the tasks are `interview.mp4` (40 s, 1920x1080, with sound),
 ### Look at a file first
 
 ```sh
-$ achclwss cut.probe path=interview.mp4
+$ wetwaresuite cut.probe path=interview.mp4
 interview.mp4: mov,mp4,m4a,3gp,3g2,mj2, 40s
   stream 0: video h264 1920x1080 30fps
   stream 1: audio aac 44100Hz 1ch
@@ -93,7 +93,7 @@ cut.save doc=$short path=short.achcut
 ```
 
 ```sh
-$ achclwss batch short.txt
+$ wetwaresuite batch short.txt
 created cut1 (1080x1920 30fps, 0 tracks, 0 clips, 0.00s)
 ...
 added clip c1 on v1 at 0s (timeline 7s)
@@ -138,10 +138,10 @@ What happened:
 - The interview's own sound plays at full volume; the music sits at a quarter under it. `cut.render` writing a `.png` renders one frame (`at=1.5`), handy to check the layout before encoding.
 - `short.achcut` is a small JSON file. It points at the media by absolute path; it doesn't copy them.
 
-**CLI.** A timeline only lives inside one process, so from the shell you pipe the lines into `achclwss batch` (or keep them in a file as above). Re-rendering the saved project in another format is two lines:
+**CLI.** A timeline only lives inside one process, so from the shell you pipe the lines into `wetwaresuite batch` (or keep them in a file as above). Re-rendering the saved project in another format is two lines:
 
 ```sh
-$ printf '%s\n' 'cut.open path=short.achcut -> s' 'cut.render doc=$s output=short.webm quality=draft' | achclwss batch
+$ printf '%s\n' 'cut.open path=short.achcut -> s' 'cut.render doc=$s output=short.webm quality=draft' | wetwaresuite batch
 opened cut1 (1080x1920 30fps, 3 tracks, 4 clips, 13.50s, short.achcut)
 ...
 rendered short.webm
@@ -181,7 +181,7 @@ cut.render doc=$tut output=pip.mp4
 ```
 
 ```sh
-$ achclwss batch pip.txt
+$ wetwaresuite batch pip.txt
 ...
 moved c2 to v3 at 0s (timeline 12s)
 ...
@@ -207,7 +207,7 @@ rendered pip.mp4
 $ printf '%s\n' 'cut.new -> t' \
   'cut.add_clip doc=$t path=screen.mp4 out=12' \
   'cut.add_clip doc=$t path=webcam.mp4 track=v2 out=12 width=480 x=1400 y=560' \
-  'cut.render doc=$t output=pip-quick.mp4' | achclwss batch
+  'cut.render doc=$t output=pip-quick.mp4' | wetwaresuite batch
 ...
 rendered pip-quick.mp4
 ...
@@ -242,7 +242,7 @@ cut.render doc=$tl output=transitions.mp4
 ```
 
 ```sh
-$ achclwss batch xfade.txt
+$ wetwaresuite batch xfade.txt
 ...
 crossfade from c1 to c2 over 1s (c2 now starts at 4s)
 ...
@@ -264,7 +264,7 @@ rendered transitions.mp4
 - The frame at 4.5 s is halfway through the crossfade. To check a whole render at a glance, make a contact sheet of it (task 6):
 
 ```sh
-$ achclwss cut.thumbnails input=transitions.mp4 output=transitions-sheet.jpg columns=6 rows=3 width=200
+$ wetwaresuite cut.thumbnails input=transitions.mp4 output=transitions-sheet.jpg columns=6 rows=3 width=200
 contact sheet of transitions.mp4: 6x3 frames in transitions-sheet.jpg
 transitions-sheet.jpg
 output: transitions-sheet.jpg
@@ -281,7 +281,7 @@ height: 352
 
 ```sh
 printf '%s\n' 'cut.new -> t' 'cut.add_clip doc=$t path=intro.mp4' 'cut.add_clip doc=$t path=broll.mp4 -> b' \
-  'cut.transition doc=$t clip=$b duration=1' 'cut.render doc=$t output=intro-broll.mp4' | achclwss batch
+  'cut.transition doc=$t clip=$b duration=1' 'cut.render doc=$t output=intro-broll.mp4' | wetwaresuite batch
 ```
 
 (Without a transition, `cut.concat_files` joins files in one command; see task 6.)
@@ -297,7 +297,7 @@ Claude adds the three clips with `cut_add_clip`, calls `cut_transition` on the s
 **CLI.** The one-shot `cut.gif` takes a piece of any video and makes a GIF with a proper palette (good colours, small file):
 
 ```sh
-$ achclwss cut.gif input=interview.mp4 output=wave.gif start=3 duration=2.5 fps=12 width=480
+$ wetwaresuite cut.gif input=interview.mp4 output=wave.gif start=3 duration=2.5 fps=12 width=480
 made wave.gif from 3-5.5s of interview.mp4
 wave.gif
 output: wave.gif
@@ -318,7 +318,7 @@ cut.render doc=$g output=reaction.gif gif_fps=12 gif_width=480
 ```
 
 ```sh
-$ achclwss batch gif.txt
+$ wetwaresuite batch gif.txt
 ...
 rendered reaction.gif
 reaction.gif
@@ -345,7 +345,7 @@ Claude uses `cut_gif` for a plain GIF; for the caption it builds a timeline (`cu
 **CLI.**
 
 ```sh
-$ achclwss cut.subtitles input=interview.mp4 subtitles=interview.srt output=captioned.mp4 font_size=24
+$ wetwaresuite cut.subtitles input=interview.mp4 subtitles=interview.srt output=captioned.mp4 font_size=24
 burned interview.srt into captioned.mp4
 captioned.mp4
 output: captioned.mp4
@@ -366,7 +366,7 @@ cut.render doc=$s output=short-captioned.mp4 subtitles=interview.srt
 ```
 
 ```sh
-$ printf '%s\n' 'cut.open path=short.achcut -> s' 'cut.render doc=$s output=short-captioned.mp4 subtitles=interview.srt' | achclwss batch
+$ printf '%s\n' 'cut.open path=short.achcut -> s' 'cut.render doc=$s output=short-captioned.mp4 subtitles=interview.srt' | wetwaresuite batch
 opened cut1 (1080x1920 30fps, 3 tracks, 4 clips, 13.50s, short.achcut)
 ...
 rendered short-captioned.mp4
@@ -385,21 +385,21 @@ Claude calls `cut_subtitles` with `font_size` and `color=#ffff00`, then `cut_thu
 These take files and write files; no timeline needed. Outputs that exist are refused unless you pass `overwrite=true`:
 
 ```sh
-$ achclwss cut.trim_file input=interview.mp4 output=intro.mp4 start=2 end=9
+$ wetwaresuite cut.trim_file input=interview.mp4 output=intro.mp4 start=2 end=9
 intro.mp4 already exists (pass overwrite=true to replace it)
 ```
 
 **Trim.** Frame-exact by default (re-encodes); `copy=true` is instant and lossless but starts at the keyframe before `start`, so the piece can be a little longer:
 
 ```sh
-$ achclwss cut.trim_file input=interview.mp4 output=intro.mp4 start=2 end=9
+$ wetwaresuite cut.trim_file input=interview.mp4 output=intro.mp4 start=2 end=9
 trimmed 2-9s of interview.mp4 into intro.mp4
 intro.mp4
 output: intro.mp4
 bytes: 4496736
 duration: 7
 ...
-$ achclwss cut.trim_file input=interview.mp4 output=intro-fast.mp4 start=2 end=9 copy=true
+$ wetwaresuite cut.trim_file input=interview.mp4 output=intro-fast.mp4 start=2 end=9 copy=true
 trimmed 2-9s of interview.mp4 into intro-fast.mp4
 ...
 duration: 7.13867
@@ -408,12 +408,12 @@ duration: 7.13867
 **Join.** Files with the same codecs, size and frame rate are joined by stream copy; anything else is re-encoded to the first file's size and frame rate, letterboxed:
 
 ```sh
-$ achclwss cut.concat_files inputs=intro.mp4,broll.mp4 output=joined.mp4
+$ wetwaresuite cut.concat_files inputs=intro.mp4,broll.mp4 output=joined.mp4
 joined 2 files into joined.mp4 by stream copy
 ...
 duration: 17.0232
 mode: copy
-$ achclwss cut.concat_files inputs=interview.mp4,webcam.mp4 output=mixed.mp4 quality=draft
+$ wetwaresuite cut.concat_files inputs=interview.mp4,webcam.mp4 output=mixed.mp4 quality=draft
 joined 2 files into mixed.mp4 (re-encoded)
 ...
 duration: 60
@@ -425,14 +425,14 @@ Separate the files with commas; if a name contains a comma, separate them with `
 **Sound.** Take the sound out (copied without re-encoding when the format allows, e.g. AAC into `.m4a`), or remove it:
 
 ```sh
-$ achclwss cut.extract_audio input=interview.mp4 output=voice.m4a
+$ wetwaresuite cut.extract_audio input=interview.mp4 output=voice.m4a
 extracted the sound of interview.mp4 to voice.m4a
 ...
 duration: 40
-$ achclwss cut.extract_audio input=interview.mp4 output=voice.mp3
+$ wetwaresuite cut.extract_audio input=interview.mp4 output=voice.mp3
 extracted the sound of interview.mp4 to voice.mp3
 ...
-$ achclwss cut.mute input=broll.mp4 output=broll-silent.mp4
+$ wetwaresuite cut.mute input=broll.mp4 output=broll-silent.mp4
 copied broll.mp4 without sound to broll-silent.mp4
 ...
 ```
@@ -440,7 +440,7 @@ copied broll.mp4 without sound to broll-silent.mp4
 **Speed.** The sound speeds up or slows down without changing pitch:
 
 ```sh
-$ achclwss cut.speed input=screen.mp4 output=screen-4x.mp4 factor=4
+$ wetwaresuite cut.speed input=screen.mp4 output=screen-4x.mp4 factor=4
 changed the speed of screen.mp4 by 4x into screen-4x.mp4
 ...
 duration: 5
@@ -449,7 +449,7 @@ duration: 5
 **Contact sheet.** A grid of frames spread evenly through a video, to see what's in it:
 
 ```sh
-$ achclwss cut.thumbnails input=interview.mp4 output=sheet.jpg columns=5 rows=4 width=240
+$ wetwaresuite cut.thumbnails input=interview.mp4 output=sheet.jpg columns=5 rows=4 width=240
 contact sheet of interview.mp4: 5x4 frames in sheet.jpg
 sheet.jpg
 output: sheet.jpg
@@ -468,7 +468,7 @@ cut.trim_file input=day2.mp4 output=out/day2-intro.mp4 start=0 duration=15
 cut.thumbnails input=day2.mp4 output=out/day2-sheet.jpg
 ```
 
-or a shell loop over files: `for f in *.mp4; do achclwss cut.thumbnails input="$f" output="sheets/${f%.mp4}.jpg"; done`.
+or a shell loop over files: `for f in *.mp4; do wetwaresuite cut.thumbnails input="$f" output="sheets/${f%.mp4}.jpg"; done`.
 
 **Claude.**
 
@@ -501,7 +501,7 @@ cut.render doc=$tl output=graded.mp4 quality=draft
 ```
 
 ```sh
-$ achclwss batch colour.txt
+$ wetwaresuite batch colour.txt
 ...
 filtered 2 clips (timeline 10s)
 ...
@@ -526,7 +526,7 @@ rendered graded.mp4
 
 ```sh
 printf '%s\n' 'cut.new -> t' 'cut.add_clip doc=$t path=interview.mp4' 'cut.filter doc=$t lut=warm.cube' \
-  'cut.render doc=$t output=interview-warm.mp4' | achclwss batch
+  'cut.render doc=$t output=interview-warm.mp4' | wetwaresuite batch
 ```
 
 **Claude.**
@@ -566,7 +566,7 @@ cut.info doc=$s
 ```
 
 ```sh
-$ achclwss batch fix.txt
+$ wetwaresuite batch fix.txt
 opened cut1 (1080x1920 30fps, 3 tracks, 4 clips, 13.50s, short.achcut)
 ...
 frame at 12.5s of cut1
@@ -697,7 +697,7 @@ cut.split_clip doc=cut1 clip=c1 at=4                   -> at must be inside the 
 | `cut.gif` | GIF of a range | `input`, `output`, `start`, `duration` (3), `fps` (12), `width` (480) |
 | `cut.subtitles` | burn in .srt/.ass | `input`, `subtitles`, `output`, `font_size`, `color`, `quality` |
 
-All of them take `overwrite=true` to replace an existing output. Run `achclwss help <command>` for every parameter with its default.
+All of them take `overwrite=true` to replace an existing output. Run `wetwaresuite help <command>` for every parameter with its default.
 
 ## Limitations
 

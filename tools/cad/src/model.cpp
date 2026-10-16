@@ -9,13 +9,13 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/cad/cad.hpp"
-#include "achclwss/mesh/csg.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/primitives.hpp"
+#include "wetwaresuite/cad/cad.hpp"
+#include "wetwaresuite/mesh/csg.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
 #include "repair.hpp"
 
-namespace achclwss::cad {
+namespace wetwaresuite::cad {
 
 using mesh::Mat4;
 using mesh::Mesh;
@@ -984,4 +984,4 @@ std::shared_ptr<CadDoc> openCad(const std::filesystem::path& path) {
     return doc;
 }
 
-}  // namespace achclwss::cad
+}  // namespace wetwaresuite::cad

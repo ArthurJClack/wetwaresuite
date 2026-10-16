@@ -5,9 +5,9 @@
 #include <cstdlib>
 #include <cstring>
 
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 
-namespace achclwss::vector {
+namespace wetwaresuite::vector {
 
 namespace {
 
@@ -373,4 +373,4 @@ Outline outline(const Shape& s, double detail) {
     return out;
 }
 
-}  // namespace achclwss::vector
+}  // namespace wetwaresuite::vector

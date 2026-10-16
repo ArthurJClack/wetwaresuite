@@ -3,9 +3,9 @@
 
 #include <string>
 
-#include "achclwss/raster/image.hpp"
+#include "wetwaresuite/raster/image.hpp"
 
-namespace achclwss::audio::detail {
+namespace wetwaresuite::audio::detail {
 
 void blendPixel(raster::Image& img, int x, int y, raster::Color c, float alpha = 1.0f);
 void vline(raster::Image& img, int x, int y0, int y1, raster::Color c, float alpha = 1.0f);
@@ -15,4 +15,4 @@ void text(raster::Image& img, int x, int y, const std::string& s, raster::Color 
 // Vertical lines with time labels along the bottom.
 void timeGrid(raster::Image& img, double startSeconds, double seconds, raster::Color grid, bool labels);
 
-}  // namespace achclwss::audio::detail
+}  // namespace wetwaresuite::audio::detail

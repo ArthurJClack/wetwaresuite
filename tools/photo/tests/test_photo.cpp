@@ -1,11 +1,11 @@
 #include <filesystem>
 
-#include "achclwss/photo/photo.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
+#include "wetwaresuite/photo/photo.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 namespace fs = std::filesystem;
 
 namespace {
@@ -23,7 +23,7 @@ std::int64_t intField(const Result& r, const char* key) {
 }  // namespace
 
 int main() {
-    auto dir = fs::temp_directory_path() / "achclwss_test_photo";
+    auto dir = fs::temp_directory_path() / "wetwaresuite_test_photo";
     fs::remove_all(dir);
     fs::create_directories(dir / "in");
 

@@ -12,9 +12,9 @@
 
 Each task below is shown three ways:
 
-- **CLI**: single `achclwss` commands. A font only stays open inside one process, so the one-shot commands are the ones that read a file and write a result: `info`, `glyph_info`, `kern_list`, `measure`, `preview`, `render`, `proof` and `export` take `font=<file>` instead of `doc=`, and `grid_template` needs no font at all.
+- **CLI**: single `wetwaresuite` commands. A font only stays open inside one process, so the one-shot commands are the ones that read a file and write a result: `info`, `glyph_info`, `kern_list`, `measure`, `preview`, `render`, `proof` and `export` take `font=<file>` instead of `doc=`, and `grid_template` needs no font at all.
 - **Batch**: a script for multi-step work with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools type` serves the type tools.
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools type` serves the type tools.
 
 Every example below was run against the real binary in empty folders. Outputs are copied from those runs; lines that repeat the message as `key: value` fields are cut where marked `...`.
 
@@ -79,7 +79,7 @@ type.export doc=$f path=Blocky-Regular.woff
 ```
 
 ```sh
-$ achclwss batch blocky.txt
+$ wetwaresuite batch blocky.txt
 created font1: Blocky Regular, 2 glyphs (1 encoded), 0 kerning pairs, 1000 units/em
 ...
 set version, license, license_url, designer on Blocky Regular
@@ -136,7 +136,7 @@ Things to notice:
 **CLI.** The saved files work one-shot:
 
 ```sh
-$ achclwss type.export font=blocky.typeface.json path=blocky.svg
+$ wetwaresuite type.export font=blocky.typeface.json path=blocky.svg
 exported Blocky Regular to blocky.svg (5526 bytes, 16 glyphs)
 path: blocky.svg
 format: svg
@@ -184,7 +184,7 @@ type.export doc=$f path=Blocky-Regular.ttf
 ```
 
 ```sh
-$ achclwss batch extend.txt
+$ wetwaresuite batch extend.txt
 opened blocky.typeface.json as font1: Blocky Regular, 12 glyphs (11 encoded), 71 kerning pairs, 1000 units/em, blocky.typeface.json
 ...
 imported 1 contour into uni2665 U+2665 advance 890, lsb 60, rsb 60, 1 contour (18 points)
@@ -233,7 +233,7 @@ Print a template, write one letter per cell, scan it, and trace the scan into a 
 **1. The template.** One cell per character with light guides for the baseline, x-height and cap height (light enough for the tracer to ignore) and a faint label in the corner:
 
 ```sh
-$ achclwss type.grid_template path=sheet.png chars=HAVOTnoi cols=4
+$ wetwaresuite type.grid_template path=sheet.png chars=HAVOTnoi cols=4
 drew a template with 8 cells (960x480) to sheet.png; trace it with cols=4
 path: sheet.png
 cells: 8
@@ -264,7 +264,7 @@ type.export doc=$f path=MyHand-Regular.ttf
 ```
 
 ```sh
-$ achclwss batch hand.txt
+$ wetwaresuite batch hand.txt
 created font1: My Hand Regular, 2 glyphs (1 encoded), 0 kerning pairs, 1000 units/em
 ...
 traced 8 glyphs from a 2x4 grid: HAVOTnoi
@@ -310,7 +310,7 @@ type.save doc=$f path=hand.typeface.json
 ```
 
 ```sh
-$ achclwss batch letter.txt
+$ wetwaresuite batch letter.txt
 ...
 traced 1 contour into k U+006B advance 571, lsb 60, rsb 59.5, 1 contour (35 points)
 ...
@@ -321,7 +321,7 @@ rendered 584x128 to hand2.png
 **CLI.** The template is a one-shot (above); the result can be checked one-shot too:
 
 ```sh
-$ achclwss type.info font=MyHand-Regular.ttf
+$ wetwaresuite type.info font=MyHand-Regular.ttf
 My Hand Regular, 10 glyphs (9 encoded), 44 kerning pairs, 1000 units/em, MyHand-Regular.ttf
 version 1.000, weight 400
 metrics: ascender 800, descender -200, x-height 500, cap height 725, line gap 0
@@ -338,7 +338,7 @@ You have an OpenType font with CFF outlines (`InterDisplay-Light.otf`) and a Tru
 **CLI.** Everything that only reads the font works one-shot with `font=`:
 
 ```sh
-$ achclwss type.info font=CrimsonPro-Regular.ttf
+$ wetwaresuite type.info font=CrimsonPro-Regular.ttf
 Crimson Pro Regular, 823 glyphs (689 encoded), 76980 kerning pairs, 1024 units/em, CrimsonPro-Regular.ttf
 version 1.003, weight 400, designer Jacques Le Bailly
 license: This Font Software is licensed under the SIL Open Font License, Version 1.1. This license is available with a FAQ at: https://scripts.sil.org/OFL
@@ -347,23 +347,23 @@ metrics: ascender 918, descender -220, x-height 430, cap height 587, line gap 0
 all printable ASCII is present
 ...
 
-$ achclwss type.export font=CrimsonPro-Regular.ttf path=CrimsonPro-Regular.woff
+$ wetwaresuite type.export font=CrimsonPro-Regular.ttf path=CrimsonPro-Regular.woff
 exported Crimson Pro Regular to CrimsonPro-Regular.woff (136064 bytes, 823 glyphs)
 ...
 
-$ achclwss type.proof font=CrimsonPro-Regular.ttf path=crimson-proof.png
+$ wetwaresuite type.proof font=CrimsonPro-Regular.ttf path=crimson-proof.png
 wrote a 1200x7243 proof of Crimson Pro Regular to crimson-proof.png
 ...
 
-$ achclwss type.render font=CrimsonPro-Regular.ttf text="Hamburgefonstiv" size=96 path=crimson.png
+$ wetwaresuite type.render font=CrimsonPro-Regular.ttf text="Hamburgefonstiv" size=96 path=crimson.png
 rendered 704x139 to crimson.png
 ...
 
-$ achclwss type.measure font=CrimsonPro-Regular.ttf text="AVATAR Wave" size=24
+$ wetwaresuite type.measure font=CrimsonPro-Regular.ttf text="AVATAR Wave" size=24
 "AVATAR Wave" is 5795 units wide (135.82 px at 24 px)
 ...
 
-$ achclwss type.kern_list font=CrimsonPro-Regular.ttf glyph=V limit=5
+$ wetwaresuite type.kern_list font=CrimsonPro-Regular.ttf glyph=V limit=5
 654 kerning pairs with V
   V four.osf -105
   V AE -74
@@ -373,7 +373,7 @@ $ achclwss type.kern_list font=CrimsonPro-Regular.ttf glyph=V limit=5
   ... 649 more
 ...
 
-$ achclwss type.glyph_info font=CrimsonPro-Regular.ttf glyph=l points=true
+$ wetwaresuite type.glyph_info font=CrimsonPro-Regular.ttf glyph=l points=true
 l U+006C advance 269, lsb 16, rsb 26, 1 contour (27 points)
 path: M28 0L26 37L91 51Q93 61 94 84Q95 107 95.5 145Q96 183 96 238L96 363Q96 401 95.5 441Q95 481 94.5 516.5Q94 552 93.5 577.5Q93 603 92 611L18 621L16 653L159 694L178 680Q177 638 176 596Q175 554 174.5 503Q174 452 174 380L173 219Q173 160 174.5 112.5Q176 65 178 51L243 37L241 0Z
 contour 0: 28,0 26,37 91,51 93,61q 95,107q 96,183q 96,238 96,363 96,401q 95,481q 94,552q 93,603q 92,611 18,621 16,653 159,694 178,680 177,638q 175,554q 174,452q 174,380 173,219 173,160q 176,65q 178,51 243,37 241,0
@@ -397,7 +397,7 @@ type.export doc=$f path=InterDisplay-Light-latin.woff
 ```
 
 ```sh
-$ achclwss batch convert.txt
+$ wetwaresuite batch convert.txt
 opened InterDisplay-Light.otf as font1: Inter Display Light, 2926 glyphs (2838 encoded), 300000 kerning pairs, 2048 units/em, InterDisplay-Light.otf
 warning: kerning has more than 300000 pairs; the rest were skipped
 ...
@@ -447,7 +447,7 @@ type.render doc=$r text="VOLT ÁLTO" size=72 path=boldoblique.png
 ```
 
 ```sh
-$ achclwss batch variants.txt
+$ wetwaresuite batch variants.txt
 opened blocky.typeface.json as font1: Blocky Regular, 16 glyphs (14 encoded), 74 kerning pairs, 1000 units/em, blocky.typeface.json
 ...
 emboldened by 28 units: 15 glyphs
@@ -572,7 +572,7 @@ Tracing params: `threshold` (0.5, darkness that counts as ink), `invert` (false:
 
 ## MCP
 
-`achclwss mcp --tools type` serves the type tools (`type_new`, `type_draw`, ..., `type_export`) plus `undo`, `redo`, `history` and `documents`. Open fonts are MCP resources too (`achclwss://doc/font1`) with the glyph overview as their preview. Every edit takes `preview=true`, and `type_preview` returns a glyph, a line of text or the overview without writing anything, so Claude can look after each step: points and handles show where a curve kinks, the metric lines show whether a letter sits on the baseline and reaches the x-height.
+`wetwaresuite mcp --tools type` serves the type tools (`type_new`, `type_draw`, ..., `type_export`) plus `undo`, `redo`, `history` and `documents`. Open fonts are MCP resources too (`wetwaresuite://doc/font1`) with the glyph overview as their preview. Every edit takes `preview=true`, and `type_preview` returns a glyph, a line of text or the overview without writing anything, so Claude can look after each step: points and handles show where a curve kinks, the metric lines show whether a letter sits on the baseline and reaches the x-height.
 
 Example prompts:
 

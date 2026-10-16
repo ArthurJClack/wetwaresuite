@@ -5,10 +5,10 @@
 #include <set>
 #include <stdexcept>
 
-#include "achclwss/pdf/page.hpp"
+#include "wetwaresuite/pdf/page.hpp"
 #include "internal.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 namespace {
 
@@ -643,4 +643,4 @@ Font fromSfnt(const std::string& input, std::vector<std::string>* warningsOut) {
     return font;
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

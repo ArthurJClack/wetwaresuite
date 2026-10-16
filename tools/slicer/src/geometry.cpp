@@ -1,11 +1,11 @@
-#include "achclwss/slicer/geometry.hpp"
+#include "wetwaresuite/slicer/geometry.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <unordered_map>
 
-namespace achclwss::slicer {
+namespace wetwaresuite::slicer {
 
 namespace {
 
@@ -526,4 +526,4 @@ std::vector<Segment> fillLines(const Region& region, double spacing, double angl
     return out;
 }
 
-}  // namespace achclwss::slicer
+}  // namespace wetwaresuite::slicer

@@ -5,10 +5,10 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "achclwss/audio/dsp.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
 #include "internal.hpp"
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 namespace {
 
@@ -130,4 +130,4 @@ void reduceNoise(Buffer& b, const NoiseProfile& p, double reductionDb, double se
         detail::edgeFrames(b));
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio

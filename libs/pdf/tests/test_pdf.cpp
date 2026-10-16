@@ -1,12 +1,12 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/pdf/reader.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/pdf/reader.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::pdf;
+using namespace wetwaresuite;
+using namespace wetwaresuite::pdf;
 
 namespace {
 

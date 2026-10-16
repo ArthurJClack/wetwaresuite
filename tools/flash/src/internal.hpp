@@ -4,9 +4,9 @@
 #include <memory>
 #include <string>
 
-#include "achclwss/flash/serial.hpp"
+#include "wetwaresuite/flash/serial.hpp"
 
-namespace achclwss::flash {
+namespace wetwaresuite::flash {
 
 std::unique_ptr<SerialPort> openSimPort(const std::string& name, const SerialConfig& config);
 // "avr", "esp", "stm32" for a sim kind; empty when unknown.
@@ -20,4 +20,4 @@ inline std::uint32_t get32le(const Bytes& b, std::size_t at) {
            (static_cast<std::uint32_t>(b[at + 3]) << 24);
 }
 
-}  // namespace achclwss::flash
+}  // namespace wetwaresuite::flash

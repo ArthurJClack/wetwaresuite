@@ -3,14 +3,14 @@
 `convert` turns one file format into another: images, SVG drawings, audio, video, office documents and markup. You name the output file and its extension picks the format, so converting is usually one command:
 
 ```sh
-achclwss convert.file input=interview.wav output=interview.mp3
+wetwaresuite convert.file input=interview.wav output=interview.mp3
 ```
 
 There is no GUI yet; the GUI that comes later will call these same commands. Each task below shows the CLI way, the batch-script way and the "ask Claude" way.
 
 ## How it works: backends
 
-ACHCLWSS converts images and SVG itself. For everything else it hands the job to a free, well-known program if it is installed. These are optional: install only the ones you need.
+wetwaresuite converts images and SVG itself. For everything else it hands the job to a free, well-known program if it is installed. These are optional: install only the ones you need.
 
 | Files | Backend | Included? |
 | --- | --- | --- |
@@ -27,7 +27,7 @@ The helper programs just need to be on your `PATH`. On Debian or Ubuntu: `sudo a
 ### What is available on this machine?
 
 ```sh
-$ achclwss convert.formats
+$ wetwaresuite convert.formats
 images (built in, ready): bmp, gif, hdr, jpeg, jpg, ora, pgm, pic, png, pnm, ppm, psd, tga -> bmp, jpeg, jpg, ora, png, ppm, tga
 svg (vector tool, ready): svg -> bmp, jpeg, jpg, png, ppm, svg, tga
 audio/video/more images (ffmpeg, ready): aac, ac3, aif, aiff, amr, flac, m4a, mp3, ogg, opus, wav, wma, 3gp, avi, flv, gif, m4v, mkv, mov, mp4, mpeg, mpg, ts, webm, wmv, avif, exr, heic, heif, ico, jxl, tif, tiff, webp
@@ -47,12 +47,12 @@ A backend that is missing shows `not installed` and its `key: value` line says `
 `convert.check` answers without converting anything (it looks only at the names, so the file does not need to exist yet):
 
 ```sh
-$ achclwss convert.check input=report.docx to=pdf
+$ wetwaresuite convert.check input=report.docx to=pdf
 libreoffice can do it
 backend: libreoffice
 ready: true
 
-$ achclwss convert.check input=model.obj to=stl
+$ wetwaresuite convert.check input=model.obj to=stl
 no converter to .stl for model.obj
 ```
 
@@ -63,7 +63,7 @@ If the backend exists but the program is missing, it says `libreoffice would do 
 **CLI.**
 
 ```sh
-$ achclwss convert.file input=interview.wav output=interview.mp3 quality=80
+$ wetwaresuite convert.file input=interview.wav output=interview.mp3 quality=80
 converted interview.wav to interview.mp3 with ffmpeg
 output: interview.mp3
 backend: ffmpeg
@@ -74,13 +74,13 @@ bytes: 31171
 - Trim while converting: `start=` and `duration=` are in seconds.
 
 ```sh
-achclwss convert.file input=interview.wav output=clip.mp3 start=60 duration=30
+wetwaresuite convert.file input=interview.wav output=clip.mp3 start=60 duration=30
 ```
 
 - The output's extension chooses the codec: `.flac`, `.ogg`, `.opus`, `.m4a`, `.wav`, ...
-- Video in, audio out drops the picture: `achclwss convert.file input=talk.mp4 output=talk.mp3`.
+- Video in, audio out drops the picture: `wetwaresuite convert.file input=talk.mp4 output=talk.mp3`.
 
-**Batch** (the whole folder): `achclwss convert.batch input_dir=recordings to=mp3 output_dir=mp3 quality=70`
+**Batch** (the whole folder): `wetwaresuite convert.batch input_dir=recordings to=mp3 output_dir=mp3 quality=70`
 
 **Claude.**
 
@@ -92,11 +92,11 @@ Claude calls `convert_check` (or `convert_formats`) to confirm ffmpeg is there, 
 
 ```sh
 # smaller copy: 640 px wide (height follows), lower quality
-achclwss convert.file input=talk.mp4 output=talk-small.mp4 width=640 quality=60
+wetwaresuite convert.file input=talk.mp4 output=talk-small.mp4 width=640 quality=60
 # a different container and codec, picked by extension
-achclwss convert.file input=talk.mp4 output=talk.webm width=480 quality=50
+wetwaresuite convert.file input=talk.mp4 output=talk.webm width=480 quality=50
 # an animated GIF of two seconds starting at 0:01
-achclwss convert.file input=talk.mp4 output=talk.gif width=320 start=1 duration=2
+wetwaresuite convert.file input=talk.mp4 output=talk.gif width=320 start=1 duration=2
 ```
 
 For video, `quality` maps to the encoder's CRF (higher quality, bigger file).
@@ -104,7 +104,7 @@ For video, `quality` maps to the encoder's CRF (higher quality, bigger file).
 Grab a single frame as an image by picking the time with `start`:
 
 ```sh
-achclwss convert.file input=talk.mp4 output=frame.png start=3
+wetwaresuite convert.file input=talk.mp4 output=frame.png start=3
 ```
 
 ## Task 3: DOCX to PDF (and other documents)
@@ -112,7 +112,7 @@ achclwss convert.file input=talk.mp4 output=frame.png start=3
 **CLI.**
 
 ```sh
-$ achclwss convert.file input=report.docx output=report.pdf
+$ wetwaresuite convert.file input=report.docx output=report.pdf
 converted report.docx to report.pdf with LibreOffice
 output: report.pdf
 backend: libreoffice
@@ -124,20 +124,20 @@ LibreOffice runs headless in the background; expect a second or two per document
 Markup goes through pandoc:
 
 ```sh
-achclwss convert.file input=notes.md output=notes.docx
-achclwss convert.file input=notes.md output=notes.html
+wetwaresuite convert.file input=notes.md output=notes.docx
+wetwaresuite convert.file input=notes.md output=notes.html
 ```
 
 Markdown to PDF needs pandoc and LibreOffice: pandoc lays the Markdown out as a Word document and LibreOffice prints that to PDF, all in one step:
 
 ```sh
-achclwss convert.file input=notes.md output=notes.pdf
+wetwaresuite convert.file input=notes.md output=notes.pdf
 ```
 
 **Batch.** A whole folder of documents to PDF:
 
 ```sh
-achclwss convert.batch input_dir=docs to=pdf output_dir=pdf
+wetwaresuite convert.batch input_dir=docs to=pdf output_dir=pdf
 ```
 
 (this picks up every file that can become a PDF, including `.md` files, with the caveat above).
@@ -153,7 +153,7 @@ achclwss convert.batch input_dir=docs to=pdf output_dir=pdf
 **CLI.**
 
 ```sh
-$ achclwss convert.batch input_dir=shots to=jpg output_dir=shots-jpg quality=85
+$ wetwaresuite convert.batch input_dir=shots to=jpg output_dir=shots-jpg quality=85
 converted 2 of 2 files to .jpg
 converted: 2
 failed: 0
@@ -186,8 +186,8 @@ convert.file input=logo.svg output=web/logo@2x.png scale=2 overwrite=true
 SVG rendering uses the built-in [vector](vector.md) tool. `scale` sets pixels per SVG unit:
 
 ```sh
-achclwss convert.file input=logo.svg output=logo.png
-achclwss convert.file input=logo.svg output=logo@2x.png scale=2
+wetwaresuite convert.file input=logo.svg output=logo.png
+wetwaresuite convert.file input=logo.svg output=logo@2x.png scale=2
 ```
 
 Use `scale` rather than `width` or `height`: for SVG input those are currently ignored and the image comes out at the drawing's own size. `vector.convert input=... output=... scale=... quality=...` does the same job from the vector tool directly. SVG can be rendered to PNG, JPEG, BMP, TGA and PPM; for WebP, render a PNG first and convert that.

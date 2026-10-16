@@ -14,10 +14,10 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/automate/automate.hpp"
-#include "achclwss/core/cli.hpp"
+#include "wetwaresuite/automate/automate.hpp"
+#include "wetwaresuite/core/cli.hpp"
 
-namespace achclwss::automate {
+namespace wetwaresuite::automate {
 
 using nlohmann::json;
 
@@ -1167,7 +1167,7 @@ void registerCommands(Session& session, Registrar fresh) {
     reg.add({"automate.list_scripts", "List scripts",
              "List the batch scripts (.txt, .batch, .ach) and pipelines (.json, .yaml, .yml) in a folder with their "
              "descriptions (a script's leading # comments, a pipeline's description:) and the variables each one needs.",
-             {{"folder", ParamType::String, "where to look (default: $ACHCLWSS_SCRIPTS, else ./scripts)", false},
+             {{"folder", ParamType::String, "where to look (default: $WETWARESUITE_SCRIPTS, else ./scripts)", false},
               {"recursive", ParamType::Bool, "look in subfolders too", false, {}, false},
               {"json", ParamType::Bool, "also return the list as a JSON scripts field", false, {}, false}},
              false, true},
@@ -1175,7 +1175,7 @@ void registerCommands(Session& session, Registrar fresh) {
                 return std::make_unique<FunctionAction>([p] {
                     std::string folder = stringParam(p, "folder");
                     if (folder.empty()) {
-                        const char* env = std::getenv("ACHCLWSS_SCRIPTS");
+                        const char* env = std::getenv("WETWARESUITE_SCRIPTS");
                         folder = env && *env ? env : "scripts";
                     }
                     std::error_code ec;
@@ -1248,4 +1248,4 @@ void registerCommands(Session& session, Registrar fresh) {
             });
 }
 
-}  // namespace achclwss::automate
+}  // namespace wetwaresuite::automate

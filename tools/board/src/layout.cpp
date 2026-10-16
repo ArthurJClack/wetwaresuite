@@ -11,7 +11,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::board {
+namespace wetwaresuite::board {
 
 using namespace detail;
 
@@ -744,4 +744,4 @@ int layout(Board& board, const LayoutOptions& options, std::string& error) {
     return static_cast<int>(g.nodes.size());
 }
 
-}  // namespace achclwss::board
+}  // namespace wetwaresuite::board

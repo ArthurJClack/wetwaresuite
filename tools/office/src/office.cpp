@@ -1,6 +1,6 @@
 // Shared command plumbing, file loading/saving per kind, the LibreOffice
 // backend, office.convert and office.formats.
-#include "achclwss/office/office.hpp"
+#include "wetwaresuite/office/office.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -9,15 +9,15 @@
 #include <set>
 #include <sstream>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/office/chart.hpp"
-#include "achclwss/pdf/reader.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/office/chart.hpp"
+#include "wetwaresuite/pdf/reader.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "commands.hpp"
 #include "text.hpp"
 #include "xml.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 // ---- documents -------------------------------------------------------------------------
 
@@ -246,7 +246,7 @@ std::string fileUrl(const fs::path& p) {
 fs::path tempDir(const std::string& tag) {
     std::error_code ec;
     const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
-    fs::path d = fs::temp_directory_path(ec) / ("achclwss-office-" + tag + "-" + std::to_string(stamp));
+    fs::path d = fs::temp_directory_path(ec) / ("wetwaresuite-office-" + tag + "-" + std::to_string(stamp));
     fs::create_directories(d, ec);
     return d;
 }
@@ -263,7 +263,7 @@ bool libreOffice(const fs::path& input, const std::string& toExt, std::string& o
     }
     std::error_code ec;
     fs::path dir = tempDir("lo");
-    fs::path profile = fs::temp_directory_path(ec) / "achclwss-office-lo-profile";
+    fs::path profile = fs::temp_directory_path(ec) / "wetwaresuite-office-lo-profile";
     auto r = runProgram({exe->string(), "-env:UserInstallation=" + fileUrl(profile), "--headless", "--norestore", "--nologo", "--convert-to", toExt,
                          "--outdir", dir.string(), input.string()});
     fs::path produced = dir / input.stem();
@@ -658,4 +658,4 @@ void registerCommands(Session& session) {
     registerConvertCommands(session);
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

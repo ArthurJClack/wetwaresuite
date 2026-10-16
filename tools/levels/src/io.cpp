@@ -11,8 +11,8 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/levels/levels.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/levels/levels.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
@@ -32,7 +32,7 @@
 // Defined (and exported) by stb_image_write inside libs/raster.
 extern "C" unsigned char* stbi_zlib_compress(unsigned char* data, int data_len, int* out_len, int quality);
 
-namespace achclwss::levels {
+namespace wetwaresuite::levels {
 
 namespace fs = std::filesystem;
 using json = nlohmann::ordered_json;
@@ -940,7 +940,7 @@ Map fromTmj(const std::string& text, const fs::path& dir) {
 
 std::string toPlainJson(const Map& m, const fs::path& dir) {
     json j;
-    j["format"] = "achclwss-level";
+    j["format"] = "wetwaresuite-level";
     j["version"] = 1;
     j["width"] = m.width;
     j["height"] = m.height;
@@ -1235,7 +1235,7 @@ std::string toLdtk(const Map& m, const fs::path& dir, std::vector<std::string>* 
                   {"__bgPos", nullptr}, {"externalRelPath", nullptr}, {"fieldInstances", fields}, {"layerInstances", instances},
                   {"__neighbours", json::array()}};
     json j = {{"__header__", {{"fileType", "LDtk Project JSON"}, {"app", "LDtk"}, {"doc", "https://ldtk.io/json"},
-                              {"schema", "https://ldtk.io/files/JSON_SCHEMA.json"}, {"appAuthor", "achclwss levels (LDtk-lite)"},
+                              {"schema", "https://ldtk.io/files/JSON_SCHEMA.json"}, {"appAuthor", "wetwaresuite levels (LDtk-lite)"},
                               {"appVersion", "1.5.3"}, {"url", "https://ldtk.io"}}},
               {"iid", iid(999999)},
               {"jsonVersion", "1.5.3"},
@@ -1514,4 +1514,4 @@ void saveMap(const Map& map, const fs::path& path, const std::string& format, co
     }
 }
 
-}  // namespace achclwss::levels
+}  // namespace wetwaresuite::levels

@@ -1,4 +1,4 @@
-#include "achclwss/mesh/primitives.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
 
 #include <algorithm>
 #include <stdexcept>
@@ -6,7 +6,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 namespace {
 
@@ -241,4 +241,4 @@ Mesh extrude(const Polygon2& shape, double height, bool center) {
     return m;
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

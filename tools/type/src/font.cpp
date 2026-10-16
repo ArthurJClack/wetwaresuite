@@ -7,7 +7,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 Font newFont(const std::string& family, const std::string& style, int upm, double ascender, double descender, double xHeight,
              double capHeight) {
@@ -297,4 +297,4 @@ std::map<KernPair, double> autoKern(const Font& font, const std::vector<std::str
     return out;
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

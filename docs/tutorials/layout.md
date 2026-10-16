@@ -5,7 +5,7 @@ take on Scribus or InDesign. You build pages out of frames (text, pictures,
 shapes and SVG artwork), give text paragraph and character styles, let long
 text flow through linked frames and columns, and export a print-ready PDF
 with bleed, crop marks, CMYK colours and embedded fonts, or PNG/JPEG pages.
-Like every ACHCLWSS tool, each action is a command you can type once, put in
+Like every wetwaresuite tool, each action is a command you can type once, put in
 a batch script, or let Claude call over MCP.
 
 The tutorial is built around five real jobs, each shown three ways:
@@ -17,7 +17,7 @@ The tutorial is built around five real jobs, each shown three ways:
   heads and page numbers from a master page;
 - **task 5**: preflight and export for a print shop.
 
-Every example below was run against the real `achclwss` binary; the outputs
+Every example below was run against the real `wetwaresuite` binary; the outputs
 shown are what it printed (trimmed where marked).
 
 ## contents
@@ -115,8 +115,8 @@ Build the suite (see [getting started](getting-started.md)) and check the tool
 is there:
 
 ```sh
-achclwss list layout
-achclwss help layout.frame_add
+wetwaresuite list layout
+wetwaresuite help layout.frame_add
 ```
 
 ```
@@ -131,23 +131,23 @@ layout
 
 ### three ways to drive it
 
-- **CLI**: `achclwss <command> key=value ...` runs one command in a fresh
+- **CLI**: `wetwaresuite <command> key=value ...` runs one command in a fresh
   process. Documents live only inside one process, so a single command can
-  create or inspect a layout (`achclwss layout.open path=poster.achlay`) but
+  create or inspect a layout (`wetwaresuite layout.open path=poster.achlay`) but
   can't keep editing it. For a few steps from the shell, pipe lines into
-  `achclwss batch` (shown in every task).
+  `wetwaresuite batch` (shown in every task).
 - **Batch script**: a text file with one command per line, run with
-  `achclwss batch poster.txt`. `-> name` at the end of a line saves the result
+  `wetwaresuite batch poster.txt`. `-> name` at the end of a line saves the result
   (the document id for `new`/`open`, the frame id for `frame_add`,
   `place_text`, `place_image`, `frame_duplicate`) and `$name` reuses it. `#`
   starts a comment. The script stops at the first failing line unless you add
   `--keep-going`.
-- **Claude over MCP**: `achclwss mcp` (or `achclwss mcp --tools layout`) serves
+- **Claude over MCP**: `wetwaresuite mcp` (or `wetwaresuite mcp --tools layout`) serves
   every command as a tool named with `_` instead of `.` (`layout_frame_add`).
   Connect it once (see [mcp.md](mcp.md)):
 
   ```sh
-  claude mcp add achclwss -- /path/to/achclwss/build/apps/achclwss/achclwss mcp --tools layout
+  claude mcp add wetwaresuite -- /path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite mcp --tools layout
   ```
 
   Every edit tool takes `preview=true`, which attaches a PNG of the page
@@ -204,7 +204,7 @@ layout.export doc=$doc path=poster-preview.png dpi=30
 ```
 
 ```sh
-achclwss batch poster.txt
+wetwaresuite batch poster.txt
 ```
 
 What it prints (trimmed):
@@ -258,7 +258,7 @@ How it works:
 One command can open and describe a saved layout:
 
 ```sh
-achclwss layout.open path=poster.achlay
+wetwaresuite layout.open path=poster.achlay
 ```
 
 ```
@@ -272,7 +272,7 @@ size: 420,594
 To change and re-export it in one go, pipe lines into `batch`:
 
 ```sh
-printf 'layout.open path=poster.achlay -> p\nlayout.export doc=$p path=poster-small.png dpi=20\n' | achclwss batch
+printf 'layout.open path=poster.achlay -> p\nlayout.export doc=$p path=poster-small.png dpi=20\n' | wetwaresuite batch
 ```
 
 ```
@@ -382,8 +382,8 @@ preflight: 1 error(s), 0 warning(s), 1 note(s)
 ### from the shell
 
 ```sh
-achclwss batch < flyer.txt
-achclwss layout.open path=flyer.achlay
+wetwaresuite batch < flyer.txt
+wetwaresuite layout.open path=flyer.achlay
 ```
 
 ### asking Claude
@@ -449,7 +449,7 @@ rows: 5
    keeps every card's bleed; on A4 that fits fewer cards:
 
 ```sh
-printf 'layout.new preset=card -> c\nlayout.frame_add doc=$c type=rect x=-2 y=-2 w=89 h=59 fill=navy\nlayout.impose doc=$c path=cards-gap.pdf sheet=A4 gap=4\n' | achclwss batch
+printf 'layout.new preset=card -> c\nlayout.frame_add doc=$c type=rect x=-2 y=-2 w=89 h=59 fill=navy\nlayout.impose doc=$c path=cards-gap.pdf sheet=A4 gap=4\n' | wetwaresuite batch
 ```
 
 ```
@@ -536,7 +536,7 @@ exported 2 page image(s) at 60 dpi: booklet-2.png, booklet-3.png
 ### from the shell
 
 ```sh
-achclwss batch < booklet.txt
+wetwaresuite batch < booklet.txt
 pdfinfo booklet.pdf | grep Pages     # Pages: 20
 ```
 
@@ -616,7 +616,7 @@ photos.
 ### from the shell
 
 ```sh
-achclwss batch < printshop.txt
+wetwaresuite batch < printshop.txt
 pdfinfo -box flyer-print.pdf     # MediaBox, BleedBox and TrimBox
 ```
 
@@ -1247,7 +1247,7 @@ Render a page to PNG so you can see it, with margins (magenta), column gutters (
 - *Low-resolution warnings on a poster*: posters seen from a distance are
   fine at 150 dpi: `layout.preflight min_dpi=150`.
 - *Text looks grey and blocky in the preview*: no system TrueType font was
-  found; set `ACHCLWSS_FONT_DIR` to a folder with Liberation or DejaVu fonts.
+  found; set `WETWARESUITE_FONT_DIR` to a folder with Liberation or DejaVu fonts.
   The PDF uses real fonts either way.
 - *The print shop says fonts aren't embedded*: export with `embed_fonts=true`
   (needs one of the substitute fonts installed), or use your own `.ttf` via

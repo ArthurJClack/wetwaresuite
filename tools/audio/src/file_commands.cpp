@@ -3,11 +3,11 @@
 #include <algorithm>
 #include <cmath>
 
-#include "achclwss/audio/project.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/audio/project.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "common.hpp"
 
-namespace achclwss::audio::tool {
+namespace wetwaresuite::audio::tool {
 
 namespace {
 
@@ -526,4 +526,4 @@ void registerFileCommands(Session& session, const std::shared_ptr<State>&) {
             });
 }
 
-}  // namespace achclwss::audio::tool
+}  // namespace wetwaresuite::audio::tool

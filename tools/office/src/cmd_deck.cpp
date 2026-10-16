@@ -2,11 +2,11 @@
 #include <algorithm>
 #include <cmath>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "commands.hpp"
 #include "text.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 // ---- Markdown outlines ----------------------------------------------------------------
 
@@ -520,4 +520,4 @@ void registerDeckCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

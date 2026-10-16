@@ -5,9 +5,9 @@
 #include <cmath>
 #include <mutex>
 
-#include "achclwss/circuit/circuit.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 const char* toString(PinType type) {
     switch (type) {
@@ -640,4 +640,4 @@ std::shared_ptr<const Symbol> findSymbol(const std::string& name, int pins, cons
     return ptr;
 }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

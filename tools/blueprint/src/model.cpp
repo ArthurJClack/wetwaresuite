@@ -6,10 +6,10 @@
 #include <cstdio>
 #include <map>
 
-#include "achclwss/blueprint/blueprint.hpp"
+#include "wetwaresuite/blueprint/blueprint.hpp"
 #include "internal.hpp"
 
-namespace achclwss::blueprint {
+namespace wetwaresuite::blueprint {
 
 namespace {
 
@@ -1130,4 +1130,4 @@ std::string num(double v, int decimals) {
 
 }  // namespace detail
 
-}  // namespace achclwss::blueprint
+}  // namespace wetwaresuite::blueprint

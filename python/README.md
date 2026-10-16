@@ -1,11 +1,11 @@
-# achclwss for Python
+# wetwaresuite for Python
 
-Drive the ACHCLWSS suite from Python 3.8 or newer. Pure Python, no dependencies: it starts `achclwss mcp` and talks to it over stdin/stdout, so every command of every tool in your build is a method, with no wrapper code to keep up to date.
+Drive the wetwaresuite suite from Python 3.8 or newer. Pure Python, no dependencies: it starts `wetwaresuite mcp` and talks to it over stdin/stdout, so every command of every tool in your build is a method, with no wrapper code to keep up to date.
 
 ```python
-import achclwss
+import wetwaresuite
 
-with achclwss.Suite() as suite:
+with wetwaresuite.Suite() as suite:
     img = suite.photo.open(path="cat.jpg").doc         # "img1"
     r = suite.photo.resize(doc=img, width=800, preview=True)
     print(r.message, r["width"], r["height"])          # resized to 800x600 800 600
@@ -23,10 +23,10 @@ with achclwss.Suite() as suite:
 ```sh
 pip install ./python            # from the repository root
 # or, without installing:
-export PYTHONPATH=/path/to/achclwss/python
+export PYTHONPATH=/path/to/wetwaresuite/python
 ```
 
-The client needs the `achclwss` binary. It looks at `Suite(binary=...)`, then `$ACHCLWSS_BIN`, then `PATH`, then the repository's `build/apps/achclwss/` folder.
+The client needs the `wetwaresuite` binary. It looks at `Suite(binary=...)`, then `$WETWARESUITE_BIN`, then `PATH`, then the repository's `build/apps/wetwaresuite/` folder.
 
 ## Reference
 
@@ -52,9 +52,9 @@ Arguments: `pathlib.Path` becomes a string, a list becomes a number array or a c
 | `save_image(path, index=0)` | write a preview to a file |
 | `attachments` | every attached file as `(mime, bytes, name)` |
 
-With `raise_errors=True` (the default) a failed command raises `CommandError`, whose `result` holds the failed Result; with `raise_errors=False` it returns the Result with `ok == False`. `AchclwssError` covers a binary that can't be found, starts badly or exits.
+With `raise_errors=True` (the default) a failed command raises `CommandError`, whose `result` holds the failed Result; with `raise_errors=False` it returns the Result with `ok == False`. `WetwaresuiteError` covers a binary that can't be found, starts badly or exits.
 
-**`run_batch(text, binary=None, keep_going=False, check=True, cwd=None, timeout=None)`** runs batch text (one command per line, `-> name` captures, `$name` reuse) in a fresh `achclwss batch` process and returns a `BatchResult` with `ok`, `returncode`, `output` and `errors`. It raises `AchclwssError` when a line fails, unless `check=False`.
+**`run_batch(text, binary=None, keep_going=False, check=True, cwd=None, timeout=None)`** runs batch text (one command per line, `-> name` captures, `$name` reuse) in a fresh `wetwaresuite batch` process and returns a `BatchResult` with `ok`, `returncode`, `output` and `errors`. It raises `WetwaresuiteError` when a line fails, unless `check=False`.
 
 **`find_binary(binary=None)`** returns the path the client would use.
 
@@ -63,7 +63,7 @@ With `raise_errors=True` (the default) a failed command raises `CommandError`, w
 A background watch folder while Python carries on:
 
 ```python
-with achclwss.Suite() as suite:
+with wetwaresuite.Suite() as suite:
     w = suite.automate.watch_start(folder="drop", pipeline="scripts/web.yaml", pattern="*.png,*.jpg")
     ...  # drop files in; each one runs the pipeline in its own session
     print(suite.automate.watch_status().message)
@@ -73,7 +73,7 @@ with achclwss.Suite() as suite:
 Tolerating failures:
 
 ```python
-with achclwss.Suite(raise_errors=False) as suite:
+with wetwaresuite.Suite(raise_errors=False) as suite:
     for path in ["a.png", "missing.png"]:
         r = suite.photo.open(path=path)
         print(path, "ok" if r else "failed: " + r.message)
@@ -87,7 +87,7 @@ More in [docs/tutorials/automate.md](../docs/tutorials/automate.md).
 cd python && python3 -m unittest discover -s tests -t .
 ```
 
-The tests that need the suite run against `$ACHCLWSS_BIN` (or the binary found as above) and are skipped when there is none. CMake runs them as the `automate_python` test when it finds Python 3.
+The tests that need the suite run against `$WETWARESUITE_BIN` (or the binary found as above) and are skipped when there is none. CMake runs them as the `automate_python` test when it finds Python 3.
 
 ## Notes
 

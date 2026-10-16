@@ -7,9 +7,9 @@
 
 There is no GUI yet; the GUI that comes later will call these same commands. Each task below is shown three ways:
 
-- **CLI**: single `achclwss` commands that read files and write files.
+- **CLI**: single `wetwaresuite` commands that read files and write files.
 - **Batch**: a script for multi-step work with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools forge` serves just forge plus photo (forge's image commands edit images that `photo_open` opens).
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools forge` serves just forge plus photo (forge's image commands edit images that `photo_open` opens).
 
 Every example below was run against the real binary; the outputs are copied from those runs (long ones are shortened where marked).
 
@@ -33,7 +33,7 @@ You downloaded `downloads/statue.obj`: 38 000 triangles, modelled Y-up in centim
 First, look at it. `forge.mesh_open` is read-only, so it works as a one-shot inspector:
 
 ```sh
-$ achclwss forge.mesh_open path=downloads/statue.obj
+$ wetwaresuite forge.mesh_open path=downloads/statue.obj
 opened downloads/statue.obj as mesh1: 38080 triangles, 19360 vertices, size 73.06 x 160 x 72.41 at (-38.5, -20, -36.21), watertight
 doc: mesh1
 triangles: 38080
@@ -54,7 +54,7 @@ The size is 160 along Y: it's Y-up, and in centimetres.
 **CLI.** `forge.mesh_batch` does the whole preparation for every model in a folder, then `forge.mesh_lods` writes the LOD chain:
 
 ```sh
-$ achclwss forge.mesh_batch input_dir=downloads output_dir=game axes=y_up_to_z_up scale=0.01 center=true floor=true triangles=10000 uv=cylindrical
+$ wetwaresuite forge.mesh_batch input_dir=downloads output_dir=game axes=y_up_to_z_up scale=0.01 center=true floor=true triangles=10000 uv=cylindrical
 processed 1 of 1 models into game
   game/statue.glb (38080 -> 9966 triangles)
 processed: 1
@@ -63,7 +63,7 @@ failed: 0
 triangles_in: 38080
 triangles_out: 9966
 
-$ achclwss forge.mesh_lods input=game/statue.glb output=game/lods/statue.glb ratios=1,0.5,0.25,0.1 uv=cylindrical
+$ wetwaresuite forge.mesh_lods input=game/statue.glb output=game/lods/statue.glb ratios=1,0.5,0.25,0.1 uv=cylindrical
 wrote 4 LODs:
   game/lods/statue_lod0.glb (9966 triangles)
   game/lods/statue_lod1.glb (4836 triangles)
@@ -73,7 +73,7 @@ files: game/lods/statue_lod0.glb, game/lods/statue_lod1.glb, game/lods/statue_lo
 triangles: 9966,4836,2308,888
 levels: 4
 
-$ achclwss convert.file input=game/statue.glb output=game/statue.png width=512 view=front
+$ wetwaresuite convert.file input=game/statue.glb output=game/statue.png width=512 view=front
 rendered game/statue.glb to game/statue.png
 triangles: 9966
 output: game/statue.png
@@ -102,7 +102,7 @@ forge.mesh_save doc=$m path=game/statue.png width=512 view=front
 ```
 
 ```sh
-$ achclwss batch statue.txt
+$ wetwaresuite batch statue.txt
 opened downloads/statue.obj as mesh1: 38080 triangles, 19360 vertices, size 73.06 x 160 x 72.41 at (-38.5, -20, -36.21), watertight
 ...
 decimated 38080 -> 9966 triangles
@@ -147,7 +147,7 @@ forge.mesh_save doc=$m path=game/statue_on_plinth.png width=512
 ```
 
 ```sh
-$ achclwss batch more.txt
+$ wetwaresuite batch more.txt
 opened game/statue.glb as mesh1: 9966 triangles, 5067 vertices, size 0.7296 x 0.7241 x 1.6 at (-0.3648, -0.362, 0), open
 ...
 merged 12 triangles: 9978 triangles, 4992 vertices, size 1 x 1 x 1.7 at (-0.5, -0.5, -0.1), open
@@ -170,7 +170,7 @@ You have eight frames of a run cycle, `hero/run_1.png` to `hero/run_8.png`, each
 
 ```sh
 # tight: shelf-packed, transparent borders trimmed, power-of-two sheet
-$ achclwss forge.sprite_sheet input_dir=hero output=sheets/hero_tight.png trim=true pot=true
+$ wetwaresuite forge.sprite_sheet input_dir=hero output=sheets/hero_tight.png trim=true pot=true
 packed 8 frames into 128x128 sheets/hero_tight.png + sheets/hero_tight.json (opened as img1)
 frames: 8
 atlas: sheets/hero_tight.json
@@ -180,12 +180,12 @@ width: 128
 height: 128
 
 # untrimmed, packed with the default 2 px padding
-$ achclwss forge.sprite_sheet input_dir=hero output=sheets/hero.png
+$ wetwaresuite forge.sprite_sheet input_dir=hero output=sheets/hero.png
 packed 8 frames into 202x102 sheets/hero.png + sheets/hero.json (opened as img1)
 ...
 
 # a classic strip: one row of equal cells, no padding
-$ achclwss forge.sprite_sheet input_dir=hero output=sheets/hero_strip.png layout=grid columns=8
+$ wetwaresuite forge.sprite_sheet input_dir=hero output=sheets/hero_strip.png layout=grid columns=8
 packed 8 frames into 384x48 sheets/hero_strip.png + sheets/hero_strip.json (opened as img1)
 ...
 ```
@@ -204,7 +204,7 @@ Frames are sorted by name the way a person would (`run_2` before `run_10`). The 
     },
     ...
   },
-  "meta": { "app": "achclwss forge", "version": "1.0", "image": "hero_tight.png", "format": "RGBA8888",
+  "meta": { "app": "wetwaresuite forge", "version": "1.0", "image": "hero_tight.png", "format": "RGBA8888",
             "size": { "w": 128, "h": 128 }, "scale": "1" }
 }
 ```
@@ -214,7 +214,7 @@ Frames are sorted by name the way a person would (`run_2` before `run_10`). The 
 Going the other way, `forge.sprite_split` cuts a sheet into numbered files, by a grid or by an atlas:
 
 ```sh
-$ achclwss forge.sprite_split input=sheets/hero_strip.png output_dir=frames cell_width=48 prefix=run
+$ wetwaresuite forge.sprite_split input=sheets/hero_strip.png output_dir=frames cell_width=48 prefix=run
 wrote 8 frames to frames
 frames: 8
 skipped: 0
@@ -222,7 +222,7 @@ output_dir: frames
 first: frames/run_00.png
 last: frames/run_07.png
 
-$ achclwss forge.sprite_split input=sheets/hero_tight.png atlas=sheets/hero_tight.json output_dir=restored
+$ wetwaresuite forge.sprite_split input=sheets/hero_tight.png atlas=sheets/hero_tight.json output_dir=restored
 wrote 8 frames to restored
 ...
 first: restored/run_1.png
@@ -234,8 +234,8 @@ By atlas, frames get their original names and their untrimmed 48 x 48 size back.
 To outline every frame first, loop in the shell, then pack the outlined copies:
 
 ```sh
-for f in hero/*.png; do achclwss forge.outline input="$f" output="outlined/$(basename "$f")" color=#1a1a2e; done
-achclwss forge.sprite_sheet input_dir=outlined output=sheets/hero_outlined.png trim=true pot=true
+for f in hero/*.png; do wetwaresuite forge.outline input="$f" output="outlined/$(basename "$f")" color=#1a1a2e; done
+wetwaresuite forge.sprite_sheet input_dir=outlined output=sheets/hero_outlined.png trim=true pot=true
 ```
 
 **Batch.**
@@ -257,7 +257,7 @@ forge.sprite_split input=sheets/hero_run.png atlas=sheets/hero_run.json output_d
 ```
 
 ```sh
-$ achclwss batch hero.txt
+$ wetwaresuite batch hero.txt
 1 px outline added
 ...
 packed 8 frames into 128x128 sheets/hero_run.png + sheets/hero_run.json (opened as img1)
@@ -283,7 +283,7 @@ Claude calls `forge_sprite_sheet` with `input_dir`, `output`, `trim=true`, `pot=
 **CLI.** Check the seams, fix them, check again, then make the normal map:
 
 ```sh
-$ achclwss forge.tile_preview input=textures/stone.png output=textures/stone_before_3x3.png
+$ wetwaresuite forge.tile_preview input=textures/stone.png output=textures/stone_before_3x3.png
 3x3 tile preview (edge difference 33.1) (opened as img1)
 seam: 33.1198
 output: textures/stone_before_3x3.png
@@ -292,7 +292,7 @@ width: 768
 height: 768
 attachment: img1.png (572972 bytes)
 
-$ achclwss forge.seamless input=textures/stone.png output=textures/stone_tile.png
+$ wetwaresuite forge.seamless input=textures/stone.png output=textures/stone_tile.png
 made tileable (edge difference 33.1 -> 3.95)
 seam_before: 33.1198
 seam_after: 3.94661
@@ -300,11 +300,11 @@ width: 256
 height: 256
 output: textures/stone_tile.png
 
-$ achclwss forge.tile_preview input=textures/stone_tile.png output=textures/stone_tile_3x3.png
+$ wetwaresuite forge.tile_preview input=textures/stone_tile.png output=textures/stone_tile_3x3.png
 3x3 tile preview (edge difference 3.95) (opened as img1)
 ...
 
-$ achclwss forge.normal_map input=textures/stone_tile.png output=textures/stone_tile_n.png strength=3
+$ wetwaresuite forge.normal_map input=textures/stone_tile.png output=textures/stone_tile_n.png strength=3
 normal map made (OpenGL, strength 3) (opened as img1)
 output: textures/stone_tile_n.png
 doc: img1
@@ -320,7 +320,7 @@ height: 256
 An ORM texture (ambient occlusion in red, roughness in green, metallic in blue) comes from `forge.channel_pack`. Here the stone's brightness stands in for occlusion, roughness is a constant 200 and metallic is 0:
 
 ```sh
-$ achclwss forge.channel_pack red=textures/stone_tile.png green_value=200 output=textures/stone_orm.png
+$ wetwaresuite forge.channel_pack red=textures/stone_tile.png green_value=200 output=textures/stone_orm.png
 packed red into one 256x256 texture (opened as img1)
 output: textures/stone_orm.png
 doc: img1
@@ -343,7 +343,7 @@ forge.tile_preview doc=$stone tiles=3 output=game/stone_check.png
 ```
 
 ```sh
-$ achclwss batch stone.txt
+$ wetwaresuite batch stone.txt
 opened textures/stone.png as img1
 ...
 made tileable (edge difference 33.1 -> 4.16)
@@ -377,13 +377,13 @@ Claude calls `forge_seamless` (with `input` and `output`, or `photo_open` and th
 **CLI.**
 
 ```sh
-$ achclwss convert.file input=photo.jpg output=pixel/small.png width=160
+$ wetwaresuite convert.file input=photo.jpg output=pixel/small.png width=160
 converted photo.jpg to pixel/small.png
 output: pixel/small.png
 backend: raster
 bytes: 8091
 
-$ achclwss forge.palette input=pixel/small.png output=pixel/small16.png colors=16 method=kmeans
+$ wetwaresuite forge.palette input=pixel/small.png output=pixel/small16.png colors=16 method=kmeans
 reduced 1190 colours to 16
 colors_before: 1190
 colors: 16
@@ -392,7 +392,7 @@ width: 160
 height: 120
 output: pixel/small16.png
 
-$ achclwss forge.upscale input=pixel/small16.png output=pixel/art.png factor=4
+$ wetwaresuite forge.upscale input=pixel/small16.png output=pixel/art.png factor=4
 upscaled 4x to 640x480
 width: 640
 height: 480
@@ -420,7 +420,7 @@ photo.save doc=$pic path=pixel/art_pico8.png
 ```
 
 ```sh
-$ achclwss batch pixel.txt
+$ wetwaresuite batch pixel.txt
 opened photo.jpg as img1
 ...
 resized to 160x120
@@ -450,7 +450,7 @@ Claude calls `photo_open`, `photo_resize` with `width=160`, `forge_palette` with
 
 ```sh
 # crop a sprite to its visible pixels and get the offset to place it back
-$ achclwss forge.trim input=hero/run_1.png output=trimmed/run_1.png
+$ wetwaresuite forge.trim input=hero/run_1.png output=trimmed/run_1.png
 trimmed 48x48 to 13x39 at (18, 6)
 x: 18
 y: 6
@@ -461,7 +461,7 @@ height: 39
 output: trimmed/run_1.png
 
 # power-of-two size for older engines, mobile GPUs and mipmaps
-$ achclwss forge.resize_pot input=photo.jpg output=pot.png
+$ wetwaresuite forge.resize_pot input=photo.jpg output=pot.png
 resized 640x480 -> 512x512
 width: 512
 height: 512

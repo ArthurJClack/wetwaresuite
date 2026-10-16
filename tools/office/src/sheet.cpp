@@ -1,6 +1,7 @@
 // Workbook model: cells, A1 names, typed input, number formats, dates and
 // structural edits (insert/delete rows and columns, sheets) that keep every
 // formula pointing at the same cells.
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -463,7 +464,7 @@ std::string formatNumber(double v, const std::string& sec, bool negativeSign) {
         auto e = s.find('E');
         int ex = std::atoi(s.c_str() + e + 1);
         char eb[16];
-        std::snprintf(eb, sizeof eb, "E%c%0*d", ex < 0 ? '-' : '+', std::max(1, expDigits), ex < 0 ? -ex : ex);
+        std::snprintf(eb, sizeof eb, "E%c%0*d", ex < 0 ? '-' : '+', std::clamp(expDigits, 1, 4), ex < 0 ? -ex : ex);
         return (negativeSign ? "-" : "") + prefix + s.substr(0, e) + eb + suffix;
     }
     // trailing commas scale by thousands

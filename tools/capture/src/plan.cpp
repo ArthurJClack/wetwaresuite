@@ -251,12 +251,12 @@ Plan planRecord(const Environment& env, const RecordRequest& rq) {
         plan.error = "fps must be 1..120";
         return plan;
     }
+    plan.backend = pickBackend(env, rq.backend, false, plan.error);
+    if (!plan.ok()) return plan;
     if (!env.hasFfmpeg) {
         plan.error = "screen recording needs ffmpeg; install it (it's free): Debian/Ubuntu `sudo apt install ffmpeg`, macOS `brew install ffmpeg`, Windows `winget install ffmpeg`";
         return plan;
     }
-    plan.backend = pickBackend(env, rq.backend, false, plan.error);
-    if (!plan.ok()) return plan;
     const bool gif = ext == "gif";
     const bool audio = rq.audio && !gif;
     if (audio && env.platform == Platform::Windows && rq.audioDevice.empty()) {

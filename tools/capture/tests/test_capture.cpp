@@ -272,7 +272,12 @@ void testCommands() {
         CHECK(contains(list, std::string("\"") + tool + "\""));
     }
     std::string r = server.handle(R"({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"capture_list_devices","arguments":{}}})").value_or("");
-    CHECK(contains(r, "\"isError\":false") && contains(r, "cameras"));
+    // off linux, listing devices asks ffmpeg; without it the tool says how to get it
+    if (currentPlatform() == Platform::Linux || findProgram("ffmpeg")) {
+        CHECK(contains(r, "\"isError\":false") && contains(r, "cameras"));
+    } else {
+        CHECK(contains(r, "\"isError\":true") && contains(r, "needs ffmpeg"));
+    }
     // on a machine without a screen, a screenshot fails with the explanation
     const char* display = std::getenv("DISPLAY");
     const char* wayland = std::getenv("WAYLAND_DISPLAY");

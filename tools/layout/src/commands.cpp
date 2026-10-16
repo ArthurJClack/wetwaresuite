@@ -618,9 +618,8 @@ std::vector<Frame*> frameList(LayoutDoc& doc, const std::string& spec, std::stri
 
 }  // namespace
 
-void registerCommands(Session& session) {
+static void registerDocuments(Session& session) {
     auto& reg = session.registry();
-
     // ---- documents ----------------------------------------------------------------------
 
     {
@@ -821,6 +820,10 @@ void registerCommands(Session& session) {
                 }));
     }
 
+}
+
+static void registerPages(Session& session) {
+    auto& reg = session.registry();
     // ---- pages --------------------------------------------------------------------------------
 
     {
@@ -1015,6 +1018,10 @@ void registerCommands(Session& session) {
                 return r;
             }));
 
+}
+
+static void registerFrames(Session& session) {
+    auto& reg = session.registry();
     // ---- frames ---------------------------------------------------------------------------------
 
     {
@@ -1231,6 +1238,10 @@ void registerCommands(Session& session) {
                 return edited(doc, p, "unlinked after " + id, std::max(page, 0), id);
             }));
 
+}
+
+static void registerStylesAndColours(Session& session) {
+    auto& reg = session.registry();
     // ---- styles and colours ---------------------------------------------------------------------
 
     {
@@ -1408,6 +1419,10 @@ void registerCommands(Session& session) {
                 return r;
             }));
 
+}
+
+static void registerPlacing(Session& session) {
+    auto& reg = session.registry();
     // ---- placing ---------------------------------------------------------------------------
 
     reg.add({"layout.place_text", "Place Text",
@@ -1541,6 +1556,10 @@ void registerCommands(Session& session) {
                 return r;
             }));
 
+}
+
+static void registerArranging(Session& session) {
+    auto& reg = session.registry();
     // ---- arranging -------------------------------------------------------------------------
 
     reg.add({"layout.align", "Align Frames",
@@ -1629,6 +1648,10 @@ void registerCommands(Session& session) {
                 return r;
             }));
 
+}
+
+static void registerCheckingAndOutput(Session& session) {
+    auto& reg = session.registry();
     // ---- checking and output ------------------------------------------------------------------
 
     reg.add({"layout.preflight", "Preflight",
@@ -1779,6 +1802,16 @@ void registerCommands(Session& session) {
                 r.attach(std::move(a));
                 return r;
             }, false));
+}
+
+void registerCommands(Session& session) {
+    registerDocuments(session);
+    registerPages(session);
+    registerFrames(session);
+    registerStylesAndColours(session);
+    registerPlacing(session);
+    registerArranging(session);
+    registerCheckingAndOutput(session);
 }
 
 }  // namespace achclwss::layout

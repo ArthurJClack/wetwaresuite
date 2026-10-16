@@ -132,6 +132,39 @@ std::string sentence(const std::string& message);
 // One "Label: value" line per data field of a result.
 std::vector<std::string> resultLines(const Result& result);
 
+// ---- retouching by painting ---------------------------------------------------
+
+// Thins a brush stroke (x,y pairs in picture px) for a command: drops points
+// closer than `minStep` to the last one kept, then, if more than `maxPoints`
+// remain, keeps evenly spaced ones. The first and last points always stay.
+std::vector<double> thinStroke(const std::vector<double>& points, double minStep, std::size_t maxPoints = 400);
+
+// The clean spot a heal stroke copies from (Alt+click, or "Pick source").
+// Like a clone brush: the first stroke after picking fixes the offset from the
+// stroke's start to the spot, and later strokes keep that offset.
+struct HealSource {
+    bool picked = false;
+    double x = 0, y = 0;     // the spot that was picked
+    bool anchored = false;   // the offset is fixed
+    double dx = 0, dy = 0;   // source minus stroke start, picture px
+
+    void pick(double px, double py);
+    void forget() { *this = HealSource{}; }
+    // The offset for a stroke starting at (sx, sy); false when no spot is picked.
+    bool offsetFor(double sx, double sy, double& ox, double& oy);
+};
+
+// Params for photo.heal from a painted stroke. `brushSize` is the brush
+// diameter in picture px (the radius sent is half of it). With `offset`, the
+// stroke copies texture from that far away (from_x / from_y); without, it fills
+// smoothly from the edges. False with a plain-word `error` when it can't work.
+bool healStrokeParams(const std::string& doc, const std::vector<double>& points, double brushSize, int width, int height,
+                      const double* offset, Params& out, std::string& error);
+
+// Params for photo.remove_object from a painted stroke (same rules as above).
+bool removeStrokeParams(const std::string& doc, const std::vector<double>& points, double brushSize, int width, int height,
+                        Params& out, std::string& error);
+
 // ---- tools ------------------------------------------------------------------
 
 // A plain-word sentence about a tool for the home screen card.

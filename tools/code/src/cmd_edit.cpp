@@ -423,8 +423,11 @@ void registerViewCommands(Session& s) {
                 std::string text, rows;
                 for (const auto& l : languages()) {
                     std::string exts;
-                    for (const auto& e : l.extensions) exts += (exts.empty() ? "" : " ") + e;
-                    for (const auto& f : l.filenames) exts += (exts.empty() ? "" : " ") + f;
+                    std::vector<std::string> names = l.extensions;
+                    for (const auto& f : l.filenames) {
+                        if (std::find(names.begin(), names.end(), f) == names.end()) names.push_back(f);  // .bashrc is both
+                    }
+                    for (const auto& e : names) exts += (exts.empty() ? "" : " ") + e;
                     text += l.id + " - " + l.name + (exts.empty() ? "" : " (" + exts + ")") + "\n";
                     rows += l.id + "\t" + l.name + "\t" + exts + "\n";
                 }

@@ -1,0 +1,10 @@
+add_library(achclwss_raster src/image.cpp src/codec.cpp src/ops.cpp src/paint.cpp src/ora.cpp src/document.cpp)
+add_library(achclwss::raster ALIAS achclwss_raster)
+target_include_directories(achclwss_raster PUBLIC include PRIVATE ${PROJECT_SOURCE_DIR}/third_party/stb)
+target_link_libraries(achclwss_raster PUBLIC achclwss::core)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_raster tests/test_raster.cpp)
+  target_link_libraries(test_raster PRIVATE achclwss::raster achclwss_check)
+  add_test(NAME raster COMMAND test_raster)
+endif()

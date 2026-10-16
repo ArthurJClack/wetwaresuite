@@ -1,0 +1,28 @@
+#include "suite.hpp"
+
+#include "achclwss/convert/convert.hpp"
+#include "achclwss/paint/paint.hpp"
+#include "achclwss/photo/photo.hpp"
+#include "achclwss/toolkit/detect.hpp"
+#include "achclwss/vector/vector.hpp"
+
+namespace achclwss::suite {
+
+const std::set<std::string>& toolNames() {
+    static const std::set<std::string> names = {"toolkit", "photo", "paint", "vector", "convert"};
+    return names;
+}
+
+void registerAll(Session& session, const std::set<std::string>& only) {
+    std::set<std::string> tools = only;
+    if (tools.count("paint")) tools.insert("photo");
+    if (tools.count("convert")) tools.insert("vector");
+    auto want = [&](const char* tool) { return only.empty() || tools.count(tool) > 0; };
+    if (want("toolkit")) toolkit::registerCommands(session.registry());
+    if (want("photo")) photo::registerCommands(session);
+    if (want("paint")) paint::registerCommands(session);
+    if (want("vector")) vector::registerCommands(session);
+    if (want("convert")) convert::registerCommands(session);
+}
+
+}  // namespace achclwss::suite

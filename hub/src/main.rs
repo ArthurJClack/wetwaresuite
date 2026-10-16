@@ -73,17 +73,24 @@ fn exe_name(binary: &str) -> String {
     }
 }
 
-/// Builds the `mcpServers` block for Claude Desktop / Claude Code.
+/// Builds the `mcpServers` block for Claude Desktop / Claude Code: one entry
+/// per MCP binary, each serving every available tool it contains.
 fn mcp_config(bin_dir: &Path) -> String {
-    let entries: Vec<String> = TOOLS
+    let mut binaries: Vec<&str> = Vec::new();
+    for t in TOOLS.iter().filter(|t| t.status == Status::Available) {
+        if let Some(b) = t.mcp_binary {
+            if !binaries.contains(&b) {
+                binaries.push(b);
+            }
+        }
+    }
+    let entries: Vec<String> = binaries
         .iter()
-        .filter(|t| t.status == Status::Available)
-        .filter_map(|t| t.mcp_binary.map(|b| (t, b)))
-        .map(|(t, b)| {
+        .map(|b| {
             let command = bin_dir.join(exe_name(b));
             format!(
                 "    {}: {{\n      \"command\": {},\n      \"args\": [\"mcp\"]\n    }}",
-                json_string(&format!("achclwss-{}", t.id)),
+                json_string(b),
                 json_string(&command.to_string_lossy())
             )
         })
@@ -127,8 +134,8 @@ mod tests {
     #[test]
     fn mcp_config_lists_available_tools() {
         let config = mcp_config(Path::new("bin"));
-        assert!(config.contains("\"achclwss-toolkit\""));
+        assert!(config.contains("\"achclwss\": {"));
         assert!(config.contains("\"args\": [\"mcp\"]"));
-        assert!(!config.contains("achclwss-photo"));
+        assert_eq!(config.matches("\"command\"").count(), 1);
     }
 }

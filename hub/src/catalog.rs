@@ -25,6 +25,13 @@ const fn planned(id: &'static str, name: &'static str, summary: &'static str, ph
     Tool { id, name, summary, phase, approx_mb, status: Status::Planned, mcp_binary: None }
 }
 
+/// The `achclwss` binary serves every built tool over MCP with `achclwss mcp`.
+pub const SUITE: &str = "achclwss";
+
+const fn available(id: &'static str, name: &'static str, summary: &'static str, phase: u8, approx_mb: u32) -> Tool {
+    Tool { id, name, summary, phase, approx_mb, status: Status::Available, mcp_binary: Some(SUITE) }
+}
+
 pub const TOOLS: &[Tool] = &[
     Tool {
         id: "toolkit",
@@ -33,10 +40,11 @@ pub const TOOLS: &[Tool] = &[
         phase: 1,
         approx_mb: 10,
         status: Status::Available,
-        mcp_binary: Some("achclwss-toolkit"),
+        mcp_binary: Some(SUITE),
     },
-    planned("photo", "photo", "photo editing and RAW development", 2, 15),
-    planned("paint", "paint", "digital painting with pen pressure", 2, 12),
+    available("photo", "photo", "photo editing: adjust, crop, resize, effects, batch", 2, 4),
+    available("paint", "paint", "digital painting with pen pressure and layers", 2, 4),
+    available("convert", "convert", "change any file's type: images, audio, video, docs", 2, 2),
     planned("vector", "vector", "vector design, SVG/AI/EPS", 2, 10),
     planned("cad", "cad", "precision parametric 2D/3D CAD", 3, 45),
     planned("blueprint", "blueprint", "technical drafting and floor plans", 3, 8),
@@ -49,6 +57,17 @@ pub const TOOLS: &[Tool] = &[
     planned("layout", "layout", "print layout and publishing", 4, 10),
     planned("library", "library", "asset browser for every format", 4, 3),
     planned("automate", "automate", "Python scripting across tools", 4, 20),
+    planned("sculpt", "sculpt", "digital sculpting and retopology", 5, 15),
+    planned("render", "render", "3D scenes and path-traced renders", 5, 20),
+    planned("animate", "animate", "2D and 3D animation", 5, 15),
+    planned("levels", "levels", "game level and tilemap editor", 5, 10),
+    planned("beats", "beats", "music making: sequencer, synths, samples", 5, 15),
+    planned("circuit", "circuit", "schematics and PCB layout", 6, 25),
+    planned("flash", "flash", "flash firmware to Arduino, ESP32 and STM32", 6, 5),
+    planned("maps", "maps", "offline maps and GIS", 6, 15),
+    planned("board", "board", "whiteboard and diagrams", 6, 5),
+    planned("notes", "notes", "markdown notes and knowledge base", 6, 5),
+    planned("type", "type", "font design", 6, 8),
 ];
 
 pub fn find(id: &str) -> Option<&'static Tool> {

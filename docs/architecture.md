@@ -9,7 +9,8 @@ share (Rust, standalone)      wetwaresuite-share: share/sync folders over LAN or
 apps/app                      wetwaresuite-<app>: one binary per app (image, draw, model, ...), its tools only
 apps/wetwaresuite             wetwaresuite: every tool in one binary
 apps/common                   app table, file routing, handoff folder, app.* commands, shared CLI
-tools/<name> (C++)            each tool is a library of commands (+ GUI later)
+tools/<name> (C++)            each tool is a library of commands
+gui/                          desktop window over a Session (ImGui + SDL3), linked into apps
   │
 mcp/                          JSON-RPC over stdio, exposes a Session's commands
 core/                         commands, registry, undo history, workspace, batch, processes
@@ -82,7 +83,7 @@ for AI, each app's MCP instructions name the other installed apps (and the missi
 
 - the core has no dependencies; libraries get pulled in by the tool that needs them
 - image codecs are vendored single-header stb; heavy formats go through ffmpeg/LibreOffice/pandoc only if installed
-- the GUI (Qt, shared by every tool) is a thin layer over the commands
+- the GUI (`gui/`: Dear ImGui on SDL3's 2D renderer, shared by every app) is a thin layer over the commands: forms are generated from each command's params, and it falls back to software drawing without a GPU
 - the hub is a dependency-free Rust binary (~300 KB) so it runs before anything else is installed
 - each app binary links only its own tools, so installing image doesn't pull in video or cad code
 - `share` is a dependency-free Rust binary too (~1 MB): networking is all in Rust's std (TCP, UDP), so there's no per-OS socket code; it's a separate binary with its own `mcp` because it doesn't need the C++ core, and `hub mcp-config` emits an entry for it

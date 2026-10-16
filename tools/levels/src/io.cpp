@@ -272,7 +272,17 @@ struct XmlNode {
 
 class XmlParser {
 public:
-    explicit XmlParser(const std::string& s) : s_(s) {}
+    // XML treats \r\n and a lone \r as \n (files saved on Windows have them)
+    explicit XmlParser(const std::string& s) {
+        s_.reserve(s.size());
+        for (std::size_t i = 0; i < s.size(); ++i) {
+            if (s[i] != '\r') {
+                s_ += s[i];
+            } else if (i + 1 >= s.size() || s[i + 1] != '\n') {
+                s_ += '\n';
+            }
+        }
+    }
 
     XmlNode parse() {
         skipMisc();
@@ -282,7 +292,7 @@ public:
     }
 
 private:
-    const std::string& s_;
+    std::string s_;
     std::size_t i_ = 0;
 
     [[noreturn]] void fail(const std::string& what) const { throw std::runtime_error("XML error at byte " + std::to_string(i_) + ": " + what); }

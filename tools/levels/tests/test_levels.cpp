@@ -4,6 +4,7 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -558,6 +559,18 @@ void testFiles(const fs::path& dir) {
     CHECK(h.layers[2].objects[1].name == "n\xC3\xA9" && h.layers[2].objects[1].props["note"].value == "multi\nline");
     CHECK(h.tileProperties(3) && h.tileProperties(3)->at("damage").value == "3" && h.tileProperties(3)->at("type").value == "lava");
     CHECK(h.nextObjectId == 3);
+    {
+        // the same file with Windows line endings reads the same
+        std::ifstream in(dir / "hand.tmx", std::ios::binary);
+        std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>()), crlf;
+        for (char c : text) {
+            if (c == '\n' && (crlf.empty() || crlf.back() != '\r')) crlf += '\r';
+            crlf += c;
+        }
+        std::ofstream(dir / "hand_crlf.tmx", std::ios::binary) << crlf;
+    }
+    Map hc = loadMap(dir / "hand_crlf.tmx");
+    CHECK(hc.layers.size() == 3 && hc.layers[2].objects.size() == 2 && hc.layers[2].objects[1].props["note"].value == "multi\nline");
     bool threw = false;
     try {
         fromTmx("<map orientation=\"isometric\" width=\"2\" height=\"2\"/>", dir);

@@ -19,9 +19,10 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: build
         shell: bash
+        # a bare --parallel means unlimited make jobs, which runs the runner out of memory
         run: |
           set -o pipefail
-          cmake --build build --config Release --parallel 2>&1 | tee build.log
+          cmake --build build --config Release --parallel 4 2>&1 | tee build.log
       - name: test
         shell: bash
         run: |

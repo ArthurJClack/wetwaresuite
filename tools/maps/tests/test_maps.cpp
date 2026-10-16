@@ -931,7 +931,7 @@ void testRealDataPack(const fs::path& dir) {
             }
         }
     }
-    if (earthFeatures <= 177 * 2) {  // diagnostics for a windows-only failure
+    if (earthFeatures <= 177 * 2 || std::getenv("WW_DIAG")) {  // diagnostics for a windows-only failure
         std::size_t polys = 0, pts = 0;
         for (const auto& f : countries()) {
             polys += f.geom.polygons.size();
@@ -942,6 +942,13 @@ void testRealDataPack(const fs::path& dir) {
         double tx = 0, ty = 0;
         lonLatToTile(10, 50, 3, tx, ty);
         const auto sq = clipRing({{0, 0}, {5000, 0}, {5000, 5000}, {0, 5000}}, -64, 4160);
+        const auto sq2 = clipRing({{-5000, -5000}, {100, -5000}, {100, 100}, {-5000, 100}}, -64, 4160);
+        std::size_t zc[4] = {0, 0, 0, 0};
+        for (int z = 1; z <= 3; ++z)
+            for (int x = 0; x < (1 << z); ++x)
+                for (int y = 0; y < (1 << z); ++y) countriesTile(z, x, y, zc[z]);
+        std::fprintf(stderr, "FAILED diag2: z1=%zu z2=%zu z3=%zu sq2=%zu area2=%.1f\n", zc[1], zc[2], zc[3], sq2.size(), sq2.empty() ? 0.0 : ringArea(sq2));
+        for (const auto& p : sq2) std::fprintf(stderr, "FAILED diag3: %d,%d\n", p.first, p.second);
         std::fprintf(stderr, "FAILED diag: earth=%zu countries=%zu polys=%zu pts=%zu z0earth=%zu z0bytes=%zu tile(10,50,3)=%.4f,%.4f clipsq=%zu area=%.1f\n",
                      earthFeatures, countries().size(), polys, pts, z0, t0.size(), tx, ty, sq.size(), sq.empty() ? 0.0 : ringArea(sq));
     }

@@ -2,6 +2,7 @@
 // coercion rules, the function library, and dependency-ordered recalculation
 // (cells are computed on demand, so dependencies always come first; a cell
 // that is reached again while it is being computed is a cycle).
+#include <exception>
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -1685,23 +1686,29 @@ bool hasUnknownFunction(const FormulaNode& n) {
     return false;
 }
 
-constexpr int kMaxDepth = 150;  // deeper chains are finished from a work stack, not the call stack
+// deeper chains are finished from a work stack, not the call stack. Kept low because MSVC's evaluator
+// frames are large and Windows threads get 1 MB of stack (150 crashed the Windows tests).
+constexpr int kMaxDepth = 40;
 
 void Recalc::compute(int sheet, std::int64_t key, Cell& cell, int depth) {
     if (depth > kMaxDepth) throw Deferred{&cell, sheet, Sheet::rowOf(key), Sheet::colOf(key)};
     if (!cell.ast) cell.ast = parseFormula(cell.formula);
     state[&cell] = 1;
-    Ctx ctx{wb, sheet, Sheet::rowOf(key), Sheet::colOf(key), this, depth};
-    try {
-        Arg a = evalNode(*cell.ast, ctx);
-        CellValue v = finalValue(a, ctx);
-        // a function this engine doesn't know: keep the value the file was saved with
-        if (!(v.isError() && v.text == "#NAME?" && !cell.value.empty() && !cell.value.isError() && hasUnknownFunction(*cell.ast))) {
-            cell.value = std::move(v);
+    // if a Deferred unwinds through here, mark the cell for a retry once the deeper cell is done.
+    // A guard instead of catch-and-rethrow: MSVC keeps every rethrowing catch frame on the stack.
+    struct RetryOnUnwind {
+        int& slot;
+        int exceptions = std::uncaught_exceptions();
+        ~RetryOnUnwind() {
+            if (std::uncaught_exceptions() > exceptions) slot = 0;
         }
-    } catch (const Deferred&) {
-        state[&cell] = 0;  // retried once the deeper cell is done
-        throw;
+    } retry{state[&cell]};
+    Ctx ctx{wb, sheet, Sheet::rowOf(key), Sheet::colOf(key), this, depth};
+    Arg a = evalNode(*cell.ast, ctx);
+    CellValue v = finalValue(a, ctx);
+    // a function this engine doesn't know: keep the value the file was saved with
+    if (!(v.isError() && v.text == "#NAME?" && !cell.value.empty() && !cell.value.isError() && hasUnknownFunction(*cell.ast))) {
+        cell.value = std::move(v);
     }
     state[&cell] = 2;
 }

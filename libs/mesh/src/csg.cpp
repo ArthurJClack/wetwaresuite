@@ -368,6 +368,27 @@ Mesh booleanOp(const Mesh& a, const Mesh& b, BooleanOp op) {
         const bool isA = i < countA;
         (overlaps(pb, common) ? (isA ? aIn : bIn) : (isA ? aOut : bOut)).push_back(originals[i]);
     }
+    // The BSP splits by each polygon's plane in input order. Big faces (outer planes, which
+    // split little) must come first; small facets first can split long triangles over and
+    // over and blow the tree up.
+    auto polyArea = [](const Poly& p) {
+        Vec3 n{0, 0, 0};
+        for (std::size_t k = 1; k + 1 < p.v.size(); ++k) n = n + cross(p.v[k] - p.v[0], p.v[k + 1] - p.v[0]);
+        return length(n);
+    };
+    auto largestFirst = [&](std::vector<Poly>& polys) {
+        std::vector<double> area(polys.size());
+        for (std::size_t i = 0; i < polys.size(); ++i) area[i] = polyArea(polys[i]);
+        std::vector<std::size_t> order(polys.size());
+        for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+        std::stable_sort(order.begin(), order.end(), [&](std::size_t x, std::size_t y) { return area[x] > area[y]; });
+        std::vector<Poly> sorted;
+        sorted.reserve(polys.size());
+        for (std::size_t i : order) sorted.push_back(std::move(polys[i]));
+        polys = std::move(sorted);
+    };
+    largestFirst(aIn);
+    largestFirst(bIn);
 
     Csg csg(eps);
     std::vector<Poly> all1 = aIn, all2 = bIn;

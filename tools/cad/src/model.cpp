@@ -384,26 +384,8 @@ struct Ctx {
 // CSG can leave zero-volume "fins": two triangles on the same three vertices
 // with opposite winding. They enclose nothing, so dropping both pairs keeps
 // the solid and makes it watertight again.
-// The BSP splits by each polygon's plane in input order, so big faces (the
-// part's outer planes, which split nothing) should come first; small facets
-// first can split long triangles over and over and blow the tree up.
-Mesh largestFirst(const Mesh& m) {
-    std::vector<std::size_t> order(m.triangleCount());
-    std::vector<double> area(m.triangleCount());
-    for (std::size_t t = 0; t < order.size(); ++t) {
-        order[t] = t;
-        area[t] = length(m.faceNormal(t));
-    }
-    std::stable_sort(order.begin(), order.end(), [&](std::size_t x, std::size_t y) { return area[x] > area[y]; });
-    Mesh out;
-    out.positions = m.positions;
-    out.indices.reserve(m.indices.size());
-    for (std::size_t t : order) out.addTriangle(m.indices[t * 3], m.indices[t * 3 + 1], m.indices[t * 3 + 2]);
-    return out;
-}
-
 Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
-    Mesh m = mesh::booleanOp(largestFirst(a), largestFirst(b), op);
+    Mesh m = mesh::booleanOp(a, b, op);
     std::map<std::array<std::uint32_t, 3>, std::vector<std::size_t>> byCorners;
     for (std::size_t t = 0; t < m.triangleCount(); ++t) {
         std::array<std::uint32_t, 3> k{m.indices[t * 3], m.indices[t * 3 + 1], m.indices[t * 3 + 2]};

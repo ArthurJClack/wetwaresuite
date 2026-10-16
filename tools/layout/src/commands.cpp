@@ -692,14 +692,13 @@ static void registerDocuments(Session& session) {
              "Save the layout as .achlay (JSON: pages, frames, stories, styles, colours; pictures stay linked by path). "
              "For print files use layout.export.",
              {docParam(), {"path", ParamType::String, "output .achlay file", true}}, false},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
-                std::string path = stringParam(p, "path");
-                if (lower(std::filesystem::path(path).extension().string()) != ".achlay") {
-                    return Result::failure("layouts save as .achlay; use layout.export for pdf or png");
-                }
-                saveLayout(doc, path);
-                Result r = Result::success("saved " + path, path);
-                r.with("path", path);
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
+                const std::string file = stringParam(p, "path");
+                const std::string ext = lower(std::filesystem::path(file).extension().string());
+                if (ext != ".achlay") return Result::failure("layouts save as .achlay; use layout.export for pdf or png");
+                saveLayout(doc, file);
+                Result r = Result::success("saved " + file, file);
+                r.with("path", file);
                 return r;
             }, false));
 
@@ -717,7 +716,7 @@ static void registerDocuments(Session& session) {
              "picture dpi, overset), stories, styles, colours, fonts and masters. page= or frame= narrows it.",
              {docParam(), {"page", ParamType::Int, "only this page (1-based)", false}, str("frame", "only this frame, with its full text")},
              false, true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const auto layouts = layoutAll(doc);
                 std::string text;
                 if (has(p, "frame")) {
@@ -808,7 +807,7 @@ static void registerDocuments(Session& session) {
                                     num("gutter", "column gutter, mm"), flag("facing", "facing pages")};
         s.push_back(previewParam());
         reg.add({"layout.doc_set", "Document Setup", "Change the title, margins, bleed, column guides or facing pages.", s, true},
-                layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+                layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                     std::string error;
                     if (!marginsArg(p, doc.margins, error)) return Result::failure(error);
                     if (has(p, "title")) doc.title = stringParam(p, "title");
@@ -833,7 +832,7 @@ static void registerPages(Session& session) {
         for (auto& x : sizeParams()) s.push_back(x);
         s.push_back(previewParam());
         reg.add({"layout.page_add", "Add Pages", "Insert pages (default size: the document's).", s, true},
-                layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+                layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                     const auto count = std::clamp<std::int64_t>(intParam(p, "count", 1), 1, 5000);
                     const auto after = has(p, "after") ? intParam(p, "after") : static_cast<std::int64_t>(doc.pages.size());
                     if (after < 0 || after > static_cast<std::int64_t>(doc.pages.size())) return Result::failure("after= must be 0 to " + std::to_string(doc.pages.size()));
@@ -859,7 +858,7 @@ static void registerPages(Session& session) {
              {docParam(), {"page", ParamType::Int, "first page to delete (1-based)", true},
               {"count", ParamType::Int, "how many", false, {}, std::int64_t{1}}},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 const int first = pageArg(doc, p, error);
                 if (first < 0) return Result::failure(error);
@@ -879,7 +878,7 @@ static void registerPages(Session& session) {
     reg.add({"layout.page_move", "Move Page", "Move a page to another position (stories keep flowing in frame link order).",
              {docParam(), {"page", ParamType::Int, "page to move (1-based)", true}, {"to", ParamType::Int, "its new position (1-based)", true}},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 const int from = pageArg(doc, p, error);
                 const int to = from < 0 ? -1 : pageArg(doc, p, error, "to");
@@ -896,7 +895,7 @@ static void registerPages(Session& session) {
         for (auto& x : sizeParams()) s.push_back(x);
         s.push_back(previewParam());
         reg.add({"layout.page_set", "Page Setup", "Change a page's size, orientation or master page.", s, true},
-                layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+                layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                     std::vector<int> pages;
                     if (intParam(p, "page") == 0) {
                         for (std::size_t i = 0; i < doc.pages.size(); ++i) pages.push_back(static_cast<int>(i));
@@ -939,7 +938,7 @@ static void registerPages(Session& session) {
               str("apply_to", "pages that use this master: all, none, or a range like 2-20 (default: all when the master is new)"),
               flag("remove", "delete the master (pages using it get none)"), previewParam()},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const std::string name = stringParam(p, "master", "A");
                 if (name.empty() || lower(name) == "none") return Result::failure("give the master a name, e.g. A");
                 if (boolParam(p, "remove")) {
@@ -1037,7 +1036,7 @@ static void registerFrames(Session& session) {
                  "...; svg becomes vector art) and fit=; rect/ellipse/line take fill, stroke and stroke_width (pt). "
                  "A line runs from (x, y) to (x + w, y + h).",
                  s, true},
-                layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+                layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                     const auto type = parseFrameType(stringParam(p, "type"));
                     if (!type) return Result::failure("unknown frame type");
                     std::string error;
@@ -1087,7 +1086,7 @@ static void registerFrames(Session& session) {
                  "append= adds paragraphs), formatting applied to all of its text (font, size, bold, align, leading, style, ...), "
                  "or its picture (path, fit, image_scale/x/y).",
                  s, true},
-                layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+                layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                     std::string error;
                     int page = -1;
                     Frame* f = frameArg(doc, p, error, &page);
@@ -1113,7 +1112,7 @@ static void registerFrames(Session& session) {
 
     reg.add({"layout.frame_delete", "Delete Frame", "Delete a frame; a linked text frame's text flows on into the rest of its chain.",
              {docParam(), frameParam(), previewParam()}, true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 int page = -1;
                 Frame* f = frameArg(doc, p, error, &page);
@@ -1130,7 +1129,7 @@ static void registerFrames(Session& session) {
              {docParam(), frameParam(), num("dx", "horizontal offset, mm (default 5)"), num("dy", "vertical offset, mm (default 5)"),
               {"page", ParamType::Int, "put the copy on this page (1-based, same position unless dx/dy given)", false}, previewParam()},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 int page = -1;
                 Frame* f = frameArg(doc, p, error, &page);
@@ -1162,7 +1161,7 @@ static void registerFrames(Session& session) {
     reg.add({"layout.frame_order", "Arrange Frame", "Bring a frame to the front, send it to the back, or move it one step.",
              {docParam(), frameParam(), {"order", ParamType::String, "where to", true, {"front", "back", "forward", "backward"}}, previewParam()},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 int page = -1;
                 Frame* f = frameArg(doc, p, error, &page);
@@ -1183,7 +1182,7 @@ static void registerFrames(Session& session) {
              "Make a story flow on from one text frame into another (threading). Text already in the target frame is "
              "appended to the story. The overset count in the reply says whether it fits now.",
              {docParam(), frameParam("from"), frameParam("to"), previewParam()}, true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 int page = -1;
                 Frame* from = frameArg(doc, p, error, &page, "from");
@@ -1218,7 +1217,7 @@ static void registerFrames(Session& session) {
     reg.add({"layout.frame_unlink", "Unlink Text Frame",
              "Cut the link after a text frame: the story ends in it, and the frames that followed become empty.",
              {docParam(), frameParam(), previewParam()}, true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 int page = -1;
                 Frame* f = frameArg(doc, p, error, &page);
@@ -1256,7 +1255,7 @@ static void registerStylesAndColours(Session& session) {
                  "based_on. Every paragraph using the style reflows. Built in: body, h1, h2, h3, quote, bullet, code, caption, "
                  "folio, headline, subhead (paragraph) and strong, emphasis (character).",
                  s, true},
-                layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+                layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                     const std::string name = stringParam(p, "name");
                     if (name.empty()) return Result::failure("give the style a name");
                     Style* style = nullptr;
@@ -1303,7 +1302,7 @@ static void registerStylesAndColours(Session& session) {
               str("paragraphs", "which paragraphs, 1-based: all (default), 2, or 1,3-5"),
               str("match", "character styles: only this text"), flag("clear", "remove local formatting overrides"), previewParam()},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 int page = -1;
                 Frame* f = frameArg(doc, p, error, &page);
@@ -1347,7 +1346,7 @@ static void registerStylesAndColours(Session& session) {
               {"cmyk", ParamType::NumberList, "cyan, magenta, yellow, black in percent", false}, str("color", "RGB colour: #hex or a name"),
               previewParam()},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const std::string name = stringParam(p, "name");
                 if (name.empty() || name.find('(') != std::string::npos || name[0] == '#') return Result::failure("swatch names can't start with # or contain (");
                 Swatch sw;
@@ -1394,7 +1393,7 @@ static void registerStylesAndColours(Session& session) {
               {"path", ParamType::String, "regular .ttf file", true}, str("bold", "bold .ttf"), str("italic", "italic .ttf"),
               str("bold_italic", "bold italic .ttf")},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const std::string name = stringParam(p, "name");
                 if (pdfdoc::standardFamily(name)) return Result::failure("'" + name + "' is a standard font name; pick another");
                 FontFamily fam{name, stringParam(p, "path"), stringParam(p, "bold"), stringParam(p, "italic"), stringParam(p, "bold_italic")};
@@ -1438,7 +1437,7 @@ static void registerPlacing(Session& session) {
               {"columns", ParamType::Int, "columns in new frames (default: the document's column guides)", false},
               str("master", "master page for added pages (default: the start page's)"), previewParam()},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const std::string path = stringParam(p, "path");
                 const std::string text = readFile(path);
                 const std::string ext = lower(std::filesystem::path(path).extension().string());
@@ -1503,7 +1502,7 @@ static void registerPlacing(Session& session) {
                {"fit", "fill", "stretch", "manual"}, std::string("fill")},
               str("name", "frame label"), previewParam()},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const std::string path = stringParam(p, "path");
                 const PictureInfo info = pictureInfo(path);
                 if (!info.ok) return Result::failure(info.error);
@@ -1569,7 +1568,7 @@ static void registerArranging(Session& session) {
               {"edge", ParamType::String, "what to line up", true, {"left", "right", "top", "bottom", "center", "middle"}},
               {"to", ParamType::String, "relative to", false, {"selection", "page", "margins"}, std::string("selection")}, previewParam()},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 auto frames = frameList(doc, stringParam(p, "frames"), error);
                 if (frames.empty()) return Result::failure(error);
@@ -1613,7 +1612,7 @@ static void registerArranging(Session& session) {
               {"axis", ParamType::String, "direction", true, {"horizontal", "vertical"}}, num("gap", "fixed gap between frames, mm"),
               previewParam()},
              true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 auto frames = frameList(doc, stringParam(p, "frames"), error);
                 if (frames.empty()) return Result::failure(error);
@@ -1659,7 +1658,7 @@ static void registerCheckingAndOutput(Session& session) {
              "artwork touching the page edge without bleed, items off the page, text outside the margins, RGB colours and "
              "unembedded fonts. errors=0 means it's ready to export.",
              {docParam(), {"min_dpi", ParamType::Number, "lowest acceptable image resolution", false, {}, 300.0}}, false, true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const auto issues = preflight(doc, numberParam(p, "min_dpi", 300));
                 std::int64_t errors = 0, warnings = 0, infos = 0;
                 std::string text;
@@ -1687,7 +1686,7 @@ static void registerCheckingAndOutput(Session& session) {
               {"guides", ParamType::Bool, "image exports: draw margins, columns and frame edges", false, {}, false},
               {"quality", ParamType::Int, "JPEG quality 1-100", false, {}, std::int64_t{92}}},
              false},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const std::string path = stringParam(p, "path");
                 std::string ext = lower(std::filesystem::path(path).extension().string());
                 std::vector<int> pages;
@@ -1754,7 +1753,7 @@ static void registerCheckingAndOutput(Session& session) {
               str("pages", "pages to impose: all (default) or e.g. 1"),
               {"embed_fonts", ParamType::Bool, "embed TrueType substitutes for the standard fonts", false, {}, false}},
              false},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const std::string path = stringParam(p, "path");
                 if (lower(std::filesystem::path(path).extension().string()) != ".pdf") return Result::failure("impose writes a .pdf");
                 ImposeOptions o;
@@ -1792,7 +1791,7 @@ static void registerCheckingAndOutput(Session& session) {
               num("dpi", "resolution (default: about 800 px on the long side)"),
               {"guides", ParamType::Bool, "draw guides", false, {}, true}, {"bleed", ParamType::Bool, "show the bleed area", false, {}, false}},
              false, true},
-            layoutCommand(session, [](LayoutDoc& doc, const Params& p) {
+            layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 std::string error;
                 const int page = pageArg(doc, p, error);
                 if (page < 0) return Result::failure(error);

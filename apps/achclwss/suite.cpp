@@ -17,6 +17,7 @@
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
 #include "achclwss/sculpt/sculpt.hpp"
+#include "achclwss/render/render.hpp"
 #include "achclwss/slicer/slicer.hpp"
 #include "achclwss/toolkit/detect.hpp"
 #include "achclwss/vector/vector.hpp"
@@ -45,6 +46,7 @@ const std::set<std::string>& toolNames() {
         "sculpt",
         "beats",
         "animate",
+        "render",
     };
     return names;
 }
@@ -53,6 +55,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     std::set<std::string> tools = only;
     if (tools.count("paint")) tools.insert("photo");
     if (tools.count("convert")) tools.insert("vector");
+    if (tools.count("render")) tools.insert("forge");
     if (tools.count("forge")) tools.insert("photo");
     if (tools.count("sculpt")) tools.insert("photo");
     if (tools.count("beats")) tools.insert("audio");
@@ -77,6 +80,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("sculpt")) sculpt::registerCommands(session);
     if (want("beats")) beats::registerCommands(session);
     if (want("animate")) animate::registerCommands(session);
+    if (want("render")) render::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

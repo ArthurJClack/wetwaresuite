@@ -58,7 +58,7 @@ pub const TOOLS: &[Tool] = &[
     available("library", "library", "asset browser for every format", 4, 3),
     available("automate", "automate", "Python scripting across tools", 4, 20),
     available("sculpt", "sculpt", "digital sculpting and retopology", 5, 15),
-    planned("render", "render", "3D scenes and path-traced renders", 5, 20),
+    available("render", "render", "3D scenes and path-traced renders", 5, 20),
     available("animate", "animate", "2D and 3D animation", 5, 15),
     available("levels", "levels", "game level and tilemap editor", 5, 10),
     available("beats", "beats", "music making: sequencer, synths, samples", 5, 15),

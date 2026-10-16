@@ -31,9 +31,13 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          # surface compiler errors and failed checks as annotations, readable without the full log
-          { grep -hiE "error[: ]|error C[0-9]" build.log 2>/dev/null | head -30
-            grep -hE "FAILED|\*\*\*|Exception|exception|what\(\)|Assertion|Could not" test.log 2>/dev/null | head -40; } | sed 's/^/::error::/' || true
+          # surface the end of the build and test logs as single multi-line annotations,
+          # readable through the API without downloading the full log
+          for f in build.log test.log; do
+            [ -f "$f" ] || continue
+            body=$(grep -viE "^\s*$|Building CXX|Linking CXX|Passed" "$f" | tail -120 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
+            echo "::error title=$f::$body"
+          done
 
   hub:
     name: hub (${{ matrix.os }})

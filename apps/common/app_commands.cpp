@@ -6,6 +6,7 @@
 #include "apps.hpp"
 #include "handoff.hpp"
 #include "launch.hpp"
+#include "palette_commands.hpp"
 
 namespace fs = std::filesystem;
 
@@ -453,6 +454,7 @@ void registerCommands(Session& session, const std::string& self) {
               {"open", ParamType::Bool, "open it (otherwise just return the file)", false, {}, true}},
              false},
             [s, self](const Params& p) { return std::make_unique<FunctionAction>([s, self, p] { return receive(*s, self, p); }); });
+    registerPaletteCommands(session, self);
 }
 
 }  // namespace wetwaresuite::apps

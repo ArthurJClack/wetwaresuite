@@ -7,6 +7,8 @@
 #include <map>
 
 #include "wetwaresuite/raster/parallel.hpp"
+#include "wetwaresuite/raster/simd.hpp"
+#include "simd_ops.hpp"
 
 namespace wetwaresuite::raster {
 
@@ -95,8 +97,8 @@ void PixelRect::add(const PixelRect& r) {
 }
 
 Image::Image(int width, int height, Color fill) : w_(std::max(0, width)), h_(std::max(0, height)) {
-    px_.resize(static_cast<std::size_t>(w_) * h_ * 4);
-    this->fill(fill);
+    px_.resize(static_cast<std::size_t>(w_) * h_ * 4);  // zeroed: transparent needs no second pass
+    if (fill.r || fill.g || fill.b || fill.a) this->fill(fill);
 }
 
 Color Image::at(int x, int y) const {
@@ -181,10 +183,56 @@ void blendRow(std::uint8_t* __restrict d, const std::uint8_t* __restrict s, int 
     }
 }
 
+#if WW_SIMD
+// blendRow with one pixel per register: the same operations in the same order, so the same bytes.
+template <Blend Mode>
+simd::F4 mixV(simd::F4 b, simd::F4 s) {
+    using namespace simd;
+    if constexpr (Mode == Blend::Normal) return s;
+    else if constexpr (Mode == Blend::Multiply) return b * s;
+    else if constexpr (Mode == Blend::Screen) return b + s - b * s;
+    else if constexpr (Mode == Blend::Overlay) {
+        const F4 one = set1(1.0f), two = set1(2.0f);
+        return select(lessEq(b, set1(0.5f)), two * b * s, one - two * (one - b) * (one - s));
+    } else if constexpr (Mode == Blend::Add) return vmin(set1(1.0f), b + s);
+    else if constexpr (Mode == Blend::Darken) return vmin(b, s);
+    else if constexpr (Mode == Blend::Lighten) return vmax(b, s);
+    else return vabs(b - s);
+}
+
+template <Blend Mode>
+void blendRowSimd(std::uint8_t* __restrict d, const std::uint8_t* __restrict s, int n, float op) {
+    using namespace simd;
+    constexpr float k = 1.0f / 255.0f;
+    const F4 kv = set1(k), one = set1(1.0f), zero = set1(0.0f), scale = set1(255.0f), half = set1(0.5f);
+    for (int i = 0; i < n; ++i, d += 4, s += 4) {
+        const float sa = s[3] * k * op;
+        if (!(sa > 0)) continue;  // fully clear source pixels leave the backdrop exactly as it was
+        const float da = d[3] * k;
+        const float outA = sa + da * (1 - sa);
+        const float div = outA > 0 ? outA : 1;
+        const F4 sc = loadU8(s) * kv, dc = loadU8(d) * kv;
+        const F4 sav = set1(sa), dav = set1(da);
+        const F4 blended = (one - dav) * sc + dav * mixV<Mode>(dc, sc);
+        const F4 out = (sav * blended + dav * dc * (one - sav)) / set1(div);
+        const F4 v = withLast(vmin(vmax(out, zero), one), set1(outA));
+        storeU8(d, v * scale + half);
+    }
+}
+#endif
+
 template <Blend Mode>
 void blendRect(Image& dst, const Image& src, int ox, int oy, int x0, int y0, int x1, int y1, float op) {
     parallelRows(y1 - y0, static_cast<std::size_t>(x1 - x0) * 4, [&](int b, int e) {
-        for (int y = y0 + b; y < y0 + e; ++y) blendRow<Mode>(dst.pixel(x0, y), src.pixel(x0 - ox, y - oy), x1 - x0, op);
+        for (int y = y0 + b; y < y0 + e; ++y) {
+#if WW_SIMD
+            if (simdEnabled()) {
+                blendRowSimd<Mode>(dst.pixel(x0, y), src.pixel(x0 - ox, y - oy), x1 - x0, op);
+                continue;
+            }
+#endif
+            blendRow<Mode>(dst.pixel(x0, y), src.pixel(x0 - ox, y - oy), x1 - x0, op);
+        }
     });
 }
 

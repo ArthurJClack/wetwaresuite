@@ -4,10 +4,13 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <random>
 #include <vector>
 
 #include "wetwaresuite/raster/parallel.hpp"
+#include "wetwaresuite/raster/simd.hpp"
+#include "simd_ops.hpp"
 
 namespace wetwaresuite::raster {
 
@@ -91,6 +94,25 @@ inline void writeBlurred(std::uint8_t* __restrict out, const std::uint32_t* __re
     out[3] = clamp8(a * inv);
 }
 
+#if WW_SIMD
+// writeBlurred on one register. Only for sums below 2^31 (see blurSimd), where the signed
+// int-to-float conversion is exact like the scalar one.
+inline void writeBlurredSimd(std::uint8_t* out, simd::U4 acc, float inv) {
+    using namespace simd;
+    const std::uint32_t last = lastU(acc);
+    if (last == 0) {  // colour 0, alpha clamp8(0) = 0
+        std::memset(out, 0, 4);
+        return;
+    }
+    const float a = static_cast<float>(last);
+    const F4 q = withLast(toFloat(acc) / set1(a), set1(a * inv));
+    storeU8(out, vmin(vmax(q, set1(0.0f)), set1(255.0f)) + set1(0.5f));
+}
+#endif
+
+// The SIMD blur keeps its sums in signed-safe range: 255 * 255 * (2r + 1) < 2^31.
+inline bool blurSimd(int r) { return WW_SIMD && simdEnabled() && r <= 16000; }
+
 // Rows: a sliding window along each row; rows are split across threads.
 void boxPassH(const Image& src, Image& dst, int r) {
     const int w = src.width();
@@ -99,6 +121,21 @@ void boxPassH(const Image& src, Image& dst, int r) {
         std::vector<std::uint32_t> pm(static_cast<std::size_t>(w + 2 * r + 1) * 4);
         for (int y = b; y < e; ++y) {
             const std::uint8_t* row = src.pixel(0, y);
+#if WW_SIMD
+            if (blurSimd(r)) {
+                using namespace simd;
+                std::uint32_t* q = pm.data();
+                for (int i = 0; i < w + 2 * r + 1; ++i) storeU32(q + static_cast<std::size_t>(i) * 4, premul(row + static_cast<std::size_t>(std::clamp(i - r, 0, w - 1)) * 4));
+                U4 acc = loadU32(q);
+                for (int i = 1; i <= 2 * r; ++i) acc = acc + loadU32(q + static_cast<std::size_t>(i) * 4);
+                std::uint8_t* out = dst.pixel(0, y);
+                for (int x = 0; x < w; ++x) {
+                    writeBlurredSimd(out + static_cast<std::size_t>(x) * 4, acc, inv);
+                    acc = acc + loadU32(q + static_cast<std::size_t>(x + 2 * r + 1) * 4) - loadU32(q + static_cast<std::size_t>(x) * 4);
+                }
+                continue;
+            }
+#endif
             for (int i = 0; i < w + 2 * r + 1; ++i) {  // premultiplied row, edges repeated
                 const std::uint8_t* p = row + static_cast<std::size_t>(std::clamp(i - r, 0, w - 1)) * 4;
                 std::uint32_t* q = pm.data() + static_cast<std::size_t>(i) * 4;
@@ -144,6 +181,28 @@ void boxPassV(const Image& src, Image& dst, int r) {
                 }
             }
         };
+#if WW_SIMD
+        if (blurSimd(r)) {
+            using namespace simd;
+            auto addRowV = [&](int y, bool subtract) {
+                const std::uint8_t* p = src.pixel(x0, std::clamp(y, 0, h - 1));
+                std::uint32_t* a = acc.data();
+                if (subtract) {
+                    for (int i = 0; i < n; i += 4) storeU32(a + i, loadU32(a + i) - premul(p + i));
+                } else {
+                    for (int i = 0; i < n; i += 4) storeU32(a + i, loadU32(a + i) + premul(p + i));
+                }
+            };
+            for (int y = -r; y <= r; ++y) addRowV(y, false);
+            for (int y = 0; y < h; ++y) {
+                std::uint8_t* out = dst.pixel(x0, y);
+                for (int i = 0; i < n; i += 4) writeBlurredSimd(out + i, loadU32(acc.data() + i), inv);
+                addRowV(y + r + 1, false);
+                addRowV(y - r, true);
+            }
+            return;
+        }
+#endif
         for (int y = -r; y <= r; ++y) addRow(y, false);
         for (int y = 0; y < h; ++y) {
             std::uint8_t* out = dst.pixel(x0, y);
@@ -203,6 +262,22 @@ Image resizeLanczos(const Image& img, int width, int height) {
         for (int y = b; y < e; ++y) {
             const std::uint8_t* row = img.pixel(0, y);
             float* out = mid.data() + static_cast<std::size_t>(y) * width * 4;
+#if WW_SIMD
+            if (simdEnabled()) {
+                using namespace simd;
+                for (int x = 0; x < width; ++x) {
+                    const Taps& t = tx[static_cast<std::size_t>(x)];
+                    F4 acc = set1(0.0f);
+                    const std::uint8_t* p = row + static_cast<std::size_t>(t.first) * 4;
+                    for (std::size_t k = 0; k < t.w.size(); ++k, p += 4) {
+                        // (r, g, b, 1) * w * a: lane 3 adds exactly w * a, like the scalar acc[3]
+                        acc = acc + withLast(loadU8(p), set1(1.0f)) * set1(t.w[k] * p[3]);
+                    }
+                    store4(out + static_cast<std::size_t>(x) * 4, acc);
+                }
+                continue;
+            }
+#endif
             for (int x = 0; x < width; ++x) {
                 const Taps& t = tx[static_cast<std::size_t>(x)];
                 float acc[4] = {0, 0, 0, 0};
@@ -232,6 +307,23 @@ Image resizeLanczos(const Image& img, int width, int height) {
                 for (std::size_t i = 0; i < stride; ++i) a[i] += src[i] * wt;
             }
             std::uint8_t* o = out.pixel(0, y);
+#if WW_SIMD
+            if (simdEnabled()) {
+                using namespace simd;
+                const F4 zero = set1(0.0f), top = set1(255.0f), half = set1(0.5f);
+                for (int x = 0; x < width; ++x) {
+                    const float* a = acc.data() + static_cast<std::size_t>(x) * 4;
+                    const float alpha = a[3];
+                    if (!(alpha > 0)) {  // colour 0; alpha clamp8(alpha) is 0 for alpha <= 0 too
+                        std::memset(o + x * 4, 0, 4);
+                        continue;
+                    }
+                    const F4 v = withLast(load4(a) / set1(alpha), set1(alpha));
+                    storeU8(o + x * 4, vmin(vmax(v, zero), top) + half);
+                }
+                continue;
+            }
+#endif
             for (int x = 0; x < width; ++x) {
                 const float* a = acc.data() + static_cast<std::size_t>(x) * 4;
                 const float alpha = a[3];
@@ -330,6 +422,29 @@ Image resize(const Image& img, int width, int height, Filter filter) {
             float ty = static_cast<float>(fy - y0);
             const std::uint8_t *r0 = img.pixel(0, y0), *r1 = img.pixel(0, y1);
             std::uint8_t* o = out.pixel(0, y);
+#if WW_SIMD
+            if (simdEnabled()) {
+                using namespace simd;
+                const F4 zero = set1(0.0f), top = set1(255.0f), half = set1(0.5f);
+                for (int x = 0; x < width; ++x, o += 4) {
+                    const Col& c = cols[static_cast<std::size_t>(x)];
+                    const float tx = c.t;
+                    const auto *pa = r0 + c.x0 * 4, *pb = r0 + c.x1 * 4, *pc = r1 + c.x0 * 4, *pd = r1 + c.x1 * 4;
+                    float wa = (1 - tx) * (1 - ty) * pa[3], wb = tx * (1 - ty) * pb[3], wc = (1 - tx) * ty * pc[3], wd = tx * ty * pd[3];
+                    float alpha = wa + wb + wc + wd;
+                    if (!(alpha > 0)) {
+                        const auto a = static_cast<std::uint8_t>(std::clamp(alpha, 0.0f, 255.0f) + 0.5f);
+                        o[0] = o[1] = o[2] = 0;
+                        o[3] = a;
+                        continue;
+                    }
+                    const F4 sum = loadU8(pa) * set1(wa) + loadU8(pb) * set1(wb) + loadU8(pc) * set1(wc) + loadU8(pd) * set1(wd);
+                    const F4 v = withLast(sum / set1(alpha), set1(alpha));
+                    storeU8(o, vmin(vmax(v, zero), top) + half);
+                }
+                continue;
+            }
+#endif
             for (int x = 0; x < width; ++x, o += 4) {
                 const Col& c = cols[static_cast<std::size_t>(x)];
                 const float tx = c.t;
@@ -461,6 +576,24 @@ void adjust(Image& img, Adjust kind, double amount) {
         case Adjust::Vibrance: {
             float s = 1.0f + static_cast<float>(std::clamp(amount, -100.0, 100.0)) / 100.0f;
             bool vibrance = kind == Adjust::Vibrance;
+#if WW_SIMD
+            if (simdEnabled()) {
+                using namespace simd;
+                mapPixels(img, [&](std::uint8_t* p) {
+                    float l = luma(p);
+                    float f = s;
+                    if (vibrance) {
+                        float mx = std::max({p[0], p[1], p[2]}), mn = std::min({p[0], p[1], p[2]});
+                        float sat = mx > 0 ? (mx - mn) / mx : 0;
+                        f = 1 + (s - 1) * (1 - sat);
+                    }
+                    const F4 px = loadU8(p), lv = set1(l);
+                    const F4 v = withLast(lv + (px - lv) * set1(f), px);  // alpha passes through unchanged
+                    storeU8(p, vmin(vmax(v, set1(0.0f)), set1(255.0f)) + set1(0.5f));
+                });
+                return;
+            }
+#endif
             mapPixels(img, [&](std::uint8_t* p) {
                 float l = luma(p);
                 float f = s;

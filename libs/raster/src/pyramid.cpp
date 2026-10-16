@@ -4,6 +4,8 @@
 #include <cmath>
 
 #include "wetwaresuite/raster/parallel.hpp"
+#include "wetwaresuite/raster/simd.hpp"
+#include "simd_ops.hpp"
 
 namespace wetwaresuite::raster {
 
@@ -17,6 +19,24 @@ void halveInto(const Image& src, Image& dst, const PixelRect& area) {
             const std::uint8_t* r0 = src.pixel(0, std::min(sh - 1, 2 * y));
             const std::uint8_t* r1 = src.pixel(0, std::min(sh - 1, 2 * y + 1));
             std::uint8_t* o = dst.pixel(x0, y);
+#if WW_SIMD
+            if (simdEnabled()) {
+                // sums stay below 2^24, so float division truncates to exactly the integer quotient
+                using namespace simd;
+                for (int x = x0; x < x1; ++x, o += 4) {
+                    const int xa = std::min(sw - 1, 2 * x) * 4, xb = std::min(sw - 1, 2 * x + 1) * 4;
+                    const U4 acc = premul(r0 + xa) + premul(r0 + xb) + premul(r1 + xa) + premul(r1 + xb);
+                    const std::uint32_t a = lastU(acc);
+                    if (a == 0) {
+                        o[0] = o[1] = o[2] = o[3] = 0;
+                        continue;
+                    }
+                    const float div = static_cast<float>(a);
+                    storeU8(o, toFloat(acc + setU(a / 2, a / 2, a / 2, 2)) / set(div, div, div, 4.0f));
+                }
+                continue;
+            }
+#endif
             for (int x = x0; x < x1; ++x, o += 4) {
                 const int xa = std::min(sw - 1, 2 * x) * 4, xb = std::min(sw - 1, 2 * x + 1) * 4;
                 const std::uint8_t* q[4] = {r0 + xa, r0 + xb, r1 + xa, r1 + xb};

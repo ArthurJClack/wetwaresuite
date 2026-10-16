@@ -197,17 +197,19 @@ photo.save doc=$p path=poster-half.png
 
 Claude calls `photo_open`, then `photo_resize` with `percent=50` and `filter=lanczos`, then `photo_save`.
 
-**Speed test.** `photo.benchmark` makes a test picture in memory (nothing is opened or saved) and times the heavy operations: blur, the resize filters, blending three layers, and a colour adjustment. It's handy for comparing two computers, or for seeing what a big canvas will feel like before you start:
+**Speed test.** `photo.benchmark` makes a test picture in memory (nothing is opened or saved) and times the heavy operations: blur, the resize filters, blending three layers, a colour adjustment and the zoom-out copies the window keeps (the mipmap pyramid). Each time is the best of three runs. It's handy for comparing two computers, or for seeing what a big canvas will feel like before you start:
 
 ```sh
 $ wetwaresuite photo.benchmark size=4096
-4096x4096 px on 8 threads:
+4096x4096 px on 8 threads, sse2:
   blur (radius 8) 210.4 ms
   resize to half, bilinear 31.2 ms
   ...
 ```
 
 (Your numbers will differ.) `size` is the test picture's width and height (default 2048); `threads=1` shows how fast it is on one CPU core, and the default `threads=0` uses all of them. The picture operations split their work across every core, and the result is exactly the same whatever the number of threads.
+
+The busiest loops also use the CPU's vector instructions (SSE2 on Intel/AMD, NEON on ARM, which every 64-bit PC and Mac has), so they work on a whole pixel at once. `simd=false` runs the plain one-value-at-a-time loops instead, and `compare=true` times both and shows the speed-up, e.g. `blend 3 layers 94.4 ms (scalar 164.4 ms, 1.74x)`. Both kinds of loop give exactly the same picture, byte for byte.
 
 **Big pictures and undo.** Undo only remembers the parts of a picture an edit changed (in small 64x64 squares, or the exact area of a brush stroke), not the whole picture each time. So even on a very large canvas, hundreds of brush strokes take only a few megabytes of undo memory. Edits that change the size or the layer list (resize, crop, canvas size, adding or removing a layer) still remember the whole picture for that one step.
 
@@ -493,14 +495,16 @@ Read one pixel. Read-only.
 Returns `color` (`#rrggbbaa`), `r`, `g`, `b`, `a`.
 
 ### photo.benchmark
-Time blur, resize (bilinear, area, lanczos), 3-layer blending and a colour adjustment on a generated test image. Read-only; nothing is opened or saved.
+Time blur, resize (bilinear, area, lanczos), 3-layer blending, a colour adjustment and the mipmap pyramid on a generated test image (best of 3 runs). Read-only; nothing is opened or saved.
 
 | Parameter | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `size` | integer | no | 2048 | test image width and height in px, 16..16384 |
 | `threads` | integer | no | 0 | threads to use; 0 = all CPU cores |
+| `simd` | boolean | no | true | use the SSE2/NEON loops; false = the plain scalar loops |
+| `compare` | boolean | no | false | also time every operation on the scalar loops |
 
-Returns `blur_ms`, `resize_bilinear_ms`, `resize_area_ms`, `resize_lanczos_ms`, `composite_ms`, `adjust_ms`, `size` and `threads`.
+Returns `blur_ms`, `resize_bilinear_ms`, `resize_area_ms`, `resize_lanczos_ms`, `composite_ms`, `adjust_ms`, `pyramid_ms`, `size`, `threads` and `simd` (`sse2`, `neon` or `scalar`); with `compare=true` also `blur_scalar_ms`, `composite_scalar_ms` and so on.
 
 ### photo.batch
 Process every image in a folder. Does not use open documents; not undoable.

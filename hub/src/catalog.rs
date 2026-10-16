@@ -50,6 +50,7 @@ pub const TOOLS: &[Tool] = &[
     tool("type", "type", "font design", 8),
     tool("calc", "calc", "calculator: scientific, programmer, units, statistics, solving, graphs", 1),
     tool("code", "code", "code editor for many languages: run, build, search, git", 2),
+    tool("explorer", "explorer", "file manager: copy, move, trash with undo, search, zip and tar", 1),
 ];
 
 /// An app: what people install. Each is its own binary `wetwaresuite-<id>` that
@@ -78,7 +79,7 @@ pub const APPS: &[App] = &[
     App { id: "video", summary: "edit videos, take screenshots and record the screen", tools: &["cut", "capture"], approx_mb: 3, always: false },
     App { id: "office", summary: "documents, spreadsheets, slides, PDFs, print layouts and notes", tools: &["office", "layout", "notes"], approx_mb: 7, always: false },
     App { id: "maps", summary: "offline maps, GPS tracks and map data", tools: &["maps"], approx_mb: 4, always: false },
-    App { id: "system", summary: "calculator, code editor, file manager, terminal, system monitor and clock", tools: &["calc", "code"], approx_mb: 4, always: false },
+    App { id: "system", summary: "calculator, code editor, file manager, terminal, system monitor and clock", tools: &["calc", "code", "explorer"], approx_mb: 5, always: false },
     App { id: "files", summary: "open, convert, find and batch-process any file (always installed)", tools: &["toolkit", "convert", "library", "automate"], approx_mb: 4, always: true },
     App { id: "share", summary: "share and live-sync folders with other devices", tools: &["share"], approx_mb: 1, always: false },
 ];

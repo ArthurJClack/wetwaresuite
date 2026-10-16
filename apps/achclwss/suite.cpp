@@ -1,5 +1,6 @@
 #include "suite.hpp"
 
+#include "achclwss/animate/animate.hpp"
 #include "achclwss/audio/commands.hpp"
 #include "achclwss/beats/beats.hpp"
 #include "achclwss/automate/automate.hpp"
@@ -43,6 +44,7 @@ const std::set<std::string>& toolNames() {
         "levels",
         "sculpt",
         "beats",
+        "animate",
     };
     return names;
 }
@@ -74,6 +76,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("levels")) levels::registerCommands(session);
     if (want("sculpt")) sculpt::registerCommands(session);
     if (want("beats")) beats::registerCommands(session);
+    if (want("animate")) animate::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

@@ -24,3 +24,4 @@ Hands-on guides to the suite. Every example was run against the real `achclwss` 
 - [Automate](automate.md): scripts with variables, pipelines over folders, watch folders that process dropped files, the Python client, cron and Task Scheduler, pipelines from Claude.
 - [Sculpt](sculpt.md): a creature head from a sphere with mirrored strokes, a cad part made organic and sent to the slicer, retopology and LODs for games, relief tiles from heightmaps, aiming strokes on a preview.
 - [Beats](beats.md): music making: generate a beat from a genre and key, program drums on a step grid, bass and chords in the piano roll, synth sound design and effects, your own samples, MIDI in and out, stems and mastering.
+- [Animate](animate.md): 2D and 3D animation: a bouncing ball with easing and squash, a logo sting, a cutout rig on bones, hand-drawn cels with onion skin, a 3D turntable; GIFs, sprite sheets with JSON atlases, PNG sequences and video.

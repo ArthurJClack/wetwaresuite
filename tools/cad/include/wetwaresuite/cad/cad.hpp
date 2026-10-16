@@ -113,7 +113,7 @@ public:
 };
 
 std::shared_ptr<CadDoc> newCad(const std::string& units = "mm");
-// .achcad (JSON) or any mesh format (becomes one "imported" feature). Throws.
+// .wwcad (JSON; the old .achcad still opens) or any mesh format (becomes one "imported" feature). Throws.
 std::shared_ptr<CadDoc> openCad(const std::filesystem::path& path);
 std::string toJson(const CadDoc& doc);
 std::shared_ptr<CadDoc> fromJson(const std::string& text);  // throws std::runtime_error

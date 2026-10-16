@@ -437,6 +437,18 @@ void testFiles() {
     CHECK(back->layer("HIDDEN") && back->layer("HIDDEN")->linetype == LineType::Hidden);
     CHECK(!back->layer("BP_SHEET"));
     CHECK(back->current == "WALLS");
+    {
+        // DXF written before the rename (app id "achclwss", meta "achclwss-blueprint") reads back the same
+        std::string old = text;
+        for (auto at = old.find("wetwaresuite"); at != std::string::npos; at = old.find("wetwaresuite", at + 8)) old.replace(at, 12, "achclwss");
+        CHECK(old.find("achclwss-blueprint") != std::string::npos);
+        bool sheet = false;
+        auto legacy = fromDxf(old, nullptr, &sheet);
+        CHECK(sheet && legacy->entities.size() == back->entities.size() && legacy->title.title == "House" && near(legacy->scaleDen, 100));
+        for (std::size_t i = 0; i < legacy->entities.size() && i < back->entities.size(); ++i) {
+            CHECK(legacy->entities[i].type == back->entities[i].type && legacy->entities[i].name == back->entities[i].name);
+        }
+    }
     for (std::size_t i = 0; i < doc->entities.size() && i < back->entities.size(); ++i) {
         const Entity &a = doc->entities[i], &b = back->entities[i];
         CHECK(a.type == b.type);

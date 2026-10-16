@@ -203,8 +203,9 @@ int main() {
             if (!r.open.empty()) onlyNeeds(r.open, {"path"});
         }
         for (const char* f : {"a.png", "a.svg", "a.ttf", "a.obj", "a.glb", "a.stl", "a.dxf", "a.tmj", "a.wav",
-                              "a.beats.json", "a.docx", "a.xlsx", "a.pptx", "a.geojson", "a.gpx", "a.achcad", "a.achmap",
-                              "a.board.json", "a.scene.json", "a.anim.json", "a.circuit.json", "a.achcut", "a.achlay"}) {
+                              "a.beats.json", "a.docx", "a.xlsx", "a.pptx", "a.geojson", "a.gpx", "a.wwcad", "a.wwmap",
+                              "a.board.json", "a.scene.json", "a.anim.json", "a.circuit.json", "a.wwcut", "a.wwlay",
+                              "old.achcad", "old.achmap", "old.achcut", "old.achlay"}) {  // names from before the rename
             auto route = apps::routeForFile(f);
             CHECK(!route.command.empty());
             if (!route.command.empty()) onlyNeeds(route.command, {"path"});

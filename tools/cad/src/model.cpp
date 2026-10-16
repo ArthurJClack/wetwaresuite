@@ -1,5 +1,5 @@
 // The feature tree: feature types, regeneration with per-feature caching,
-// snapshot undo and the .achcad file format.
+// snapshot undo and the .wwcad file format.
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -887,7 +887,7 @@ std::shared_ptr<CadDoc> newCad(const std::string& units) {
 
 std::string toJson(const CadDoc& doc) {
     json j;
-    j["format"] = "achcad";
+    j["format"] = "wwcad";
     j["version"] = 1;
     j["units"] = doc.units;
     json params = json::array();
@@ -911,8 +911,10 @@ std::string toJson(const CadDoc& doc) {
 
 std::shared_ptr<CadDoc> fromJson(const std::string& text) {
     json j = json::parse(text, nullptr, false);
-    if (j.is_discarded() || !j.is_object()) throw std::runtime_error("not an .achcad file (invalid JSON)");
-    if (j.value("format", "") != "achcad") throw std::runtime_error("not an .achcad file (format is not \"achcad\")");
+    if (j.is_discarded() || !j.is_object()) throw std::runtime_error("not a .wwcad file (invalid JSON)");
+    const std::string format = j.value("format", "");
+    // "achcad": parts saved before the rename still open
+    if (format != "wwcad" && format != "achcad") throw std::runtime_error("not a .wwcad file (format is not \"wwcad\")");
     try {
         auto doc = newCad(j.value("units", "mm"));
         if (std::find(unitNames().begin(), unitNames().end(), doc->units) == unitNames().end()) doc->units = "mm";
@@ -954,7 +956,7 @@ std::shared_ptr<CadDoc> fromJson(const std::string& text) {
         doc->regenerate();
         return doc;
     } catch (const json::exception& e) {
-        throw std::runtime_error(std::string("bad .achcad file: ") + e.what());
+        throw std::runtime_error(std::string("bad .wwcad file: ") + e.what());
     }
 }
 
@@ -962,7 +964,7 @@ std::shared_ptr<CadDoc> openCad(const std::filesystem::path& path) {
     std::string ext = path.extension().string();
     for (auto& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     std::shared_ptr<CadDoc> doc;
-    if (ext == ".achcad") {
+    if (ext == ".wwcad" || ext == ".achcad") {  // .achcad: saved before the rename
         std::ifstream in(path, std::ios::binary);
         if (!in) throw std::runtime_error("can't open " + path.string());
         std::stringstream ss;
@@ -978,7 +980,7 @@ std::shared_ptr<CadDoc> openCad(const std::filesystem::path& path) {
         doc->features.push_back(std::move(f));
         doc->regenerate();
     } else {
-        throw std::runtime_error("cad opens .achcad files and meshes (stl obj ply off glb gltf 3mf), not " + path.string());
+        throw std::runtime_error("cad opens .wwcad files and meshes (stl obj ply off glb gltf 3mf), not " + path.string());
     }
     doc->path = path.string();
     return doc;

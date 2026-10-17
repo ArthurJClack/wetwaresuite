@@ -63,6 +63,7 @@ int main() {
     CHECK(field(run("echo %GREETING%"), "output") == "hi there\n");
     Result bad = run("exit /b 3");
     CHECK(!bad.ok && field(bad, "exit_code") == "3");
+    CHECK(fs::equivalent(sysutil::toPath(field(run("cd .."), "cwd")), dir));  // back where completion expects
     Result in = s.run("terminal.run", {{"doc", t}, {"command", std::string("findstr x")}, {"input", std::string("axb\nccc\n")}, {"timeout", 20.0}});
     CHECK(field(in, "output") == "axb\n");
     Result bg = s.run("terminal.run", {{"doc", t}, {"command", std::string("ping -n 30 127.0.0.1")}, {"wait", false}});

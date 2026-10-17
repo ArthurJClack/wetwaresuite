@@ -49,6 +49,24 @@ int main() {
 #ifdef _WIN32
     Result hi = run("echo hello");
     if (!hi.ok || field(hi, "output") != "hello\n") std::printf("echo hello gave ok=%d [%s] output [%s]\n", hi.ok ? 1 : 0, hi.message.c_str(), field(hi, "output").c_str());
+    if (!hi.ok) {  // narrow down where cmd goes wrong
+        std::printf("terminal: %s\n", o.message.c_str());
+        auto probe = [&](const char* label, const std::vector<std::string>& args, const fs::path& cwd,
+                         const std::vector<std::pair<std::string, std::string>>& env = {}) {
+            ChildProcess c;
+            std::string err, out;
+            bool st = c.start(args, cwd, err, env);
+            if (st) c.wait(10, out);
+            std::printf("probe %s: started=%d err=[%s] exit=%d out=[%s]\n", label, st ? 1 : 0, err.c_str(), st ? c.exitCode() : -1, out.c_str());
+        };
+        const fs::path bat = dir / "probe.bat";
+        sysutil::writeFile(bat, "@echo off\r\necho batok\r\n");
+        probe("echo", {"cmd", "/d", "/c", "echo", "direct"}, {});
+        probe("echo-cwd", {"cmd", "/d", "/c", "echo", "direct"}, dir);
+        probe("bat", {"cmd", "/d", "/c", sysutil::fromPath(fs::path(bat).make_preferred())}, {});
+        probe("bat-q", {"cmd", "/d", "/q", "/c", sysutil::fromPath(fs::path(bat).make_preferred())}, dir);
+        probe("bat-env", {"cmd", "/d", "/c", sysutil::fromPath(fs::path(bat).make_preferred())}, {}, {{"TERM", "dumb"}, {"PAGER", "cat"}, {"NO_COLOR", "1"}, {"CLICOLOR", "0"}});
+    }
     if (!hi.ok) {  // show the batch file cmd was given
         std::error_code ec;
         for (const auto& e : fs::directory_iterator(fs::temp_directory_path() / "wetwaresuite-terminal", ec)) {

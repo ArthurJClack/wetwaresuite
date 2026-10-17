@@ -49,6 +49,12 @@ int main() {
 #ifdef _WIN32
     Result hi = run("echo hello");
     if (!hi.ok || field(hi, "output") != "hello\n") std::printf("echo hello gave ok=%d [%s] output [%s]\n", hi.ok ? 1 : 0, hi.message.c_str(), field(hi, "output").c_str());
+    if (!hi.ok) {  // show the batch file cmd was given
+        std::error_code ec;
+        for (const auto& e : fs::directory_iterator(fs::temp_directory_path() / "wetwaresuite-terminal", ec)) {
+            if (e.path().extension() == ".bat") std::printf("%s:\n%s\n", sysutil::fromPath(e.path()).c_str(), sysutil::readFile(e.path()).c_str());
+        }
+    }
     CHECK(hi.ok && field(hi, "output") == "hello\n");
     CHECK(run("cd \"sub folder\"").ok);
     Result pwd = run("cd");

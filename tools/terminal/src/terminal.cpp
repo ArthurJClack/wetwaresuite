@@ -43,8 +43,9 @@ std::string native(const fs::path& p) {
 
 std::string script(const ShellInfo& sh, const std::string& command, const fs::path& cwd, const fs::path& env) {
     if (sh.family == "cmd") {
-        return "@echo off\r\nif exist \"" + native(env) + "\" for /f \"usebackq delims=\" %%a in (\"" + native(env) + "\") do set \"%%a\" 2>nul\r\n" +
-               "cd /d \"" + native(cwd) + "\"\r\n" + command + "\r\nset __ww_status=%errorlevel%\r\nset > \"" + native(env) +
+        // plain lines only: a syntax error anywhere stops a batch file before its first line runs
+        return "@echo off\r\nif not exist \"" + native(env) + "\" goto __ww_go\r\nfor /f \"usebackq delims=\" %%a in (\"" + native(env) +
+               "\") do set \"%%a\"\r\n:__ww_go\r\ncd /d \"" + native(cwd) + "\"\r\n" + command + "\r\nset __ww_status=%errorlevel%\r\nset > \"" + native(env) +
                "\"\r\necho.\r\necho __WW_DONE__ %__ww_status% %cd% __WW_END__\r\n";
     }
     if (sh.family == "powershell") {

@@ -49,42 +49,13 @@ int main() {
 #ifdef _WIN32
     Result hi = run("echo hello");
     if (!hi.ok || field(hi, "output") != "hello\n") std::printf("echo hello gave ok=%d [%s] output [%s]\n", hi.ok ? 1 : 0, hi.message.c_str(), field(hi, "output").c_str());
-    if (!hi.ok) {  // narrow down where cmd goes wrong
-        std::printf("terminal: %s\n", o.message.c_str());
-        auto probe = [&](const char* label, const std::vector<std::string>& args, const fs::path& cwd,
-                         const std::vector<std::pair<std::string, std::string>>& env = {}) {
-            ChildProcess c;
-            std::string err, out;
-            bool st = c.start(args, cwd, err, env);
-            if (st) c.wait(10, out);
-            std::printf("probe %s: started=%d err=[%s] exit=%d out=[%s]\n", label, st ? 1 : 0, err.c_str(), st ? c.exitCode() : -1, out.c_str());
-        };
-        const fs::path bat = dir / "probe.bat";
-        sysutil::writeFile(bat, "@echo off\r\necho batok\r\n");
-        probe("echo", {"cmd", "/d", "/c", "echo", "direct"}, {});
-        probe("echo-cwd", {"cmd", "/d", "/c", "echo", "direct"}, dir);
-        probe("bat", {"cmd", "/d", "/c", sysutil::fromPath(fs::path(bat).make_preferred())}, {});
-        probe("bat-q", {"cmd", "/d", "/q", "/c", sysutil::fromPath(fs::path(bat).make_preferred())}, dir);
-        probe("bat-env", {"cmd", "/d", "/c", sysutil::fromPath(fs::path(bat).make_preferred())}, {}, {{"TERM", "dumb"}, {"PAGER", "cat"}, {"NO_COLOR", "1"}, {"CLICOLOR", "0"}});
-        // and the batch file cmd was given
-        std::error_code ec;
-        for (const auto& e : fs::directory_iterator(fs::temp_directory_path() / "wetwaresuite-terminal", ec)) {
-            if (e.path().extension() != ".bat") continue;
-            const std::string text = sysutil::readFile(e.path());
-            std::printf("%s:\n%s\n", sysutil::fromPath(e.path()).c_str(), text.c_str());
-            // run the first 1, 2, 3... lines of it to find the one cmd rejects
-            probe("whole", {"cmd", "/d", "/q", "/c", sysutil::fromPath(fs::path(e.path()).make_preferred())}, dir);
-            std::size_t pos = 0;
-            for (int k = 1; pos < text.size() && k < 16; ++k) {
-                pos = text.find('\n', pos);
-                pos = pos == std::string::npos ? text.size() : pos + 1;
-                const fs::path part = dir / ("part" + std::to_string(k) + ".bat");
-                sysutil::writeFile(part, text.substr(0, pos));
-                probe(("lines" + std::to_string(k)).c_str(), {"cmd", "/d", "/q", "/c", sysutil::fromPath(fs::path(part).make_preferred())}, dir);
-            }
-        }
-    }
     CHECK(hi.ok && field(hi, "output") == "hello\n");
+    {  // cmd given by a forward-slash path (as the terminal finds it) still runs commands
+        ChildProcess c;
+        std::string err, out;
+        CHECK(c.start({sysutil::fromPath(*findProgram("cmd")), "/d", "/c", "echo", "slash"}, {}, err) && c.wait(10, out));
+        CHECK(out.find("slash") != std::string::npos && c.exitCode() == 0);
+    }
     CHECK(run("cd \"sub folder\"").ok);
     Result pwd = run("cd");
     CHECK(field(pwd, "output").find("sub folder") != std::string::npos && field(pwd, "cwd").find("sub folder") != std::string::npos);

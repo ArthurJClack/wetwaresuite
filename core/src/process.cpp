@@ -233,7 +233,8 @@ bool ChildProcess::start(const std::vector<std::string>& args, const std::filesy
         return false;
     }
     std::vector<std::string> full = args;
-    full[0] = program->string();
+    // backslashes: cmd.exe reads switches out of its own path, so C:/Windows/.../cmd.exe breaks every command
+    full[0] = std::filesystem::path(*program).make_preferred().string();
     std::string ext = program->extension().string();
     for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
     if (ext == ".bat" || ext == ".cmd") full.insert(full.begin(), {"cmd.exe", "/d", "/c"});

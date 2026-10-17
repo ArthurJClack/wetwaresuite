@@ -1,6 +1,6 @@
 # Terminal: command lines inside the suite
 
-`terminal` runs your system's shell inside the suite. On Linux and macOS that is bash, zsh, sh or fish. On Windows it is PowerShell, pwsh or cmd.
+`terminal` runs your system's shell inside the suite. On Linux and macOS that is your login shell (bash, zsh, sh, dash or ksh), and pwsh too if it is installed. On Windows it is cmd by default, with PowerShell, pwsh and Git Bash's bash to choose from.
 
 Each terminal:
 

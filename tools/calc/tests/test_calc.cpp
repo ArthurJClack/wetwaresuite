@@ -82,6 +82,8 @@ int main() {
         CHECK(ev(st, "log(1000)") == "3");
         CHECK(ev(st, "ln(e)") == "1");
         CHECK(ev(st, "200 + 10%") == "220");
+        CHECK(ev(st, "15% of 80") == "12");
+        CHECK(ev(st, "100 - 25% of 40") == "90");
         CHECK(ev(st, "50% * 30") == "15");
         CHECK(ev(st, "x = 5") == "x = 5");
         CHECK(ev(st, "2x + 1") == "11");

@@ -291,7 +291,10 @@ private:
     NodePtr term(bool units) {
         NodePtr left = unary(units);
         for (;;) {
-            if (isOp("*") || isOp("/") || isOp("%") || isOp("//") || isWord("mod")) {
+            if (isWord("of") && left->kind == Node::Postfix && left->text == "%") {
+                take();  // 15% of 80 is 0.15 * 80
+                left = make(Node::Binary, "*", {left, unary(units)});
+            } else if (isOp("*") || isOp("/") || isOp("%") || isOp("//") || isWord("mod")) {
                 std::string op = take().text;
                 if (op == "mod") op = "%";
                 left = make(Node::Binary, op, {left, unary(units)});
@@ -335,7 +338,7 @@ private:
             if (isOp("!")) {
                 take();
                 n = make(Node::Postfix, "!", {n});
-            } else if (isOp("%") && !(peek(1).kind == Tok::Num || peek(1).kind == Tok::Ident || (peek(1).kind == Tok::Op && (peek(1).text == "(" || peek(1).text == "[")))) {
+            } else if (isOp("%") && !(peek(1).kind == Tok::Num || (peek(1).kind == Tok::Ident && peek(1).text != "of") || (peek(1).kind == Tok::Op && (peek(1).text == "(" || peek(1).text == "[")))) {
                 take();
                 n = make(Node::Postfix, "%", {n});
             } else {

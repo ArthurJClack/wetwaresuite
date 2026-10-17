@@ -1,5 +1,6 @@
 // terminal: output cleaning, folders and variables kept between commands,
 // exit codes, typing into programs, stopping them, completion and MCP.
+#include <cstdio>
 #include <chrono>
 #include <filesystem>
 
@@ -47,6 +48,7 @@ int main() {
 
 #ifdef _WIN32
     Result hi = run("echo hello");
+    if (!hi.ok || field(hi, "output") != "hello\n") std::printf("echo hello gave ok=%d [%s] output [%s]\n", hi.ok ? 1 : 0, hi.message.c_str(), field(hi, "output").c_str());
     CHECK(hi.ok && field(hi, "output") == "hello\n");
     CHECK(run("cd \"sub folder\"").ok);
     Result pwd = run("cd");
@@ -60,6 +62,7 @@ int main() {
     Result bg = s.run("terminal.run", {{"doc", t}, {"command", std::string("ping -n 30 127.0.0.1")}, {"wait", false}});
 #else
     Result hi = run("echo hello");
+    if (!hi.ok || field(hi, "output") != "hello\n") std::printf("echo hello gave ok=%d [%s] output [%s]\n", hi.ok ? 1 : 0, hi.message.c_str(), field(hi, "output").c_str());
     CHECK(hi.ok && field(hi, "output") == "hello\n");
     CHECK(field(run("printf 'no newline'"), "output") == "no newline");
     CHECK(run("cd 'sub folder'").ok);

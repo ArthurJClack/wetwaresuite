@@ -246,10 +246,12 @@ bool TerminalDoc::pump() {
     // show whole lines now, keeping back the last line break (it may belong to the marker)
     const std::size_t nl = pending_.rfind('\n');
     if (nl != std::string::npos && nl > 0 && m == std::string::npos) {
-        const std::string chunk = cleanOutput(pending_.substr(0, nl));
+        // keep a \r of a Windows \r\n with its \n: alone at the end it reads as "rewrite this line"
+        const std::size_t cut = pending_[nl - 1] == '\r' ? nl - 1 : nl;
+        const std::string chunk = cleanOutput(pending_.substr(0, cut));
         current_ += chunk;
         append(chunk);
-        pending_.erase(0, nl);
+        pending_.erase(0, cut);
     }
     if (!proc_->running()) {
         pending_ += proc_->read();

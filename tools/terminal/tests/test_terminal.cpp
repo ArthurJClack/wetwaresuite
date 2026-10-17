@@ -66,11 +66,22 @@ int main() {
         probe("bat", {"cmd", "/d", "/c", sysutil::fromPath(fs::path(bat).make_preferred())}, {});
         probe("bat-q", {"cmd", "/d", "/q", "/c", sysutil::fromPath(fs::path(bat).make_preferred())}, dir);
         probe("bat-env", {"cmd", "/d", "/c", sysutil::fromPath(fs::path(bat).make_preferred())}, {}, {{"TERM", "dumb"}, {"PAGER", "cat"}, {"NO_COLOR", "1"}, {"CLICOLOR", "0"}});
-    }
-    if (!hi.ok) {  // show the batch file cmd was given
+        // and the batch file cmd was given
         std::error_code ec;
         for (const auto& e : fs::directory_iterator(fs::temp_directory_path() / "wetwaresuite-terminal", ec)) {
-            if (e.path().extension() == ".bat") std::printf("%s:\n%s\n", sysutil::fromPath(e.path()).c_str(), sysutil::readFile(e.path()).c_str());
+            if (e.path().extension() != ".bat") continue;
+            const std::string text = sysutil::readFile(e.path());
+            std::printf("%s:\n%s\n", sysutil::fromPath(e.path()).c_str(), text.c_str());
+            // run the first 1, 2, 3... lines of it to find the one cmd rejects
+            probe("whole", {"cmd", "/d", "/q", "/c", sysutil::fromPath(fs::path(e.path()).make_preferred())}, dir);
+            std::size_t pos = 0;
+            for (int k = 1; pos < text.size() && k < 16; ++k) {
+                pos = text.find('\n', pos);
+                pos = pos == std::string::npos ? text.size() : pos + 1;
+                const fs::path part = dir / ("part" + std::to_string(k) + ".bat");
+                sysutil::writeFile(part, text.substr(0, pos));
+                probe(("lines" + std::to_string(k)).c_str(), {"cmd", "/d", "/q", "/c", sysutil::fromPath(fs::path(part).make_preferred())}, dir);
+            }
         }
     }
     CHECK(hi.ok && field(hi, "output") == "hello\n");

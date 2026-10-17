@@ -1,6 +1,7 @@
 // The monitor.* commands.
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <memory>
 #include <thread>
 
@@ -317,13 +318,14 @@ void registerCommands(Session& session) {
                 const double interval = std::clamp(numberParam(p, "interval", 0.5), 0.1, 60.0);
                 std::vector<double> cpu, mem;
                 mon->cpu();
-                const auto start = std::chrono::steady_clock::now();
-                while (true) {
+                // a fixed number of samples: counting by the clock gave fewer on slow machines,
+                // where reading the processor takes a good part of each interval
+                const int samples = std::max(1, static_cast<int>(std::lround(seconds / interval)));
+                for (int i = 0; i < samples; ++i) {
                     std::this_thread::sleep_for(std::chrono::duration<double>(interval));
                     cpu.push_back(mon->cpu().total);
                     MemInfo m = platform::memory();
                     mem.push_back(m.total ? 100.0 * static_cast<double>(m.used) / static_cast<double>(m.total) : 0);
-                    if (std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count() >= seconds) break;
                 }
                 double avg = 0, peak = 0;
                 for (double c : cpu) {

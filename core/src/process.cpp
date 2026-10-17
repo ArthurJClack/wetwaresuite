@@ -271,7 +271,8 @@ bool ChildProcess::start(const std::vector<std::string>& args, const std::filesy
         saved.emplace_back(key, n > 0 && n < 32768 ? std::wstring(old, n) : std::wstring(1, L'\0'));
         SetEnvironmentVariableW(key.c_str(), widen(v).c_str());
     }
-    std::wstring dir = cwd.empty() ? std::wstring() : cwd.wstring();
+    // backslashes: cmd.exe started in a folder written with / fails every command ("The syntax of the command is incorrect")
+    std::wstring dir = cwd.empty() ? std::wstring() : std::filesystem::path(cwd).make_preferred().wstring();
     BOOL ok = CreateProcessW(nullptr, cmd.data(), nullptr, nullptr, TRUE, CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr,
                              dir.empty() ? nullptr : dir.c_str(), &si, &pi);
     const DWORD startError = GetLastError();

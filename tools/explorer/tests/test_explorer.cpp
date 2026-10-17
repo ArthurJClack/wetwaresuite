@@ -211,6 +211,8 @@ int main() {
         Result dry = s.run("explorer.batch_rename", {{"folder", in}, {"files", std::string("*.jpg")}, {"number", std::string("holiday {n:3}")}, {"dry_run", true}});
         CHECK(dry.ok && field(dry, "count") == "2" && dry.message.find("photo1.jpg -> holiday 001.jpg") != std::string::npos);
         CHECK(there(work / "in" / "photo1.jpg"));
+        Result withExt = s.run("explorer.batch_rename", {{"folder", in}, {"files", std::string("*.jpg")}, {"number", std::string("trip-{n}.JPG")}, {"dry_run", true}});
+        CHECK(withExt.ok && withExt.message.find("photo1.jpg -> trip-1.JPG\n") != std::string::npos);
         CHECK(s.run("explorer.batch_rename", {{"folder", in}, {"find", std::string("photo")}, {"replace", std::string("pic")}}).ok);
         CHECK(there(work / "in" / "pic1.jpg") && there(work / "in" / "pic2.jpg") && !there(work / "in" / "photo1.jpg"));
         CHECK(s.history().undo());

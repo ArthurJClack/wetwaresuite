@@ -186,7 +186,10 @@ void registerBatchAndTrash(Session& s) {
                             out += " " + std::to_string(counter);
                         }
                         ++counter;
-                        name = out + ext;
+                        // "beach {n}.jpg" already has the extension: don't add it twice
+                        const bool hasExt = !ext.empty() && out.size() >= ext.size() &&
+                                            sysutil::lowerAscii(out.substr(out.size() - ext.size())) == sysutil::lowerAscii(ext);
+                        name = hasExt ? out : out + ext;
                     }
                     if (name == e.name) continue;
                     if (name.empty() || name.find_first_of("/\\") != std::string::npos) throw std::runtime_error("'" + e.name + "' would get a bad name: '" + name + "'");

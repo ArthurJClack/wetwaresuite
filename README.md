@@ -1,4 +1,7 @@
-# wetwaresuite
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="branding/logo-on-dark.svg">
+  <img alt="wetwaresuite" src="branding/logo-on-light.svg" width="420">
+</picture>
 
 _the all-in-one lightweight software suite_
 

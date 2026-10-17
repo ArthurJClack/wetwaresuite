@@ -9,6 +9,7 @@
 #include <sstream>
 
 #include "shell.hpp"
+#include "tool_panels.hpp"
 
 namespace wetwaresuite::gui {
 
@@ -84,9 +85,14 @@ Shell::Shell(Session& session, const AppInfo& app, SDL_Window* window, SDL_Rende
         }
     }
     loadRecent();
+    panels_ = std::make_unique<ToolPanels>();
+    hasClock_ = find("clock.due") != nullptr;
 }
 
-Shell::~Shell() { canvas_.texture.reset(); }
+Shell::~Shell() {
+    if (panels_) panels_->resetTextures();
+    canvas_.texture.reset();
+}
 
 const CommandInfo* Shell::find(const std::string& id) const {
     for (const auto& c : commands_) {
@@ -109,6 +115,8 @@ void Shell::syncDocs() {
 Result Shell::run(const std::string& id, const Params& params) {
     Result r = session_.run(id, params);
     if (r.ok) {
+        const CommandInfo* info = find(id);
+        if (!info || !info->readOnly) ++changes_;
         // a command that made or picked a document: show it
         if (const Value* doc = r.field("doc")) {
             if (auto s = std::get_if<std::string>(doc); s && session_.workspace().get(*s)) {
@@ -116,6 +124,7 @@ Result Shell::run(const std::string& id, const Params& params) {
                 currentDoc_ = *s;
                 if (!docTool_.count(*s)) docTool_[*s] = id.substr(0, id.find('.'));
                 showHome_ = false;
+                panel_ = panelForDoc(*s);  // code and terminals open in their panel
             }
         }
         auto path = params.find("path");
@@ -161,6 +170,8 @@ void Shell::runForm() {
 }
 
 void Shell::undo() {
+    beforeHistoryStep();
+    ++changes_;
     if (session_.history().undo()) {
         result_ = Result::success("Undone.");
         resultFor_ = "Undo";
@@ -169,6 +180,8 @@ void Shell::undo() {
 }
 
 void Shell::redo() {
+    beforeHistoryStep();
+    ++changes_;
     if (session_.history().redo()) {
         result_ = Result::success("Redone.");
         resultFor_ = "Redo";
@@ -177,6 +190,7 @@ void Shell::redo() {
 }
 
 void Shell::openFile(const std::string& path) {
+    if (openFolder(path)) return;  // a folder opens in the file manager (or as a code project)
     const auto candidates = openCandidates(path, tools_, commands_);
     resultFor_ = "Open a file";
     if (candidates.empty()) {
@@ -243,6 +257,11 @@ void Shell::showOpenDialog() {
     SDL_ShowOpenFileDialog(onDialog, req, window_, nullptr, 0, nullptr, false);
 }
 
+void Shell::askFolder(const std::string& purpose) {
+    auto* req = new DialogRequest{{DialogTarget::PanelFolder, purpose, 0}};
+    SDL_ShowOpenFolderDialog(onDialog, req, window_, nullptr, false);
+}
+
 void Shell::showFieldDialog(std::size_t index) {
     if (!form_ || index >= form_->fields.size()) return;
     auto* req = new DialogRequest{{DialogTarget::FormField, form_->command, index}};
@@ -269,6 +288,8 @@ void Shell::drainDialogs() {
     for (const auto& [target, path] : results) {
         if (target.kind == DialogTarget::OpenDocument) {
             openFile(path);
+        } else if (target.kind == DialogTarget::PanelFolder) {
+            folderChosen(target.command, path);
         } else if (form_ && form_->command == target.command && target.field < form_->fields.size()) {
             setFieldText(form_->fields[target.field], path);
         }

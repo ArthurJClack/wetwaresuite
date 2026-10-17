@@ -93,6 +93,7 @@ bool Shell::accentButton(const char* label, ImVec2 size) {
 
 void Shell::frame() {
     drainDialogs();
+    backgroundTicks();
     ImGuiIO& io = ImGui::GetIO();
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_K)) focusSearch_ = true;
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_O)) showOpenDialog();
@@ -112,14 +113,16 @@ void Shell::frame() {
     const float unit = ImGui::GetFontSize();
     const float avail = ImGui::GetContentRegionAvail().x;
     const float leftW = std::clamp(avail * 0.2f, unit * 10, unit * 16);
-    const float rightW = std::clamp(avail * 0.27f, unit * 13, unit * 22);
+    const bool panelShown = !showHome_ && !panel_.empty();  // a tool panel gets more of the width
+    const float rightW = panelShown ? std::clamp(avail * 0.2f, unit * 11, unit * 16) : std::clamp(avail * 0.27f, unit * 13, unit * 22);
     ImGui::BeginChild("left", {leftW, 0}, ImGuiChildFlags_Borders);
     leftPanel();
     ImGui::EndChild();
     ImGui::SameLine();
     const float centerW = std::max(unit * 8, ImGui::GetContentRegionAvail().x - rightW - ImGui::GetStyle().ItemSpacing.x);
     ImGui::BeginChild("center", {centerW, 0}, ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    if (showHome_ || currentDoc_.empty()) homeView();
+    if (!showHome_ && !panel_.empty()) toolPanelView();
+    else if (showHome_ || currentDoc_.empty()) homeView();
     else documentView();
     ImGui::EndChild();
     ImGui::SameLine();
@@ -128,6 +131,7 @@ void Shell::frame() {
     ImGui::EndChild();
     ImGui::End();
     searchPopup();
+    dueBanner();
 }
 
 void Shell::topBar() {
@@ -254,6 +258,7 @@ void Shell::settingsPopup() {
 }
 
 void Shell::leftPanel() {
+    panelList();
     heading("Actions", 1.1f);
     if (!pro_) wrappedMuted("The most common ones. Switch to Pro for all of them.");
     for (const auto& tool : tools_) {
@@ -293,6 +298,7 @@ void Shell::leftPanel() {
             if (currentDoc_ != id) canvas_.fit = true;
             currentDoc_ = id;
             showHome_ = false;
+            panel_ = panelForDoc(id);
             canvas_.dirty = true;
         }
         if (doc) ImGui::SetItemTooltip("%s", doc->summary().c_str());
@@ -347,6 +353,7 @@ void Shell::homeView() {
         ImGui::PopTextWrapPos();
         // quick actions, wrapped onto new lines when the card is full
         std::vector<std::pair<std::string, std::string>> buttons;
+        if (hasPanel(tool)) buttons.emplace_back("Open", "panel:" + tool);
         for (const auto& id : beginnerCommands(tool, commands_, 3)) {
             if (const CommandInfo* c = find(id)) buttons.emplace_back(c->title, id);
         }
@@ -360,6 +367,7 @@ void Shell::homeView() {
             }
             if (ImGui::SmallButton(buttons[b].first.c_str())) {
                 if (buttons[b].second.empty()) expandTool_ = tool;
+                else if (buttons[b].second.rfind("panel:", 0) == 0) openPanel(tool);
                 else select(buttons[b].second);
             }
         }

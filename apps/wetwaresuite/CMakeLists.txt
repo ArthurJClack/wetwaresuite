@@ -23,6 +23,7 @@ target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::board)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::notes)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::maps)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::type)
+target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::calc wetwaresuite::code wetwaresuite::explorer wetwaresuite::terminal wetwaresuite::monitor wetwaresuite::clock)
 
 add_executable(wetwaresuite main.cpp)
 target_link_libraries(wetwaresuite PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::mcp)

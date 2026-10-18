@@ -54,6 +54,12 @@ public:
 
     std::string pageText(int index) const;  // 0-based
 
+    // the raw structure, for editing: every object by number, the trailer and the catalog
+    const std::map<int, Object>& objects() const { return objects_; }
+    const Object& trailer() const { return trailer_; }
+    const Object& catalog() const;
+    int maxObject() const { return objects_.empty() ? 0 : objects_.rbegin()->first; }
+
 private:
     std::string bytes_;
     std::map<int, Object> objects_;

@@ -24,6 +24,7 @@
 #include "wetwaresuite/library/library.hpp"
 #include "wetwaresuite/notes/notes.hpp"
 #include "wetwaresuite/office/office.hpp"
+#include "wetwaresuite/pdf/commands.hpp"
 #include "wetwaresuite/paint/paint.hpp"
 #include "wetwaresuite/photo/photo.hpp"
 #include "wetwaresuite/sculpt/sculpt.hpp"
@@ -56,6 +57,7 @@ const std::set<std::string>& toolNames() {
         "library",
         "automate",
         "office",
+        "pdf",
         "levels",
         "sculpt",
         "beats",
@@ -103,6 +105,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("library")) library::registerCommands(session);
     if (want("automate")) automate::registerCommands(session, [only](Session& fresh) { registerAll(fresh, only); });
     if (want("office")) office::registerCommands(session);
+    if (want("pdf")) pdf::registerCommands(session);
     if (want("levels")) levels::registerCommands(session);
     if (want("sculpt")) sculpt::registerCommands(session);
     if (want("beats")) beats::registerCommands(session);

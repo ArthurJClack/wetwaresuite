@@ -16,7 +16,7 @@ If you want everything in one program (handy for scripts, servers and Claude), t
 | electronics | `wetwaresuite-electronics` | circuit diagrams, circuit boards, flashing microcontrollers | circuit, flash | ~4 MB |
 | sound | `wetwaresuite-sound` | record and clean up audio, make music | audio, beats | ~4 MB |
 | video | `wetwaresuite-video` | edit videos, screenshots, screen recording | cut, capture | ~3 MB |
-| office | `wetwaresuite-office` | documents, spreadsheets, slides, PDFs, print layouts, notes | office, layout, notes | ~7 MB |
+| office | `wetwaresuite-office` | documents, spreadsheets, slides, a PDF editor, print layouts, notes | office, pdf, layout, notes | ~7 MB |
 | maps | `wetwaresuite-maps` | offline maps, GPS tracks and map data | maps | ~4 MB |
 | system | `wetwaresuite-system` | calculator, code editor, file manager, terminal, system monitor and clock | calc, code, explorer, terminal, monitor, clock | ~6 MB |
 | files | `wetwaresuite-files` | open, convert, find and batch-process any file | toolkit, convert, library, automate | ~4 MB |

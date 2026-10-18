@@ -17,7 +17,7 @@ const std::vector<App>& all() {
         {"electronics", "circuit diagrams, circuit boards and flashing microcontrollers", {"circuit", "flash"}, 0x14a89a},
         {"sound", "record and clean up audio, make music", {"audio", "beats"}, 0x9b6bff},
         {"video", "edit videos, take screenshots and record the screen", {"cut", "capture"}, 0xe5484d},
-        {"office", "documents, spreadsheets, slides, PDFs, print layouts and notes", {"office", "layout", "notes"}, 0x1f9bd1},
+        {"office", "documents, spreadsheets, slides, a PDF editor, print layouts and notes", {"office", "pdf", "layout", "notes"}, 0x1f9bd1},
         {"maps", "offline maps, GPS tracks and map data", {"maps"}, 0x3aa76d},
         {"system", "calculator, code editor, file manager, terminal, system monitor and clock",
          {"calc", "code", "explorer", "terminal", "monitor", "clock"}, 0x6c7bd9},
@@ -89,7 +89,7 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".docx", {"office", "office.doc_open"}}, {".odt", {"office", "office.doc_open"}}, {".md", {"office", "office.doc_open"}},
         {".txt", {"office", "office.doc_open"}}, {".rtf", {"office", "office.doc_open"}}, {".html", {"office", "office.doc_open"}},
         {".xlsx", {"office", "office.sheet_open"}}, {".ods", {"office", "office.sheet_open"}}, {".csv", {"office", "office.sheet_open"}},
-        {".pptx", {"office", "office.deck_open"}}, {".odp", {"office", "office.deck_open"}}, {".pdf", {"office", ""}},
+        {".pptx", {"office", "office.deck_open"}}, {".odp", {"office", "office.deck_open"}}, {".pdf", {"office", "pdf.open"}},
         {".wwlay", {"office", "layout.open"}}, {".achlay", {"office", "layout.open"}},
         // maps
         {".geojson", {"maps", "maps.open"}}, {".kml", {"maps", "maps.open"}}, {".gpx", {"maps", "maps.open"}},
@@ -187,7 +187,7 @@ const std::vector<SendRoute>& sendRoutes() {
         {"song", "video", "beats.render", "path", ".wav", "music", "", "add it to a timeline: cut.add_audio doc=<cut> path=FILE", "song"},
         {"song", "game", "beats.render", "path", ".wav", "music", "", "game music: ship FILE with your level", "song"},
         // office and maps
-        {"layout", "office", "layout.export", "path", ".pdf", "document", "", "the print-ready PDF (office.pdf_* tools work on it)"},
+        {"layout", "office", "layout.export", "path", ".pdf", "document", "", "the print-ready PDF (open it with pdf.open to mark it up)"},
         {"map", "image", "maps.render", "path", ".png", "picture", "photo.open", "a picture of the map"},
         {"map", "office", "maps.render", "path", ".svg", "map", "", "place it on a page: layout.place_image doc=<layout> path=FILE"},
     };
@@ -230,6 +230,7 @@ std::string toolGuide(const std::string& tool) {
         {"cut", "cut_* edits video on a timeline (cut_new returns cut1; cut_preview shows a frame; cut_render exports; needs ffmpeg for video files)."},
         {"capture", "capture_screenshot without output returns an image of the screen; capture_* also records the screen."},
         {"office", "office_* handles spreadsheets with formulas, documents, slide decks and PDF tools."},
+        {"pdf", "pdf_* edits any PDF like Acrobat: pdf_open returns pdf1; pdf_view shows a page (coordinates are points from its top-left); pdf_add_text, pdf_replace_text (edit the page's own text), pdf_highlight, pdf_note, pdf_draw, pdf_shape, pdf_redact, pdf_image, pdf_sign; pdf_fields and pdf_fill fill forms; pdf_page_* turns, moves, inserts and deletes pages; pdf_save writes the file."},
         {"layout", "layout_* builds print layouts (posters, flyers, booklets) exported to PDF."},
         {"notes", "notes_* works on an Obsidian-style folder of Markdown notes (notes_search, notes_backlinks, notes_tasks)."},
         {"maps", "maps_* handles GeoJSON/KML/GPX/Shapefile data in lon/lat and renders maps (maps_new returns map1)."},

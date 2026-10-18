@@ -542,7 +542,8 @@ std::string toolBlurb(const std::string& tool) {
         {"audio", "Record, clean up and mix sound."},
         {"cut", "Edit videos: trim, join, titles and music."},
         {"capture", "Take screenshots and record the screen."},
-        {"office", "Documents, spreadsheets, slides and PDFs."},
+        {"office", "Documents, spreadsheets and slides."},
+        {"pdf", "Open any PDF to mark it up, edit its text, fill in forms and sign it."},
         {"layout", "Posters, flyers and booklets ready to print."},
         {"library", "Find, tag and sort all your files."},
         {"automate", "Repeat jobs on many files at once."},
@@ -574,6 +575,7 @@ std::string toolTitle(const std::string& tool) {
     if (tool == "explorer") return "Files";
     if (tool == "monitor") return "System monitor";
     if (tool == "fit") return "Scan fit";
+    if (tool == "pdf") return "PDF editor";
     return capitalise(tool);
 }
 

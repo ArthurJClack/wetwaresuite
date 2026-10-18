@@ -59,7 +59,7 @@ people install apps, not tools. an app is a few related tools in one binary:
 | electronics | circuit, flash |
 | sound | audio, beats |
 | video | cut, capture |
-| office | office, layout, notes |
+| office | office, pdf, layout, notes |
 | maps | maps |
 | system | calc, code, explorer, terminal, monitor, clock |
 | files | toolkit, convert, library, automate (always installed) |

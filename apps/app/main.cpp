@@ -73,6 +73,9 @@
 #if WW_TOOL_OFFICE
 #include "wetwaresuite/office/office.hpp"
 #endif
+#if WW_TOOL_PDF
+#include "wetwaresuite/pdf/commands.hpp"
+#endif
 #if WW_TOOL_LAYOUT
 #include "wetwaresuite/layout/layout.hpp"
 #endif
@@ -189,6 +192,9 @@ void registerTools(Session& session, const std::set<std::string>& requested) {
 #endif
 #if WW_TOOL_OFFICE
     if (want("office")) office::registerCommands(session);
+#endif
+#if WW_TOOL_PDF
+    if (want("pdf")) pdf::registerCommands(session);
 #endif
 #if WW_TOOL_LAYOUT
     if (want("layout")) layout::registerCommands(session);

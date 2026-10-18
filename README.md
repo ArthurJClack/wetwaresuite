@@ -25,7 +25,7 @@ install only what you need (`hub install image model --from <release folder>`); 
 | electronics | `wetwaresuite-electronics` | circuits and microcontrollers | circuit, flash |
 | sound | `wetwaresuite-sound` | audio editing and music | audio, beats |
 | video | `wetwaresuite-video` | video editing and screen capture | cut, capture |
-| office | `wetwaresuite-office` | documents, sheets, slides, print layout, notes | office, layout, notes |
+| office | `wetwaresuite-office` | documents, sheets, slides, PDF editor, print layout, notes | office, pdf, layout, notes |
 | maps | `wetwaresuite-maps` | offline maps and GIS | maps |
 | system | `wetwaresuite-system` | calculator, code editor, file manager, terminal, system monitor, clock | calc, code, explorer, terminal, monitor, clock |
 | files | `wetwaresuite-files` | open, convert, find anything (always installed) | toolkit, convert, library, automate |

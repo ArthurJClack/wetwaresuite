@@ -128,7 +128,7 @@ public:
     }
     std::unique_ptr<Attachment> preview() const override;
     bool renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const override {
-        return mesh::renderOrbit(state.mesh, view, width, height, rgba);
+        return mesh::renderOrbit(state.plate(), view, width, height, rgba);
     }
 };
 

@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 
@@ -6,6 +7,8 @@
 #include "wetwaresuite/raster/ops.hpp"
 #include "wetwaresuite/raster/ora.hpp"
 #include "wetwaresuite/raster/paint.hpp"
+#include "wetwaresuite/raster/parallel.hpp"
+#include "wetwaresuite/raster/pyramid.hpp"
 #include "check.hpp"
 
 using namespace wetwaresuite::raster;
@@ -162,5 +165,127 @@ int main() {
     CHECK(load(dir / "flat.png").width() == 40);
 
     fs::remove_all(dir);
+
+    // lanczos and area resize
+    {
+        Image flatGrey(64, 48, {120, 80, 40, 255});
+        Image up = resize(flatGrey, 150, 101, Filter::Lanczos), down = resize(flatGrey, 13, 9, Filter::Lanczos);
+        CHECK(up.width() == 150 && up.height() == 101 && down.width() == 13);
+        CHECK(up.at(75, 50) == (Color{120, 80, 40, 255}) && down.at(0, 0) == (Color{120, 80, 40, 255}));
+        Image checker(64, 64);
+        for (int y = 0; y < 64; ++y) {
+            for (int x = 0; x < 64; ++x) checker.set(x, y, ((x + y) & 1) ? Color{255, 255, 255, 255} : Color{0, 0, 0, 255});
+        }
+        CHECK(std::abs(resize(checker, 16, 16, Filter::Lanczos).at(8, 8).r - 128) <= 8);  // no aliasing when shrinking
+        CHECK(std::abs(resize(checker, 32, 32, Filter::Area).at(5, 5).r - 128) <= 1);
+        CHECK(parseFilter("lanczos") == Filter::Lanczos && !parseFilter("bicubic"));
+    }
+
+    // same output on any thread count
+    {
+        Image src(301, 207);
+        for (int y = 0; y < src.height(); ++y) {
+            for (int x = 0; x < src.width(); ++x) {
+                src.set(x, y, {static_cast<std::uint8_t>(x * 7), static_cast<std::uint8_t>(y * 3), static_cast<std::uint8_t>(x ^ y),
+                               static_cast<std::uint8_t>((x * y) & 255)});
+            }
+        }
+        auto run = [&](int threads) {
+            const int before = setThreadCount(threads);
+            Image blurred = src;
+            boxBlur(blurred, 5);
+            Image sat = src;
+            adjust(sat, Adjust::Hue, 40);
+            std::vector<Layer> layers = {{"a", src}, {"b", blurred, 0.6, Blend::Overlay}};
+            std::vector<Image> out = {blurred, sat, resize(src, 130, 90), resize(src, 700, 500, Filter::Lanczos),
+                                      resize(src, 40, 30), composite(layers, src.width(), src.height())};
+            setThreadCount(before);
+            return out;
+        };
+        auto one = run(1), many = run(7);
+        for (std::size_t i = 0; i < one.size(); ++i) {
+            CHECK(one[i].bytes() == many[i].bytes() && std::equal(one[i].data(), one[i].data() + one[i].bytes(), many[i].data()));
+        }
+        // blur keeps flat colour flat and clear areas clear
+        Image solid(50, 40, {10, 200, 30, 255});
+        boxBlur(solid, 7);
+        CHECK(solid.at(0, 0) == (Color{10, 200, 30, 255}) && solid.at(25, 20) == (Color{10, 200, 30, 255}));
+        Image clearImg(20, 20);
+        boxBlur(clearImg, 3);
+        CHECK(clearImg.at(10, 10).a == 0);
+    }
+
+    // mipmap pyramid: a local update matches a full rebuild
+    {
+        LayeredImage li;
+        li.width = 300;
+        li.height = 170;
+        li.layers.push_back({"bg", Image(300, 170, {255, 255, 255, 255})});
+        li.layers.push_back({"ink", Image(300, 170), 0.8, Blend::Multiply});
+        Pyramid pyr;
+        pyr.build(li);
+        CHECK(pyr.levels() == 10 && pyr.level(1).width() == 150 && pyr.level(2).height() == 43);
+        CHECK(pyr.level(pyr.levels() - 1).width() == 1);
+        fillRect(li.layers[1].image, 41, 33, 20, 17, {200, 10, 10, 255});
+        CHECK(pyr.update(li, {41, 33, 61, 50}));
+        CHECK(pyr.changed(1).x0 == 20 && pyr.changed(1).x1 == 31);
+        Pyramid fresh;
+        fresh.build(li);
+        for (int i = 0; i < pyr.levels(); ++i) {
+            const Image &a = pyr.level(i), &b = fresh.level(i);
+            CHECK(std::equal(a.data(), a.data() + a.bytes(), b.data()));
+        }
+        CHECK(pyr.levelFor(1.0, 4096) == 0 && pyr.levelFor(0.5, 4096) == 1 && pyr.levelFor(0.3, 4096) == 1);
+        CHECK(pyr.levelFor(0.24, 4096) == 2 && pyr.levelFor(4.0, 100) == 2);
+        li.width = 10;
+        CHECK(!pyr.update(li, {0, 0, 5, 5}));  // size changed: caller rebuilds
+    }
+
+    // dirty-region undo keeps only changed tiles; structural edits keep the whole image
+    {
+        auto d = newImage(1000, 700, {255, 255, 255, 255});
+        d->image.layers.push_back({"ink", Image(1000, 700)});
+        const LayeredImage before = d->image;
+        (void)d->takeChanges();
+        ImageEdit local(d, [](ImageDoc& doc) {
+            fillRect(doc.image.layers[1].image, 70, 70, 10, 100, {0, 0, 0, 255});  // crosses two tile rows
+            doc.image.layers[0].name = "Paper";
+            return wetwaresuite::Result::success("");
+        });
+        CHECK(local.apply().ok);
+        CHECK(!local.keptWholeImage() && local.undoBytes() > 0 && local.undoBytes() < 6 * 64 * 64 * 4);
+        auto ch = d->takeChanges();
+        CHECK(!ch.all && ch.rect.x0 == 64 && ch.rect.y0 == 64 && ch.rect.x1 == 128 && ch.rect.y1 == 192);
+        local.revert();
+        CHECK(local.undoBytes() == 0 && d->image.layers[0].name == "Background");
+        CHECK(std::equal(before.layers[1].image.data(), before.layers[1].image.data() + before.layers[1].image.bytes(),
+                         d->image.layers[1].image.data()));
+        ImageEdit failing(d, [](ImageDoc& doc) {
+            doc.image.layers[1].image.fill({1, 2, 3, 4});
+            return wetwaresuite::Result::failure("nope");
+        });
+        CHECK(!failing.apply().ok && d->image.layers[1].image.at(5, 5).a == 0 && failing.undoBytes() == 0);
+        ImageEdit grow(d, [](ImageDoc& doc) {
+            for (auto& l : doc.image.layers) l.image = resizeCanvas(l.image, 1200, 700);
+            doc.image.width = 1200;
+            return wetwaresuite::Result::success("");
+        });
+        CHECK(grow.apply().ok && grow.keptWholeImage() && d->takeChanges().all);
+        grow.revert();
+        CHECK(d->image.width == 1000 && d->image.layers[1].image.width() == 1000);
+        ImageEdit declared(
+            d,
+            [](ImageDoc& doc) {
+                doc.touch(1, 10, 10, 8, 8);
+                fillRect(doc.image.layers[1].image, 10, 10, 8, 8, {9, 9, 9, 255});
+                doc.touch(1, 12, 12, 8, 8);  // overlapping areas still undo to the original
+                fillRect(doc.image.layers[1].image, 12, 12, 8, 8, {7, 7, 7, 255});
+                return wetwaresuite::Result::success("");
+            },
+            ImageEdit::Mode::Declared);
+        CHECK(declared.apply().ok && declared.undoBytes() < 2000 && d->image.layers[1].image.at(15, 15).r == 7);
+        declared.revert();
+        CHECK(d->image.layers[1].image.at(15, 15).a == 0 && d->image.layers[1].image.at(11, 11).a == 0);
+    }
     return check::summary("raster");
 }

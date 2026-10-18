@@ -5,6 +5,9 @@
 #include <cmath>
 #include <cstdint>
 #include <random>
+#include <vector>
+
+#include "wetwaresuite/raster/parallel.hpp"
 
 namespace wetwaresuite::raster {
 
@@ -12,6 +15,7 @@ namespace {
 
 inline std::uint8_t clamp8(float v) { return static_cast<std::uint8_t>(std::clamp(v, 0.0f, 255.0f) + 0.5f); }
 
+// Visits pixels in order on one thread: for loops that carry state (histograms, random noise).
 template <typename Fn>
 void forEachPixel(Image& img, Fn fn) {
     auto* p = img.data();
@@ -19,9 +23,21 @@ void forEachPixel(Image& img, Fn fn) {
     for (std::size_t i = 0; i < n; i += 4) fn(p + i);
 }
 
+// Visits pixels across threads: only for per-pixel maps that depend on nothing but the pixel.
+template <typename Fn>
+void mapPixels(Image& img, Fn fn) {
+    const int w = img.width();
+    parallelRows(img.height(), static_cast<std::size_t>(w), [&](int b, int e) {
+        for (int y = b; y < e; ++y) {
+            std::uint8_t* p = img.pixel(0, y);
+            for (int x = 0; x < w; ++x) fn(p + static_cast<std::size_t>(x) * 4);
+        }
+    });
+}
+
 // Applies a per-channel lookup table to RGB.
 void applyLut(Image& img, const std::array<std::uint8_t, 256>& lut) {
-    forEachPixel(img, [&](std::uint8_t* p) {
+    mapPixels(img, [&](std::uint8_t* p) {
         p[0] = lut[p[0]];
         p[1] = lut[p[1]];
         p[2] = lut[p[2]];
@@ -66,108 +82,267 @@ void hslToRgb(float h, float s, float l, float& r, float& g, float& b) {
 
 float luma(const std::uint8_t* p) { return 0.299f * p[0] + 0.587f * p[1] + 0.114f * p[2]; }
 
-// One horizontal box-blur pass of the given radius over all four channels.
-void boxPass(const Image& src, Image& dst, int r, bool horizontal) {
-    const int w = src.width(), h = src.height();
-    const int outer = horizontal ? h : w, inner = horizontal ? w : h;
-    const float inv = 1.0f / (2 * r + 1);
-    std::vector<std::uint8_t> line(static_cast<std::size_t>(inner) * 4);
-    for (int o = 0; o < outer; ++o) {
-        auto px = [&](int i) { return horizontal ? src.pixel(i, o) : src.pixel(o, i); };
-        // premultiply so transparent pixels don't bleed their colour
-        float acc[4] = {0, 0, 0, 0};
-        auto add = [&](int i, float sign) {
-            const auto* p = px(std::clamp(i, 0, inner - 1));
-            float a = p[3];
-            acc[0] += sign * p[0] * a;
-            acc[1] += sign * p[1] * a;
-            acc[2] += sign * p[2] * a;
-            acc[3] += sign * a;
-        };
-        for (int i = -r; i <= r; ++i) add(i, 1);
-        for (int i = 0; i < inner; ++i) {
-            auto* out = horizontal ? dst.pixel(i, o) : dst.pixel(o, i);
-            float a = acc[3] * inv;
-            if (a > 0) {
-                out[0] = clamp8(acc[0] / acc[3]);
-                out[1] = clamp8(acc[1] / acc[3]);
-                out[2] = clamp8(acc[2] / acc[3]);
-            } else {
-                out[0] = out[1] = out[2] = 0;
+// Box-blur passes. Colour is weighted by alpha (premultiplied) so transparent pixels don't bleed
+// their colour; sums are exact integers, so the result never depends on thread count or order.
+inline void writeBlurred(std::uint8_t* __restrict out, const std::uint32_t* __restrict acc, float inv) {
+    const float a = static_cast<float>(acc[3]);
+    const float div = a > 0 ? a : 1;
+    for (int c = 0; c < 3; ++c) out[c] = a > 0 ? clamp8(static_cast<float>(acc[c]) / div) : 0;
+    out[3] = clamp8(a * inv);
+}
+
+// Rows: a sliding window along each row; rows are split across threads.
+void boxPassH(const Image& src, Image& dst, int r) {
+    const int w = src.width();
+    const float inv = 1.0f / static_cast<float>(2 * r + 1);
+    parallelRows(src.height(), static_cast<std::size_t>(w) * 3, [&](int b, int e) {
+        std::vector<std::uint32_t> pm(static_cast<std::size_t>(w + 2 * r + 1) * 4);
+        for (int y = b; y < e; ++y) {
+            const std::uint8_t* row = src.pixel(0, y);
+            for (int i = 0; i < w + 2 * r + 1; ++i) {  // premultiplied row, edges repeated
+                const std::uint8_t* p = row + static_cast<std::size_t>(std::clamp(i - r, 0, w - 1)) * 4;
+                std::uint32_t* q = pm.data() + static_cast<std::size_t>(i) * 4;
+                q[0] = p[0] * std::uint32_t{p[3]};
+                q[1] = p[1] * std::uint32_t{p[3]};
+                q[2] = p[2] * std::uint32_t{p[3]};
+                q[3] = p[3];
             }
-            out[3] = clamp8(a);
-            add(i + r + 1, 1);
-            add(i - r, -1);
+            std::uint32_t acc[4] = {0, 0, 0, 0};
+            for (int i = 0; i <= 2 * r; ++i) {
+                for (int c = 0; c < 4; ++c) acc[c] += pm[static_cast<std::size_t>(i) * 4 + c];
+            }
+            std::uint8_t* out = dst.pixel(0, y);
+            for (int x = 0; x < w; ++x) {
+                writeBlurred(out + static_cast<std::size_t>(x) * 4, acc, inv);
+                const std::uint32_t* add = pm.data() + static_cast<std::size_t>(x + 2 * r + 1) * 4;
+                const std::uint32_t* sub = pm.data() + static_cast<std::size_t>(x) * 4;
+                for (int c = 0; c < 4; ++c) acc[c] += add[c] - sub[c];
+            }
+        }
+    });
+}
+
+// Columns: one running sum per column, sliding down the rows, so every inner loop walks a
+// contiguous row segment (cache friendly, vectorizable). Column bands are split across threads.
+void boxPassV(const Image& src, Image& dst, int r) {
+    const int w = src.width(), h = src.height();
+    const float inv = 1.0f / static_cast<float>(2 * r + 1);
+    const int bands = std::max(1, (w + 63) / 64);
+    parallelRows(bands, static_cast<std::size_t>(h) * 64 * 3, [&](int b, int e) {
+        const int x0 = b * 64, x1 = std::min(w, e * 64), n = (x1 - x0) * 4;
+        std::vector<std::uint32_t> acc(static_cast<std::size_t>(n), 0);
+        auto addRow = [&](int y, bool subtract) {
+            const std::uint8_t* __restrict p = src.pixel(x0, std::clamp(y, 0, h - 1));
+            std::uint32_t* __restrict a = acc.data();
+            for (int i = 0; i < n; i += 4) {
+                const std::uint32_t al = p[i + 3];
+                const std::uint32_t v0 = p[i] * al, v1 = p[i + 1] * al, v2 = p[i + 2] * al;
+                if (subtract) {
+                    a[i] -= v0, a[i + 1] -= v1, a[i + 2] -= v2, a[i + 3] -= al;
+                } else {
+                    a[i] += v0, a[i + 1] += v1, a[i + 2] += v2, a[i + 3] += al;
+                }
+            }
+        };
+        for (int y = -r; y <= r; ++y) addRow(y, false);
+        for (int y = 0; y < h; ++y) {
+            std::uint8_t* out = dst.pixel(x0, y);
+            for (int i = 0; i < n; i += 4) writeBlurred(out + i, acc.data() + i, inv);
+            addRow(y + r + 1, false);
+            addRow(y - r, true);
+        }
+    });
+}
+
+constexpr double kPi = 3.14159265358979323846;
+
+double lanczos3(double x) {
+    x = std::fabs(x);
+    if (x < 1e-8) return 1.0;
+    if (x >= 3.0) return 0.0;
+    const double px = kPi * x;
+    return 3.0 * std::sin(px) * std::sin(px / 3.0) / (px * px);
+}
+
+// Lanczos-3 taps for one output coordinate: first source index plus normalised weights.
+struct Taps {
+    int first = 0;
+    std::vector<float> w;
+};
+
+std::vector<Taps> lanczosTaps(int srcSize, int dstSize) {
+    const double scale = static_cast<double>(srcSize) / dstSize;
+    const double stretch = std::max(1.0, scale);  // widen the kernel when shrinking so it doesn't alias
+    const double support = 3.0 * stretch;
+    std::vector<Taps> taps(static_cast<std::size_t>(dstSize));
+    for (int i = 0; i < dstSize; ++i) {
+        const double centre = (i + 0.5) * scale;
+        const int lo = std::max(0, static_cast<int>(std::floor(centre - support)));
+        const int hi = std::min(srcSize - 1, static_cast<int>(std::ceil(centre + support)));
+        Taps& t = taps[static_cast<std::size_t>(i)];
+        t.first = lo;
+        double sum = 0;
+        for (int j = lo; j <= hi; ++j) {
+            const double wt = lanczos3((j + 0.5 - centre) / stretch);
+            t.w.push_back(static_cast<float>(wt));
+            sum += wt;
+        }
+        if (sum != 0) {
+            for (auto& v : t.w) v = static_cast<float>(v / sum);
         }
     }
+    return taps;
+}
+
+Image resizeLanczos(const Image& img, int width, int height) {
+    const int sw = img.width(), sh = img.height();
+    const auto tx = lanczosTaps(sw, width), ty = lanczosTaps(sh, height);
+    // horizontal pass into premultiplied floats, then vertical pass back to 8-bit
+    std::vector<float> mid(static_cast<std::size_t>(width) * sh * 4);
+    parallelRows(sh, static_cast<std::size_t>(width) * 24, [&](int b, int e) {
+        for (int y = b; y < e; ++y) {
+            const std::uint8_t* row = img.pixel(0, y);
+            float* out = mid.data() + static_cast<std::size_t>(y) * width * 4;
+            for (int x = 0; x < width; ++x) {
+                const Taps& t = tx[static_cast<std::size_t>(x)];
+                float acc[4] = {0, 0, 0, 0};
+                for (std::size_t k = 0; k < t.w.size(); ++k) {
+                    const std::uint8_t* p = row + (static_cast<std::size_t>(t.first) + k) * 4;
+                    const float wa = t.w[k] * p[3];
+                    acc[0] += p[0] * wa;
+                    acc[1] += p[1] * wa;
+                    acc[2] += p[2] * wa;
+                    acc[3] += wa;
+                }
+                for (int c = 0; c < 4; ++c) out[x * 4 + c] = acc[c];
+            }
+        }
+    });
+    Image out(width, height);
+    const std::size_t stride = static_cast<std::size_t>(width) * 4;
+    parallelRows(height, static_cast<std::size_t>(width) * 24, [&](int b, int e) {
+        std::vector<float> acc(stride);
+        for (int y = b; y < e; ++y) {
+            const Taps& t = ty[static_cast<std::size_t>(y)];
+            std::fill(acc.begin(), acc.end(), 0.0f);
+            for (std::size_t k = 0; k < t.w.size(); ++k) {
+                const float* __restrict src = mid.data() + (static_cast<std::size_t>(t.first) + k) * stride;
+                float* __restrict a = acc.data();
+                const float wt = t.w[k];
+                for (std::size_t i = 0; i < stride; ++i) a[i] += src[i] * wt;
+            }
+            std::uint8_t* o = out.pixel(0, y);
+            for (int x = 0; x < width; ++x) {
+                const float* a = acc.data() + static_cast<std::size_t>(x) * 4;
+                const float alpha = a[3];
+                const float div = alpha > 0 ? alpha : 1;
+                for (int c = 0; c < 3; ++c) o[x * 4 + c] = alpha > 0 ? clamp8(a[c] / div) : 0;
+                o[x * 4 + 3] = clamp8(alpha);
+            }
+        }
+    });
+    return out;
 }
 
 }  // namespace
 
+const std::vector<std::string>& filterNames() {
+    static const std::vector<std::string> names = {"nearest", "bilinear", "area", "lanczos"};
+    return names;
+}
+
+std::optional<Filter> parseFilter(const std::string& name) {
+    const auto& n = filterNames();
+    for (std::size_t i = 0; i < n.size(); ++i) {
+        if (n[i] == name) return static_cast<Filter>(i);
+    }
+    return std::nullopt;
+}
+
 Image resize(const Image& img, int width, int height, Filter filter) {
     width = std::max(1, width);
     height = std::max(1, height);
-    Image out(width, height);
-    if (img.empty()) return out;
+    if (img.empty()) return Image(width, height);
     const double sx = static_cast<double>(img.width()) / width;
     const double sy = static_cast<double>(img.height()) / height;
+    if (filter == Filter::Lanczos) return resizeLanczos(img, width, height);
+    Image out(width, height);
+    const std::size_t rowCost = static_cast<std::size_t>(width) * 4;
 
     if (filter == Filter::Nearest) {
-        for (int y = 0; y < height; ++y) {
-            int srcY = std::min(img.height() - 1, static_cast<int>(y * sy));
-            for (int x = 0; x < width; ++x) {
-                int srcX = std::min(img.width() - 1, static_cast<int>(x * sx));
-                std::copy_n(img.pixel(srcX, srcY), 4, out.pixel(x, y));
+        std::vector<int> srcX(static_cast<std::size_t>(width));
+        for (int x = 0; x < width; ++x) srcX[static_cast<std::size_t>(x)] = std::min(img.width() - 1, static_cast<int>(x * sx));
+        parallelRows(height, rowCost, [&](int b, int e) {
+            for (int y = b; y < e; ++y) {
+                const int srcY = std::min(img.height() - 1, static_cast<int>(y * sy));
+                const std::uint8_t* row = img.pixel(0, srcY);
+                std::uint8_t* o = out.pixel(0, y);
+                for (int x = 0; x < width; ++x) std::copy_n(row + static_cast<std::size_t>(srcX[static_cast<std::size_t>(x)]) * 4, 4, o + x * 4);
             }
-        }
+        });
         return out;
     }
 
-    if (sx > 2.0 || sy > 2.0) {
+    if (sx > 2.0 || sy > 2.0 || (filter == Filter::Area && (sx > 1.0 || sy > 1.0))) {
         // area average, premultiplied
-        for (int y = 0; y < height; ++y) {
-            int y0 = static_cast<int>(y * sy), y1 = std::max(y0 + 1, std::min(img.height(), static_cast<int>((y + 1) * sy)));
-            for (int x = 0; x < width; ++x) {
-                int x0 = static_cast<int>(x * sx), x1 = std::max(x0 + 1, std::min(img.width(), static_cast<int>((x + 1) * sx)));
-                double acc[4] = {0, 0, 0, 0};
-                for (int yy = y0; yy < y1; ++yy) {
-                    for (int xx = x0; xx < x1; ++xx) {
-                        const auto* p = img.pixel(xx, yy);
-                        acc[0] += p[0] * p[3];
-                        acc[1] += p[1] * p[3];
-                        acc[2] += p[2] * p[3];
-                        acc[3] += p[3];
+        parallelRows(height, static_cast<std::size_t>(img.width()) * static_cast<std::size_t>(std::ceil(sy)), [&](int b, int e) {
+            for (int y = b; y < e; ++y) {
+                int y0 = static_cast<int>(y * sy), y1 = std::max(y0 + 1, std::min(img.height(), static_cast<int>((y + 1) * sy)));
+                for (int x = 0; x < width; ++x) {
+                    int x0 = static_cast<int>(x * sx), x1 = std::max(x0 + 1, std::min(img.width(), static_cast<int>((x + 1) * sx)));
+                    double acc[4] = {0, 0, 0, 0};
+                    for (int yy = y0; yy < y1; ++yy) {
+                        const std::uint8_t* p = img.pixel(x0, yy);
+                        std::uint64_t row[4] = {0, 0, 0, 0};  // exact per row, so the sum order never matters
+                        for (int xx = 0; xx < x1 - x0; ++xx, p += 4) {
+                            row[0] += p[0] * std::uint32_t{p[3]};
+                            row[1] += p[1] * std::uint32_t{p[3]};
+                            row[2] += p[2] * std::uint32_t{p[3]};
+                            row[3] += p[3];
+                        }
+                        for (int c = 0; c < 4; ++c) acc[c] += static_cast<double>(row[c]);
                     }
+                    auto* o = out.pixel(x, y);
+                    const double n = static_cast<double>(x1 - x0) * (y1 - y0);
+                    for (int c = 0; c < 3; ++c) o[c] = acc[3] > 0 ? clamp8(static_cast<float>(acc[c] / acc[3])) : 0;
+                    o[3] = clamp8(static_cast<float>(acc[3] / n));
                 }
-                auto* o = out.pixel(x, y);
-                const double n = static_cast<double>(x1 - x0) * (y1 - y0);
-                for (int c = 0; c < 3; ++c) o[c] = acc[3] > 0 ? clamp8(static_cast<float>(acc[c] / acc[3])) : 0;
-                o[3] = clamp8(static_cast<float>(acc[3] / n));
             }
-        }
+        });
         return out;
     }
 
-    for (int y = 0; y < height; ++y) {
-        double fy = std::max(0.0, (y + 0.5) * sy - 0.5);
-        int y0 = std::min(img.height() - 1, static_cast<int>(fy));
-        int y1 = std::min(img.height() - 1, y0 + 1);
-        float ty = static_cast<float>(fy - y0);
-        for (int x = 0; x < width; ++x) {
-            double fx = std::max(0.0, (x + 0.5) * sx - 0.5);
-            int x0 = std::min(img.width() - 1, static_cast<int>(fx));
-            int x1 = std::min(img.width() - 1, x0 + 1);
-            float tx = static_cast<float>(fx - x0);
-            const auto *a = img.pixel(x0, y0), *b = img.pixel(x1, y0), *c = img.pixel(x0, y1), *d = img.pixel(x1, y1);
-            float wa = (1 - tx) * (1 - ty) * a[3], wb = tx * (1 - ty) * b[3], wc = (1 - tx) * ty * c[3], wd = tx * ty * d[3];
-            float alpha = wa + wb + wc + wd;
-            auto* o = out.pixel(x, y);
-            for (int ch = 0; ch < 3; ++ch) {
-                o[ch] = alpha > 0 ? clamp8((a[ch] * wa + b[ch] * wb + c[ch] * wc + d[ch] * wd) / alpha) : 0;
-            }
-            o[3] = clamp8(alpha);
-        }
+    struct Col {
+        int x0, x1;
+        float t;
+    };
+    std::vector<Col> cols(static_cast<std::size_t>(width));
+    for (int x = 0; x < width; ++x) {
+        double fx = std::max(0.0, (x + 0.5) * sx - 0.5);
+        int x0 = std::min(img.width() - 1, static_cast<int>(fx));
+        cols[static_cast<std::size_t>(x)] = {x0, std::min(img.width() - 1, x0 + 1), static_cast<float>(fx - x0)};
     }
+    parallelRows(height, rowCost * 4, [&](int b, int e) {
+        for (int y = b; y < e; ++y) {
+            double fy = std::max(0.0, (y + 0.5) * sy - 0.5);
+            int y0 = std::min(img.height() - 1, static_cast<int>(fy));
+            int y1 = std::min(img.height() - 1, y0 + 1);
+            float ty = static_cast<float>(fy - y0);
+            const std::uint8_t *r0 = img.pixel(0, y0), *r1 = img.pixel(0, y1);
+            std::uint8_t* o = out.pixel(0, y);
+            for (int x = 0; x < width; ++x, o += 4) {
+                const Col& c = cols[static_cast<std::size_t>(x)];
+                const float tx = c.t;
+                const auto *pa = r0 + c.x0 * 4, *pb = r0 + c.x1 * 4, *pc = r1 + c.x0 * 4, *pd = r1 + c.x1 * 4;
+                float wa = (1 - tx) * (1 - ty) * pa[3], wb = tx * (1 - ty) * pb[3], wc = (1 - tx) * ty * pc[3], wd = tx * ty * pd[3];
+                float alpha = wa + wb + wc + wd;
+                for (int ch = 0; ch < 3; ++ch) {
+                    o[ch] = alpha > 0 ? clamp8((pa[ch] * wa + pb[ch] * wb + pc[ch] * wc + pd[ch] * wd) / alpha) : 0;
+                }
+                o[3] = clamp8(alpha);
+            }
+        }
+    });
     return out;
 }
 
@@ -276,7 +451,7 @@ void adjust(Image& img, Adjust kind, double amount) {
         }
         case Adjust::Temperature: {  // -100 (cool) .. 100 (warm)
             float t = static_cast<float>(amount) * 0.3f;
-            forEachPixel(img, [&](std::uint8_t* p) {
+            mapPixels(img, [&](std::uint8_t* p) {
                 p[0] = clamp8(p[0] + t);
                 p[2] = clamp8(p[2] - t);
             });
@@ -286,7 +461,7 @@ void adjust(Image& img, Adjust kind, double amount) {
         case Adjust::Vibrance: {
             float s = 1.0f + static_cast<float>(std::clamp(amount, -100.0, 100.0)) / 100.0f;
             bool vibrance = kind == Adjust::Vibrance;
-            forEachPixel(img, [&](std::uint8_t* p) {
+            mapPixels(img, [&](std::uint8_t* p) {
                 float l = luma(p);
                 float f = s;
                 if (vibrance) {  // boost dull colours more than saturated ones
@@ -300,7 +475,7 @@ void adjust(Image& img, Adjust kind, double amount) {
         }
         case Adjust::Hue: {  // degrees
             float shift = static_cast<float>(std::fmod(amount / 360.0, 1.0));
-            forEachPixel(img, [&](std::uint8_t* p) {
+            mapPixels(img, [&](std::uint8_t* p) {
                 float h, s, l, r, g, b;
                 rgbToHsl(p[0] / 255.0f, p[1] / 255.0f, p[2] / 255.0f, h, s, l);
                 h = std::fmod(h + shift + 1.0f, 1.0f);
@@ -348,7 +523,7 @@ void autoContrast(Image& img) {
         }
         for (int i = 0; i < 256; ++i) luts[c][i] = clamp8((i - lo) * 255.0f / (hi - lo));
     }
-    forEachPixel(img, [&](std::uint8_t* p) {
+    mapPixels(img, [&](std::uint8_t* p) {
         for (int c = 0; c < 3; ++c) p[c] = luts[c][p[c]];
     });
 }
@@ -369,10 +544,11 @@ std::optional<Effect> parseEffect(const std::string& name) {
 
 void boxBlur(Image& img, int radius) {
     if (radius <= 0 || img.empty()) return;
+    radius = std::min(radius, 30000);  // keeps the integer sums from overflowing
     Image tmp(img.width(), img.height());
     for (int pass = 0; pass < 3; ++pass) {
-        boxPass(img, tmp, radius, true);
-        boxPass(tmp, img, radius, false);
+        boxPassH(img, tmp, radius);
+        boxPassV(tmp, img, radius);
     }
 }
 
@@ -380,27 +556,30 @@ void unsharpMask(Image& img, double radius, double amount) {
     Image blurred = img;
     boxBlur(blurred, std::max(1, static_cast<int>(std::lround(radius / 2))));
     const float k = static_cast<float>(amount);
-    auto* p = img.data();
-    const auto* b = blurred.data();
-    for (std::size_t i = 0; i < img.bytes(); i += 4) {
-        for (int c = 0; c < 3; ++c) p[i + c] = clamp8(p[i + c] + (p[i + c] - b[i + c]) * k);
-    }
+    const std::size_t stride = static_cast<std::size_t>(img.width()) * 4;
+    parallelRows(img.height(), stride, [&](int rb, int re) {
+        std::uint8_t* __restrict p = img.data();
+        const std::uint8_t* __restrict b = blurred.data();
+        for (std::size_t i = static_cast<std::size_t>(rb) * stride; i < static_cast<std::size_t>(re) * stride; i += 4) {
+            for (int c = 0; c < 3; ++c) p[i + c] = clamp8(p[i + c] + (p[i + c] - b[i + c]) * k);
+        }
+    });
 }
 
 void applyEffect(Image& img, Effect kind, double amount) {
     switch (kind) {
         case Effect::Grayscale:
-            forEachPixel(img, [](std::uint8_t* p) { p[0] = p[1] = p[2] = clamp8(luma(p)); });
+            mapPixels(img, [](std::uint8_t* p) { p[0] = p[1] = p[2] = clamp8(luma(p)); });
             return;
         case Effect::Invert:
-            forEachPixel(img, [](std::uint8_t* p) {
+            mapPixels(img, [](std::uint8_t* p) {
                 p[0] = 255 - p[0];
                 p[1] = 255 - p[1];
                 p[2] = 255 - p[2];
             });
             return;
         case Effect::Sepia:
-            forEachPixel(img, [](std::uint8_t* p) {
+            mapPixels(img, [](std::uint8_t* p) {
                 float r = p[0], g = p[1], b = p[2];
                 p[0] = clamp8(0.393f * r + 0.769f * g + 0.189f * b);
                 p[1] = clamp8(0.349f * r + 0.686f * g + 0.168f * b);
@@ -409,7 +588,7 @@ void applyEffect(Image& img, Effect kind, double amount) {
             return;
         case Effect::Threshold: {
             float level = amount > 0 ? static_cast<float>(amount) : 128.0f;
-            forEachPixel(img, [&](std::uint8_t* p) { p[0] = p[1] = p[2] = luma(p) >= level ? 255 : 0; });
+            mapPixels(img, [&](std::uint8_t* p) { p[0] = p[1] = p[2] = luma(p) >= level ? 255 : 0; });
             return;
         }
         case Effect::Posterize: {

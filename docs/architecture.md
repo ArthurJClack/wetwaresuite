@@ -30,7 +30,20 @@ every action a tool can do is registered as a command (`CommandInfo` + a factory
 
 read-only commands (inspect, export) set `undoable = false` and stay out of the history.
 
-open files live in the session's `Workspace` as documents with short ids (`img1`, `vec1`). commands take `doc=img1`, so a script or Claude can juggle several files at once. image edits snapshot the document for undo.
+open files live in the session's `Workspace` as documents with short ids (`img1`, `vec1`). commands take `doc=img1`, so a script or Claude can juggle several files at once. image edits keep only what they changed for undo (see below).
+
+### image undo and big canvases
+
+`raster::ImageEdit` wraps every image edit. it never keeps whole-image snapshots for ordinary edits, so a 200-step history on a huge canvas stays small:
+
+- **diff mode** (default, works for any edit): copy the layers, run the edit, compare 64x64 tiles (in parallel, with `memcmp`) and keep only the old tiles that differ; the full copy is dropped straight away. if the edit changed the canvas size, a layer's size or the number of layers (resize, crop, add/remove layer) the step keeps the whole old image instead.
+- **declared mode** (brush strokes and erasing): the edit calls `ImageDoc::touch(layer, rect)` before writing pixels, using the same bounds the brush code clips to (`strokeBounds`), and only those rects are copied, with no full copy at all. overlapping touches are restored newest first, so the oldest copy wins.
+- layer names, opacity, blend and visibility are always saved (they're tiny). undo restores the saved pixels and frees them; redo re-runs the edit, exactly as before. history length is still 200 steps.
+- `raster::undoMemoryBytes()` reports what every live edit holds; a test paints 100 strokes on a 4000x4000 canvas and checks it stays under 3 MB (a whole-image snapshot would be 128 MB per step).
+
+every edit also records the area it changed on the document (`ImageDoc::takeChanges()`). the GUI canvas keeps a mipmap pyramid of the flattened picture (`raster::Pyramid`: full size, half, quarter, ... down to 1 px); zoomed out it draws from the smallest level that still has a pixel per screen pixel (and fits the GPU's texture limit), and after an edit it re-flattens only the changed area, shrinks it down the chain and re-uploads just that part of the texture.
+
+the heavy pixel loops (box blur, resize including Lanczos-3, layer blending, adjustments, the pyramid) run on `raster::parallelRows`, a small std::thread parallel-for over row slices. every row is computed by the same code whichever thread runs it and blur sums are exact integers, so output is identical on any thread count. `photo.benchmark` times them.
 
 ## apps
 

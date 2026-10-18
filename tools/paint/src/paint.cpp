@@ -107,7 +107,10 @@ Result paintStroke(ImageDoc& doc, const Params& p, bool erase) {
     b.erase = erase;
     pts = smooth(pts, std::clamp(numberParam(p, "smooth", 0), 0.0, 90.0) / 100.0);
     doc.active = idx;
-    stroke(doc.image.layers[static_cast<std::size_t>(idx)].image, b, pts);
+    Image& target = doc.image.layers[static_cast<std::size_t>(idx)].image;
+    const PixelRect area = strokeBounds(target, b, pts);
+    doc.touch(idx, area.x0, area.y0, area.width(), area.height());  // undo keeps just this area
+    stroke(target, b, pts);
     return done(std::string(erase ? "erased" : "painted") + " a stroke of " + std::to_string(pts.size()) + " points", doc, p);
 }
 
@@ -165,13 +168,15 @@ void registerCommands(Session& session) {
              "Paint a brush stroke through a list of points. Use pressures for tablet-style strokes and smooth to "
              "steady mouse input. Presets: pen, pencil, ink, marker, airbrush, soft, round.",
              brushParams(false), true},
-            imageCommand(session, [](ImageDoc& doc, const Params& p) { return paintStroke(doc, p, false); }));
+            imageCommand(session, [](ImageDoc& doc, const Params& p) { return paintStroke(doc, p, false); }, true,
+                         ImageEdit::Mode::Declared));
 
     reg.add({"paint.erase",
              "Eraser stroke",
              "Erase along a list of points (makes the layer transparent there).",
              brushParams(true), true},
-            imageCommand(session, [](ImageDoc& doc, const Params& p) { return paintStroke(doc, p, true); }));
+            imageCommand(session, [](ImageDoc& doc, const Params& p) { return paintStroke(doc, p, true); }, true,
+                         ImageEdit::Mode::Declared));
 
     reg.add({"paint.fill",
              "Bucket fill",

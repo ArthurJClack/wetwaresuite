@@ -6,6 +6,8 @@
 #include <cstdio>
 #include <map>
 
+#include "wetwaresuite/raster/parallel.hpp"
+
 namespace wetwaresuite::raster {
 
 namespace {
@@ -80,6 +82,18 @@ std::string Color::hex() const {
     return buf;
 }
 
+void PixelRect::add(const PixelRect& r) {
+    if (r.empty()) return;
+    if (empty()) {
+        *this = r;
+        return;
+    }
+    x0 = std::min(x0, r.x0);
+    y0 = std::min(y0, r.y0);
+    x1 = std::max(x1, r.x1);
+    y1 = std::max(y1, r.y1);
+}
+
 Image::Image(int width, int height, Color fill) : w_(std::max(0, width)), h_(std::max(0, height)) {
     px_.resize(static_cast<std::size_t>(w_) * h_ * 4);
     this->fill(fill);
@@ -142,36 +156,66 @@ inline float mix(Blend mode, float b, float s) {
 
 }  // namespace
 
+namespace {
+
+// One row of blendOnto with the mode fixed at compile time so the inner loop has no switch.
+template <Blend Mode>
+void blendRow(std::uint8_t* __restrict d, const std::uint8_t* __restrict s, int n, float op) {
+    constexpr float k = 1.0f / 255.0f;
+    for (int i = 0; i < n; ++i, d += 4, s += 4) {
+        const float sa = s[3] * k * op;
+        const float da = d[3] * k;
+        const float outA = sa + da * (1 - sa);
+        const float div = outA > 0 ? outA : 1;
+        const bool keep = !(sa > 0);  // fully clear source pixels leave the backdrop exactly as it was
+        for (int c = 0; c < 3; ++c) {
+            const float sc = s[c] * k, dc = d[c] * k;
+            // W3C compositing: blended colour where both exist, source colour where backdrop is clear
+            const float blended = (1 - da) * sc + da * mix(Mode, dc, sc);
+            const float out = (sa * blended + da * dc * (1 - sa)) / div;
+            const auto v = static_cast<std::uint8_t>(std::clamp(out, 0.0f, 1.0f) * 255.0f + 0.5f);
+            d[c] = keep ? d[c] : v;
+        }
+        const auto a = static_cast<std::uint8_t>(outA * 255.0f + 0.5f);
+        d[3] = keep ? d[3] : a;
+    }
+}
+
+template <Blend Mode>
+void blendRect(Image& dst, const Image& src, int ox, int oy, int x0, int y0, int x1, int y1, float op) {
+    parallelRows(y1 - y0, static_cast<std::size_t>(x1 - x0) * 4, [&](int b, int e) {
+        for (int y = y0 + b; y < y0 + e; ++y) blendRow<Mode>(dst.pixel(x0, y), src.pixel(x0 - ox, y - oy), x1 - x0, op);
+    });
+}
+
+}  // namespace
+
 void blendOnto(Image& dst, const Image& src, int ox, int oy, Blend mode, double opacity) {
     const float op = static_cast<float>(std::clamp(opacity, 0.0, 1.0));
     if (op <= 0) return;
     const int x0 = std::max(0, ox), y0 = std::max(0, oy);
     const int x1 = std::min(dst.width(), ox + src.width()), y1 = std::min(dst.height(), oy + src.height());
-    constexpr float k = 1.0f / 255.0f;
-    for (int y = y0; y < y1; ++y) {
-        for (int x = x0; x < x1; ++x) {
-            const auto* s = src.pixel(x - ox, y - oy);
-            const float sa = s[3] * k * op;
-            if (sa <= 0) continue;
-            auto* d = dst.pixel(x, y);
-            const float da = d[3] * k;
-            const float outA = sa + da * (1 - sa);
-            for (int c = 0; c < 3; ++c) {
-                const float sc = s[c] * k, dc = d[c] * k;
-                // W3C compositing: blended colour where both exist, source colour where backdrop is clear
-                const float blended = (1 - da) * sc + da * mix(mode, dc, sc);
-                const float out = (sa * blended + da * dc * (1 - sa)) / (outA > 0 ? outA : 1);
-                d[c] = static_cast<std::uint8_t>(std::clamp(out, 0.0f, 1.0f) * 255.0f + 0.5f);
-            }
-            d[3] = static_cast<std::uint8_t>(outA * 255.0f + 0.5f);
-        }
+    if (x1 <= x0 || y1 <= y0) return;
+    switch (mode) {
+        case Blend::Normal: blendRect<Blend::Normal>(dst, src, ox, oy, x0, y0, x1, y1, op); return;
+        case Blend::Multiply: blendRect<Blend::Multiply>(dst, src, ox, oy, x0, y0, x1, y1, op); return;
+        case Blend::Screen: blendRect<Blend::Screen>(dst, src, ox, oy, x0, y0, x1, y1, op); return;
+        case Blend::Overlay: blendRect<Blend::Overlay>(dst, src, ox, oy, x0, y0, x1, y1, op); return;
+        case Blend::Add: blendRect<Blend::Add>(dst, src, ox, oy, x0, y0, x1, y1, op); return;
+        case Blend::Darken: blendRect<Blend::Darken>(dst, src, ox, oy, x0, y0, x1, y1, op); return;
+        case Blend::Lighten: blendRect<Blend::Lighten>(dst, src, ox, oy, x0, y0, x1, y1, op); return;
+        case Blend::Difference: blendRect<Blend::Difference>(dst, src, ox, oy, x0, y0, x1, y1, op); return;
     }
 }
 
 Image composite(const std::vector<Layer>& layers, int width, int height) {
+    return compositeRegion(layers, 0, 0, width, height);
+}
+
+Image compositeRegion(const std::vector<Layer>& layers, int x, int y, int width, int height) {
     Image out(width, height);
     for (const auto& layer : layers) {
-        if (layer.visible) blendOnto(out, layer.image, 0, 0, layer.blend, layer.opacity);
+        if (layer.visible) blendOnto(out, layer.image, -x, -y, layer.blend, layer.opacity);
     }
     return out;
 }

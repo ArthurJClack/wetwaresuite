@@ -4,6 +4,7 @@
 // same grouping for installs (test_apps checks they agree).
 #pragma once
 
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -16,6 +17,7 @@ struct App {
     std::string id;       // "image"
     std::string summary;  // plain words
     std::vector<std::string> tools;
+    std::uint32_t accent = 0x3d7eff;  // 0xRRGGBB, the window's highlight colour
     bool always = false;  // installed with every other app
 };
 

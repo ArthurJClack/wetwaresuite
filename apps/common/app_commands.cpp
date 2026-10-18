@@ -5,6 +5,7 @@
 
 #include "apps.hpp"
 #include "handoff.hpp"
+#include "launch.hpp"
 
 namespace fs = std::filesystem;
 
@@ -142,6 +143,7 @@ Result openWith(Session& session, const std::string& self, const std::string& pa
     }
     fs::path bin = locate(binaryName(route.app));
     r.with("app", route.app).with("command", route.command).with("installed", !bin.empty() || serves(self, route.app));
+    r.with("program", !bin.empty());
     r.with("next", next);
     return r;
 }
@@ -215,6 +217,7 @@ Result send(Session& session, const std::string& self, const Params& p) {
         r = Result::success(msg.str(), h.file);
     }
     r.with("file", h.file).with("to", to).with("handoff", h.id).with("next", h.command).with("hint", h.hint);
+    r.with("opened", openHere && r.message.find("\nopened here: ") != std::string::npos);
     return r;
 }
 
@@ -241,7 +244,10 @@ Result inbox(const std::string& self, const Params& p) {
     if (!text.empty() && text.back() == '\n') text.pop_back();
     Result r = Result::success(text, static_cast<std::int64_t>(items.size()));
     r.with("count", static_cast<std::int64_t>(items.size()));
-    if (!items.empty()) r.with("latest", items.back().id).with("file", items.back().file);
+    if (!items.empty()) {
+        const Handoff& latest = items.back();
+        r.with("latest", latest.id).with("file", latest.file).with("from", latest.from).with("kind", latest.kind);
+    }
     return r;
 }
 
@@ -270,6 +276,53 @@ Result receive(Session& session, const std::string& self, const Params& p) {
     pick->received = true;
     writeManifest(handoffDir(), all);
     r.with("file", pick->file).with("from", pick->from).with("kind", pick->kind).with("hint", pick->hint);
+    return r;
+}
+
+// Where a document can be sent from here: the apps whose send route takes its
+// kind and whose save command this binary has.
+Result targets(Session& session, const std::string& self, const std::string& docId) {
+    auto doc = session.workspace().get(docId);
+    if (!doc) return Result::failure("no open document called '" + docId + "' (`documents` lists them)");
+    std::string list, installed, programs, missing;
+    for (const auto& route : sendRoutes()) {
+        if (route.docKind != doc->kind() || !session.registry().find(route.save)) continue;
+        const bool program = !locate(binaryName(route.to)).empty();
+        const bool here = program || serves(self, route.to);
+        list += (list.empty() ? "" : ",") + route.to;
+        if (here) installed += (installed.empty() ? "" : ",") + route.to;
+        else missing += (missing.empty() ? "" : ", ") + route.to;
+        if (program) programs += (programs.empty() ? "" : ",") + route.to;
+    }
+    std::string msg = list.empty() ? "a " + doc->kind() + " document has no other app to go to (app.send path=<file> sends any file)"
+                                   : docId + " (" + doc->kind() + ") can go to: " + list;
+    if (!missing.empty()) msg += "\nnot installed: " + missing;
+    Result r = Result::success(msg, list);
+    r.with("doc", docId).with("kind", doc->kind()).with("targets", list).with("installed", installed).with("programs", programs);
+    r.with("self", self);
+    return r;
+}
+
+Result launch(const std::string& self, const std::string& app, const std::string& path) {
+    if (!find(app)) return Result::failure("no app called " + app);
+    fs::path bin = locate(binaryName(app));
+    if (bin.empty()) {
+        return Result::failure("the " + app + " app isn't installed (" + binaryName(app) +
+                               " isn't next to this program, in the wetwaresuite bin folder or on PATH); add it with the hub");
+    }
+    std::vector<std::string> args{"open"};
+    std::string abs;
+    if (!path.empty()) {
+        std::error_code ec;
+        if (!fs::exists(path, ec)) return Result::failure("no file at " + path);
+        abs = fs::absolute(fs::path(path), ec).string();
+        args.push_back(abs);
+    }
+    std::string error = spawnDetached(bin, args);
+    if (!error.empty()) return Result::failure(error);
+    Result r = Result::success("started " + binaryName(app) + (abs.empty() ? std::string() : " with " + abs), bin.string());
+    r.with("app", app).with("program", bin.string()).with("from", self);
+    if (!abs.empty()) r.with("file", abs);
     return r;
 }
 
@@ -333,7 +386,9 @@ std::string handoffInstructions(const std::string& self) {
             "vector/board->office: SVG; sound->video: WAV) into the handoff folder " + handoffDir().string() +
             " and returns the file, a hint, and the command to open it there. In the other app (its own MCP server, "
             "or `<app binary> app.receive` for a person) app_receive opens the newest handoff and app_inbox lists them. "
-            "app_open_with path=<file> says which app opens a file, app_installed lists what's installed. "
+            "app_open_with path=<file> says which app opens a file, app_installed lists what's installed, app_targets "
+            "doc=<id> lists where a document can go, and app_launch app=<id> [path=<file>] opens another app's window for "
+            "the person. "
             "Everything works offline.";
     return text;
 }
@@ -368,6 +423,24 @@ void registerCommands(Session& session, const std::string& self) {
               {"open", ParamType::Bool, "open it in the target app here when this binary has it", false, {}, true}},
              false},
             [s, self](const Params& p) { return std::make_unique<FunctionAction>([s, self, p] { return send(*s, self, p); }); });
+    reg.add({"app.targets", "Where it can go",
+             "List the apps an open document can be sent to with app.send (and which of them are installed), for "
+             "the window's Send to menu.",
+             {{"doc", ParamType::String, "open document", true}},
+             false, true},
+            [s, self](const Params& p) {
+                return std::make_unique<FunctionAction>([s, self, p] { return targets(*s, self, stringParam(p, "doc")); });
+            });
+    reg.add({"app.launch", "Start another app",
+             "Start another installed wetwaresuite app in its own window, optionally opening a file there. It runs "
+             "on its own: closing this one leaves it open.",
+             {{"app", ParamType::String, "which app to start", true, appChoices()},
+              {"path", ParamType::String, "a file to open there", false}},
+             false},
+            [self](const Params& p) {
+                return std::make_unique<FunctionAction>(
+                    [self, p] { return launch(self, stringParam(p, "app"), stringParam(p, "path")); });
+            });
     reg.add({"app.inbox", "Handoff inbox",
              "List files other apps sent here (newest first) with what to do with each.",
              {{"app", ParamType::String, "whose inbox: an app id or all (default this app)", false},

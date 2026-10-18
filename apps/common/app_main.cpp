@@ -1,12 +1,15 @@
 #include "app_main.hpp"
 
 #include <algorithm>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <vector>
 
 #include "app_commands.hpp"
 #include "apps.hpp"
+#include "gui_launch.hpp"
+#include "launch.hpp"
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
 #include "wetwaresuite/mcp/transport.hpp"
@@ -26,6 +29,7 @@ std::string joined(const std::vector<std::string>& v) {
 void usage(const std::string& bin, const App& app) {
     std::cout << bin << ": " << app.summary << " (tools: " << joined(app.tools) << ")\n\n"
               << "usage:\n"
+              << "  " << bin << "                          open the window (also: " << bin << " <files>, open <files>, gui)\n"
               << "  " << bin << " list [tool]              list commands (optionally for one tool)\n"
               << "  " << bin << " help <command>           show a command's parameters\n"
               << "  " << bin << " run <command> key=value  run one command\n"
@@ -122,21 +126,35 @@ int appMain(int argc, char** argv, const MainSpec& spec) {
         return 2;
     }
     const std::string bin = binaryName(spec.app);
-    if (args.empty() || args[0] == "--help" || args[0] == "-h") {
+    if (!args.empty() && (args[0] == "--help" || args[0] == "-h")) {
         usage(bin, *app);
-        return args.empty() ? 2 : 0;
+        return 0;
     }
-    const std::string cmd = args[0];
     try {
+        // no arguments, `open`/`gui`, or files dragged onto the program: the window
+        Session session;
+        spec.registerTools(session, {});
+        registerCommands(session, spec.app);
+        auto isFile = [](const std::string& a) {
+            std::error_code ec;
+            return std::filesystem::is_regular_file(a, ec);
+        };
+        auto isCommand = [&session](const std::string& a) { return session.registry().find(a) != nullptr; };
+        Launch launch = decideLaunch(args, isFile, isCommand);
+        if (launch.kind == LaunchKind::Gui) {
+            if (!launch.error.empty()) {
+                std::cerr << bin << ": " << launch.error << "\n";
+                return 2;
+            }
+            gui::RunOptions options{launch.screenshot, launch.files, launch.action};
+            return runGui(session, guiInfo(spec.app), options, [&] { usage(bin, *app); });
+        }
+        const std::string cmd = args[0];
         if (cmd == "--version") {
             std::cout << bin << " " << spec.version << "\n";
             return 0;
         }
         if (cmd == "mcp") return serve(spec, *app, args);
-
-        Session session;
-        spec.registerTools(session, {});
-        registerCommands(session, spec.app);
         if (cmd == "list") {
             bool known = args.size() < 2 || args[1] == "app" ||
                          std::find(app->tools.begin(), app->tools.end(), args[1]) != app->tools.end();

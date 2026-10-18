@@ -2,7 +2,7 @@
 
 This tutorial takes you from a fresh checkout to running your first commands. By the end you will know how to build wetwaresuite, find any command and its parameters, pass arguments correctly, and understand how documents, ids and undo work.
 
-There is no graphical interface yet. Everything in the suite is a *command* (for example `photo.resize` or `paint.stroke`), and the GUI that arrives later will be a thin layer of buttons that call exactly these commands. So what you learn here keeps working when the GUI lands: the same commands drive the CLI, batch scripts, Claude over MCP, and (later) the GUI.
+Everything in the suite is a *command* (for example `photo.resize` or `paint.stroke`). Double-clicking an app opens its window (see [the window](gui.md)), which is a thin layer of buttons that call exactly these commands, so what you learn here works the same in the window: the same commands drive the CLI, batch scripts, Claude over MCP and the window.
 
 ## 1. Build from source
 

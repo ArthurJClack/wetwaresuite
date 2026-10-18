@@ -28,6 +28,18 @@ add_executable(wetwaresuite main.cpp)
 target_link_libraries(wetwaresuite PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::mcp)
 install(TARGETS wetwaresuite RUNTIME DESTINATION bin)
 
+# the window launcher: every tool, or --app image for one app's tools
+if(WETWARESUITE_GUI)
+  add_executable(wetwaresuite-gui gui_main.cpp)
+  target_link_libraries(wetwaresuite-gui PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::gui wetwaresuite::mcp)
+  install(TARGETS wetwaresuite-gui RUNTIME DESTINATION bin)
+  if(WETWARESUITE_BUILD_TESTS)
+    # the launcher must start and answer without a screen
+    add_test(NAME gui_launcher_help COMMAND wetwaresuite-gui --help)
+    add_test(NAME gui_launcher_apps COMMAND wetwaresuite-gui --list-apps)
+  endif()
+endif()
+
 if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_suite tests/test_suite.cpp)
   target_link_libraries(test_suite PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::mcp nlohmann_json::nlohmann_json wetwaresuite_check)

@@ -12,6 +12,7 @@
 
 #include "imgui.h"
 #include "wetwaresuite/gui/gui.hpp"
+#include "wetwaresuite/gui/handoff.hpp"
 #include "wetwaresuite/gui/logic.hpp"
 
 namespace wetwaresuite::gui {
@@ -112,6 +113,17 @@ private:
     const CommandInfo* find(const std::string& id) const;
     bool accentButton(const char* label, ImVec2 size = {0, 0});
 
+    // handing work to other apps (handoff_panels.cpp), all through the app.* commands
+    void refreshInbox();
+    void sendButton();
+    void sendPopup();
+    void inboxBannerView();
+    void suggestionBannerView();
+    void launchOfferView();
+    void suggestOtherApp(const std::string& path, bool openedHere);
+    void sendTo(const std::string& app);
+    void launchApp(const std::string& app, const std::string& path);
+
     Session& session_;
     AppInfo app_;
     SDL_Window* window_;
@@ -147,6 +159,13 @@ private:
     bool penEraser_ = false;
     std::vector<std::string> recent_;
     std::string recentFile_;
+
+    bool handoff_ = false;  // the session has app.send / app.inbox / ...
+    std::string self_;      // this app's id from app.installed ("suite" for the all-in-one)
+    InboxBanner inbox_;
+    OpenSuggestion suggestion_;
+    std::vector<SendChoice> sendChoices_;
+    std::string launchOffer_;  // app to offer to start after a send
 };
 
 }  // namespace wetwaresuite::gui

@@ -1,0 +1,17 @@
+[package]
+name = "achclwss-hub"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+description = "Install manager for the ACHCLWSS suite"
+
+[[bin]]
+name = "hub"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
+codegen-units = 1
+panic = "abort"

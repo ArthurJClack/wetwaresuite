@@ -3,7 +3,9 @@ name: downloads
 # Ready-to-run builds of every app for windows, macOS and linux, so nobody has to
 # build from source to try the suite. Each run uploads one zip per OS as a run
 # artifact; pushes to main and the downloads branch also refresh the rolling
-# `preview` pre-release, and a `v*` tag makes a real release.
+# `preview` pre-release, and a `v*` tag makes a real release. A manual run
+# (Actions > downloads > Run workflow) with a version such as v0.2.0 tags the
+# chosen branch and makes that release too.
 on:
   push:
     branches: [main, downloads]
@@ -11,6 +13,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'release version to tag, such as v0.2.0 (empty: just build)'
+        required: false
+        default: ''
 
 concurrency:
   group: downloads-${{ github.ref }}
@@ -77,7 +84,7 @@ jobs:
 
   publish:
     needs: build
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.version != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -90,9 +97,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
         run: |
           ls -la dist
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+          if [[ -n "$VERSION" ]]; then
+            gh release create "$VERSION" dist/*.zip --target "$GITHUB_SHA" --title "wetwaresuite $VERSION" --generate-notes
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
             gh release create "$GITHUB_REF_NAME" dist/*.zip --title "wetwaresuite $GITHUB_REF_NAME" --generate-notes
           else
             # one rolling pre-release, always the newest build of main or downloads

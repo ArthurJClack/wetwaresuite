@@ -344,6 +344,21 @@ void testCommands() {
     CHECK(tl->findClip("c2")->position == "custom");
     CHECK(near(tl->duration(), 5));
     CHECK(s.registry().find("cut.play") && run(s, "cut.stop").ok && run(s, "cut.playhead").ok);
+    {
+        // the window's timeline: layout and the command each drag becomes
+        TimelineLayout layout;
+        CHECK(tl->timeline(layout) && layout.docParam == "doc" && layout.tracks.size() == 1 && layout.tracks[0].clips.size() == 2);
+        CHECK(layout.tracks[0].clips[0].label == "\"Hello there\"" && layout.tracks[0].clips[0].headroom < 0);
+        CHECK(tl->timelineCommand({TimelineEditKind::Move, "c2", "v1", "v1", 2.5}) == "cut.move_clip clip=c2 start=2.5000");
+        CHECK(tl->timelineCommand({TimelineEditKind::Move, "c2", "v1", "v2", 2.5}) == "cut.move_clip clip=c2 start=2.5000 track=v2");
+        CHECK(tl->timelineCommand({TimelineEditKind::TrimEnd, "c1", "v1", "", 0, 3}) == "cut.trim_clip clip=c1 duration=3.0000");
+        CHECK(tl->timelineCommand({TimelineEditKind::TrimStart, "c1", "v1", "", 2}) == "cut.set_clip clip=c1 start=2.0000 duration=3.0000");
+        CHECK(tl->timelineCommand({TimelineEditKind::Split, "c1", "v1", "", 0, 0, 3}) == "cut.split_clip clip=c1 at=3.0000");
+        CHECK(tl->timelineCommand({TimelineEditKind::Delete, "nope", "v1"}).empty());
+        CHECK(run(s, tl->timelineCommand({TimelineEditKind::TrimStart, "c1", "v1", "", 2}) + " doc=cut1").ok);
+        CHECK(near(tl->findClip("c1")->start, 2) && near(tl->findClip("c1")->end(), 5));
+        CHECK(run(s, "undo").ok && near(tl->findClip("c1")->start, 1));
+    }
     CHECK(run(s, "cut.set_clip doc=cut1 clip=c1 text=Changed box=true").ok);
     CHECK(tl->findClip("c1")->text == "Changed" && tl->findClip("c1")->box);
     CHECK(!run(s, "cut.set_clip doc=cut1 clip=c1 fade_in=3 fade_out=3").ok);  // longer than the clip

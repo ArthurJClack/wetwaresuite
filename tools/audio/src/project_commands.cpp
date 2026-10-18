@@ -305,7 +305,7 @@ void registerProjectCommands(Session& session) {
                     t->clips.push_back(c);
                     const auto index = static_cast<std::int64_t>(t->clips.size() - 1);
                     return projectResult("added clip " + std::to_string(index) + " \"" + c.name + "\" to track " + std::to_string(intParam(q, "track")) +
-                                             " at " + formatTime(c.at) + " (" + formatTime(c.audio->seconds()) + ")",
+                                             " at " + formatTime(c.at) + " (" + formatTime(c.seconds()) + ")",
                                          d, q)
                         .with("clip", index)
                         .with("clip_end", c.end());
@@ -348,6 +348,62 @@ void registerProjectCommands(Session& session) {
                 if (!trackArg(d, p, t, error) || !clipArg(*t, p, c, error)) return failed(error);
                 t->clips.erase(t->clips.begin() + intParam(p, "clip"));
                 return projectResult("removed clip " + std::to_string(intParam(p, "clip")), d, p);
+            }));
+
+    reg.add({"audio.clip_trim",
+             "Trim clip",
+             "Change which part of a clip plays, without losing the rest: start = new start on the timeline (the end "
+             "stays put, earlier reveals audio cut off before), length = new length in seconds (the start stays put).",
+             {projectParam(), trackParam(), clipParam(), {"start", ParamType::Number, "new start in seconds; the end stays", false},
+              {"length", ParamType::Number, "new length in seconds; the start stays", false}, previewParam()},
+             true},
+            projectCommand(session, [](ProjectDoc& d, const Params& p) {
+                Track* t = nullptr;
+                Clip* c = nullptr;
+                std::string error;
+                if (!trackArg(d, p, t, error) || !clipArg(*t, p, c, error)) return failed(error);
+                if (!p.count("start") && !p.count("length")) return failed("give start and/or length");
+                if (p.count("start")) {
+                    const double end = c->end();
+                    // can't reveal more than the audio has before the current offset, or go past the end
+                    const double start = std::clamp(numberParam(p, "start"), std::max(0.0, c->at - c->offset), end - 0.001);
+                    c->offset += start - c->at;
+                    c->at = start;
+                    c->length = end - start;
+                }
+                if (p.count("length")) {
+                    const double len = numberParam(p, "length");
+                    if (len <= 0) return failed("length must be more than 0");
+                    c->length = std::min(len, c->sourceSeconds() - c->offset);
+                }
+                return projectResult("clip now plays " + formatTime(c->at) + " to " + formatTime(c->end()), d, p)
+                    .with("start", c->at)
+                    .with("clip_end", c->end());
+            }));
+
+    reg.add({"audio.clip_split",
+             "Split clip",
+             "Cut a clip in two at a time on the timeline. The second part is added after it on the same track (its number is returned).",
+             {projectParam(), trackParam(), clipParam(), {"at", ParamType::Number, "timeline time to cut at, in seconds", true}},
+             true},
+            projectCommand(session, [](ProjectDoc& d, const Params& p) {
+                Track* t = nullptr;
+                Clip* c = nullptr;
+                std::string error;
+                if (!trackArg(d, p, t, error) || !clipArg(*t, p, c, error)) return failed(error);
+                const double at = numberParam(p, "at");
+                if (at <= c->at + 1e-3 || at >= c->end() - 1e-3) return failed("at must be inside the clip (" + formatTime(c->at) + " to " + formatTime(c->end()) + ")");
+                Clip second = *c;
+                const double cut = at - c->at;
+                c->length = cut;
+                c->fadeOut = 0;
+                second.at = at;
+                second.offset = c->offset + cut;
+                second.length = second.length < 0 ? -1 : std::max(0.0, second.length - cut);
+                second.fadeIn = 0;
+                const auto index = static_cast<std::int64_t>(intParam(p, "clip")) + 1;
+                t->clips.insert(t->clips.begin() + index, second);
+                return projectResult("split at " + formatTime(at), d, p).with("clip", index);
             }));
 
     reg.add({"audio.mixdown",

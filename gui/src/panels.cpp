@@ -439,6 +439,20 @@ void Shell::documentView() {
     suggestionBannerView();
     transportBar();
     canvasToolbar();
+    TimelineLayout layout;
+    if (doc->timeline(layout)) {
+        // the preview on top, the timeline below
+        const float want = timelineHeight(layout);
+        const float avail = ImGui::GetContentRegionAvail().y;
+        const float tl = std::min(want, avail * 0.6f);
+        ImGui::BeginChild("preview", {0, std::max(64.0f, avail - tl - ImGui::GetStyle().ItemSpacing.y)});
+        canvasView();
+        ImGui::EndChild();
+        ImGui::BeginChild("timeline", {0, 0});
+        timelineView(layout);
+        ImGui::EndChild();
+        return;
+    }
     canvasView();
 }
 

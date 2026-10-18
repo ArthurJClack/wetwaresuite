@@ -37,8 +37,10 @@ std::size_t framesOf(const Project& p) { return static_cast<std::size_t>(std::ce
 Buffer renderDry(const Project& p, const Track& t, std::size_t frames) {
     Buffer out(p.channels, frames, p.rate);
     for (const auto& clip : t.clips) {
-        if (!clip.audio || clip.audio->empty()) continue;
-        Buffer a = conform(*clip.audio, p.rate, p.channels);
+        if (!clip.audio || clip.audio->empty() || clip.seconds() <= 0) continue;
+        const bool trimmed = clip.offset > 0 || clip.length >= 0;
+        Buffer a = conform(trimmed ? slice(*clip.audio, rangeOf(*clip.audio, clip.offset, clip.offset + clip.seconds())) : *clip.audio,
+                           p.rate, p.channels);
         if (clip.fadeIn > 0) fadeIn(a, clip.fadeIn, all(a), FadeCurve::SCurve);
         if (clip.fadeOut > 0) fadeOut(a, clip.fadeOut, all(a), FadeCurve::SCurve);
         mixInto(out, a, static_cast<std::size_t>(std::llround(std::max(0.0, clip.at) * p.rate)), clip.gainDb);
@@ -214,7 +216,7 @@ void saveProject(const Project& p, const fs::path& path) {
             const std::string file = "t" + std::to_string(ti + 1) + "_c" + std::to_string(ci + 1) + ".wav";
             if (c.audio) save(*c.audio, dir / file, wav);
             clips.push_back({{"name", c.name}, {"file", (fs::path(dir.filename()) / file).generic_string()}, {"at", c.at}, {"gain", c.gainDb},
-                             {"fade_in", c.fadeIn}, {"fade_out", c.fadeOut}});
+                             {"fade_in", c.fadeIn}, {"fade_out", c.fadeOut}, {"offset", c.offset}, {"length", c.length}});
         }
         json env = json::array();
         for (const auto& e : t.envelope) env.push_back({e.time, e.gainDb});
@@ -266,6 +268,8 @@ Project loadProject(const fs::path& path) {
             c.gainDb = jc.value("gain", 0.0);
             c.fadeIn = jc.value("fade_in", 0.0);
             c.fadeOut = jc.value("fade_out", 0.0);
+            c.offset = std::max(0.0, jc.value("offset", 0.0));
+            c.length = jc.value("length", -1.0);
             const fs::path file = path.parent_path() / jc.value("file", std::string());
             Buffer a = load(file);
             if (a.rate != p.rate) a = resample(a, p.rate);

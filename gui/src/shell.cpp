@@ -119,7 +119,11 @@ Result Shell::run(const std::string& id, const Params& params) {
         const CommandInfo* info = find(id);
         if (!info || !info->readOnly) ++changes_;
         // a command that made or picked a document: show it
-        if (const Value* doc = r.field("doc")) {
+        // most tools answer with doc=; audio projects with project=, songs with song=
+        const Value* doc = r.field("doc");
+        if (!doc) doc = r.field("project");
+        if (!doc) doc = r.field("song");
+        if (doc) {
             if (auto s = std::get_if<std::string>(doc); s && session_.workspace().get(*s)) {
                 if (*s != currentDoc_) canvas_.fit = true;
                 currentDoc_ = *s;

@@ -88,6 +88,8 @@ public:
     std::string kind() const override { return "timeline"; }
     std::string summary() const override;
     std::unique_ptr<Attachment> preview() const override;
+    bool timeline(TimelineLayout& out) const override;
+    std::string timelineCommand(const wetwaresuite::TimelineEdit& edit) const override;
 
     double duration() const;
     Track* track(const std::string& id);

@@ -408,13 +408,15 @@ std::vector<std::string> openCandidates(const std::string& path, const std::vect
     if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) ext = lower(path.substr(dot + 1));
     std::vector<std::string> first, rest;
     for (const auto& tool : tools) {
-        const std::string id = tool + ".open";
-        auto it = std::find_if(commands.begin(), commands.end(), [&](const CommandInfo& c) { return c.id == id; });
-        if (it == commands.end()) continue;
-        const std::string desc = lower(it->description + " " + it->title);
-        bool mentions = !ext.empty() && (wholeWord(desc, ext) || (ext == "jpeg" && wholeWord(desc, "jpg")) ||
-                                         (ext == "jpg" && wholeWord(desc, "jpeg")));
-        (mentions ? first : rest).push_back(id);
+        // a tool's files, then its projects (audio.project_open opens multitrack .json projects)
+        for (const std::string& id : {tool + ".open", tool + ".project_open"}) {
+            auto it = std::find_if(commands.begin(), commands.end(), [&](const CommandInfo& c) { return c.id == id; });
+            if (it == commands.end()) continue;
+            const std::string desc = lower(it->description + " " + it->title);
+            bool mentions = !ext.empty() && (wholeWord(desc, ext) || (ext == "jpeg" && wholeWord(desc, "jpg")) ||
+                                             (ext == "jpg" && wholeWord(desc, "jpeg")));
+            (mentions ? first : rest).push_back(id);
+        }
     }
     first.insert(first.end(), rest.begin(), rest.end());
     return first;

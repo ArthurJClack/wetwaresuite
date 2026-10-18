@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <stdexcept>
 
 #include <nlohmann/json.hpp>
@@ -42,6 +43,70 @@ std::string Timeline::summary() const {
     return std::to_string(settings.width) + "x" + std::to_string(settings.height) + " " + fps + "fps, " +
            std::to_string(tracks.size()) + (tracks.size() == 1 ? " track, " : " tracks, ") + std::to_string(clips) +
            (clips == 1 ? " clip, " : " clips, ") + num(duration()) + "s" + (path.empty() ? "" : ", " + path);
+}
+
+namespace {
+
+std::string t4(double v) {
+    char buf[40];
+    std::snprintf(buf, sizeof buf, "%.4f", v);
+    return buf;
+}
+
+}  // namespace
+
+bool Timeline::timeline(TimelineLayout& out) const {
+    out.docParam = "doc";
+    out.tracks.clear();
+    // video tracks top-down as editors show them (v2 above v1), then audio
+    std::vector<const Track*> order;
+    for (auto it = tracks.rbegin(); it != tracks.rend(); ++it) if (it->kind == "video") order.push_back(&*it);
+    for (const auto& t : tracks) if (t.kind != "video") order.push_back(&t);
+    for (const Track* t : order) {
+        TimelineTrack tt;
+        tt.id = t->id;
+        tt.name = t->id + (t->muted ? " (muted)" : t->hidden ? " (hidden)" : "");
+        tt.kind = t->kind;
+        for (const auto& c : t->clips) {
+            TimelineClip tc;
+            tc.id = c.id;
+            tc.label = c.kind == "title" ? "\"" + c.text + "\"" : std::filesystem::path(c.source).filename().string();
+            tc.start = c.start;
+            tc.length = c.length();
+            const bool fromSource = c.kind == "video" || c.kind == "audio";
+            if (fromSource && c.speed > 0) {
+                tc.headroom = c.in / c.speed;
+                tc.tailroom = c.sourceDuration > 0 ? std::max(0.0, c.sourceDuration - c.out) / c.speed : -1;
+            }
+            tt.clips.push_back(tc);
+        }
+        out.tracks.push_back(std::move(tt));
+    }
+    return true;
+}
+
+std::string Timeline::timelineCommand(const wetwaresuite::TimelineEdit& e) const {
+    const Clip* c = findClip(e.clip);
+    if (!c) return {};
+    switch (e.kind) {
+        case TimelineEditKind::Move: {
+            std::string line = "cut.move_clip clip=" + c->id + " start=" + t4(std::max(0.0, e.start));
+            if (!e.toTrack.empty() && e.toTrack != e.track) line += " track=" + e.toTrack;
+            return line;
+        }
+        case TimelineEditKind::TrimEnd: return "cut.trim_clip clip=" + c->id + " duration=" + t4(std::max(0.04, e.length));
+        case TimelineEditKind::TrimStart: {
+            const double start = std::clamp(e.start, 0.0, c->end() - 0.04);
+            if (c->kind == "video" || c->kind == "audio") {
+                const double in = std::max(0.0, c->in + (start - c->start) * c->speed);
+                return "cut.set_clip clip=" + c->id + " start=" + t4(c->start + (in - c->in) / c->speed) + " in=" + t4(in);
+            }
+            return "cut.set_clip clip=" + c->id + " start=" + t4(start) + " duration=" + t4(c->end() - start);
+        }
+        case TimelineEditKind::Split: return "cut.split_clip clip=" + c->id + " at=" + t4(e.at);
+        case TimelineEditKind::Delete: return "cut.delete_clip clip=" + c->id;
+    }
+    return {};
 }
 
 double Timeline::duration() const {

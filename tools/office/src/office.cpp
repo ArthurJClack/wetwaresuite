@@ -49,6 +49,46 @@ std::string SheetDoc::summary() const {
     return s;
 }
 
+bool SheetDoc::grid(CellGrid& out) const {
+    out.docParam = "doc";
+    out.sheets.clear();
+    for (const auto& sh : data.sheets) out.sheets.push_back(sh.name);
+    out.active = data.sheets.empty() ? 0 : std::clamp(data.active, 0, static_cast<int>(data.sheets.size()) - 1);
+    out.usedRows = out.usedCols = 0;
+    if (!data.sheets.empty()) {
+        int r1, c1, r2, c2;
+        if (data.sheets[static_cast<std::size_t>(out.active)].bounds(r1, c1, r2, c2)) out.usedRows = r2 + 1, out.usedCols = c2 + 1;
+    }
+    return true;
+}
+
+bool SheetDoc::gridCell(int sheet, int row, int col, GridCell& out) const {
+    if (sheet < 0 || sheet >= static_cast<int>(data.sheets.size())) return false;
+    const Cell* c = data.sheets[static_cast<std::size_t>(sheet)].get(row, col);
+    if (!c || c->blank()) return false;
+    out.text = formatValue(c->value, c->format);
+    out.input = inputText(*c);
+    out.bold = c->bold;
+    out.number = c->value.type == CellValue::Number;
+    out.error = c->value.isError();
+    return true;
+}
+
+double SheetDoc::gridColumnChars(int sheet, int col) const {
+    if (sheet < 0 || sheet >= static_cast<int>(data.sheets.size())) return 10;
+    const auto& w = data.sheets[static_cast<std::size_t>(sheet)].colWidths;
+    auto it = w.find(col);
+    return it == w.end() ? 10 : std::clamp(it->second, 2.0, 80.0);
+}
+
+std::vector<std::string> SheetDoc::gridSetCommand(int sheet, int row, int col, const std::string& input) const {
+    if (sheet < 0 || sheet >= static_cast<int>(data.sheets.size()) || row < 0 || col < 0 || row >= kMaxRows || col >= kMaxCols) return {};
+    const std::string where = "range=" + cellName(row, col), which = "sheet=" + std::to_string(sheet + 1);
+    if (input.empty()) return {"office.sheet_clear", where, which, "what=contents"};
+    if (input.find_first_of("\t\n") != std::string::npos) return {"office.sheet_set", where, which, "csv=" + input};
+    return {"office.sheet_set", where, which, "value=" + input};
+}
+
 std::unique_ptr<Attachment> SheetDoc::preview() const {
     if (data.sheets.empty()) return nullptr;
     const int si = std::clamp(data.active, 0, static_cast<int>(data.sheets.size()) - 1);

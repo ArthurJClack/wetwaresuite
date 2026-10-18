@@ -429,6 +429,10 @@ void Shell::documentView() {
     ImGui::SameLine();
     ImGui::TextDisabled("%s", doc->summary().c_str());
     suggestionBannerView();
+    if (CellGrid layout; doc->grid(layout) && !layout.sheets.empty()) {
+        gridView(layout);
+        return;
+    }
     canvasToolbar();
     canvasView();
 }

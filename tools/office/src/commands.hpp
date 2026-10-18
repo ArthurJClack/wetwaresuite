@@ -30,6 +30,10 @@ public:
     std::string kind() const override { return kKind; }
     std::string summary() const override;
     std::unique_ptr<Attachment> preview() const override;
+    bool grid(CellGrid& out) const override;
+    bool gridCell(int sheet, int row, int col, GridCell& out) const override;
+    double gridColumnChars(int sheet, int col) const override;
+    std::vector<std::string> gridSetCommand(int sheet, int row, int col, const std::string& input) const override;
 };
 
 class TextDoc : public Document {

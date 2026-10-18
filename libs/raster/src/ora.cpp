@@ -1,5 +1,6 @@
 #include "wetwaresuite/raster/ora.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdint>
@@ -220,7 +221,20 @@ void saveOra(const LayeredImage& img, const std::filesystem::path& path) {
         std::string src = "data/layer" + std::to_string(i) + ".png";
         stack += "<layer name=\"" + xmlEscape(layer.name) + "\" src=\"" + src + "\" x=\"0\" y=\"0\" opacity=\"" +
                  std::to_string(layer.opacity) + "\" visibility=\"" + (layer.visible ? "visible" : "hidden") +
-                 "\" composite-op=\"" + oraOp(layer.blend) + "\"/>\n";
+                 "\" composite-op=\"" + oraOp(layer.blend) + "\"";
+        // masks and clipping aren't in the ORA spec: kept in our own attributes, other apps show the layer unmasked
+        if (!layer.mask.empty()) {
+            const std::string maskSrc = "data/mask" + std::to_string(i) + ".png";
+            stack += " wetwaresuite-mask=\"" + maskSrc + "\"";
+            if (!layer.maskEnabled) stack += " wetwaresuite-mask-enabled=\"false\"";
+            Image gray(layer.mask.width, layer.mask.height);
+            for (int y = 0; y < gray.height(); ++y) {
+                for (int x = 0; x < gray.width(); ++x) gray.set(x, y, {layer.mask.at(x, y), layer.mask.at(x, y), layer.mask.at(x, y), 255});
+            }
+            layerFiles.push_back({maskSrc, encodePng(gray)});
+        }
+        if (layer.clip) stack += " wetwaresuite-clip=\"true\"";
+        stack += "/>\n";
         layerFiles.push_back({src, encodePng(layer.image)});
     }
     stack += "</stack>\n</image>\n";
@@ -271,6 +285,18 @@ LayeredImage loadOra(const std::filesystem::path& path) {
         int x = static_cast<int>(attrNumber(t, "x", 0)), y = static_cast<int>(attrNumber(t, "y", 0));
         layer.image = Image(out.width, out.height);
         blendOnto(layer.image, png, x, y, Blend::Normal, 1.0);  // place at its offset on a full-size layer
+        if (std::string maskSrc = attr(t, "wetwaresuite-mask"); !maskSrc.empty()) {
+            auto mf = files.find(maskSrc);
+            if (mf != files.end()) {
+                Image gray = decode(mf->second);
+                layer.mask = Mask(out.width, out.height);
+                for (int my = 0; my < std::min(out.height, gray.height()); ++my) {
+                    for (int mx = 0; mx < std::min(out.width, gray.width()); ++mx) layer.mask.row(my)[mx] = gray.pixel(mx, my)[0];
+                }
+                layer.maskEnabled = attr(t, "wetwaresuite-mask-enabled") != "false";
+            }
+        }
+        layer.clip = attr(t, "wetwaresuite-clip") == "true";
         topFirst.push_back(std::move(layer));
     }
     out.layers.assign(topFirst.rbegin(), topFirst.rend());

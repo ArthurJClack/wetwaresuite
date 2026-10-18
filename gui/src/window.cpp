@@ -115,7 +115,7 @@ int run(Session& session, const AppInfo& app, const RunOptions& options) {
         while (running) {
             SDL_Event e;
             bool got = false;
-            if (framesLeft <= 0 && options.screenshot.empty()) got = SDL_WaitEvent(&e);
+            if (framesLeft <= 0 && options.screenshot.empty()) got = shell.animating() ? SDL_WaitEventTimeout(&e, 80) : SDL_WaitEvent(&e);
             else got = SDL_PollEvent(&e);
             while (got) {
                 shell.onEvent(e);

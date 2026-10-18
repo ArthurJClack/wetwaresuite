@@ -126,5 +126,24 @@ int main() {
                          bdoc->image.layers[1].image.data()));
     }
 
+    // brushes stay inside a selection, and the stroke undoes in one step
+    {
+        Session t;
+        photo::registerCommands(t);
+        paint::registerCommands(t);
+        const std::string d = toText(*t.run("paint.new", {{"width", std::int64_t{100}}, {"height", std::int64_t{80}}}).field("doc"));
+        CHECK(t.run("photo.select", {{"doc", d}, {"shape", std::string("rect")}, {"x", 0.0}, {"y", 0.0}, {"width", 50.0}, {"height", 80.0}}).ok);
+        CHECK(t.run("paint.stroke", {{"doc", d}, {"points", NumberList{10, 40, 90, 40}}, {"color", std::string("#0000ff")},
+                                     {"size", 8.0}, {"hardness", 100.0}}).ok);
+        CHECK(pick(t, d, 30, 40) == "#0000ffff" && pick(t, d, 70, 40) == "#ffffffff");
+        CHECK(t.history().undo() && pick(t, d, 30, 40) == "#ffffffff");
+        // merging a masked layer bakes the mask in
+        CHECK(t.run("photo.mask", {{"doc", d}, {"action", std::string("add")}, {"from", std::string("hide_all")}}).ok);
+        CHECK(t.run("photo.select", {{"doc", d}, {"shape", std::string("none")}}).ok);
+        CHECK(t.run("paint.fill", {{"doc", d}, {"x", std::int64_t{5}}, {"y", std::int64_t{5}}, {"color", std::string("#ff0000")}}).ok);
+        CHECK(pick(t, d, 5, 5) == "#ffffffff");  // painted, but the mask hides it
+        CHECK(t.run("paint.layer_merge_down", {{"doc", d}}).ok);
+        CHECK(pick(t, d, 5, 5) == "#ffffffff");
+    }
     return check::summary("paint");
 }

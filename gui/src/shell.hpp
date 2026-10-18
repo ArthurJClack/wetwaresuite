@@ -28,7 +28,8 @@ struct Texture {
     ImTextureID id() const { return static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(tex)); }
 };
 
-enum class CanvasTool { Move, Brush, Eraser, Fill, Heal, Remove };
+enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove };
+enum class SelectShape { Rect, Ellipse, Lasso, Wand };
 
 // A retouch command waiting to run: it runs on the frame after it is queued, so the
 // window first shows "Working..." over the canvas.
@@ -69,6 +70,19 @@ struct Canvas {
     std::string removeMarkDoc;
     bool autoRemove = false;  // remove as soon as the stroke ends
     std::optional<PendingRetouch> pending;
+
+    // selecting (selection_view.cpp)
+    SelectShape selectShape = SelectShape::Rect;
+    float tolerance = 32;
+    bool contiguous = true;
+    bool selecting = false;
+    ImVec2 selectStart{0, 0};          // picture px
+    std::vector<double> lasso;         // picture px, x,y pairs
+    int version = 0;                   // goes up whenever the picture is refreshed
+    std::string antsDoc;
+    int antsVersion = -1;
+    int antsStep = 1;                  // picture px per mask cell the outline was traced on
+    std::vector<float> ants;           // selection outline, x0,y0,x1,y1 in picture px
 };
 
 // Where a native file dialog's answer goes.
@@ -93,6 +107,7 @@ public:
         else select(commandId);
     }
     bool wantsQuit() const { return quit_; }
+    bool animating() const { return animating_; }  // something on screen moves (the selection outline)
 
     static Uint32 wakeEvent;  // pushed from dialog threads to wake the event loop
 
@@ -136,6 +151,14 @@ private:
     void queueRetouch(const std::string& command, const std::string& title, Params params);
     void runPendingRetouch();
     bool pictureSize(int& width, int& height) const;
+
+    // selections on the canvas (selection_view.cpp)
+    void selectSettings();
+    void selectPress(ImVec2 screen);
+    void selectDrag(ImVec2 screen);
+    void selectRelease(ImVec2 screen);
+    void drawSelection(ImDrawList* dl, ImVec2 origin, bool hovered);
+    void runSelect(Params params, const char* title);
 
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);
@@ -185,6 +208,7 @@ private:
     float textScale_ = 1.0f;
     float dpi_ = 1.0f;
     bool quit_ = false;
+    bool animating_ = false;
     bool showHome_ = true;
     std::string currentDoc_;
     std::map<std::string, std::string> docTool_;  // doc id -> tool that made it

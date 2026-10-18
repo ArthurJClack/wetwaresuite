@@ -1,4 +1,4 @@
-add_library(wetwaresuite_photo src/photo.cpp src/heal.cpp)
+add_library(wetwaresuite_photo src/photo.cpp src/heal.cpp src/select.cpp)
 add_library(wetwaresuite::photo ALIAS wetwaresuite_photo)
 target_include_directories(wetwaresuite_photo PUBLIC include)
 target_link_libraries(wetwaresuite_photo PUBLIC wetwaresuite::raster)

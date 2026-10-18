@@ -171,6 +171,19 @@ To start a fresh canvas: **Start something new**, then **New canvas (Paint)**, s
 height, and press Run. To keep your work, search for **save**, pick **Save image**, press
 **Browse...** to choose where, and Run. Saving as `.ora` keeps the layers.
 
+### Selecting part of the picture
+
+In the image app, the **Select** tool chooses the part of the picture your next edits change. Pick
+**Box**, **Oval** or **Lasso** and drag, or **Wand** and click a colour to take the area like it. Hold
+**Shift** to add more and **Alt** to take some away; a click on the picture selects nothing again. The
+selection shows as a moving dashed outline ("marching ants").
+
+While something is selected, painting, filling and every action on the left (Adjust colours, Curves,
+Effects...) only change the inside. **Deselect** (Ctrl+D), **Invert** (Ctrl+Shift+I), **All**
+(Ctrl+A) and **Delete** sit next to the shapes. Selecting is a step in the history like any edit, so
+Ctrl+Z brings back the previous selection. See [the photo tutorial](photo.md#task-8-selections-masks-curves-and-free-transform)
+for masks, curves and free transform.
+
 ## 8. Sending your work to another app
 
 The apps are separate programs, but you can hand work from one to the next without hunting for

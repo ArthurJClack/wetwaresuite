@@ -55,6 +55,20 @@ private:
     std::vector<std::uint8_t> px_;
 };
 
+// One byte per pixel, 0 = out, 255 = fully in: selections and layer masks. Empty means "none".
+struct Mask {
+    int width = 0, height = 0;
+    std::vector<std::uint8_t> v;
+
+    Mask() = default;
+    Mask(int w, int h, std::uint8_t fill = 0) : width(w), height(h), v(static_cast<std::size_t>(w) * h, fill) {}
+    bool empty() const { return v.empty(); }
+    std::uint8_t at(int x, int y) const { return v[static_cast<std::size_t>(y) * width + x]; }
+    std::uint8_t* row(int y) { return v.data() + static_cast<std::size_t>(y) * width; }
+    const std::uint8_t* row(int y) const { return v.data() + static_cast<std::size_t>(y) * width; }
+    bool operator==(const Mask&) const = default;
+};
+
 enum class Blend { Normal, Multiply, Screen, Overlay, Add, Darken, Lighten, Difference };
 
 const std::vector<std::string>& blendNames();
@@ -67,6 +81,9 @@ struct Layer {
     double opacity = 1.0;
     Blend blend = Blend::Normal;
     bool visible = true;
+    Mask mask;                 // layer mask: hides where dark; empty = no mask
+    bool maskEnabled = true;   // a disabled mask is kept but ignored
+    bool clip = false;         // clipping mask: shows only where the layer below (the group's base) has pixels
 };
 
 // Blends `src` onto `dst` at (x, y) with the given mode and opacity.

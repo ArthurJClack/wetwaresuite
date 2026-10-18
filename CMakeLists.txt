@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 option(WETWARESUITE_BUILD_TESTS "Build unit tests" ON)
+# the desktop window (Dear ImGui + SDL3); without SDL3 it builds a stub that says so
+option(WETWARESUITE_GUI "Build the desktop GUI (gui/)" ON)
 
 if(MSVC)
   add_compile_options(/W4 /permissive- /utf-8)
@@ -105,4 +107,8 @@ add_subdirectory(apps/common)
 add_subdirectory(apps/app)
 if(WETWARESUITE_BUILD_SUITE)
   add_subdirectory(apps/wetwaresuite)
+endif()
+
+if(WETWARESUITE_GUI)
+  add_subdirectory(gui)
 endif()

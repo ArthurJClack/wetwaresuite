@@ -1,0 +1,152 @@
+// Internal: the window's state and panels. Only window.cpp and the panel
+// files include this; apps use gui.hpp.
+#pragma once
+
+#include <SDL3/SDL.h>
+
+#include <cstdint>
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
+
+#include "imgui.h"
+#include "wetwaresuite/gui/gui.hpp"
+#include "wetwaresuite/gui/logic.hpp"
+
+namespace wetwaresuite::gui {
+
+// An RGBA texture on the renderer, remade when its picture changes.
+struct Texture {
+    SDL_Texture* tex = nullptr;
+    int width = 0, height = 0;       // texture size
+    int srcWidth = 0, srcHeight = 0;  // size of the picture it shows (can be larger than the texture)
+    void reset();
+    bool upload(SDL_Renderer* renderer, const std::uint8_t* rgba, int w, int h);
+    ImTextureID id() const { return static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(tex)); }
+};
+
+enum class CanvasTool { Move, Brush, Eraser, Fill };
+
+struct Canvas {
+    Texture texture;
+    std::string shownDoc;
+    bool dirty = true;
+    bool fit = true;  // fit to the view on the next frame
+    float zoom = 1.0f;
+    ImVec2 pan{0, 0};       // offset of the image's top-left from the view's top-left, in screen px
+    ImVec2 viewMin{0, 0};   // last frame's view rectangle
+    ImVec2 viewSize{0, 0};
+    std::string summary;  // for documents with no picture
+
+    CanvasTool tool = CanvasTool::Move;
+    std::string brush = "round";
+    float color[4] = {0.1f, 0.1f, 0.1f, 1.0f};
+    float size = 12;
+    float opacity = 100;
+    bool stroking = false;
+    bool penErasing = false;
+    bool usedPen = false;
+    std::vector<double> points;     // image px, x,y pairs
+    std::vector<double> pressures;  // one per point when a pen is used
+};
+
+// Where a native file dialog's answer goes.
+struct DialogTarget {
+    enum Kind { OpenDocument, FormField } kind = OpenDocument;
+    std::string command;  // FormField: the form it belongs to
+    std::size_t field = 0;
+};
+
+class Shell {
+public:
+    Shell(Session& session, const AppInfo& app, SDL_Window* window, SDL_Renderer* renderer);
+    ~Shell();
+
+    void applyStyle(float dpiScale);
+    void frame();                         // one ImGui frame of every panel
+    void onEvent(const SDL_Event& event);  // raw input for strokes, before ImGui sees it
+    void openFile(const std::string& path);
+    void showAction(const std::string& commandId) { select(commandId); }
+    bool wantsQuit() const { return quit_; }
+
+    static Uint32 wakeEvent;  // pushed from dialog threads to wake the event loop
+
+private:
+    // panels (panels.cpp)
+    void topBar();
+    void leftPanel();
+    void rightPanel();
+    void homeView();
+    void documentView();
+    void formPanel();
+    void historyPanel();
+    void searchPopup();
+    void newPopup();
+    void settingsPopup();
+    void field(Field& f, std::size_t index);
+
+    // canvas (canvas.cpp)
+    void canvasView();
+    void canvasToolbar();
+    void refreshCanvas();
+    void beginStroke(ImVec2 screen, float pressure, bool pen, bool eraser);
+    void addStrokePoint(ImVec2 screen, float pressure);
+    void endStroke();
+    ImVec2 toImage(ImVec2 screen) const;
+    bool canPaint() const;
+
+    // actions (shell.cpp)
+    Result run(const std::string& id, const Params& params);
+    void select(const std::string& commandId);
+    void runForm();
+    void undo();
+    void redo();
+    void showOpenDialog();
+    void showFieldDialog(std::size_t index);
+    void drainDialogs();
+    void loadRecent();
+    void saveRecent();
+    void syncDocs();
+    std::vector<std::string> docIds() const;
+    const CommandInfo* find(const std::string& id) const;
+    bool accentButton(const char* label, ImVec2 size = {0, 0});
+
+    Session& session_;
+    AppInfo app_;
+    SDL_Window* window_;
+    SDL_Renderer* renderer_;
+    std::vector<std::string> tools_;
+    std::vector<CommandInfo> commands_;  // this app's commands
+
+    bool pro_ = false;
+    bool dark_ = true;
+    float textScale_ = 1.0f;
+    float dpi_ = 1.0f;
+    bool quit_ = false;
+    bool showHome_ = true;
+    std::string currentDoc_;
+    std::map<std::string, std::string> docTool_;  // doc id -> tool that made it
+
+    std::string query_;
+    bool focusSearch_ = false;
+    int searchPick_ = 0;
+    ImVec2 searchMin_{0, 0}, searchMax_{0, 0};
+    bool searchActive_ = false;
+    bool searchHovered_ = false;
+    std::string expandTool_;
+
+    std::optional<Form> form_;
+    std::optional<Result> result_;
+    std::string resultFor_;
+    bool scrollToResult_ = false;
+
+    Canvas canvas_;
+    float penPressure_ = 1.0f;
+    bool penDown_ = false;
+    bool penEraser_ = false;
+    std::vector<std::string> recent_;
+    std::string recentFile_;
+};
+
+}  // namespace wetwaresuite::gui

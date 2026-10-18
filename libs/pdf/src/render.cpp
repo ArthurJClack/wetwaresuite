@@ -37,6 +37,30 @@ double sample(const detail::Glyph& g, double sx, double sy) {
     return (at(x0, y0) * (1 - fx) + at(x0 + 1, y0) * fx) * (1 - fy) + (at(x0, y0 + 1) * (1 - fx) + at(x0 + 1, y0 + 1) * fx) * fy;
 }
 
+// A glyph from the built-in Unicode font, filled from its outline. Returns the advance in px.
+double drawUnicodeGlyph(raster::Image& img, double x, double y, unsigned cp, double sizePx, double shear, Color color) {
+    const pdfdoc::TrueType& font = detail::unicodeFont();
+    const double k = sizePx / 1000.0;
+    // all contours in one point list, each joined back to a common start so the joins cancel out (even-odd)
+    std::vector<raster::Point> pts;
+    const auto& contours = font.outline(cp);
+    if (!contours.empty()) {
+        auto map = [&](const pdfdoc::Pt& p) {
+            const double py = y - p.y * k;
+            return raster::Point{x + p.x * k + shear * (y - py), py};
+        };
+        const raster::Point origin = map(contours[0][0]);
+        for (const auto& c : contours) {
+            pts.push_back(origin);
+            for (const auto& p : c) pts.push_back(map(p));
+            pts.push_back(map(c[0]));
+        }
+        pts.push_back(origin);
+        raster::fillPolygon(img, pts, color);
+    }
+    return font.advance(cp) * k;
+}
+
 }  // namespace
 
 double textWidthPx(const std::string& text, Font font, double sizePx) { return textWidth(font, text, sizePx); }
@@ -49,8 +73,13 @@ void drawText(raster::Image& img, double x, double y, const std::string& text, F
     const double shear = font.italic ? 0.2 : 0.0;
     const double alpha = color.a / 255.0;
     double pen = x;
-    for (char ch : winAnsi(text)) {
-        const unsigned char b = static_cast<unsigned char>(ch);
+    for (unsigned cp : utf8Decode(text)) {
+        if (cp == '\n' || cp == '\r') continue;
+        if (detail::needsUnicode(cp)) {
+            pen += drawUnicodeGlyph(img, pen, y, cp, sizePx, shear, color);
+            continue;
+        }
+        const unsigned char b = toWinAnsi(cp);
         const double adv = charWidth(font, b) / 1000.0 * sizePx;
         detail::Glyph g = detail::glyph(rf, b);
         if (g.coverage) {

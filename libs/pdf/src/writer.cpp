@@ -1,9 +1,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <map>
+#include <set>
 #include <stdexcept>
 
 #include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/pdfdoc/writer.hpp"
 #include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
@@ -120,6 +122,25 @@ std::string pdfString(const std::string& utf8) {
     return out + ")";
 }
 
+// Document info text: WinAnsi when it fits, otherwise UTF-16 so any language survives.
+std::string infoString(const std::string& utf8) {
+    bool fits = true;
+    for (unsigned cp : utf8Decode(utf8)) fits = fits && (cp == '?' || toWinAnsi(cp) != '?');
+    if (fits) return pdfString(utf8);
+    std::string out = "<FEFF";
+    char buf[16];
+    for (unsigned cp : utf8Decode(utf8)) {
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            std::snprintf(buf, sizeof buf, "%04X%04X", 0xD800 + (cp >> 10), 0xDC00 + (cp & 0x3FF));
+        } else {
+            std::snprintf(buf, sizeof buf, "%04X", cp);
+        }
+        out += buf;
+    }
+    return out + ">";
+}
+
 std::string rgb(Color c) { return num(c.r / 255.0) + " " + num(c.g / 255.0) + " " + num(c.b / 255.0); }
 
 struct Builder {
@@ -150,12 +171,28 @@ std::string writePdf(const std::vector<Page>& pages, const DocInfo& info) {
     std::map<const ImageData*, int> images;       // image -> object
     std::vector<int> pageIds;
 
+    // one embedded Unicode font for every character the standard fonts lack
+    std::set<unsigned> unicodeChars;
+    for (const auto& page : pages) {
+        for (const auto& op : page.ops) {
+            if (auto t = std::get_if<TextOp>(&op)) {
+                for (unsigned cp : utf8Decode(t->text)) {
+                    if (detail::needsUnicode(cp)) unicodeChars.insert(cp);
+                }
+            }
+        }
+    }
+    const int unicodeFontId = unicodeChars.empty() ? 0
+                                                   : pdfdoc::addUnicodeFont([&b](std::string body) { return b.add(std::move(body)); },
+                                                                            detail::unicodeFont(), unicodeChars);
+
     for (const auto& page : pages) {
         const double H = page.height;
         std::string c;
         std::vector<std::string> annots;
         std::map<int, bool> usedFonts;
         std::map<int, bool> usedImages;
+        bool usedUnicode = false;
         for (const auto& op : page.ops) {
             if (auto t = std::get_if<TextOp>(&op)) {
                 if (t->text.empty() || t->color.a == 0) continue;
@@ -165,8 +202,16 @@ std::string writePdf(const std::vector<Page>& pages, const DocInfo& info) {
                                       " /Encoding /WinAnsiEncoding >>");
                 }
                 usedFonts[fi] = true;
-                c += "BT /F" + std::to_string(fi) + " " + num(t->size) + " Tf " + rgb(t->color) + " rg " + num(t->x) + " " +
-                     num(H - t->y) + " Td " + pdfString(t->text) + " Tj ET\n";
+                c += "BT " + rgb(t->color) + " rg " + num(t->x) + " " + num(H - t->y) + " Td";
+                for (const auto& run : detail::splitRuns(t->text)) {
+                    if (run.unicode) {
+                        usedUnicode = true;
+                        c += " /FU " + num(t->size) + " Tf " + pdfdoc::glyphText(detail::unicodeFont(), run.text) + " Tj";
+                    } else {
+                        c += " /F" + std::to_string(fi) + " " + num(t->size) + " Tf " + pdfString(run.text) + " Tj";
+                    }
+                }
+                c += " ET\n";
                 const double w = textWidth(t->font, t->text, t->size);
                 if (t->underline) {
                     c += rgb(t->color) + " rg " + num(t->x) + " " + num(H - t->y - t->size * 0.12) + " " + num(w) + " " +
@@ -237,6 +282,7 @@ std::string writePdf(const std::vector<Page>& pages, const DocInfo& info) {
         if (!usedFonts.empty()) {
             res += " /Font <<";
             for (const auto& [fi, used] : usedFonts) res += " /F" + std::to_string(fi) + " " + ref(fonts[fi]);
+            if (usedUnicode) res += " /FU " + ref(unicodeFontId);
             res += " >>";
         }
         if (!usedImages.empty()) {
@@ -261,9 +307,9 @@ std::string writePdf(const std::vector<Page>& pages, const DocInfo& info) {
     b.set(pagesId, "<< /Type /Pages /Kids [" + kids + "] /Count " + std::to_string(pageIds.size()) + " >>");
     b.set(catalog, "<< /Type /Catalog /Pages " + ref(pagesId) + " >>");
     std::string infoDict = "<< /Producer (wetwaresuite) /Creator (wetwaresuite office)";
-    if (!info.title.empty()) infoDict += " /Title " + pdfString(info.title);
-    if (!info.author.empty()) infoDict += " /Author " + pdfString(info.author);
-    if (!info.subject.empty()) infoDict += " /Subject " + pdfString(info.subject);
+    if (!info.title.empty()) infoDict += " /Title " + infoString(info.title);
+    if (!info.author.empty()) infoDict += " /Author " + infoString(info.author);
+    if (!info.subject.empty()) infoDict += " /Subject " + infoString(info.subject);
     const int infoId = b.add(infoDict + " >>");
 
     std::string out = "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";

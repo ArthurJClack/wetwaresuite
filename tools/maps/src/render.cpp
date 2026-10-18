@@ -1521,6 +1521,7 @@ std::string drawPdf(const Scene& sc, double dpi, const std::string& title) {
     const double pw = sc.W * k, ph = sc.H * k;
     const int font = pdfdoc::addStandardFont(w, pdfdoc::Standard::Helvetica);
     const int bold = pdfdoc::addStandardFont(w, pdfdoc::Standard::HelveticaBold);
+    pdfdoc::UnicodeFallback uni(w);
     std::map<int, std::string> alphas;  // alpha*1000 -> name
     std::vector<std::pair<std::string, int>> images;
     auto gs = [&](double a) {
@@ -1554,10 +1555,12 @@ std::string drawPdf(const Scene& sc, double dpi, const std::string& title) {
                 cs += "\n" + d + "S\nQ\n";
             }
         } else if (auto* t = std::get_if<DText>(&op)) {
-            const std::string f = t->bold ? "/F2 " : "/F1 ";
+            const std::string fr = t->bold ? "F2" : "F1";
+            const std::string f = "/" + fr + " ";
             const std::string pos = "1 0 0 -1 " + pdfdoc::num(t->x) + " " + pdfdoc::num(t->y) + " Tm ";
-            if (t->halo) cs += "q /" + gs(0.85) + " gs 1 1 1 RG 2.6 w BT 1 Tr " + f + pdfdoc::num(t->size) + " Tf " + pos + pdfdoc::text(t->text) + " Tj ET Q\n";
-            cs += "q /" + gs(t->color.a / 255.0) + " gs " + rgb(t->color) + " rg BT " + f + pdfdoc::num(t->size) + " Tf " + pos + pdfdoc::text(t->text) + " Tj ET Q\n";
+            const std::string shown = uni.show(t->text, fr, t->size);
+            if (t->halo) cs += "q /" + gs(0.85) + " gs 1 1 1 RG 2.6 w BT 1 Tr " + f + pdfdoc::num(t->size) + " Tf " + pos + shown + " ET Q\n";
+            cs += "q /" + gs(t->color.a / 255.0) + " gs " + rgb(t->color) + " rg BT " + f + pdfdoc::num(t->size) + " Tf " + pos + shown + " ET Q\n";
         } else if (auto* im = std::get_if<DImage>(&op)) {
             const int id = pdfdoc::addImage(w, *im->img);
             const std::string name = "Im" + std::to_string(images.size());
@@ -1566,7 +1569,7 @@ std::string drawPdf(const Scene& sc, double dpi, const std::string& title) {
         }
     }
     const int content = w.addStream("", cs);
-    std::string res = "<< /Font << /F1 " + std::to_string(font) + " 0 R /F2 " + std::to_string(bold) + " 0 R >>";
+    std::string res = "<< /Font << /F1 " + std::to_string(font) + " 0 R /F2 " + std::to_string(bold) + " 0 R" + uni.resource() + " >>";
     if (!alphas.empty()) {
         res += " /ExtGState <<";
         for (const auto& [a, name] : alphas) res += " /" + name + " << /Type /ExtGState /ca " + pdfdoc::num(a / 1000.0) + " /CA " + pdfdoc::num(a / 1000.0) + " >>";
@@ -1583,7 +1586,8 @@ std::string drawPdf(const Scene& sc, double dpi, const std::string& title) {
                            "] /Contents " + std::to_string(content) + " 0 R /Resources " + res + " >>");
     w.set(pages, "<< /Type /Pages /Kids [" + std::to_string(page) + " 0 R] /Count 1 >>");
     const int catalog = w.add("<< /Type /Catalog /Pages " + std::to_string(pages) + " 0 R >>");
-    const int info = w.add("<< /Producer (wetwaresuite maps) /Title " + pdfdoc::text(title.empty() ? "Map" : title) + " >>");
+    uni.finish();
+    const int info = w.add("<< /Producer (wetwaresuite maps) /Title " + pdfdoc::infoText(title.empty() ? "Map" : title) + " >>");
     return w.finish(catalog, info);
 }
 

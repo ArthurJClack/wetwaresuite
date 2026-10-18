@@ -761,7 +761,7 @@ std::string proofPdf(const Font& font, const ProofOptions& o) {
     }
     w.set(pagesId, "<< /Type /Pages /Kids [" + kids + "] /Count " + std::to_string(pages.size()) + " >>");
     const int catalog = w.add("<< /Type /Catalog /Pages " + std::to_string(pagesId) + " 0 R >>");
-    const int info = w.add("<< /Title " + pdfdoc::text(font.familyStyle() + " proof") + " /Producer (wetwaresuite type) >>");
+    const int info = w.add("<< /Title " + pdfdoc::infoText(font.familyStyle() + " proof") + " /Producer (wetwaresuite type) >>");
     return w.finish(catalog, info);
 }
 

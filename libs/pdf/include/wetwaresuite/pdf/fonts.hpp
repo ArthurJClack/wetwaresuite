@@ -1,7 +1,7 @@
 // The PDF standard fonts (Helvetica, Times, Courier and their bold/italic
 // faces): advance widths for laying text out, WinAnsi encoding, and UTF-8
-// helpers. Text outside Latin-1 (plus the WinAnsi extras such as € and “”)
-// is written as '?'.
+// helpers. Characters those fonts lack (Greek, Cyrillic, ...) are drawn and
+// embedded with a built-in Unicode font; ones it lacks too become '?'.
 #pragma once
 
 #include <string>
@@ -29,6 +29,6 @@ unsigned fromWinAnsi(unsigned char byte);     // the Unicode code point of a Win
 std::string winAnsi(const std::string& utf8);  // the whole string as WinAnsi bytes
 
 double charWidth(Font font, unsigned char winAnsiByte);       // advance in 1/1000 em
-double textWidth(Font font, const std::string& utf8, double size);  // advance in points
+double textWidth(Font font, const std::string& utf8, double size);  // advance in points, Unicode fallback included
 
 }  // namespace wetwaresuite::pdf

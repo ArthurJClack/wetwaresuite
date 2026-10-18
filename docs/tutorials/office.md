@@ -1383,7 +1383,7 @@ List the file formats the office tool reads and writes, which are built in and w
 
 ## Limits
 
-- **Text in PDFs is Latin-1.** The built-in PDF writer's fonts cover Western European text (WinAnsi: accents, curly quotes, dashes, euro sign). Greek, Cyrillic, CJK and emoji come out as `?` in PDFs and in slide/page previews. `.docx`, `.xlsx`, `.pptx`, `.md` and `.html` keep every character, so export those through LibreOffice when you need other scripts in a PDF (`office.convert input=report.docx output=report.pdf backend=libreoffice`).
+- **Scripts in PDFs.** Western European text uses the standard PDF fonts. Greek and Cyrillic are set in the built-in font (Roboto, embedded with only the letters used, so the file stays small) and copy and search correctly. Chinese, Japanese, Korean, Arabic, Hebrew, Indic scripts and emoji still come out as `?` in PDFs and previews. `.docx`, `.xlsx`, `.pptx`, `.md` and `.html` keep every character, so export those through LibreOffice when you need those scripts in a PDF (`office.convert input=report.docx output=report.pdf backend=libreoffice`).
 - **Spreadsheets:**
   - Cell styles are limited to number formats, bold and column widths. Colours, borders, merged cells, conditional formatting, data validation, pivot tables and charts inside the `.xlsx` are not read or written; charts are PNG files.
   - `.xlsx` files from Excel open with their values and formulas. Functions the engine doesn't know show `#NAME?` until the cell is rewritten.

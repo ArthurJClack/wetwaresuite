@@ -274,6 +274,7 @@ const char* toString(ShapeKind kind) {
         case ShapeKind::Polyline: return "polyline";
         case ShapeKind::Polygon: return "polygon";
         case ShapeKind::Path: return "path";
+        case ShapeKind::Text: return "text";
     }
     return "shape";
 }
@@ -349,6 +350,10 @@ Outline localOutline(const Shape& s, double detail) {
             if (!s.points.empty()) out.push_back({s.points, true});
             break;
         case ShapeKind::Path: out = flattenPath(s.d, detail); break;
+        case ShapeKind::Text:
+            out = flattenPath(textPathData(s), detail);
+            for (auto& c : out) c.closed = true;
+            break;
     }
     return out;
 }

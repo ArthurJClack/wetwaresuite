@@ -49,6 +49,41 @@ void strokeOutline(raster::Image& img, const Outline& outline, Color color, doub
     }
 }
 
+bool invert(const Matrix& m, Matrix& out) {
+    const double det = m.a * m.d - m.b * m.c;
+    if (std::fabs(det) < 1e-12) return false;
+    out = {m.d / det, -m.b / det, -m.c / det, m.a / det, (m.c * m.f - m.d * m.e) / det, (m.b * m.e - m.a * m.f) / det};
+    return true;
+}
+
+// Fills like fillOutline, colouring each pixel from the gradient in the shape's own box.
+void fillGradient(raster::Image& img, const Outline& o, const Shape& s, double scale) {
+    raster::Image cover(img.width(), img.height());
+    fillOutline(cover, o, Color{255, 255, 255, 255});
+    const Bounds box = bounds(localOutline(s, 1.0));
+    Matrix inv;
+    if (box.empty || !invert(Matrix::scale(scale, scale) * shapeMatrix(s), inv)) return;
+    const Bounds on = bounds(o);
+    const Gradient& g = *s.gradient;
+    const double bw = std::max(box.width(), 1e-9), bh = std::max(box.height(), 1e-9);
+    const double dx = g.x2 - g.x1, dy = g.y2 - g.y1, len2 = std::max(dx * dx + dy * dy, 1e-12);
+    const int x0 = std::max(0, static_cast<int>(std::floor(on.x0))), x1 = std::min(img.width(), static_cast<int>(std::ceil(on.x1)) + 1);
+    const int y0 = std::max(0, static_cast<int>(std::floor(on.y0))), y1 = std::min(img.height(), static_cast<int>(std::ceil(on.y1)) + 1);
+    for (int y = y0; y < y1; ++y) {
+        for (int x = x0; x < x1; ++x) {
+            std::uint8_t* px = cover.pixel(x, y);
+            if (!px[3]) continue;
+            const Point local = inv.apply({x + 0.5, y + 0.5});
+            const double u = (local.x - box.x0) / bw, v = (local.y - box.y0) / bh;
+            const double t = g.radial ? std::hypot(u - g.cx, v - g.cy) / std::max(g.r, 1e-9) : ((u - g.x1) * dx + (v - g.y1) * dy) / len2;
+            const Color c = g.at(t);
+            px[0] = c.r, px[1] = c.g, px[2] = c.b;
+            px[3] = static_cast<std::uint8_t>(c.a * px[3] / 255);
+        }
+    }
+    raster::blendOnto(img, cover, 0, 0, raster::Blend::Normal, 1.0);
+}
+
 void drawShape(raster::Image& img, const Shape& s, double scale) {
     Outline o = outline(s, scale);
     if (scale != 1.0) {
@@ -56,7 +91,8 @@ void drawShape(raster::Image& img, const Shape& s, double scale) {
             for (auto& p : c.points) p = {p.x * scale, p.y * scale};
         }
     }
-    if (s.fill && s.fill->a > 0 && s.kind != ShapeKind::Line) fillOutline(img, o, *s.fill);
+    if (s.kind != ShapeKind::Line && s.gradient && !s.gradient->stops.empty()) fillGradient(img, o, s, scale);
+    else if (s.fill && s.fill->a > 0 && s.kind != ShapeKind::Line) fillOutline(img, o, *s.fill);
     if (s.stroke && s.stroke->a > 0 && s.strokeWidth > 0) {
         const double k = std::sqrt(std::abs(s.transform.sx * s.transform.sy));
         strokeOutline(img, o, *s.stroke, s.strokeWidth * k * scale);
@@ -64,6 +100,21 @@ void drawShape(raster::Image& img, const Shape& s, double scale) {
 }
 
 }  // namespace
+
+Color Gradient::at(double t) const {
+    if (stops.empty()) return {};
+    t = std::clamp(t, 0.0, 1.0);
+    if (t <= stops.front().offset) return stops.front().color;
+    for (std::size_t i = 1; i < stops.size(); ++i) {
+        const GradientStop& a = stops[i - 1];
+        const GradientStop& b = stops[i];
+        if (t > b.offset) continue;
+        const double k = b.offset > a.offset ? (t - a.offset) / (b.offset - a.offset) : 1;
+        auto mixc = [&](std::uint8_t p, std::uint8_t q) { return static_cast<std::uint8_t>(std::lround(p + (q - p) * k)); };
+        return {mixc(a.color.r, b.color.r), mixc(a.color.g, b.color.g), mixc(a.color.b, b.color.b), mixc(a.color.a, b.color.a)};
+    }
+    return stops.back().color;
+}
 
 raster::Image render(const VectorDoc& doc, double scale) {
     if (!(scale > 0)) scale = 1.0;

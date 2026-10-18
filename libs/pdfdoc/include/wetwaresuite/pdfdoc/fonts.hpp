@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -52,6 +53,8 @@ class TrueType {
 public:
     // Reads a .ttf (or the first face of a .ttc). Throws std::runtime_error.
     static std::shared_ptr<TrueType> load(const std::filesystem::path& path);
+    // The same from the file's bytes; `name` stands in for the path in messages.
+    static std::shared_ptr<TrueType> fromBytes(std::string bytes, const std::string& name);
     ~TrueType();
     TrueType(const TrueType&) = delete;
     TrueType& operator=(const TrueType&) = delete;
@@ -68,6 +71,16 @@ public:
     void bbox(double out[4]) const;  // 1/1000 em
     // Glyph outline in 1/1000 em, y up, curves flattened. Cached.
     const Contours& outline(unsigned codepoint) const;
+    // The glyph as SVG path data (M L Q C Z, curves kept), `size` px per em, origin on the
+    // baseline at (x, y), y down. Empty for a blank glyph like space.
+    std::string svgPath(unsigned codepoint, double x, double y, double size) const;
+    double kern(unsigned left, unsigned right) const;  // extra advance between the pair, 1/1000 em
+    int glyphIndex(unsigned codepoint) const;  // 0 (the missing-glyph box) when the font has none
+    int glyphCount() const;
+    double glyphAdvance(int glyph) const;      // 1/1000 em
+    // A copy of the font that keeps only these glyphs' outlines (plus glyph 0 and the parts of
+    // composite glyphs); glyph numbers stay the same. Much smaller for embedding.
+    std::string subset(const std::set<int>& glyphs) const;
 
 private:
     TrueType();
@@ -79,5 +92,12 @@ private:
 // Liberation/Arimo/Tinos/Cousine (metric-compatible), Arial/Times New Roman/Courier New,
 // then DejaVu. Searched once in the usual font folders and $WETWARESUITE_FONT_DIR; null when none.
 std::shared_ptr<TrueType> systemFont(const std::string& family, bool bold, bool italic);
+
+// Roboto Medium (Apache 2.0), built in so text looks the same on every machine. It covers
+// Latin, Greek and Cyrillic.
+std::shared_ptr<TrueType> builtinSans();
+// True when WinAnsi has no byte for the character but the built-in font has a glyph, so PDF
+// writers set it in the built-in font (see UnicodeFallback in writer.hpp).
+bool needsUnicode(unsigned codepoint);
 
 }  // namespace wetwaresuite::pdfdoc

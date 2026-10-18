@@ -1,0 +1,10 @@
+add_library(achclwss_sculpt src/commands.cpp src/brush.cpp src/surface.cpp src/remesh.cpp src/decimate.cpp)
+add_library(achclwss::sculpt ALIAS achclwss_sculpt)
+target_include_directories(achclwss_sculpt PUBLIC include)
+target_link_libraries(achclwss_sculpt PUBLIC achclwss::mesh achclwss::raster)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_sculpt tests/test_sculpt.cpp)
+  target_link_libraries(test_sculpt PRIVATE achclwss::sculpt achclwss::mcp nlohmann_json::nlohmann_json achclwss_check)
+  add_test(NAME sculpt COMMAND test_sculpt)
+endif()

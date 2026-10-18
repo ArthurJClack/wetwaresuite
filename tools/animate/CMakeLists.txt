@@ -1,0 +1,11 @@
+add_library(achclwss_animate src/model.cpp src/util.cpp src/render.cpp src/gif.cpp src/commands.cpp)
+add_library(achclwss::animate ALIAS achclwss_animate)
+target_include_directories(achclwss_animate PUBLIC include)
+target_link_libraries(achclwss_animate PUBLIC achclwss::core achclwss::raster achclwss::mesh PRIVATE achclwss::pdf nlohmann_json::nlohmann_json)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_animate tests/test_animate.cpp)
+  target_include_directories(test_animate PRIVATE ${PROJECT_SOURCE_DIR}/third_party/stb)
+  target_link_libraries(test_animate PRIVATE achclwss::animate achclwss::mcp nlohmann_json::nlohmann_json achclwss_check)
+  add_test(NAME animate COMMAND test_animate)
+endif()

@@ -1,0 +1,11 @@
+add_library(achclwss_render src/scene.cpp src/world.cpp src/trace.cpp src/raster.cpp src/commands.cpp)
+add_library(achclwss::render ALIAS achclwss_render)
+target_include_directories(achclwss_render PUBLIC include)
+find_package(Threads REQUIRED)
+target_link_libraries(achclwss_render PUBLIC achclwss::core achclwss::mesh achclwss::raster PRIVATE nlohmann_json::nlohmann_json Threads::Threads)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_render tests/test_render.cpp)
+  target_link_libraries(test_render PRIVATE achclwss::render achclwss::mcp nlohmann_json::nlohmann_json achclwss_check)
+  add_test(NAME render COMMAND test_render)
+endif()

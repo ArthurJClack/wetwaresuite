@@ -1,0 +1,10 @@
+add_library(achclwss_beats src/song.cpp src/synth.cpp src/midi.cpp src/generate.cpp src/draw.cpp src/cmd_song.cpp src/cmd_edit.cpp)
+add_library(achclwss::beats ALIAS achclwss_beats)
+target_include_directories(achclwss_beats PUBLIC include)
+target_link_libraries(achclwss_beats PUBLIC achclwss::core achclwss::raster achclwss::audio PRIVATE nlohmann_json::nlohmann_json)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_beats tests/test_beats.cpp)
+  target_link_libraries(test_beats PRIVATE achclwss::beats achclwss::mcp nlohmann_json::nlohmann_json achclwss_check)
+  add_test(NAME beats COMMAND test_beats)
+endif()

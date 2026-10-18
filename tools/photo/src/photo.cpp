@@ -6,12 +6,15 @@
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <functional>
 
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/document.hpp"
 #include "wetwaresuite/raster/ops.hpp"
 #include "heal.hpp"
 #include "wetwaresuite/raster/parallel.hpp"
+#include "wetwaresuite/raster/pyramid.hpp"
+#include "wetwaresuite/raster/simd.hpp"
 
 namespace wetwaresuite::photo {
 
@@ -86,41 +89,73 @@ Result runBenchmark(const Params& p) {
     const int n = static_cast<int>(intParam(p, "size", 2048));
     if (n < 16 || n > 16384) return Result::failure("size must be 16..16384");
     const int threads = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "threads", 0), 0, 256));
+    const bool compare = boolParam(p, "compare", false);
+    const bool useSimd = boolParam(p, "simd", true) && simdAvailable();
     const int previous = setThreadCount(threads);
+    const bool previousSimd = setSimdEnabled(useSimd);
     using Clock = std::chrono::steady_clock;
-    auto time = [](const auto& fn) {
-        const auto t0 = Clock::now();
-        fn();
-        return std::chrono::duration<double, std::milli>(Clock::now() - t0).count();
+    auto time = [](const auto& fn) {  // best of 3, so one slow run (a busy machine) doesn't skew it
+        double best = 1e300;
+        for (int i = 0; i < 3; ++i) {
+            const auto t0 = Clock::now();
+            fn();
+            best = std::min(best, std::chrono::duration<double, std::milli>(Clock::now() - t0).count());
+        }
+        return best;
     };
     const Image src = benchmarkImage(n);
+    const std::vector<Layer> layers = {{"a", src}, {"b", src, 0.5, Blend::Multiply}, {"c", src, 0.7, Blend::Screen}};
+    struct Op {
+        const char* key;
+        const char* label;
+        std::function<void()> fn;
+    };
+    const std::vector<Op> ops = {
+        {"blur_ms", "blur (radius 8)", [&] {
+             Image img = src;
+             boxBlur(img, 8);
+         }},
+        {"resize_bilinear_ms", "resize to half, bilinear", [&] { (void)resize(src, n / 2, n / 2, Filter::Bilinear); }},
+        {"resize_area_ms", "resize to a quarter, area", [&] { (void)resize(src, n / 4, n / 4, Filter::Area); }},
+        {"resize_lanczos_ms", "resize to half, lanczos", [&] { (void)resize(src, n / 2, n / 2, Filter::Lanczos); }},
+        {"composite_ms", "blend 3 layers", [&] { (void)composite(layers, n, n); }},
+        {"adjust_ms", "saturation adjust", [&] {
+             Image img = src;
+             adjust(img, Adjust::Saturation, 30);
+         }},
+        {"pyramid_ms", "mipmap pyramid", [&] {
+             LayeredImage li;
+             li.width = li.height = n;
+             li.layers.push_back({"a", src});
+             Pyramid pyr;
+             pyr.build(li);
+         }},
+    };
     Result r = Result::success("");
     std::string msg = std::to_string(n) + "x" + std::to_string(n) + " px on " + std::to_string(threadCount()) +
-                      (threadCount() == 1 ? " thread:" : " threads:");
-    auto report = [&](const std::string& key, const std::string& label, double ms) {
-        r.with(key, std::round(ms * 10) / 10);
-        char buf[64];
+                      (threadCount() == 1 ? " thread" : " threads") + ", " + (useSimd ? simdName() : "scalar") + ":";
+    for (const auto& op : ops) {
+        const double ms = time(op.fn);
+        r.with(op.key, std::round(ms * 10) / 10);
+        char buf[96];
         std::snprintf(buf, sizeof buf, " %.1f ms", ms);
-        msg += "\n  " + label + buf;
-    };
-    report("blur_ms", "blur (radius 8)", time([&] {
-        Image img = src;
-        boxBlur(img, 8);
-    }));
-    report("resize_bilinear_ms", "resize to half, bilinear", time([&] { (void)resize(src, n / 2, n / 2, Filter::Bilinear); }));
-    report("resize_area_ms", "resize to a quarter, area", time([&] { (void)resize(src, n / 4, n / 4, Filter::Area); }));
-    report("resize_lanczos_ms", "resize to half, lanczos", time([&] { (void)resize(src, n / 2, n / 2, Filter::Lanczos); }));
-    report("composite_ms", "blend 3 layers", time([&] {
-        std::vector<Layer> layers = {{"a", src}, {"b", src, 0.5, Blend::Multiply}, {"c", src, 0.7, Blend::Screen}};
-        (void)composite(layers, n, n);
-    }));
-    report("adjust_ms", "saturation adjust", time([&] {
-        Image img = src;
-        adjust(img, Adjust::Saturation, 30);
-    }));
+        msg += std::string("\n  ") + op.label + buf;
+        if (compare && useSimd) {  // the same op again on the scalar loops
+            setSimdEnabled(false);
+            const double scalar = time(op.fn);
+            setSimdEnabled(true);
+            const std::string key = std::string(op.key);
+            r.with(key.substr(0, key.size() - 3) + "_scalar_ms", std::round(scalar * 10) / 10);
+            std::snprintf(buf, sizeof buf, " (scalar %.1f ms, %.2fx)", scalar, ms > 0 ? scalar / ms : 0.0);
+            msg += buf;
+        }
+    }
     setThreadCount(previous);
+    setSimdEnabled(previousSimd);
     r.message = msg;
-    return r.with("size", static_cast<std::int64_t>(n)).with("threads", static_cast<std::int64_t>(threads > 0 ? threads : threadCount()));
+    return r.with("size", static_cast<std::int64_t>(n))
+        .with("threads", static_cast<std::int64_t>(threads > 0 ? threads : threadCount()))
+        .with("simd", std::string(useSimd ? simdName() : "scalar"));
 }
 
 }  // namespace
@@ -439,10 +474,12 @@ void registerCommands(Session& session) {
 
     reg.add({"photo.benchmark",
              "Speed test",
-             "Time the main picture operations (blur, resize, layer blending, colour adjust) on a generated test "
-             "image and report milliseconds for each. Nothing is opened or saved.",
+             "Time the main picture operations (blur, resize, layer blending, colour adjust, mipmaps) on a generated test "
+             "image and report milliseconds for each (best of 3). compare=true also times the scalar loops. Nothing is opened or saved.",
              {{"size", ParamType::Int, "test image width and height in px", false, {}, std::int64_t{2048}},
-              {"threads", ParamType::Int, "threads to use (0 = all CPU cores)", false, {}, std::int64_t{0}}},
+              {"threads", ParamType::Int, "threads to use (0 = all CPU cores)", false, {}, std::int64_t{0}},
+              {"simd", ParamType::Bool, "use the SSE2/NEON loops (false = the plain scalar loops)", false, {}, true},
+              {"compare", ParamType::Bool, "also time each operation on the scalar loops and show the speed-up", false, {}, false}},
              false},
             [](const Params& p) {
                 return std::make_unique<FunctionAction>([p] { return runBenchmark(p); });

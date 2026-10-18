@@ -4,9 +4,11 @@
 // Claude can do anything a tool's UI can and look at the result.
 #pragma once
 
+#include <cstdint>
 #include <iosfwd>
 #include <optional>
 #include <string>
+#include <unordered_map>
 
 #include "wetwaresuite/core/command.hpp"
 
@@ -33,9 +35,21 @@ public:
     static std::string toolName(const std::string& commandId);
 
 private:
+    const std::string& toolsJson();                           // cached until the registry changes
+    std::string commandFor(const std::string& tool);          // MCP tool name -> command id ("" = none)
     Session& session_;
     ServerInfo info_;
+    std::string tools_;
+    std::uint64_t toolsRevision_ = ~std::uint64_t{0};
+    std::unordered_map<std::string, std::string> commands_;  // tool name -> command id
+    std::uint64_t commandsRevision_ = ~std::uint64_t{0};
 };
+
+// The "tools" array of a tools/list answer (every command plus undo, redo, history, documents)
+// as compact JSON. toolsListJson writes the text directly (fast: the suite has ~700 tools);
+// toolsListJsonReference builds it with nlohmann::json. Both give the same bytes.
+std::string toolsListJson(const CommandRegistry& registry);
+std::string toolsListJsonReference(const CommandRegistry& registry);
 
 std::string base64(const std::string& bytes);
 

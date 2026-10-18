@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <random>
 #include <sstream>
 #include <string>
@@ -803,6 +804,210 @@ void testPmtiles(const fs::path& dir) {
     fs::remove_all(packsDir());
 }
 
+// ---- a multi-zoom pack cut from real data -----------------------------------------------------
+// No real Protomaps/planetiler pack is vendored (none could be fetched offline with a clear licence),
+// so this builds one the way they are laid out: the public-domain Natural Earth countries cut into
+// MVT tiles for zooms 0-3, clipped with a buffer, outer rings clockwise and holes anticlockwise,
+// water under every tile, gzip, deduplicated ocean tiles and leaf directories. Testing against a
+// pack written by another tool is still open.
+
+using TilePt = std::pair<int, int>;
+
+// One Sutherland-Hodgman pass: keeps the side of the line axis = bound where (v >= bound) == keepAbove.
+std::vector<std::pair<double, double>> clipEdge(const std::vector<std::pair<double, double>>& pts, int axis, double bound, bool keepAbove) {
+    std::vector<std::pair<double, double>> out;
+    const std::size_t n = pts.size();
+    for (std::size_t i = 0; i < n; ++i) {
+        const std::pair<double, double> cur = pts[i];
+        const std::pair<double, double> prev = pts[(i + n - 1) % n];
+        const double cv = axis == 0 ? cur.first : cur.second;
+        const double pv = axis == 0 ? prev.first : prev.second;
+        const bool curIn = keepAbove ? cv >= bound : cv <= bound;
+        const bool prevIn = keepAbove ? pv >= bound : pv <= bound;
+        if (curIn != prevIn) {
+            const double t = (bound - pv) / (cv - pv);
+            out.emplace_back(prev.first + (cur.first - prev.first) * t, prev.second + (cur.second - prev.second) * t);
+        }
+        if (curIn) out.push_back(cur);
+    }
+    return out;
+}
+
+// Sutherland-Hodgman against the tile square plus a buffer, in tile units.
+std::vector<TilePt> clipRing(const std::vector<std::pair<double, double>>& ring, double lo, double hi) {
+    std::vector<std::pair<double, double>> pts = ring;
+    for (int edge = 0; edge < 4 && !pts.empty(); ++edge) pts = clipEdge(pts, edge < 2 ? 0 : 1, edge % 2 == 0 ? lo : hi, edge % 2 == 0);
+    std::vector<TilePt> q;
+    for (const auto& p : pts) {
+        const TilePt t{static_cast<int>(std::lround(p.first)), static_cast<int>(std::lround(p.second))};
+        if (q.empty() || q.back() != t) q.push_back(t);
+    }
+    while (q.size() > 1 && q.front() == q.back()) q.pop_back();
+    return q;
+}
+
+double ringArea(const std::vector<TilePt>& r) {  // positive = clockwise on screen (y down)
+    double a = 0;
+    for (std::size_t i = 0; i < r.size(); ++i) {
+        const auto& p = r[i];
+        const auto& n = r[(i + 1) % r.size()];
+        a += static_cast<double>(p.first) * n.second - static_cast<double>(n.first) * p.second;
+    }
+    return a / 2;
+}
+
+std::string countriesTile(int z, int x, int y, std::size_t& earthFeatures) {
+    const double lo = -64, hi = 4096 + 64;
+    std::vector<TestFeature> earth, places, borders;
+    for (const auto& f : countries()) {
+        TestFeature tf{3, {}, {{"kind", "earth"}}};
+        for (const auto& poly : f.geom.polygons) {
+            std::vector<std::vector<TilePt>> rings;
+            for (std::size_t ri = 0; ri < poly.size(); ++ri) {
+                std::vector<std::pair<double, double>> pts;
+                for (const auto& c : poly[ri]) {
+                    double tx = 0, ty = 0;
+                    lonLatToTile(c.x, std::clamp(c.y, -85.0, 85.0), z, tx, ty);
+                    pts.push_back({(tx - x) * 4096, (ty - y) * 4096});
+                }
+                if (ri == 0) {
+                    // the border as a line: runs of points in the tile, plus one point either side (cut by the renderer)
+                    auto in = [&](std::size_t i) {
+                        const auto& q = pts[i % pts.size()];
+                        return q.first >= lo && q.first <= hi && q.second >= lo && q.second <= hi;
+                    };
+                    std::vector<TilePt> run;
+                    for (std::size_t i = 0; i <= pts.size(); ++i) {
+                        const bool keep = in(i) || in(i + 1) || (i > 0 && in(i - 1));
+                        if (keep) run.push_back({static_cast<int>(std::lround(pts[i % pts.size()].first)), static_cast<int>(std::lround(pts[i % pts.size()].second))});
+                        if ((!keep || i == pts.size()) && run.size() >= 2) borders.push_back(TestFeature{2, {run}, {{"kind", "country"}}});
+                        if (!keep) run.clear();
+                    }
+                }
+                auto r = clipRing(pts, lo, hi);
+                if (r.size() < 3 || std::abs(ringArea(r)) < 1) {
+                    if (ri == 0) break;  // the outer ring is outside this tile: skip the polygon
+                    continue;
+                }
+                const bool outer = ri == 0;
+                if ((ringArea(r) > 0) != outer) std::reverse(r.begin(), r.end());
+                rings.push_back(std::move(r));
+            }
+            for (auto& r : rings) tf.parts.push_back(std::move(r));
+        }
+        if (tf.parts.empty()) continue;
+        earth.push_back(std::move(tf));
+        // a label point: the middle of the first outer ring's box, when it falls inside this tile
+        const auto& ring = f.geom.polygons[0][0];
+        double minX = 1e9, minY = 1e9, maxX = -1e9, maxY = -1e9;
+        for (const auto& c : ring) {
+            minX = std::min(minX, c.x), maxX = std::max(maxX, c.x), minY = std::min(minY, c.y), maxY = std::max(maxY, c.y);
+        }
+        double tx = 0, ty = 0;
+        lonLatToTile((minX + maxX) / 2, (minY + maxY) / 2, z, tx, ty);
+        const int px = static_cast<int>((tx - x) * 4096), py = static_cast<int>((ty - y) * 4096);
+        if (px >= 0 && px < 4096 && py >= 0 && py < 4096 && z >= 2) {
+            places.push_back(TestFeature{1, {{{px, py}}}, {{"kind", "country"}, {"name", f.props.at("name").text()}}});
+        }
+    }
+    earthFeatures += earth.size();
+    // like Protomaps: the background is sea, land is the earth layer; open-ocean tiles hold one water square
+    if (earth.empty()) return mvtTile({mvtLayer("water", {TestFeature{3, {{{-64, -64}, {4160, -64}, {4160, 4160}, {-64, 4160}}}, {{"kind", "ocean"}}}})});
+    std::vector<std::string> layers{mvtLayer("earth", earth), mvtLayer("boundaries", borders)};  // borders may be empty (an island tile)
+    if (!places.empty()) layers.push_back(mvtLayer("places", places));
+    return mvtTile(layers);
+}
+
+void testRealDataPack(const fs::path& dir) {
+    std::vector<PmtilesTile> tiles;
+    std::size_t earthFeatures = 0;
+    // a fresh counter per tile: accumulating straight into earthFeatures across this loop came out
+    // wrong on MSVC CI (each tile counted alone was right, the loop total was not)
+    for (int z = 0; z <= 3; ++z) {
+        const int n = 1 << z;
+        for (int x = 0; x < n; ++x) {
+            for (int y = 0; y < n; ++y) {
+                std::size_t count = 0;
+                std::string bytes = countriesTile(z, x, y, count);
+                earthFeatures += count;
+                tiles.push_back({z, static_cast<std::uint32_t>(x), static_cast<std::uint32_t>(y), std::move(bytes)});
+            }
+        }
+    }
+    CHECK(tiles.size() == 85 && earthFeatures > 177 * 2);
+    const std::string meta = R"j({"name":"natural earth z0-3","attribution":"Natural Earth (public domain)","vector_layers":[{"id":"water"},{"id":"earth"},{"id":"boundaries"},{"id":"places"}]})j";
+    const fs::path file = dir / "ne.pmtiles";
+    writeText(file, writePmtiles(tiles, TileType::Mvt, meta, true, 16));
+    CHECK(fs::file_size(file) < 1500000);
+    PmtilesReader reader(file);
+    const auto& h = reader.header();
+    CHECK(h.minZoom == 0 && h.maxZoom == 3 && h.addressedTiles == 85 && h.leafLength > 0);
+    CHECK(h.tileContents < h.tileEntries || h.tileEntries < h.addressedTiles);  // open-ocean tiles are stored once
+    bool allBack = true;
+    for (const auto& t : tiles) allBack = allBack && reader.tile(t.z, t.x, t.y) == t.bytes;
+    CHECK(allBack);
+    CHECK(!reader.tile(4, 0, 0));
+    // every tile decodes, with outer rings first
+    bool decodes = true;
+    for (const auto& t : tiles) {
+        const auto layers = decodeMvt(t.bytes);
+        decodes = decodes && !layers.empty() && (layers[0].name == "water" || (layers[0].name == "earth" && layers[1].name == "boundaries" && !layers[0].features.empty()));
+    }
+    CHECK(decodes);
+    const TilesInfo ti = describePmtiles(reader);
+    CHECK(ti.layers.size() == 4 && ti.attribution == "Natural Earth (public domain)");
+
+    // the whole world from z0
+    Map m;
+    RenderOptions o;
+    o.width = 720;
+    o.bbox = BBox{-180, -70, 180, 75};
+    o.basemap = file.string();
+    o.legend = o.scaleBar = o.northArrow = false;
+    RenderInfo info;
+    const raster::Image world = renderImage(m, o, &info);
+    CHECK(info.tileSource == file.string() && info.zoom <= 2 && info.tilesUsed >= 1);
+    struct Spot {
+        double lon, lat;
+        bool land;
+    };
+    const std::vector<Spot> spots = {{3, 27, true},      // Sahara (Algeria)
+                                     {-60, -10, true},   // Amazon
+                                     {100, 60, true},    // Siberia
+                                     {135, -25, true},   // Australia
+                                     {-35, 20, false},   // mid-Atlantic
+                                     {-150, 0, false},   // Pacific
+                                     {80, -30, false}};  // Indian Ocean
+    bool worldOk = true;
+    for (const auto& sp : spots) worldOk = worldOk && (sp.land ? isLand(pixelAt(world, info, sp.lon, sp.lat)) : isWater(pixelAt(world, info, sp.lon, sp.lat)));
+    CHECK(worldOk);
+    // western Europe at the deepest zoom: several z3 tiles stitched together
+    o.width = 1400;
+    o.bbox = BBox{-12, 35, 20, 60};
+    RenderInfo eu;
+    const raster::Image europe = renderImage(m, o, &eu);
+    CHECK(eu.zoom == 3 && eu.tilesUsed >= 2);
+    CHECK(isLand(pixelAt(europe, eu, 2.35, 47.0)) && isLand(pixelAt(europe, eu, -3.7, 40.4)) && isLand(pixelAt(europe, eu, 10, 51)));  // France, Spain, Germany
+    CHECK(isWater(pixelAt(europe, eu, -9, 46)) && isWater(pixelAt(europe, eu, 4, 55)) && isWater(pixelAt(europe, eu, 5, 38)));  // Biscay, North Sea, Mediterranean
+    const std::string svg = renderMap(m, o, "svg", &eu);
+    CHECK(svg.find(">France</text>") != std::string::npos || svg.find(">Spain</text>") != std::string::npos);
+    // a city-scale close-up past the deepest zoom still draws from z3
+    o.width = 400;
+    o.bbox = BBox{-3.8, 40.3, -3.6, 40.5};
+    RenderInfo city;
+    const raster::Image madrid = renderImage(m, o, &city);
+    CHECK(city.zoom == 3 && isLand(madrid.at(madrid.width() / 2, madrid.height() / 2)));
+    // through the commands, as an installed pack
+    Session s;
+    registerCommands(s);
+    Result r = run(s, "maps.tiles_info path=" + q(file));
+    CHECK(r.ok && num(r, "max_zoom") == 3 && str(r, "layers").find("earth") != std::string::npos);
+    r = run(s, "maps.new title=Europe");
+    CHECK(r.ok);
+    r = run(s, "maps.render doc=" + toText(r.value) + " path=" + q(dir / "europe.png") + " basemap=" + q(file) + " bbox=-12,35,20,60 width=600");
+    CHECK(r.ok && str(r, "tile_source").find("ne.pmtiles") != std::string::npos && fs::exists(dir / "europe.png"));
+}
+
 void testMcp(const fs::path& dir) {
     Session session;
     registerCommands(session);
@@ -833,6 +1038,113 @@ void testMcp(const fs::path& dir) {
 
 }  // namespace
 
+// ---- Jenks natural breaks -------------------------------------------------------------------
+
+double classCost(const std::vector<double>& v, std::size_t b, std::size_t e) {  // squared deviation of v[b..e)
+    double mean = 0;
+    for (std::size_t i = b; i < e; ++i) mean += v[i];
+    mean /= static_cast<double>(e - b);
+    double c = 0;
+    for (std::size_t i = b; i < e; ++i) c += (v[i] - mean) * (v[i] - mean);
+    return c;
+}
+
+// Total squared deviation when sorted values are split at the class tops in `breaks`.
+double breaksCost(const std::vector<double>& sorted, const std::vector<double>& breaks) {
+    double c = 0;
+    std::size_t b = 0;
+    for (std::size_t k = 1; k < breaks.size(); ++k) {
+        std::size_t e = b;
+        while (e < sorted.size() && (sorted[e] <= breaks[k] || k + 1 == breaks.size())) ++e;
+        if (e > b) c += classCost(sorted, b, e);
+        b = e;
+    }
+    return c;
+}
+
+// The true optimum by trying every way to cut n sorted values into k runs.
+double bruteForce(const std::vector<double>& v, int k) {
+    double best = 1e300;
+    std::vector<std::size_t> cuts;
+    std::function<void(std::size_t, int, double)> go = [&](std::size_t start, int left, double acc) {
+        if (left == 1) {
+            best = std::min(best, acc + classCost(v, start, v.size()));
+            return;
+        }
+        for (std::size_t e = start + 1; e + static_cast<std::size_t>(left - 1) <= v.size(); ++e) go(e, left - 1, acc + classCost(v, start, e));
+    };
+    go(0, k, 0);
+    return best;
+}
+
+void testJenks() {
+    // three obvious groups
+    auto b = jenksBreaks({22, 1, 11, 2, 20, 3, 12, 10, 21}, 3);
+    CHECK(b == (std::vector<double>{1, 3, 12, 22}));
+    // simple-statistics' ckmeans example: [-1 x4], [2 x3], [4, 5, 6]
+    b = jenksBreaks({-1, 2, -1, 2, 4, 5, 6, -1, 2, -1}, 3);
+    CHECK(b == (std::vector<double>{-1, -1, 2, 6}));
+    // fewer distinct values than classes, one class, nothing usable
+    CHECK(jenksBreaks({5, 5, 7}, 4) == (std::vector<double>{5, 5, 7}));
+    CHECK(jenksBreaks({3, 9, 4}, 1) == (std::vector<double>{3, 9}));
+    CHECK(jenksBreaks({std::nan(""), INFINITY}, 3).empty());
+    CHECK(jenksBreaks({}, 3).empty());
+    // the optimum, checked against every possible split
+    std::mt19937 rng(11);
+    bool optimal = true;
+    for (int trial = 0; trial < 60; ++trial) {
+        std::vector<double> v;
+        const int n = 6 + static_cast<int>(rng() % 9);
+        for (int i = 0; i < n; ++i) v.push_back(static_cast<double>(rng() % 1000) / 10.0 + (trial % 3 == 0 ? 1e6 : 0));  // + an offset: precision
+        std::sort(v.begin(), v.end());
+        for (int k = 2; k <= std::min(5, n); ++k) {
+            const auto jb = jenksBreaks(v, k);
+            optimal = optimal && jb.front() == v.front() && jb.back() == v.back() && std::abs(breaksCost(v, jb) - bruteForce(v, k)) <= 1e-6 * (1 + bruteForce(v, k));
+        }
+    }
+    CHECK(optimal);
+    // big inputs: 300k values in three bands, merged into runs, still fast and still finds the gaps
+    std::vector<double> big;
+    std::uniform_real_distribution<double> u(0, 1);
+    for (int i = 0; i < 300000; ++i) big.push_back((i % 3) * 100 + u(rng) * 10);
+    const auto t0 = std::chrono::steady_clock::now();
+    b = jenksBreaks(big, 3);
+    const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
+    CHECK(b.size() == 4 && b[1] < 10 && b[2] > 100 && b[2] < 110 && b[3] > 200);
+    CHECK(ms < 5000);
+    b = jenksBreaks(big, 3, 64);  // only 64 runs: the gaps are still run edges
+    CHECK(b.size() == 4 && b[1] < 10 && b[2] > 100 && b[2] < 110 && b[3] > 200);
+    // and through maps.style: a graduated layer with method=jenks
+    Layer l;
+    l.name = "pts";
+    for (double x : {1.0, 2.0, 3.0, 10.0, 11.0, 12.0, 20.0, 21.0, 22.0}) {
+        Feature f;
+        f.geom.type = GeomType::Point;
+        f.geom.points.push_back({x, 0});
+        f.props["v"] = Prop::number(x);
+        l.features.push_back(f);
+    }
+    l.style.mode = "graduated";
+    l.style.field = "v";
+    l.style.classes = 3;
+    l.style.method = "jenks";
+    auto cls = styleClasses(l);
+    CHECK(cls.size() == 3 && cls[0].lo == 1 && cls[0].hi == 3 && cls[1].hi == 12 && cls[2].hi == 22);
+    l.style.method = "natural";
+    CHECK(styleClasses(l).size() == 3 && styleClasses(l)[1].hi == 12);
+    // a class that is only the minimum survives the duplicate-break clean-up
+    for (int i = 0; i < 6; ++i) {
+        Feature f;
+        f.geom.type = GeomType::Point;
+        f.geom.points.push_back({0, 0});
+        f.props["v"] = Prop::number(0);
+        l.features.push_back(f);
+    }
+    l.style.method = "quantile";  // tops 0, 10, 22: the first class is just the zeros
+    cls = styleClasses(l);
+    CHECK(cls.size() == 3 && cls[0].lo == 0 && cls[0].hi == 0 && cls[1].hi == 10);
+}
+
 int main() {
     const fs::path dir = tempDir();
     // map packs are looked up under $WETWARESUITE_HOME: keep the user's own out of the tests
@@ -846,9 +1158,11 @@ int main() {
     testRasters(dir);
     testTiffCodecs();
     testAnalysis();
+    testJenks();
     testRendering(dir);
     testCommands(dir);
     testPmtiles(dir);
+    testRealDataPack(dir);
     testMcp(dir);
     std::error_code ec;
     fs::remove_all(dir, ec);

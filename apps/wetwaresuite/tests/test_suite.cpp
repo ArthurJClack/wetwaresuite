@@ -8,6 +8,7 @@
 
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
+#include "app_commands.hpp"
 #include "apps.hpp"
 #include "check.hpp"
 #include "suite.hpp"
@@ -211,5 +212,14 @@ int main() {
     }
 
     fs::remove_all(dir);
+    // every real tool's schema: the fast tools/list writer matches nlohmann exactly
+    {
+        Session s;
+        suite::registerAll(s);
+        apps::registerCommands(s, "suite");
+        CHECK(s.registry().size() > 600);
+        CHECK(mcp::toolsListJson(s.registry()) == mcp::toolsListJsonReference(s.registry()));
+    }
+
     return check::summary("suite");
 }

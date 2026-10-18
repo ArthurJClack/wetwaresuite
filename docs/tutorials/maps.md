@@ -108,7 +108,9 @@ saved trips.achmap
 
 `maps.add_countries` adds the built-in country layer, with the fields `name`, `iso_a3`, `continent` and `pop_est`. `maps.join` copies every other CSV column onto the features whose key matches. It reports the CSV rows that matched nothing (Kosovo has no ISO code in Natural Earth), so you can fix typos. Keys match exactly first, then ignoring case and spaces. Numbers match numerically, but codes with leading zeros such as `007` stay text.
 
-`mode=graduated` colours a numeric field in `classes=` steps along a ramp. `method=` picks the breaks: `quantile` (equal counts, the default), `equal` (equal widths) or `natural` (groups that are similar inside). Countries with no value keep the plain land colour. `mode=categorized field=continent` gives each value its own colour instead.
+`mode=graduated` colours a numeric field in `classes=` steps along a ramp. `method=` picks the breaks: `quantile` (equal counts, the default), `equal` (equal widths) or `natural` (Jenks natural breaks, also spelled `jenks`). Countries with no value keep the plain land colour. `mode=categorized field=continent` gives each value its own colour instead.
+
+Natural breaks look for the gaps in your numbers. They put the dividing lines where the values jump, so each class holds countries that are alike and the classes differ as much as possible. Use them when the data has real groups, for example a few big countries and many small ones. Quantile classes are better when you want each colour to cover about the same number of countries. The breaks are the exact Jenks optimum (Fisher's method, the one QGIS and ArcGIS mean by "natural breaks"), and they are quick even for big layers. Up to 50,000 different values are classed exactly. Above that, nearby values are grouped first, and the widest gaps are always kept as possible breaks. If many features share the lowest value (lots of zeros, say), the first class can be just that one value.
 
 The PNG uses Web Mercator, the projection of web maps. The PDF uses `crs=wgs84` (plate carrée), which shows the whole globe including Antarctica. A world map in Web Mercator stops at 60°S unless you pass a `bbox=`.
 
@@ -636,7 +638,7 @@ $ printf 'maps.open path=cafes.csv -> m\nmaps.render doc=$m path=paris-osm.png b
 | `dash` | `solid`, `dash`, `dot` |
 | `label`, `label_size`, `label_color`, `halo` | text from a field; labels that would overlap are skipped |
 | `mode` | `single`, `categorized` (a colour per value of `field=`), `graduated` (classes of a numeric `field=`) |
-| `field`, `classes`, `method`, `ramp`, `palette` | categorized and graduated settings; `ramp` is a name or `#rrggbb,#rrggbb` |
+| `field`, `classes`, `method`, `ramp`, `palette` | categorized and graduated settings; `method` is `quantile`, `equal` or `natural` (= `jenks`); `ramp` is a name or `#rrggbb,#rrggbb` |
 | `size_by_value` | graduated points: bigger markers for bigger values |
 | `raster_ramp`, `hillshade` | value rasters |
 | `visible` | show or hide the layer |
@@ -707,6 +709,6 @@ Example prompts:
 - **KML**: no NetworkLinks, GroundOverlays, KMZ archives or 3D models; styles are not read. **GPX**: extensions such as heart rate are ignored. **Shapefiles**: no MultiPatch; M values are dropped; `.dbf` fields are written as text, numbers or logicals, with names cut to 10 characters.
 - **Feature properties** are kept in alphabetical order of field name, so CSV and DBF exports may reorder columns.
 - **OpenStreetMap tiles** need `curl` and the network, and are drawn at the nearest zoom level, so some scaling blur is possible. Tile servers' usage policies forbid bulk downloading. The tile code has only been tested against a pre-filled cache: the tutorial run had no access to the tile server.
-- **Map packs** are drawn with one built-in style: no road names, shields, icons or points of interest, only place names. Road and boundary lines are drawn per tile, so a dashed border can restart its dash at a tile edge. Place names come from the tiles' `name` field (the local name). The planet pack's deepest detail is zoom 15; beyond that, the map is the same data drawn bigger. The map pack reader and style were tested with small packs the tests build themselves; the run for this tutorial had no full Protomaps pack, so the outputs in Task 8 are examples.
+- **Map packs** are drawn with one built-in style: no road names, shields, icons or points of interest, only place names. Road and boundary lines are drawn per tile, so a dashed border can restart its dash at a tile edge. Place names come from the tiles' `name` field (the local name). The planet pack's deepest detail is zoom 15; beyond that, the map is the same data drawn bigger. The map pack reader and style were tested with packs the tests build themselves: a tiny hand-made one and a zoom 0-3 pack cut from the Natural Earth countries (borders, land, sea and country names, laid out like a Protomaps pack). They have not yet been tested against a pack made by another program, and the run for this tutorial had no full Protomaps pack, so the outputs in Task 8 are examples.
 - **Labels** in PNG and PDF output use the built-in Helvetica font with the Western European (WinAnsi) characters. Other scripts (Cyrillic, Greek, CJK, ...) come out as `?`. SVG output keeps the text and shows it with the viewer's fonts. Labels that would overlap are dropped, not moved.
 - **Size**: everything is in memory, which is fine for tens of thousands of features. Big national datasets are slow to buffer and render.

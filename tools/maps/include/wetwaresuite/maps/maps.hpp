@@ -268,7 +268,7 @@ struct Style {
     std::string ramp = "viridis"; // graduated colour ramp, or "#rrggbb,#rrggbb" ends
     std::vector<Color> palette;   // categorized colours (empty = automatic)
     int classes = 5;
-    std::string method = "quantile";  // graduated: quantile, equal, jenks-lite (natural)
+    std::string method = "quantile";  // graduated: quantile, equal, natural / jenks (Jenks natural breaks)
     bool sizeByValue = false;     // graduated points: grow with the value as well
     std::string rasterRamp = "terrain";  // value grids
     bool hillshade = false;       // value grids: shade relief
@@ -306,6 +306,14 @@ struct Map {
     std::string uniqueName(const std::string& base) const;
     BBox bounds(bool visibleOnly = false) const;
 };
+
+// Jenks natural breaks (Fisher's exact optimum): splits the values into `classes` groups with the
+// smallest total squared distance to each group's mean. Returns classes + 1 numbers: the minimum, then
+// each class's largest value (fewer when there are fewer distinct values; empty for no finite values).
+// Equal values are merged first; past `maxGroups` distinct values, neighbouring runs are merged into
+// at most maxGroups runs (cut at the widest gaps and evenly by rank), so huge inputs stay fast; breaks
+// then fall between runs. O(k n log n).
+std::vector<double> jenksBreaks(std::vector<double> values, int classes, std::size_t maxGroups = 50000);
 
 // The classes a categorized/graduated style resolves to for this layer's features.
 std::vector<StyleClass> styleClasses(const Layer& layer);

@@ -4,6 +4,7 @@
 #include <array>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <istream>
 #include <ostream>
 
@@ -94,6 +95,112 @@ json noArgsTool(const char* name, const char* description, bool readOnly) {
             {"annotations", {{"readOnlyHint", readOnly}, {"openWorldHint", false}}}};
 }
 
+// ---- tools/list written straight to text, matching nlohmann's dump() byte for byte:
+// object keys in sorted order, no spaces, the same string escapes and number formats.
+
+void putString(std::string& out, const std::string& s) {
+    for (unsigned char c : s) {
+        if (c >= 0x80) {  // UTF-8: let nlohmann check and copy it
+            out += json(s).dump();
+            return;
+        }
+    }
+    out += '"';
+    for (char ch : s) {
+        const auto c = static_cast<unsigned char>(ch);
+        switch (c) {
+            case '"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (c < 0x20) {
+                    char buf[8];
+                    std::snprintf(buf, sizeof buf, "\\u%04x", c);
+                    out += buf;
+                } else {
+                    out += ch;
+                }
+        }
+    }
+    out += '"';
+}
+
+void putBool(std::string& out, bool b) { out += b ? "true" : "false"; }
+
+void putValue(std::string& out, const Value& value) {
+    if (auto s = std::get_if<std::string>(&value)) putString(out, *s);
+    else if (auto b = std::get_if<bool>(&value)) putBool(out, *b);
+    else if (auto i = std::get_if<std::int64_t>(&value)) out += std::to_string(*i);
+    else out += toJson(value).dump();  // doubles and lists: nlohmann's own number format
+}
+
+void putTool(std::string& out, const CommandInfo& info) {
+    std::map<std::string, const ParamSpec*> props;  // sorted like a json object; a repeated name keeps the last
+    for (const auto& p : info.params) props[p.name] = &p;
+    out += "{\"annotations\":{\"destructiveHint\":";
+    putBool(out, !info.readOnly && !info.undoable);
+    out += ",\"openWorldHint\":false,\"readOnlyHint\":";
+    putBool(out, info.readOnly);
+    out += ",\"title\":";
+    putString(out, info.title);
+    out += "},\"description\":";
+    putString(out, info.description);
+    out += ",\"inputSchema\":{\"properties\":{";
+    bool first = true;
+    for (const auto& [name, p] : props) {
+        if (!first) out += ',';
+        first = false;
+        putString(out, name);
+        out += ":{";
+        if (!std::holds_alternative<std::monostate>(p->defaultValue)) {
+            out += "\"default\":";
+            putValue(out, p->defaultValue);
+            out += ',';
+        }
+        out += "\"description\":";
+        putString(out, p->description);
+        if (!p->choices.empty()) {
+            out += ",\"enum\":[";
+            for (std::size_t i = 0; i < p->choices.size(); ++i) {
+                if (i) out += ',';
+                putString(out, p->choices[i]);
+            }
+            out += ']';
+        }
+        if (p->type == ParamType::NumberList) out += ",\"items\":{\"type\":\"number\"}";
+        out += ",\"type\":";
+        putString(out, toString(p->type));
+        out += '}';
+    }
+    out += "},\"required\":[";
+    first = true;
+    for (const auto& p : info.params) {
+        if (!p.required) continue;
+        if (!first) out += ',';
+        first = false;
+        putString(out, p.name);
+    }
+    out += "],\"type\":\"object\"},\"name\":";
+    putString(out, Server::toolName(info.id));
+    out += ",\"title\":";
+    putString(out, info.title);
+    out += '}';
+}
+
+struct NoArgsTool {
+    const char* name;
+    const char* description;
+    bool readOnly;
+};
+constexpr std::array kNoArgsTools = {NoArgsTool{"undo", "Undo the last change to any open document", false},
+                                     NoArgsTool{"redo", "Redo the last undone change", false},
+                                     NoArgsTool{"history", "List the undo history, oldest first", true},
+                                     NoArgsTool{"documents", "List open documents with their ids, kinds and sizes", true}};
+
 bool toParams(const json& args, Params& out, std::string& error) {
     if (args.is_null()) return true;
     if (!args.is_object()) {
@@ -156,6 +263,55 @@ std::string base64(const std::string& bytes) {
     return out;
 }
 
+std::string toolsListJson(const CommandRegistry& registry) {
+    std::string out = "[";
+    out.reserve(registry.size() * 1200);
+    registry.forEach([&](const CommandInfo& info) {
+        if (out.size() > 1) out += ',';
+        putTool(out, info);
+    });
+    for (const auto& t : kNoArgsTools) {
+        if (out.size() > 1) out += ',';
+        out += "{\"annotations\":{\"openWorldHint\":false,\"readOnlyHint\":";
+        putBool(out, t.readOnly);
+        out += "},\"description\":";
+        putString(out, t.description);
+        out += ",\"inputSchema\":{\"properties\":{},\"type\":\"object\"},\"name\":";
+        putString(out, t.name);
+        out += '}';
+    }
+    out += ']';
+    return out;
+}
+
+std::string toolsListJsonReference(const CommandRegistry& registry) {
+    json tools = json::array();
+    registry.forEach([&](const CommandInfo& info) { tools.push_back(describe(info)); });
+    for (const auto& t : kNoArgsTools) tools.push_back(noArgsTool(t.name, t.description, t.readOnly));
+    return tools.dump();
+}
+
+const std::string& Server::toolsJson() {
+    const auto& reg = session_.registry();
+    if (toolsRevision_ != reg.revision()) {
+        tools_ = toolsListJson(reg);
+        toolsRevision_ = reg.revision();
+    }
+    return tools_;
+}
+
+std::string Server::commandFor(const std::string& tool) {
+    const auto& reg = session_.registry();
+    if (commandsRevision_ != reg.revision()) {
+        commands_.clear();
+        // in id order, so if two ids map to one tool name the later one wins, as before
+        reg.forEach([&](const CommandInfo& info) { commands_[toolName(info.id)] = info.id; });
+        commandsRevision_ = reg.revision();
+    }
+    auto it = commands_.find(tool);
+    return it == commands_.end() ? std::string() : it->second;
+}
+
 Server::Server(Session& session, ServerInfo info) : session_(session), info_(std::move(info)) {}
 
 Server::Server(Session& session, std::string name, std::string version)
@@ -199,13 +355,9 @@ std::optional<std::string> Server::handle(const std::string& line) {
     if (method == "ping") return rpcResult(id, json::object()).dump();
 
     if (method == "tools/list") {
-        json tools = json::array();
-        for (const auto& info : session_.registry().list()) tools.push_back(describe(info));
-        tools.push_back(noArgsTool("undo", "Undo the last change to any open document", false));
-        tools.push_back(noArgsTool("redo", "Redo the last undone change", false));
-        tools.push_back(noArgsTool("history", "List the undo history, oldest first", true));
-        tools.push_back(noArgsTool("documents", "List open documents with their ids, kinds and sizes", true));
-        return rpcResult(id, {{"tools", tools}}).dump();
+        // {"id":..,"jsonrpc":"2.0","result":{"tools":[..]}}: what rpcResult(...).dump() gives, without
+        // building ~700 tool objects as json values every time
+        return "{\"id\":" + id.dump() + ",\"jsonrpc\":\"2.0\",\"result\":{\"tools\":" + toolsJson() + "}}";
     }
 
     if (method == "tools/call") {
@@ -236,10 +388,7 @@ std::optional<std::string> Server::handle(const std::string& line) {
             return rpcResult(id, out).dump();
         }
 
-        std::string commandId;
-        for (const auto& info : session_.registry().list()) {
-            if (toolName(info.id) == tool) commandId = info.id;
-        }
+        const std::string commandId = commandFor(tool);
         if (commandId.empty()) return rpcError(id, -32602, "unknown tool: " + tool).dump();
 
         Params args;

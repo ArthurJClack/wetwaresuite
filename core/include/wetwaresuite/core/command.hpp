@@ -113,6 +113,13 @@ public:
     void add(CommandInfo info, ActionFactory factory);
     const CommandInfo* find(const std::string& id) const;
     std::vector<CommandInfo> list() const;
+    std::size_t size() const { return entries_.size(); }
+    // Visits every command in id order without copying it.
+    void forEach(const std::function<void(const CommandInfo&)>& fn) const {
+        for (const auto& [id, entry] : entries_) fn(entry.info);
+    }
+    // Goes up on every add, so callers can cache what they derive from the registry.
+    std::uint64_t revision() const { return revision_; }
 
     // Validates params against the command's spec, then builds the action.
     // Throws ParamError on unknown commands, missing or mistyped params.
@@ -124,6 +131,7 @@ private:
         ActionFactory factory;
     };
     std::map<std::string, Entry> entries_;
+    std::uint64_t revision_ = 0;
 };
 
 // Linear undo history. Each executed undoable action is one labeled step.

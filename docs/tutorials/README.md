@@ -21,7 +21,7 @@ Hands-on guides to the suite. Every example was run against the real binaries: t
 - [Asset forge](forge.md): game assets: models to glb with the right up axis, scale and LODs, sprite sheets and atlases, tileable textures and normal maps, pixel art.
 - [Audio](audio.md): clean up a voice recording to podcast loudness, build an episode from music and voice tracks with ducking and fades, batch-normalize samples, spectrograms, pitch and tempo changes.
 - [Office](office.md): a budget spreadsheet with formulas and a chart, CSV cleanup with VLOOKUP, a report exported to PDF, a slide deck from bullet points, merging and splitting PDFs.
-- [Slicer](slicer.md): 3D models to G-code: printer and filament presets, infill, brim and supports, layer previews, parts from cad.
+- [Slicer](slicer.md): 3D models to G-code: printer and filament presets, gyroid and cubic infill, brim, column and tree supports, several parts on one bed, layer previews, parts from cad.
 - [Scan fit](fit.md): car parts and mounts that fit a phone 3D scan: clean up a Polycam/Scaniverse scan, fit planes, cylinders, circles and curves to it, then a phone mount, gauge pod, switch panel and speaker ring on a curved dash, clamps and a GoPro mount on a roll bar, trim strips, your own plates and blocks, gap checks, test slices and projects you can rebuild.
 - [Layout](layout.md): print layout: an event poster, a tri-fold flyer, business cards 10-up, a booklet from Markdown, preflight and print PDFs with bleed and crop marks.
 - [Cut](cut.md): video editing: a talking head into a short with a title and music, picture-in-picture, crossfades, GIFs, burned-in subtitles, quick trims and joins.

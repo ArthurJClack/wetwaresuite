@@ -47,7 +47,7 @@ install only what you need (`hub install image model --from <release folder>`); 
 | `tools/vector/` | vector design: shapes, paths, text, SVG in and out |
 | `tools/blueprint/` | technical drafting and floor plans: walls, doors, dimensions, layers, DXF in/out, PDF/SVG to scale |
 | `tools/cad/` | parametric CAD: feature tree, expressions, holes, patterns, booleans, measuring, STL/3MF export |
-| `tools/slicer/` | 3D printing: printer/filament presets, perimeters, infill, supports, G-code with time and filament estimates |
+| `tools/slicer/` | 3D printing: printer/filament presets, perimeters, infill (gyroid, cubic, ...), column and tree supports, several parts per bed with auto-arrange, G-code with time and filament estimates |
 | `tools/forge/` | game assets: mesh cleanup, LODs, UVs, sprite sheets and atlases, normal maps, tileable textures, pixel art |
 | `tools/layout/` | print layout and publishing: posters, flyers, cards, booklets; linked text frames, styles, masters, CMYK, preflight, PDF with bleed and crop marks, N-up imposition |
 | `tools/audio/` | audio editing on `libs/audio`: noise reduction, EQ, compression, loudness (LUFS), pitch and tempo, multitrack mixing with ducking, spectrograms, folder batches |

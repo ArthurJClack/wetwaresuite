@@ -484,7 +484,7 @@ std::vector<Region> islands(const Region& region) {
     return out;
 }
 
-std::vector<Segment> fillLines(const Region& region, double spacing, double angleDegrees) {
+std::vector<Segment> fillLines(const Region& region, double spacing, double angleDegrees, double shift) {
     std::vector<Segment> out;
     if (region.empty() || !(spacing > 0)) return out;
     const double a = angleDegrees * mesh::kPi / 180.0, ca = std::cos(a), sa = std::sin(a);
@@ -506,10 +506,11 @@ std::vector<Segment> fillLines(const Region& region, double spacing, double angl
     }
     std::sort(edges.begin(), edges.end(), [](const E& x, const E& y) { return std::min(x.a.y, x.b.y) < std::min(y.a.y, y.b.y); });
     std::vector<double> xs;
-    const auto k0 = static_cast<long long>(std::ceil(ymin / spacing - 1e-9));
-    const auto k1 = static_cast<long long>(std::floor(ymax / spacing + 1e-9));
+    shift = std::fmod(shift, spacing);
+    const auto k0 = static_cast<long long>(std::ceil((ymin - shift) / spacing - 1e-9));
+    const auto k1 = static_cast<long long>(std::floor((ymax - shift) / spacing + 1e-9));
     for (long long k = k0; k <= k1; ++k) {
-        double y = static_cast<double>(k) * spacing;
+        double y = static_cast<double>(k) * spacing + shift;
         if (y <= ymin) y = ymin + 1e-7;
         if (y >= ymax) y = ymax - 1e-7;
         xs.clear();
@@ -524,6 +525,125 @@ std::vector<Segment> fillLines(const Region& region, double spacing, double angl
         }
     }
     return out;
+}
+
+std::vector<Polyline> clipPolylines(const Region& region, const std::vector<Polyline>& lines) {
+    std::vector<Polyline> out;
+    if (region.empty()) return out;
+    // the region's edges, bucketed in a grid so each piece only meets nearby edges
+    std::vector<Segment> edges;
+    double minx = 1e300, miny = 1e300, maxx = -1e300, maxy = -1e300;
+    for (const auto& loop : region) {
+        for (std::size_t i = 0; i < loop.size(); ++i) {
+            edges.push_back({loop[i], loop[(i + 1) % loop.size()]});
+            minx = std::min(minx, loop[i].x), maxx = std::max(maxx, loop[i].x);
+            miny = std::min(miny, loop[i].y), maxy = std::max(maxy, loop[i].y);
+        }
+    }
+    const int cells = std::clamp(static_cast<int>(std::sqrt(static_cast<double>(edges.size()))), 1, 512);
+    const double cw = std::max((maxx - minx) / cells, 1e-6), ch = std::max((maxy - miny) / cells, 1e-6);
+    auto cellX = [&](double x) { return std::clamp(static_cast<int>((x - minx) / cw), 0, cells - 1); };
+    auto cellY = [&](double y) { return std::clamp(static_cast<int>((y - miny) / ch), 0, cells - 1); };
+    std::vector<std::vector<std::size_t>> grid(static_cast<std::size_t>(cells) * cells);
+    for (std::size_t e = 0; e < edges.size(); ++e) {
+        const auto& [a, b] = edges[e];
+        for (int y = cellY(std::min(a.y, b.y)); y <= cellY(std::max(a.y, b.y)); ++y) {
+            for (int x = cellX(std::min(a.x, b.x)); x <= cellX(std::max(a.x, b.x)); ++x) grid[static_cast<std::size_t>(y) * cells + x].push_back(e);
+        }
+    }
+    std::vector<std::size_t> stamp(edges.size(), 0);
+    std::size_t visit = 0;
+    std::vector<double> ts;
+    for (const auto& line : lines) {
+        if (line.size() < 2) continue;
+        bool inside = contains(region, line[0]);
+        Polyline cur;
+        if (inside) cur.push_back(line[0]);
+        for (std::size_t i = 0; i + 1 < line.size(); ++i) {
+            const Vec2 p = line[i], d = line[i + 1] - p;
+            ts.clear();
+            ++visit;
+            if (std::max(p.x, p.x + d.x) >= minx && std::min(p.x, p.x + d.x) <= maxx && std::max(p.y, p.y + d.y) >= miny &&
+                std::min(p.y, p.y + d.y) <= maxy) {
+                for (int y = cellY(std::min(p.y, p.y + d.y)); y <= cellY(std::max(p.y, p.y + d.y)); ++y) {
+                    for (int x = cellX(std::min(p.x, p.x + d.x)); x <= cellX(std::max(p.x, p.x + d.x)); ++x) {
+                        for (std::size_t e : grid[static_cast<std::size_t>(y) * cells + x]) {
+                            if (stamp[e] == visit) continue;
+                            stamp[e] = visit;
+                            const Vec2 a = edges[e].first, f = edges[e].second - a;
+                            const double den = cross(d, f);
+                            if (std::abs(den) < 1e-18) continue;
+                            // half-open on both, so a shared corner counts once
+                            const double t = cross(a - p, f) / den, u = cross(a - p, d) / den;
+                            if (t >= 0 && t < 1 && u >= 0 && u < 1) ts.push_back(t);
+                        }
+                    }
+                }
+            }
+            std::sort(ts.begin(), ts.end());
+            for (double t : ts) {
+                const Vec2 x = p + d * t;
+                if (inside) {
+                    cur.push_back(x);
+                    if (cur.size() >= 2) out.push_back(std::move(cur));
+                    cur.clear();
+                } else {
+                    cur = {x};
+                }
+                inside = !inside;
+            }
+            if (inside) cur.push_back(line[i + 1]);
+        }
+        if (inside && cur.size() >= 2) out.push_back(std::move(cur));
+    }
+    return out;
+}
+
+std::vector<Polyline> gyroidLines(const Region& region, double period, double z) {
+    if (region.empty() || !(period > 0)) return {};
+    double minx = 1e300, miny = 1e300, maxx = -1e300, maxy = -1e300;
+    for (const auto& loop : region) {
+        for (const auto& p : loop) minx = std::min(minx, p.x), maxx = std::max(maxx, p.x), miny = std::min(miny, p.y), maxy = std::max(maxy, p.y);
+    }
+    // start and end every curve well outside, so clipping never begins on the boundary
+    minx -= period, miny -= period, maxx += period, maxy += period;
+    const double twoPi = 2 * mesh::kPi, s = period / twoPi;  // mm per radian
+    const double zz = z / s, sz = std::sin(zz), cz = std::cos(zz);
+    const int perPeriod = 32;
+    std::vector<Polyline> lines;
+    // Where |sin z| <= |cos z| the zero set is a set of curves y(x); otherwise x(y).
+    // Either way every curve exists across the whole range, so no curve breaks.
+    const bool alongX = std::abs(sz) <= std::abs(cz);
+    const double u0 = (alongX ? minx : miny) / s, u1 = (alongX ? maxx : maxy) / s;
+    const double v0 = (alongX ? miny : minx) / s, v1 = (alongX ? maxy : maxx) / s;
+    const int steps = std::max(2, static_cast<int>(std::ceil((u1 - u0) / twoPi * perPeriod)) + 1);
+    const auto k0 = static_cast<long long>(std::floor(v0 / twoPi)) - 2, k1 = static_cast<long long>(std::ceil(v1 / twoPi)) + 2;
+    for (int branch = 0; branch < 2; ++branch) {
+        for (long long k = k0; k <= k1; ++k) {
+            Polyline pl;
+            pl.reserve(static_cast<std::size_t>(steps));
+            bool any = false;
+            for (int i = 0; i < steps; ++i) {
+                const double u = u0 + (u1 - u0) * i / (steps - 1);
+                double v;
+                if (alongX) {
+                    // sin x cos y + cos z sin y = -sin z cos x  ->  R cos(y - phi) = c
+                    const double a = std::sin(u), b = cz, c = -sz * std::cos(u);
+                    const double r = std::hypot(a, b), phi = std::atan2(b, a), ac = std::acos(std::clamp(c / r, -1.0, 1.0));
+                    v = phi + (branch ? ac : -ac) + twoPi * static_cast<double>(k);
+                } else {
+                    // cos y sin x + sin z cos x = -sin y cos z  ->  R sin(x + psi) = c
+                    const double a = std::cos(u), b = sz, c = -std::sin(u) * cz;
+                    const double r = std::hypot(a, b), psi = std::atan2(b, a), as = std::asin(std::clamp(c / r, -1.0, 1.0));
+                    v = (branch ? mesh::kPi - as : as) - psi + twoPi * static_cast<double>(k);
+                }
+                any = any || (v >= v0 - 0.1 && v <= v1 + 0.1);
+                pl.push_back(alongX ? Vec2{u * s, v * s} : Vec2{v * s, u * s});
+            }
+            if (any) lines.push_back(std::move(pl));
+        }
+    }
+    return clipPolylines(region, lines);
 }
 
 }  // namespace wetwaresuite::slicer

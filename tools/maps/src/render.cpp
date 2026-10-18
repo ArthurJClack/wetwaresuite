@@ -11,13 +11,13 @@
 #include <set>
 #include <variant>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/pdfdoc/writer.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/pdfdoc/writer.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::maps {
+namespace wetwaresuite::maps {
 
 namespace fs = std::filesystem;
 using namespace detail;
@@ -522,7 +522,7 @@ std::shared_ptr<Grid> osmBasemap(const View& v, const RenderOptions& o, RenderIn
                 tmp += ".part";
                 // one request at a time, identified, as the OSM tile usage policy asks
                 const ProcessResult r = runProgram({curl->string(), "-sSfL", "--max-time", "20", "-A",
-                                                    "ACHCLWSS-maps/1.0 (+https://github.com/ArthurJClack/achclwss)", "-o", tmp.string(), url});
+                                                    "wetwaresuite-maps/1.0 (+https://github.com/ArthurJClack/wetwaresuite)", "-o", tmp.string(), url});
                 if (r.exitCode == 0 && fs::exists(tmp, ec)) {
                     fs::rename(tmp, file, ec);
                     if (ec) {
@@ -1239,7 +1239,7 @@ std::string drawPdf(const Scene& sc, double dpi, const std::string& title) {
                            "] /Contents " + std::to_string(content) + " 0 R /Resources " + res + " >>");
     w.set(pages, "<< /Type /Pages /Kids [" + std::to_string(page) + " 0 R] /Count 1 >>");
     const int catalog = w.add("<< /Type /Catalog /Pages " + std::to_string(pages) + " 0 R >>");
-    const int info = w.add("<< /Producer (ACHCLWSS maps) /Title " + pdfdoc::text(title.empty() ? "Map" : title) + " >>");
+    const int info = w.add("<< /Producer (wetwaresuite maps) /Title " + pdfdoc::text(title.empty() ? "Map" : title) + " >>");
     return w.finish(catalog, info);
 }
 
@@ -1265,15 +1265,15 @@ fs::path defaultTileCache() {
     std::string base = envVar("LOCALAPPDATA");
     if (base.empty()) base = envVar("APPDATA");
     fs::path root = base.empty() ? fs::temp_directory_path() : fs::path(base);
-    return root / "achclwss" / "cache" / "tiles";
+    return root / "wetwaresuite" / "cache" / "tiles";
 #elif defined(__APPLE__)
     const std::string home = envVar("HOME");
-    return (home.empty() ? fs::temp_directory_path() : fs::path(home) / "Library" / "Caches") / "achclwss" / "tiles";
+    return (home.empty() ? fs::temp_directory_path() : fs::path(home) / "Library" / "Caches") / "wetwaresuite" / "tiles";
 #else
     const std::string xdg = envVar("XDG_CACHE_HOME");
-    if (!xdg.empty()) return fs::path(xdg) / "achclwss" / "tiles";
+    if (!xdg.empty()) return fs::path(xdg) / "wetwaresuite" / "tiles";
     const std::string home = envVar("HOME");
-    return (home.empty() ? fs::temp_directory_path() : fs::path(home) / ".cache") / "achclwss" / "tiles";
+    return (home.empty() ? fs::temp_directory_path() : fs::path(home) / ".cache") / "wetwaresuite" / "tiles";
 #endif
 }
 
@@ -1387,4 +1387,4 @@ Result MapEdit::apply() {
 
 void MapEdit::revert() { doc_->map = before_; }
 
-}  // namespace achclwss::maps
+}  // namespace wetwaresuite::maps

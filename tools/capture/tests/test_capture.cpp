@@ -7,14 +7,14 @@
 #include <thread>
 #include <vector>
 
-#include "achclwss/capture/capture.hpp"
-#include "achclwss/core/cli.hpp"
-#include "achclwss/core/process.hpp"
-#include "achclwss/mcp/server.hpp"
+#include "wetwaresuite/capture/capture.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/mcp/server.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::capture;
+using namespace wetwaresuite;
+using namespace wetwaresuite::capture;
 namespace fs = std::filesystem;
 
 namespace {
@@ -296,7 +296,7 @@ void testXvfb() {
         std::printf("Xvfb or ffmpeg not found: skipping the real capture test\n");
         return;
     }
-    const fs::path dir = fs::temp_directory_path() / "achclwss_capture_test";
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_capture_test";
     fs::remove_all(dir);
     fs::create_directories(dir);
     int number = 0;

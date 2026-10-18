@@ -3,7 +3,7 @@
 `flash` puts firmware on microcontroller boards over a serial port, with no IDE and no window: it lists the serial ports and says what is plugged into each (CH340, CP210x, FTDI, an Arduino, an ST-Link, an ESP32-S3's own USB...), detects which bootloader is answering, inspects firmware files (Intel HEX, raw `.bin`, ELF, Espressif images), writes and verifies them, and then gives you a serial monitor and a way to send text to the running sketch.
 
 ```sh
-achclwss flash.flash port=/dev/ttyUSB0 file=Blink.ino.hex
+wetwaresuite flash.flash port=/dev/ttyUSB0 file=Blink.ino.hex
 ```
 
 The bootloader protocols are built in, so **nothing else needs to be installed**:
@@ -66,7 +66,7 @@ Other defaults:
 ### CLI
 
 ```sh
-$ achclwss flash.ports
+$ wetwaresuite flash.ports
 2 serial ports
 /dev/ttyUSB0  [1a86:7523]  CH340  (USB Serial)  note: cheap USB-serial: Nano clones, many ESP32/ESP8266 boards
 /dev/ttyACM0  [2341:0043]  Arduino Uno R3  -> board uno
@@ -90,7 +90,7 @@ Recognised ids: CH340/CH341/CH343/CH9102 (1a86), CP210x/CP2105 (10c4), FTDI FT23
 Probing actually talks to the bootloaders, which resets the board:
 
 ```sh
-$ achclwss flash.detect port=sim:nano-old
+$ wetwaresuite flash.detect port=sim:nano-old
 detected ATmega328P - flash with board=nano-old
 found: true
 protocol: stk500v1
@@ -104,7 +104,7 @@ tried: esp-rom, stk500v1@115200, stk500v1@57600
 The order is: the ESP ROM (classic reset), STK500v1 at 115200 then 57600, STK500v2 at 115200, then the STM32 bootloader at 8E1. `only=avr|esp|stm32` limits it, and `probe=false` uses the USB id alone without touching the board. An ST-Link or J-Link port is never probed: detect just says it's an SWD probe and which backend to use.
 
 ```sh
-$ achclwss flash.detect port=sim:stm32 only=stm32
+$ wetwaresuite flash.detect port=sim:stm32 only=stm32
 detected STM32F10x medium density (F103C8/CB "Blue Pill") - flash with board=stm32
 found: true
 protocol: stm32
@@ -128,7 +128,7 @@ Arduino IDE: *Sketch > Export Compiled Binary* writes `Blink.ino.hex` (and `Blin
 ### CLI
 
 ```sh
-$ achclwss flash.inspect file=blink.hex
+$ wetwaresuite flash.inspect file=blink.hex
 ihex, 1024 bytes in 1 region(s), 0x00000000..0x00000400
 format: ihex
 bytes: 1024
@@ -140,7 +140,7 @@ regions: 0x00000000 +1024
 An Espressif image (a `.bin` starting with 0xE9) also shows its header:
 
 ```sh
-$ achclwss flash.inspect file=app.bin
+$ wetwaresuite flash.inspect file=app.bin
 esp-image, 1248 bytes in 1 region(s), 0x00000000..0x000004e0; Espressif esp32 image, flash dio 16MB @40m, 1 segments, checksum ok
 format: esp-image
 bytes: 1248
@@ -171,7 +171,7 @@ flash.inspect file=build/bootloader/bootloader.bin
 ```
 
 ```sh
-achclwss batch check.txt
+wetwaresuite batch check.txt
 ```
 
 ### Ask Claude
@@ -185,7 +185,7 @@ Claude calls `flash_inspect` with the file and reads `machine: ARM`, the regions
 ### CLI
 
 ```sh
-$ achclwss flash.flash port=sim:uno file=blink.hex
+$ wetwaresuite flash.flash port=sim:uno file=blink.hex
 flashed 1024 bytes to ATmega328P on sim:uno, verified (read-back)
 board: uno
 protocol: stk500v1
@@ -207,12 +207,12 @@ On real hardware the port is `/dev/ttyACM0` (an original Uno), `/dev/ttyUSB0` (a
 The common failure is a Nano with the old bootloader, which runs at 57600 baud:
 
 ```sh
-$ achclwss flash.flash port=sim:nano-old board=uno file=blink.hex
+$ wetwaresuite flash.flash port=sim:nano-old board=uno file=blink.hex
 flash failed: no answer from an STK500v1 (optiboot) bootloader at 115200 baud. Old-bootloader Nanos and Pro Minis run at 57600: try board=nano-old (or baud=57600). Check the port, and that nothing else (an IDE serial monitor) has it open; flash.detect probes for you.
 ```
 
 ```sh
-$ achclwss flash.flash port=sim:nano-old board=nano-old file=blink.hex
+$ wetwaresuite flash.flash port=sim:nano-old board=nano-old file=blink.hex
 flashed 1024 bytes to ATmega328P on sim:nano-old, verified (read-back)
 ```
 
@@ -221,7 +221,7 @@ A sketch that doesn't fit is refused before anything is written ("the firmware r
 Leonardo and Micro need no extra steps; flash does the 1200 baud touch and waits for the bootloader's port:
 
 ```sh
-$ achclwss flash.flash port=sim:leonardo file=blink.hex
+$ wetwaresuite flash.flash port=sim:leonardo file=blink.hex
 flashed 1024 bytes to ATmega32U4 on sim:leonardo, verified (read-back)
 board: leonardo
 protocol: avr109
@@ -247,7 +247,7 @@ Claude calls `flash_flash` (port, file, and `board=nano-old` if the first try sa
 ### CLI: just the app
 
 ```sh
-$ achclwss flash.flash port=sim:esp32 file=app.bin address=0x10000
+$ wetwaresuite flash.flash port=sim:esp32 file=app.bin address=0x10000
 flashed 1248 bytes to esp32 on sim:esp32, verified (md5)
 board: esp32
 protocol: esp
@@ -273,7 +273,7 @@ reset to run the new firmware
 A fresh chip, or a changed partition table, needs all three parts. Use the addresses your build printed (ESP-IDF prints them after `idf.py build`; Arduino-ESP32 shows them in the verbose upload log):
 
 ```sh
-$ achclwss flash.flash port=sim:esp32 parts="0x1000=boot.bin,0x8000=partitions.bin,0x10000=app.bin" verify=false
+$ wetwaresuite flash.flash port=sim:esp32 parts="0x1000=boot.bin,0x8000=partitions.bin,0x10000=app.bin" verify=false
 flashed 3744 bytes to esp32 on sim:esp32
 board: esp32
 protocol: esp
@@ -310,7 +310,7 @@ flash.monitor port=sim:esp32 seconds=0.3 baud=115200
 ```
 
 ```sh
-$ achclwss batch esp.txt
+$ wetwaresuite batch esp.txt
 ...
 flashed 1248 bytes to esp32 on sim:esp32, verified (md5)
 ...
@@ -336,7 +336,7 @@ Wire a 3.3 V USB-serial adapter to USART1: adapter TX to **PA10**, adapter RX to
 ### CLI
 
 ```sh
-$ achclwss flash.flash port=sim:stm32 file=blinky-stm32.bin
+$ wetwaresuite flash.flash port=sim:stm32 file=blinky-stm32.bin
 flashed 6000 bytes to STM32F10x medium density (F103C8/CB "Blue Pill") on sim:stm32, verified (read-back)
 board: stm32
 protocol: stm32
@@ -365,7 +365,7 @@ Read-out protection makes the bootloader refuse writes (NACK). flash doesn't rem
 On a Nucleo or Discovery board, or with an ST-Link dongle, the ST-Link talks SWD, not the serial bootloader:
 
 ```sh
-$ achclwss flash.command port=swd file=blinky.bin backend=st-flash
+$ wetwaresuite flash.command port=swd file=blinky.bin backend=st-flash
 st-flash --reset write blinky.bin 0x08000000
 program: st-flash
 installed: false
@@ -394,7 +394,7 @@ Claude calls `flash_flash` with `board=stm32`, and reminds you to set BOOT0 back
 ### CLI
 
 ```sh
-$ achclwss flash.send port=sim:uno text="status?" newline=lf read_seconds=0.3
+$ wetwaresuite flash.send port=sim:uno text="status?" newline=lf read_seconds=0.3
 sent 8 bytes, read 24 back
 sent: 8
 reply: [sim uno] got: status?
@@ -421,16 +421,16 @@ Claude calls `flash_send` three times with `baud=9600 newline=lf` and reads the 
 ## Using the external tools
 
 ```sh
-$ achclwss flash.tools
+$ wetwaresuite flash.tools
 no external flashing tools found (the native backend needs none)
 
-$ achclwss flash.command port=/dev/ttyUSB0 board=uno backend=avrdude file=blink.hex
+$ wetwaresuite flash.command port=/dev/ttyUSB0 board=uno backend=avrdude file=blink.hex
 avrdude -p atmega328p -c arduino -P /dev/ttyUSB0 -b 115200 -D -U flash:w:blink.hex:a
 program: avrdude
 installed: false
 note: avrdude isn't installed (not on PATH)
 
-$ achclwss flash.command port=/dev/ttyUSB0 board=esp32 backend=esptool file=app.bin address=0x10000
+$ wetwaresuite flash.command port=/dev/ttyUSB0 board=esp32 backend=esptool file=app.bin address=0x10000
 esptool --chip esp32 --port /dev/ttyUSB0 --baud 115200 write_flash --verify 0x00010000 app.bin
 program: esptool
 installed: false

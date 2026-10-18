@@ -6,28 +6,28 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/core/process.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/office/chart.hpp"
-#include "achclwss/office/deck.hpp"
-#include "achclwss/office/doc.hpp"
-#include "achclwss/office/office.hpp"
-#include "achclwss/office/sheet.hpp"
-#include "achclwss/pdf/reader.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/office/chart.hpp"
+#include "wetwaresuite/office/deck.hpp"
+#include "wetwaresuite/office/doc.hpp"
+#include "wetwaresuite/office/office.hpp"
+#include "wetwaresuite/office/sheet.hpp"
+#include "wetwaresuite/pdf/reader.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "check.hpp"
 #include "xml.hpp"
 
-using namespace achclwss;
-using namespace achclwss::office;
+using namespace wetwaresuite;
+using namespace wetwaresuite::office;
 using nlohmann::json;
 namespace fs = std::filesystem;
 
 namespace {
 
 fs::path tmp(const std::string& name) {
-    fs::path dir = fs::temp_directory_path() / "achclwss_office_test";
+    fs::path dir = fs::temp_directory_path() / "wetwaresuite_office_test";
     fs::create_directories(dir);
     return dir / name;
 }
@@ -1030,7 +1030,7 @@ void testDeckAndPdfCommands() {
 void testMcpAndBatch() {
     Session s;
     registerCommands(s);
-    mcp::Server server(s, {"achclwss", "test", "office"});
+    mcp::Server server(s, {"wetwaresuite", "test", "office"});
     json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
     int office = 0;
     bool sawSet = false, sawSave = false, sawInfo = false;

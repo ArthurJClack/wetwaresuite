@@ -5,22 +5,22 @@
 #include <sstream>
 #include <string>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/mesh/document.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/slicer/slicer.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/mesh/document.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/slicer/slicer.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::slicer;
+using namespace wetwaresuite;
+using namespace wetwaresuite::slicer;
 
 namespace {
 
 bool near(double a, double b, double tol) { return std::abs(a - b) <= tol; }
 
-std::filesystem::path tmp(const std::string& name) { return std::filesystem::temp_directory_path() / ("achclwss_slicer_" + name); }
+std::filesystem::path tmp(const std::string& name) { return std::filesystem::temp_directory_path() / ("wetwaresuite_slicer_" + name); }
 
 Loop square(double x0, double y0, double size, bool ccw = true) {
     Loop l = {{x0, y0}, {x0 + size, y0}, {x0 + size, y0 + size}, {x0, y0 + size}};

@@ -12,11 +12,11 @@
 #include <mutex>
 #include <thread>
 
-#include "achclwss/flash/protocol.hpp"
-#include "achclwss/flash/serial.hpp"
+#include "wetwaresuite/flash/protocol.hpp"
+#include "wetwaresuite/flash/serial.hpp"
 #include "internal.hpp"
 
-namespace achclwss::flash {
+namespace wetwaresuite::flash {
 
 namespace {
 
@@ -924,4 +924,4 @@ std::unique_ptr<SerialPort> openSimPort(const std::string& name, const SerialCon
     return std::make_unique<SimPort>(name, simDevice(name), config);
 }
 
-}  // namespace achclwss::flash
+}  // namespace wetwaresuite::flash

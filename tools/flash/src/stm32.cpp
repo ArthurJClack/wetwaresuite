@@ -2,9 +2,9 @@
 #include <algorithm>
 #include <cstdio>
 
-#include "achclwss/flash/protocol.hpp"
+#include "wetwaresuite/flash/protocol.hpp"
 
-namespace achclwss::flash {
+namespace wetwaresuite::flash {
 
 namespace stm32 {
 Bytes command(std::uint8_t cmd) { return {cmd, static_cast<std::uint8_t>(cmd ^ 0xFF)}; }
@@ -187,4 +187,4 @@ void Stm32Loader::go(std::uint32_t address) {
     expectAck("GO address");
 }
 
-}  // namespace achclwss::flash
+}  // namespace wetwaresuite::flash

@@ -11,10 +11,10 @@
 #include <queue>
 #include <set>
 
-#include "achclwss/circuit/circuit.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
 #include "geom.hpp"
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 namespace {
 
@@ -418,4 +418,4 @@ RouteReport autoroute(Circuit& c, const Netlist& nl, const RouteOptions& options
     return rep;
 }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

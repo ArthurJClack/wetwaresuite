@@ -5,14 +5,14 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/core/process.hpp"
-#include "achclwss/cut/cut.hpp"
-#include "achclwss/mcp/server.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/cut/cut.hpp"
+#include "wetwaresuite/mcp/server.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::cut;
+using namespace wetwaresuite;
+using namespace wetwaresuite::cut;
 namespace fs = std::filesystem;
 
 namespace {
@@ -366,7 +366,7 @@ void testCommands() {
     Result info = run(s, "cut.info doc=cut1");
     CHECK(info.ok && contains(info.message, "c3 title") && num(info, "clips") == 3);
 
-    const fs::path dir = fs::temp_directory_path() / "achclwss_cut_test";
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_cut_test";
     fs::remove_all(dir);
     fs::create_directories(dir);
     const std::string path = (dir / "edit.achcut").string();
@@ -387,7 +387,7 @@ void testWithFfmpeg() {
         std::printf("ffmpeg not found: skipping render tests\n");
         return;
     }
-    const fs::path dir = fs::temp_directory_path() / "achclwss_cut_media";
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_cut_media";
     fs::remove_all(dir);
     fs::create_directories(dir);
     const std::string ff = findProgram("ffmpeg")->string();

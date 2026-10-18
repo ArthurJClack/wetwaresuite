@@ -6,9 +6,9 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/type/type.hpp"
+#include "wetwaresuite/type/type.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 constexpr double kPi = 3.14159265358979323846;
 
@@ -100,4 +100,4 @@ std::string xmlEscape(const std::string& s);
 std::string readFile(const std::string& path);  // throws std::runtime_error
 void writeFile(const std::string& path, const std::string& bytes);  // creates parent folders; throws
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

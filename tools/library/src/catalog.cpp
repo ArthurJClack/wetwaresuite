@@ -10,9 +10,9 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/library/library.hpp"
+#include "wetwaresuite/library/library.hpp"
 
-namespace achclwss::library {
+namespace wetwaresuite::library {
 
 using nlohmann::json;
 
@@ -146,7 +146,7 @@ Catalog Catalog::load(const fs::path& file) {
             throw std::runtime_error(file.string() + " line " + std::to_string(lineNo) + " is not valid JSON");
         }
         try {
-            if (j.contains("achclwss_library")) {
+            if (j.contains("wetwaresuite_library")) {
                 for (const auto& r : j.value("roots", json::array())) c.roots.push_back(loadPath(r.get<std::string>(), base));
                 for (const auto& cj : j.value("collections", json::array())) {
                     Collection col;
@@ -168,7 +168,7 @@ Catalog Catalog::load(const fs::path& file) {
 
 void Catalog::save() const {
     const std::string base = normPath(baseDir(fs::absolute(file)));
-    json header = {{"achclwss_library", 1}, {"roots", json::array()}, {"collections", json::array()}};
+    json header = {{"wetwaresuite_library", 1}, {"roots", json::array()}, {"collections", json::array()}};
     for (const auto& r : roots) header["roots"].push_back(storePath(r, base));
     for (const auto& [name, col] : collections) {
         json cj = {{"name", col.name}};
@@ -211,4 +211,4 @@ void Catalog::rebuildIndex() {
     for (std::size_t i = 0; i < items.size(); ++i) byPath_[items[i].path] = i;
 }
 
-}  // namespace achclwss::library
+}  // namespace wetwaresuite::library

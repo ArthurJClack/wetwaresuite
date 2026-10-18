@@ -5,7 +5,7 @@
 #include <cstdio>
 #include <map>
 
-namespace achclwss::audio::detail {
+namespace wetwaresuite::audio::detail {
 
 using raster::Color;
 using raster::Image;
@@ -95,4 +95,4 @@ void timeGrid(Image& img, double startSeconds, double seconds, Color grid, bool 
     }
 }
 
-}  // namespace achclwss::audio::detail
+}  // namespace wetwaresuite::audio::detail

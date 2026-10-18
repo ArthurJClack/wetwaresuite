@@ -3,7 +3,7 @@
 `blueprint` is the suite's 2D drafting tool, in the spirit of LibreCAD or
 AutoCAD LT: real-world units, layers, dimensions that measure themselves,
 walls/doors/windows/rooms for floor plans, a title block, DXF in and out,
-and PDF/SVG/PNG sheets that print to scale. Like every ACHCLWSS tool it is
+and PDF/SVG/PNG sheets that print to scale. Like every wetwaresuite tool it is
 headless: each action is a command you can type once, put in a batch
 script, or let Claude call over MCP.
 
@@ -89,14 +89,14 @@ Build the suite once (see the README for compilers):
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-alias achclwss="$PWD/build/apps/achclwss/achclwss"
+alias wetwaresuite="$PWD/build/apps/wetwaresuite/wetwaresuite"
 ```
 
 List the blueprint commands and ask for help on one:
 
 ```sh
-achclwss list blueprint
-achclwss help blueprint.wall
+wetwaresuite list blueprint
+wetwaresuite help blueprint.wall
 ```
 
 ```
@@ -112,16 +112,16 @@ usage: blueprint.wall doc=<string> points=<array> [thickness=<number>] [closed=<
 
 There are three ways to run commands:
 
-- **one-shot**: `achclwss <command> key=value ...` (or `achclwss run
+- **one-shot**: `wetwaresuite <command> key=value ...` (or `wetwaresuite run
   <command> ...`) runs one command and exits. Nothing stays open afterwards,
   so one-shots are for jobs that fit in one command: the commands that take
   `file=` (`blueprint.info`, `blueprint.list`, `blueprint.measure`) read a
   DXF directly, and `blueprint.convert` turns a DXF into a PDF, SVG or PNG.
-- **batch**: `achclwss batch plan.txt` runs a text file of commands, one
+- **batch**: `wetwaresuite batch plan.txt` runs a text file of commands, one
   per line (`#` starts a comment). End a line with `-> name` to remember
   its result, and write `$name` later to use it: `blueprint.new ... -> plan`
   then `doc=$plan`; `blueprint.wall ... -> outer` then `wall=$outer`.
-- **MCP**: `achclwss mcp` serves every command as a tool for Claude (see
+- **MCP**: `wetwaresuite mcp` serves every command as a tool for Claude (see
   the end of each task).
 
 Each command prints a one-line summary, its value, then its fields as
@@ -190,7 +190,7 @@ blueprint.export doc=$plan path=flat.png dpi=100
 Run it:
 
 ```sh
-achclwss batch flat.txt
+wetwaresuite batch flat.txt
 ```
 
 ```
@@ -267,9 +267,9 @@ finished plan are one-shots: print it again at another size, or make an SVG
 or a high-resolution PNG.
 
 ```sh
-achclwss blueprint.convert input=flat.dxf output=flat-1to100.pdf paper=A4 scale=1:100 title="Flat 2 (reduced)"
-achclwss blueprint.convert input=flat.dxf output=flat.svg
-achclwss blueprint.convert input=flat.dxf output=flat-300.png dpi=300
+wetwaresuite blueprint.convert input=flat.dxf output=flat-1to100.pdf paper=A4 scale=1:100 title="Flat 2 (reduced)"
+wetwaresuite blueprint.convert input=flat.dxf output=flat.svg
+wetwaresuite blueprint.convert input=flat.dxf output=flat-300.png dpi=300
 ```
 
 ```
@@ -334,7 +334,7 @@ The read-only commands take `file=` instead of `doc=`, so you don't need to
 open anything:
 
 ```sh
-achclwss blueprint.info file=flat.dxf
+wetwaresuite blueprint.info file=flat.dxf
 ```
 
 ```
@@ -355,7 +355,7 @@ title block on: "Flat 2, ground floor" by A. Clack, 2026-10-16, sheet A-101
 ```
 
 ```sh
-achclwss blueprint.list file=flat.dxf entities=type:room
+wetwaresuite blueprint.list file=flat.dxf entities=type:room
 ```
 
 ```
@@ -371,7 +371,7 @@ Measure an entity (area and perimeter of a closed shape or room, length of
 a line, polyline or wall, radius/area of a circle, value of a dimension):
 
 ```sh
-achclwss blueprint.measure file=flat.dxf entity=e10
+wetwaresuite blueprint.measure file=flat.dxf entity=e10
 ```
 
 ```
@@ -388,8 +388,8 @@ angle at the middle one with `kind=angle`, three or more give an area with
 more):
 
 ```sh
-achclwss blueprint.measure file=flat.dxf points=125,125,4450,5875
-achclwss blueprint.measure file=flat.dxf points=4450,125,125,125,4450,5875 kind=angle
+wetwaresuite blueprint.measure file=flat.dxf points=125,125,4450,5875
+wetwaresuite blueprint.measure file=flat.dxf points=4450,125,125,125,4450,5875 kind=angle
 ```
 
 ```
@@ -410,7 +410,7 @@ millimetres here); the exact value follows in brackets.
 And print an A4 overview at whatever scale fits:
 
 ```sh
-achclwss blueprint.convert input=flat.dxf output=flat-a4.pdf paper=A4 scale=fit
+wetwaresuite blueprint.convert input=flat.dxf output=flat-a4.pdf paper=A4 scale=fit
 ```
 
 ```
@@ -453,7 +453,7 @@ blueprint.export doc=$plan path=flat-check.pdf
 ```
 
 ```sh
-achclwss batch measure.txt
+wetwaresuite batch measure.txt
 ```
 
 ```
@@ -563,7 +563,7 @@ blueprint.export doc=$part path=plate.svg
 ```
 
 ```sh
-achclwss batch plate.txt
+wetwaresuite batch plate.txt
 ```
 
 ```
@@ -620,9 +620,9 @@ Notes:
 ### one-shot
 
 ```sh
-achclwss blueprint.measure file=plate.dxf entity=e1
-achclwss blueprint.list file=plate.dxf entities=layer:DIMS
-achclwss blueprint.convert input=plate.dxf output=plate-copy.pdf
+wetwaresuite blueprint.measure file=plate.dxf entity=e1
+wetwaresuite blueprint.list file=plate.dxf entities=layer:DIMS
+wetwaresuite blueprint.convert input=plate.dxf output=plate-copy.pdf
 ```
 
 ```
@@ -695,8 +695,8 @@ distance 14'-5 1/16" (14.4222), dx 12, dy 8, angle 33.69°
 Register the suite with Claude Code (all tools, or only blueprint's):
 
 ```sh
-claude mcp add achclwss -- "$PWD/build/apps/achclwss/achclwss" mcp
-claude mcp add achclwss-blueprint -- "$PWD/build/apps/achclwss/achclwss" mcp --tools blueprint
+claude mcp add wetwaresuite -- "$PWD/build/apps/wetwaresuite/wetwaresuite" mcp
+claude mcp add wetwaresuite-blueprint -- "$PWD/build/apps/wetwaresuite/wetwaresuite" mcp --tools blueprint
 ```
 
 For Claude Desktop put the same command in `claude_desktop_config.json`, or
@@ -772,7 +772,7 @@ the message.
 
 ## 9. command and parameter reference
 
-Every command and parameter, as `achclwss help <command>` prints them.
+Every command and parameter, as `wetwaresuite help <command>` prints them.
 Required parameters are in **bold**. Most drawing commands also take
 `layer=` and `preview=true`.
 

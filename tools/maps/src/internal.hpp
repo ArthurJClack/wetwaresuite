@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/maps/maps.hpp"
+#include "wetwaresuite/maps/maps.hpp"
 
-namespace achclwss::maps::detail {
+namespace wetwaresuite::maps::detail {
 
 std::string readFile(const std::filesystem::path& path);                         // throws std::runtime_error
 void writeFile(const std::filesystem::path& path, const std::string& bytes);     // creates parent folders; throws
@@ -47,4 +47,4 @@ std::unique_ptr<XmlNode> parseXml(const std::string& text);  // throws std::runt
 // Polygon rings with no orientation info: outer rings and holes by nesting depth.
 std::vector<Polygon> assembleRings(std::vector<Ring> rings);
 
-}  // namespace achclwss::maps::detail
+}  // namespace wetwaresuite::maps::detail

@@ -9,9 +9,9 @@
 #include <set>
 #include <sstream>
 
-#include "achclwss/circuit/circuit.hpp"
+#include "wetwaresuite/circuit/circuit.hpp"
 
-namespace achclwss::circuit {
+namespace wetwaresuite::circuit {
 
 namespace {
 
@@ -609,7 +609,7 @@ std::string netlistText(const Circuit&, const Netlist& nl) {
 
 std::string kicadNetlist(const Circuit& c, const Netlist& nl) {
     std::ostringstream o;
-    o << "(export (version \"E\")\n  (design\n    (source " << sexpStr(c.title.empty() ? "circuit" : c.title) << ")\n    (tool \"achclwss circuit\"))\n";
+    o << "(export (version \"E\")\n  (design\n    (source " << sexpStr(c.title.empty() ? "circuit" : c.title) << ")\n    (tool \"wetwaresuite circuit\"))\n";
     o << "  (components\n";
     std::vector<const Part*> parts;
     for (const auto& p : c.parts) {
@@ -622,7 +622,7 @@ std::string kicadNetlist(const Circuit& c, const Netlist& nl) {
         auto sym = symbolOf(*p);
         o << "    (comp (ref " << sexpStr(p->ref) << ")\n      (value " << sexpStr(p->value) << ")\n";
         if (!p->footprint.empty()) o << "      (footprint " << sexpStr(p->footprint) << ")\n";
-        o << "      (libsource (lib \"achclwss\") (part " << sexpStr(canonicalSymbol(p->symbol)) << ") (description "
+        o << "      (libsource (lib \"wetwaresuite\") (part " << sexpStr(canonicalSymbol(p->symbol)) << ") (description "
           << sexpStr(sym ? sym->title : "") << ")))\n";
     }
     o << "  )\n  (nets\n";
@@ -851,4 +851,4 @@ void sheetBounds(const Circuit& c, double& x0, double& y0, double& x1, double& y
     if (x0 > x1) x0 = y0 = 0, x1 = y1 = 10;
 }
 
-}  // namespace achclwss::circuit
+}  // namespace wetwaresuite::circuit

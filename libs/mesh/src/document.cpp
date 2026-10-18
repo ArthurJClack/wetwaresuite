@@ -1,10 +1,10 @@
-#include "achclwss/mesh/document.hpp"
+#include "wetwaresuite/mesh/document.hpp"
 
 #include <cstdio>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 namespace {
 
@@ -111,4 +111,4 @@ Result meshResult(const std::string& message, const MeshDoc& doc, const Params& 
     return maybePreview(r, doc, p);
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

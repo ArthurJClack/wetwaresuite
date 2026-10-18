@@ -1,15 +1,15 @@
 // Bar, horizontal bar, line and pie charts drawn with the raster painter and
 // the preview font, plus the sheet grid laid out as pages.
-#include "achclwss/office/chart.hpp"
+#include "wetwaresuite/office/chart.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <stdexcept>
 
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 using raster::Color;
 
@@ -536,4 +536,4 @@ std::vector<pdf::Page> layoutSheet(const Workbook& wb, int sheet) {
     return pages;
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

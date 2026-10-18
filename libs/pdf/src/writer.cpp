@@ -3,8 +3,8 @@
 #include <map>
 #include <stdexcept>
 
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -19,7 +19,7 @@
 // Defined (and exported) by stb_image_write inside libs/raster.
 extern "C" unsigned char* stbi_zlib_compress(unsigned char* data, int data_len, int* out_len, int quality);
 
-namespace achclwss::pdf {
+namespace wetwaresuite::pdf {
 
 using detail::num;
 
@@ -244,7 +244,7 @@ std::string writePdf(const std::vector<Page>& pages, const DocInfo& info) {
     for (int id : pageIds) kids += (kids.empty() ? "" : " ") + ref(id);
     b.set(pagesId, "<< /Type /Pages /Kids [" + kids + "] /Count " + std::to_string(pageIds.size()) + " >>");
     b.set(catalog, "<< /Type /Catalog /Pages " + ref(pagesId) + " >>");
-    std::string infoDict = "<< /Producer (ACHCLWSS) /Creator (ACHCLWSS office)";
+    std::string infoDict = "<< /Producer (wetwaresuite) /Creator (wetwaresuite office)";
     if (!info.title.empty()) infoDict += " /Title " + pdfString(info.title);
     if (!info.author.empty()) infoDict += " /Author " + pdfString(info.author);
     if (!info.subject.empty()) infoDict += " /Subject " + pdfString(info.subject);
@@ -268,4 +268,4 @@ std::string writePdf(const std::vector<Page>& pages, const DocInfo& info) {
     return out;
 }
 
-}  // namespace achclwss::pdf
+}  // namespace wetwaresuite::pdf

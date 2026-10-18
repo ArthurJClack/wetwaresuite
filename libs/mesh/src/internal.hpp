@@ -8,9 +8,9 @@
 #include <unordered_map>
 #include <vector>
 
-#include "achclwss/mesh/math.hpp"
+#include "wetwaresuite/mesh/math.hpp"
 
-namespace achclwss::mesh::detail {
+namespace wetwaresuite::mesh::detail {
 
 inline std::uint64_t bits(double d) {
     d += 0.0;  // -0.0 -> +0.0
@@ -128,4 +128,4 @@ std::vector<std::uint32_t> triangulate(const std::vector<Vec2>& outer, const std
 
 double signedArea(const std::vector<Vec2>& poly);
 
-}  // namespace achclwss::mesh::detail
+}  // namespace wetwaresuite::mesh::detail

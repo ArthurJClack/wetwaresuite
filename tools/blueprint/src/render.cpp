@@ -11,12 +11,12 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/blueprint/blueprint.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/blueprint/blueprint.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 #include "internal.hpp"
 
-namespace achclwss::blueprint {
+namespace wetwaresuite::blueprint {
 
 using detail::num;
 
@@ -739,7 +739,7 @@ std::string toPdf(const Drawing& doc) {
         "<< /Length " + std::to_string(content.size()) + " >>\nstream\n" + content + "endstream",
         "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
         "<< /Title " + info(doc.title.title.empty() ? "blueprint" : doc.title.title) + " /Author " + info(doc.title.author) +
-            " /Subject " + info("scale " + doc.scaleText() + " on " + doc.paper) + " /Creator (ACHCLWSS blueprint) /Producer (ACHCLWSS) >>",
+            " /Subject " + info("scale " + doc.scaleText() + " on " + doc.paper) + " /Creator (wetwaresuite blueprint) /Producer (wetwaresuite) >>",
     };
     std::string out = "%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
     std::vector<std::size_t> offsets;
@@ -781,4 +781,4 @@ void exportFile(const Drawing& doc, const std::filesystem::path& path, double dp
     if (!out) throw std::runtime_error("failed writing " + path.string());
 }
 
-}  // namespace achclwss::blueprint
+}  // namespace wetwaresuite::blueprint

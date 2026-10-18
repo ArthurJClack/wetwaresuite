@@ -8,11 +8,11 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/beats/beats.hpp"
-#include "achclwss/beats/song.hpp"
-#include "achclwss/core/command.hpp"
+#include "wetwaresuite/beats/beats.hpp"
+#include "wetwaresuite/beats/song.hpp"
+#include "wetwaresuite/core/command.hpp"
 
-namespace achclwss::beats {
+namespace wetwaresuite::beats {
 
 namespace tool {
 
@@ -62,4 +62,4 @@ void registerPatternCommands(Session& session);
 void registerArrangeCommands(Session& session);
 
 }  // namespace tool
-}  // namespace achclwss::beats
+}  // namespace wetwaresuite::beats

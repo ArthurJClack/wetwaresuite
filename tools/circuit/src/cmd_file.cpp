@@ -1,7 +1,7 @@
 // circuit.* file, library and output commands.
 #include "cmd_common.hpp"
 
-namespace achclwss::circuit::cmd {
+namespace wetwaresuite::circuit::cmd {
 
 namespace {
 
@@ -290,4 +290,4 @@ void registerFileCommands(Session& session) {
                 View::Schematic, false));
 }
 
-}  // namespace achclwss::circuit::cmd
+}  // namespace wetwaresuite::circuit::cmd

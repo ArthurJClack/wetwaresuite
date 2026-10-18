@@ -10,7 +10,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::maps {
+namespace wetwaresuite::maps {
 
 namespace fs = std::filesystem;
 using namespace detail;
@@ -521,4 +521,4 @@ std::vector<std::string> writeShapefile(const Layer& layer, const fs::path& shp0
     return written;
 }
 
-}  // namespace achclwss::maps
+}  // namespace wetwaresuite::maps

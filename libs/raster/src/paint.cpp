@@ -1,11 +1,11 @@
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <utility>
 
-namespace achclwss::raster {
+namespace wetwaresuite::raster {
 
 namespace {
 
@@ -274,4 +274,4 @@ void drawLine(Image& target, double x1, double y1, double x2, double y2, Color c
     polyline(target, {{x1, y1}, {x2, y2}}, false, color, width);
 }
 
-}  // namespace achclwss::raster
+}  // namespace wetwaresuite::raster

@@ -4,10 +4,10 @@
 #include <optional>
 #include <string>
 
-#include "achclwss/core/command.hpp"
-#include "achclwss/raster/image.hpp"
+#include "wetwaresuite/core/command.hpp"
+#include "wetwaresuite/raster/image.hpp"
 
-namespace achclwss::forge::detail {
+namespace wetwaresuite::forge::detail {
 
 // An open image id (img1) or an image file, flattened.
 std::optional<raster::Image> resolveImage(Session& s, const std::string& ref, std::string& error);
@@ -25,4 +25,4 @@ ParamSpec inputParam();
 ParamSpec outputParam(const std::string& description = "image file to write the result to");
 ParamSpec imagePreviewParam(bool fallback = false);
 
-}  // namespace achclwss::forge::detail
+}  // namespace wetwaresuite::forge::detail

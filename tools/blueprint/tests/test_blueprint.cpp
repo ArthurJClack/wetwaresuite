@@ -6,14 +6,14 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/blueprint/blueprint.hpp"
-#include "achclwss/core/cli.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/blueprint/blueprint.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::blueprint;
+using namespace wetwaresuite;
+using namespace wetwaresuite::blueprint;
 using nlohmann::json;
 namespace fs = std::filesystem;
 
@@ -21,7 +21,7 @@ namespace {
 
 bool near(double a, double b, double tol = 1e-6) { return std::abs(a - b) <= tol; }
 
-fs::path tmp(const std::string& name) { return fs::temp_directory_path() / ("achclwss_blueprint_" + name); }
+fs::path tmp(const std::string& name) { return fs::temp_directory_path() / ("wetwaresuite_blueprint_" + name); }
 
 std::string readFile(const fs::path& p) {
     std::ifstream in(p, std::ios::binary);
@@ -611,7 +611,7 @@ void testBatchAndMcp() {
     auto doc = drawing(s, "bp1");
     CHECK(doc && near(doc->entities[1].width, 0.9));  // default door width in metres
 
-    mcp::Server server(s, {"achclwss", "test", "draw"});
+    mcp::Server server(s, {"wetwaresuite", "test", "draw"});
     json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
     bool sawWall = false, sawDim = false, sawExport = false;
     for (const auto& t : list) {

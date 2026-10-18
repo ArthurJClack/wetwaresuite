@@ -1,6 +1,6 @@
 // Slide decks: layout presets placed once into frames, which are then drawn
 // as PDF/PNG pages or written as PowerPoint shapes, so both outputs agree.
-#include "achclwss/office/deck.hpp"
+#include "wetwaresuite/office/deck.hpp"
 
 #include <algorithm>
 #include <array>
@@ -11,13 +11,13 @@
 #include <optional>
 #include <stdexcept>
 
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/ora.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/ora.hpp"
 #include "text.hpp"
 #include "textlayout.hpp"
 #include "xml.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 using pdf::Color;
 
@@ -886,7 +886,7 @@ std::string writePptx(const Deck& deck) {
 
     xml::Writer app;
     app.open("Properties").attr("xmlns", "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties");
-    app.element("Application", "ACHCLWSS");
+    app.element("Application", "wetwaresuite");
     app.element("Slides", std::to_string(deck.slides.size()));
 
     xml::Writer props;
@@ -910,7 +910,7 @@ std::string writePptx(const Deck& deck) {
         {"ppt/presProps.xml", props.str()},
         {"ppt/viewProps.xml", view.str()},
         {"ppt/tableStyles.xml", tables.str()},
-        {"ppt/theme/theme1.xml", themeXml(deck.theme, "ACHCLWSS " + deck.theme.name)},
+        {"ppt/theme/theme1.xml", themeXml(deck.theme, "wetwaresuite " + deck.theme.name)},
         {"ppt/slideMasters/slideMaster1.xml", masterXml(deck)},
         {"ppt/slideMasters/_rels/slideMaster1.xml.rels",
          relsXml({{{"rId1", kRel + "slideLayout", "../slideLayouts/slideLayout1.xml"}, {"rId2", kRel + "theme", "../theme/theme1.xml"}}})},
@@ -919,7 +919,7 @@ std::string writePptx(const Deck& deck) {
     };
     if (anyNotes) {
         Theme plain;
-        entries.push_back({"ppt/theme/theme2.xml", themeXml(plain, "ACHCLWSS notes")});
+        entries.push_back({"ppt/theme/theme2.xml", themeXml(plain, "wetwaresuite notes")});
         entries.push_back({"ppt/notesMasters/notesMaster1.xml", notesMasterXml(deck)});
         entries.push_back({"ppt/notesMasters/_rels/notesMaster1.xml.rels", relsXml({{{"rId1", kRel + "theme", "../theme/theme2.xml"}}})});
     }
@@ -1254,4 +1254,4 @@ Deck readPptx(const std::string& bytes) {
     return deck;
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

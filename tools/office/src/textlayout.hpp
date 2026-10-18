@@ -4,9 +4,9 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/office/doc.hpp"
+#include "wetwaresuite/office/doc.hpp"
 
-namespace achclwss::office::textlayout {
+namespace wetwaresuite::office::textlayout {
 
 struct Piece {
     std::string text;  // a word, a run of spaces, or "\n"
@@ -39,4 +39,4 @@ std::vector<Line> wrap(const std::vector<Piece>& in, double maxWidth, double bas
 // Adds the text ops of one line with its top at y (baseline at y + size * 0.92).
 void drawLine(pdf::Page& page, const Line& l, double x, double y);
 
-}  // namespace achclwss::office::textlayout
+}  // namespace wetwaresuite::office::textlayout

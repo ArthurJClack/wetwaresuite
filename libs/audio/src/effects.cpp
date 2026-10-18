@@ -3,10 +3,10 @@
 #include <cmath>
 #include <stdexcept>
 
-#include "achclwss/audio/dsp.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
 #include "internal.hpp"
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 namespace {
 
@@ -214,4 +214,4 @@ Buffer changeSpeed(const Buffer& b, double factor) {
     return detail::resampleBy(b, 1.0 / factor);
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio

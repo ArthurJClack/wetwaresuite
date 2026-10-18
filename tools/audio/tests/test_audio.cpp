@@ -3,14 +3,14 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/audio/commands.hpp"
-#include "achclwss/audio/document.hpp"
-#include "achclwss/audio/dsp.hpp"
-#include "achclwss/audio/io.hpp"
-#include "achclwss/mcp/server.hpp"
+#include "wetwaresuite/audio/commands.hpp"
+#include "wetwaresuite/audio/document.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
+#include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/mcp/server.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 using json = nlohmann::ordered_json;
 namespace fs = std::filesystem;
 
@@ -39,7 +39,7 @@ json call(mcp::Server& server, int id, const std::string& tool, const json& args
 }  // namespace
 
 int main() {
-    const fs::path dir = fs::temp_directory_path() / "achclwss_test_audio_tool";
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_test_audio_tool";
     fs::remove_all(dir);
     fs::create_directories(dir);
 
@@ -254,7 +254,7 @@ int main() {
     {
         Session ms;
         audio::registerCommands(ms);
-        mcp::Server server(ms, {"achclwss", "test", "audio"});
+        mcp::Server server(ms, {"wetwaresuite", "test", "audio"});
         json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
         bool sawDenoise = false;
         for (const auto& t : list) {

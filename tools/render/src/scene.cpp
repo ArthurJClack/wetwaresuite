@@ -7,12 +7,12 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/raster/image.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/raster/image.hpp"
 #include "internal.hpp"
 
-namespace achclwss::render {
+namespace wetwaresuite::render {
 
 namespace fs = std::filesystem;
 using json = nlohmann::ordered_json;
@@ -382,7 +382,7 @@ std::string compactArrays(const std::string& in) {
 
 std::string toJson(const Scene& s, const fs::path& base) {
     json j;
-    j["format"] = "achclwss-scene";
+    j["format"] = "wetwaresuite-scene";
     j["version"] = 1;
     const Camera& c = s.camera;
     j["camera"] = {{"position", vec(c.position)}, {"target", vec(c.target)}, {"up", vec(c.up)},   {"fov", c.fov},
@@ -566,4 +566,4 @@ Scene loadScene(const fs::path& path) {
     return fromJson(ss.str(), dir);
 }
 
-}  // namespace achclwss::render
+}  // namespace wetwaresuite::render

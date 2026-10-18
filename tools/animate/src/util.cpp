@@ -7,11 +7,11 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/pdf/fonts.hpp"
-#include "achclwss/pdf/page.hpp"
+#include "wetwaresuite/pdf/fonts.hpp"
+#include "wetwaresuite/pdf/page.hpp"
 #include "internal.hpp"
 
-namespace achclwss::animate::detail {
+namespace wetwaresuite::animate::detail {
 
 namespace fs = std::filesystem;
 
@@ -137,7 +137,7 @@ TempDir::TempDir() {
     std::random_device rd;
     std::mt19937_64 gen((static_cast<std::uint64_t>(rd()) << 32) ^ rd());
     for (int attempt = 0; attempt < 100; ++attempt) {
-        fs::path p = fs::temp_directory_path() / ("achclwss-animate-" + std::to_string(gen() % 1000000000000ULL));
+        fs::path p = fs::temp_directory_path() / ("wetwaresuite-animate-" + std::to_string(gen() % 1000000000000ULL));
         std::error_code ec;
         if (fs::create_directory(p, ec)) {
             path_ = p;
@@ -152,4 +152,4 @@ TempDir::~TempDir() {
     if (!path_.empty()) fs::remove_all(path_, ec);
 }
 
-}  // namespace achclwss::animate::detail
+}  // namespace wetwaresuite::animate::detail

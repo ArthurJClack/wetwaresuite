@@ -5,10 +5,10 @@
 #include <cstdint>
 #include <map>
 
-#include "achclwss/audio/dsp.hpp"
-#include "achclwss/beats/song.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
+#include "wetwaresuite/beats/song.hpp"
 
-namespace achclwss::beats {
+namespace wetwaresuite::beats {
 
 namespace {
 
@@ -411,4 +411,4 @@ audio::Buffer render(const Song& s, const RenderOptions& o) {
     return mix;
 }
 
-}  // namespace achclwss::beats
+}  // namespace wetwaresuite::beats

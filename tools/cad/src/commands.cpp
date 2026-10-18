@@ -7,13 +7,13 @@
 #include <cstdio>
 #include <fstream>
 
-#include "achclwss/cad/cad.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/mesh/ops.hpp"
-#include "achclwss/mesh/render.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/cad/cad.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/mesh/ops.hpp"
+#include "wetwaresuite/mesh/render.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
-namespace achclwss::cad {
+namespace wetwaresuite::cad {
 
 namespace {
 
@@ -824,4 +824,4 @@ void registerCommands(Session& session) {
             }, false));
 }
 
-}  // namespace achclwss::cad
+}  // namespace wetwaresuite::cad

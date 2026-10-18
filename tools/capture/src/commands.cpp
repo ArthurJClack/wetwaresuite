@@ -6,9 +6,9 @@
 #include <random>
 #include <thread>
 
-#include "achclwss/capture/capture.hpp"
-#include "achclwss/core/process.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/capture/capture.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
@@ -16,7 +16,7 @@
 #include <windows.h>
 #endif
 
-namespace achclwss::capture {
+namespace wetwaresuite::capture {
 
 namespace fs = std::filesystem;
 
@@ -88,7 +88,7 @@ std::string execute(Plan plan) {
 
 fs::path tempFile(const std::string& ext) {
     std::random_device rd;
-    return fs::temp_directory_path() / ("achclwss-capture-" + std::to_string(rd()) + std::to_string(rd()) + "." + ext);
+    return fs::temp_directory_path() / ("wetwaresuite-capture-" + std::to_string(rd()) + std::to_string(rd()) + "." + ext);
 }
 
 std::string checkOutput(const std::string& output, const Params& p) {
@@ -441,4 +441,4 @@ void registerCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::capture
+}  // namespace wetwaresuite::capture

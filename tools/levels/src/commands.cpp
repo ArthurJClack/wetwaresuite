@@ -7,10 +7,10 @@
 #include <set>
 #include <sstream>
 
-#include "achclwss/levels/levels.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/levels/levels.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
-namespace achclwss::levels {
+namespace wetwaresuite::levels {
 
 namespace {
 
@@ -1626,4 +1626,4 @@ void registerCommands(Session& session) {
     registerQueryCommands(session);
 }
 
-}  // namespace achclwss::levels
+}  // namespace wetwaresuite::levels

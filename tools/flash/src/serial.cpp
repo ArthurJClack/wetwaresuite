@@ -1,5 +1,5 @@
 // Native serial ports (termios / Win32) and port listing.
-#include "achclwss/flash/serial.hpp"
+#include "wetwaresuite/flash/serial.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -31,7 +31,7 @@
 #endif
 #endif
 
-namespace achclwss::flash {
+namespace wetwaresuite::flash {
 
 namespace fs = std::filesystem;
 
@@ -687,4 +687,4 @@ PortInfo describePort(const std::string& name) {
     return p;
 }
 
-}  // namespace achclwss::flash
+}  // namespace wetwaresuite::flash

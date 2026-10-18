@@ -1,15 +1,15 @@
-#include "achclwss/photo/photo.hpp"
+#include "wetwaresuite/photo/photo.hpp"
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <filesystem>
 
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
-#include "achclwss/raster/ops.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/raster/ops.hpp"
 
-namespace achclwss::photo {
+namespace wetwaresuite::photo {
 
 namespace fs = std::filesystem;
 using namespace raster;
@@ -462,4 +462,4 @@ void registerCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::photo
+}  // namespace wetwaresuite::photo

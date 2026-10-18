@@ -5,11 +5,11 @@
 #include <cmath>
 #include <cstdio>
 
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 
-namespace achclwss::vector {
+namespace wetwaresuite::vector {
 
 Result VectorEdit::apply() {
     before_ = {doc_->width, doc_->height, doc_->background, doc_->shapes, doc_->nextId};
@@ -629,4 +629,4 @@ void registerCommands(Session& session) {
             })));
 }
 
-}  // namespace achclwss::vector
+}  // namespace wetwaresuite::vector

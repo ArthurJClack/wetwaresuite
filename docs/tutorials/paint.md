@@ -6,7 +6,7 @@ There is no GUI yet. Today you paint by giving commands the points a brush passe
 
 Paint and [photo](photo.md) work on the same documents. You will use a few `photo.*` commands here: `photo.save` to save, `photo.open` to reopen an `.ora`, `photo.info` to list layers and `photo.preview` to look at the result.
 
-New to the CLI? Start with [getting started](getting-started.md). Painting is always multi-step, so it happens in a [batch script](headless-and-batch.md) or a Claude session, not in a single `achclwss run`.
+New to the CLI? Start with [getting started](getting-started.md). Painting is always multi-step, so it happens in a [batch script](headless-and-batch.md) or a Claude session, not in a single `wetwaresuite run`.
 
 ## The basics
 
@@ -30,7 +30,7 @@ photo.save doc=$p path=pressure.png
 ```
 
 ```sh
-achclwss batch pressure.txt
+wetwaresuite batch pressure.txt
 ```
 
 The first stroke is the same width all the way; the second starts as a hairline, swells in the middle and tapers off at the end, like a real pen. The number of pressures must match the number of points; otherwise you get `pressures needs one value (0..1) per point: got 2 for 3 points`.

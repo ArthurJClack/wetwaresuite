@@ -1,4 +1,4 @@
-#include "achclwss/pdfdoc/fonts.hpp"
+#include "wetwaresuite/pdfdoc/fonts.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -33,7 +33,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace achclwss::pdfdoc {
+namespace wetwaresuite::pdfdoc {
 
 namespace {
 
@@ -338,7 +338,7 @@ std::string env(const char* name) {
 
 std::vector<std::filesystem::path> fontDirs() {
     std::vector<std::filesystem::path> dirs;
-    if (const auto d = env("ACHCLWSS_FONT_DIR"); !d.empty()) dirs.emplace_back(d);
+    if (const auto d = env("WETWARESUITE_FONT_DIR"); !d.empty()) dirs.emplace_back(d);
 #ifdef _WIN32
     if (const auto w = env("WINDIR"); !w.empty()) dirs.push_back(std::filesystem::path(w) / "Fonts");
     else dirs.emplace_back("C:\\Windows\\Fonts");
@@ -447,4 +447,4 @@ std::shared_ptr<TrueType> systemFont(const std::string& family, bool bold, bool 
     return found;
 }
 
-}  // namespace achclwss::pdfdoc
+}  // namespace wetwaresuite::pdfdoc

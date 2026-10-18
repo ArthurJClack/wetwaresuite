@@ -10,7 +10,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::board {
+namespace wetwaresuite::board {
 
 using namespace detail;
 
@@ -1312,4 +1312,4 @@ ImportStats fromOutline(Board& board, const std::string& text, const ImportOptio
     return buildMindmap(board, items, opt, title, "outline");
 }
 
-}  // namespace achclwss::board
+}  // namespace wetwaresuite::board

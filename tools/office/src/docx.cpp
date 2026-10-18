@@ -5,12 +5,12 @@
 #include <set>
 #include <stdexcept>
 
-#include "achclwss/office/doc.hpp"
-#include "achclwss/raster/ora.hpp"
+#include "wetwaresuite/office/doc.hpp"
+#include "wetwaresuite/raster/ora.hpp"
 #include "text.hpp"
 #include "xml.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 namespace {
 
@@ -977,4 +977,4 @@ TextDocument readOdt(const std::string& bytes) {
     return r.doc;
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

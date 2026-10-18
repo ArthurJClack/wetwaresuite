@@ -7,9 +7,9 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/core/command.hpp"
+#include "wetwaresuite/core/command.hpp"
 
-namespace achclwss::forge::detail {
+namespace wetwaresuite::forge::detail {
 
 namespace fs = std::filesystem;
 
@@ -38,4 +38,4 @@ void registerMeshCommands(Session& session);
 void registerImageCommands(Session& session);
 void registerSpriteCommands(Session& session);
 
-}  // namespace achclwss::forge::detail
+}  // namespace wetwaresuite::forge::detail

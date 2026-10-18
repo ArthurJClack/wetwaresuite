@@ -26,8 +26,11 @@ const fn planned(id: &'static str, name: &'static str, summary: &'static str, ph
     Tool { id, name, summary, phase, approx_mb, status: Status::Planned, mcp_binary: None }
 }
 
-/// The `achclwss` binary serves every built tool over MCP with `achclwss mcp`.
-pub const SUITE: &str = "achclwss";
+/// The `wetwaresuite` binary serves every built tool over MCP with `wetwaresuite mcp`.
+pub const SUITE: &str = "wetwaresuite";
+
+/// `share` is its own small Rust binary (no C++ core), with its own MCP server.
+pub const SHARE: &str = "wetwaresuite-share";
 
 const fn available(id: &'static str, name: &'static str, summary: &'static str, phase: u8, approx_mb: u32) -> Tool {
     Tool { id, name, summary, phase, approx_mb, status: Status::Available, mcp_binary: Some(SUITE) }
@@ -47,6 +50,15 @@ pub const TOOLS: &[Tool] = &[
     available("paint", "paint", "digital painting with pen pressure and layers", 2, 4),
     available("convert", "convert", "change any file's type: images, audio, video, docs", 2, 2),
     available("vector", "vector", "vector design, SVG/AI/EPS", 2, 10),
+    Tool {
+        id: "share",
+        name: "share",
+        summary: "share and live-sync folders over LAN or internet",
+        phase: 2,
+        approx_mb: 1,
+        status: Status::Available,
+        mcp_binary: Some(SHARE),
+    },
     available("cad", "cad", "precision parametric CAD: feature tree, expressions, holes, patterns, STL/3MF", 3, 3),
     available("blueprint", "blueprint", "technical drafting and floor plans: DXF, PDF to scale", 3, 2),
     available("slicer", "slicer", "3D printing slicer: STL/3MF to G-code", 3, 20),

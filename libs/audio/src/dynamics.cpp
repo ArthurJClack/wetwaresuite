@@ -4,10 +4,10 @@
 #include <cmath>
 #include <deque>
 
-#include "achclwss/audio/dsp.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
 #include "internal.hpp"
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 namespace {
 
@@ -160,4 +160,4 @@ double gate(Buffer& b, const GateSettings& s, Range r, const Channels& ch) {
     return static_cast<double>(closedCount) / static_cast<double>(n);
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio

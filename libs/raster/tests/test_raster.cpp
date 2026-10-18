@@ -1,14 +1,14 @@
 #include <cmath>
 #include <filesystem>
 
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/document.hpp"
-#include "achclwss/raster/ops.hpp"
-#include "achclwss/raster/ora.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/raster/ops.hpp"
+#include "wetwaresuite/raster/ora.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 #include "check.hpp"
 
-using namespace achclwss::raster;
+using namespace wetwaresuite::raster;
 namespace fs = std::filesystem;
 
 namespace {
@@ -118,7 +118,7 @@ int main() {
     CHECK(fill.at(9, 9) == (Color{255, 255, 255, 255}));  // other side of the line untouched
 
     // files
-    auto dir = fs::temp_directory_path() / "achclwss_test_raster";
+    auto dir = fs::temp_directory_path() / "wetwaresuite_test_raster";
     fs::create_directories(dir);
     save(grad, dir / "grad.png");
     Image back = load(dir / "grad.png");

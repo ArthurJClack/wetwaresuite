@@ -5,10 +5,10 @@
 #include <limits>
 #include <stdexcept>
 
-#include "achclwss/mesh/topology.hpp"
-#include "achclwss/sculpt/ops.hpp"
+#include "wetwaresuite/mesh/topology.hpp"
+#include "wetwaresuite/sculpt/ops.hpp"
 
-namespace achclwss::sculpt {
+namespace wetwaresuite::sculpt {
 
 namespace {
 
@@ -341,4 +341,4 @@ Mesh retopologize(const Mesh& m, std::size_t targetQuads, int relax) {
     return out;
 }
 
-}  // namespace achclwss::sculpt
+}  // namespace wetwaresuite::sculpt

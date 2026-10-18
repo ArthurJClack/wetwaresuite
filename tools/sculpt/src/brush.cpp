@@ -5,11 +5,11 @@
 #include <map>
 #include <stdexcept>
 
-#include "achclwss/mesh/primitives.hpp"
-#include "achclwss/mesh/topology.hpp"
-#include "achclwss/sculpt/ops.hpp"
+#include "wetwaresuite/mesh/primitives.hpp"
+#include "wetwaresuite/mesh/topology.hpp"
+#include "wetwaresuite/sculpt/ops.hpp"
 
-namespace achclwss::sculpt {
+namespace wetwaresuite::sculpt {
 
 using mesh::Mat4;
 
@@ -534,4 +534,4 @@ Vec3 screenToPlane(const Mesh& m, const ViewRay& v, double u, double vv, const V
     return (v.yaw == 0 && v.pitch == 0) ? p : turn.inverse().point(p);
 }
 
-}  // namespace achclwss::sculpt
+}  // namespace wetwaresuite::sculpt

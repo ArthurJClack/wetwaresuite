@@ -4,9 +4,9 @@
 #include <filesystem>
 #include <string>
 
-#include "achclwss/animate/animate.hpp"
+#include "wetwaresuite/animate/animate.hpp"
 
-namespace achclwss::animate::detail {
+namespace wetwaresuite::animate::detail {
 
 std::string lower(std::string s);
 std::string num(double v);  // 3 decimals at most, no trailing zeros
@@ -35,4 +35,4 @@ private:
     std::filesystem::path path_;
 };
 
-}  // namespace achclwss::animate::detail
+}  // namespace wetwaresuite::animate::detail

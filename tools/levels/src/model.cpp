@@ -5,12 +5,12 @@
 #include <deque>
 #include <stdexcept>
 
-#include "achclwss/levels/levels.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/ops.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/levels/levels.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/ops.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 
-namespace achclwss::levels {
+namespace wetwaresuite::levels {
 
 namespace {
 
@@ -794,4 +794,4 @@ Result LevelEdit::apply() {
 
 void LevelEdit::revert() { doc_->map = before_; }
 
-}  // namespace achclwss::levels
+}  // namespace wetwaresuite::levels

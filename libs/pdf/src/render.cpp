@@ -1,12 +1,12 @@
 #include <algorithm>
 #include <cmath>
 
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/raster/ops.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/raster/ops.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 #include "internal.hpp"
 
-namespace achclwss::pdf {
+namespace wetwaresuite::pdf {
 
 namespace {
 
@@ -107,4 +107,4 @@ raster::Image renderPage(const Page& page, double s, Color background) {
     return img;
 }
 
-}  // namespace achclwss::pdf
+}  // namespace wetwaresuite::pdf

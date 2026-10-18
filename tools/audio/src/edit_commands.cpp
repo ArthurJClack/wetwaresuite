@@ -5,7 +5,7 @@
 
 #include "common.hpp"
 
-namespace achclwss::audio::tool {
+namespace wetwaresuite::audio::tool {
 
 namespace {
 
@@ -537,4 +537,4 @@ void registerEditCommands(Session& session, const std::shared_ptr<State>& state)
             }));
 }
 
-}  // namespace achclwss::audio::tool
+}  // namespace wetwaresuite::audio::tool

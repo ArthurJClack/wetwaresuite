@@ -8,13 +8,13 @@
 #include <fstream>
 #include <stdexcept>
 
-#include "achclwss/core/process.hpp"
-#include "achclwss/library/library.hpp"
-#include "achclwss/mesh/io.hpp"
-#include "achclwss/toolkit/detect.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/library/library.hpp"
+#include "wetwaresuite/mesh/io.hpp"
+#include "wetwaresuite/toolkit/detect.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 
-namespace achclwss::library {
+namespace wetwaresuite::library {
 
 namespace {
 
@@ -309,4 +309,4 @@ Item readItem(const fs::path& path, bool probe, bool fullHash) {
     return item;
 }
 
-}  // namespace achclwss::library
+}  // namespace wetwaresuite::library

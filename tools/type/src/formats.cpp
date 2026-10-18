@@ -10,10 +10,10 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 #include "internal.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 namespace fs = std::filesystem;
 using json = nlohmann::json;
@@ -193,7 +193,7 @@ json num(double v) {
 
 std::string toJson(const Font& font) {
     json j;
-    j["format"] = "achclwss.typeface";
+    j["format"] = "wetwaresuite.typeface";
     j["version"] = 1;
     const auto& i = font.info;
     j["info"] = {{"family", i.family}, {"style", i.style}, {"version", i.version}, {"copyright", i.copyright},
@@ -247,8 +247,8 @@ Font fromJson(const std::string& text) {
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not valid JSON: ") + e.what());
     }
-    if (!j.is_object() || j.value("format", "") != "achclwss.typeface")
-        throw std::runtime_error("not a .typeface.json file (no \"format\": \"achclwss.typeface\")");
+    if (!j.is_object() || j.value("format", "") != "wetwaresuite.typeface")
+        throw std::runtime_error("not a .typeface.json file (no \"format\": \"wetwaresuite.typeface\")");
     Font f;
     f.glyphs.clear();
     if (j.contains("info")) {
@@ -603,7 +603,7 @@ void saveUfo(const Font& font, const fs::path& dir) {
     for (const auto& e : fs::directory_iterator(dir / "glyphs", ec)) {
         if (e.path().extension() == ".glif") fs::remove(e.path(), ec);
     }
-    writeFile((dir / "metainfo.plist").string(), plistFile({{"creator", "org.achclwss.type"}, {"formatVersion", 3}}));
+    writeFile((dir / "metainfo.plist").string(), plistFile({{"creator", "org.wetwaresuite.type"}, {"formatVersion", 3}}));
     const auto& i = font.info;
     const auto& m = font.metrics;
     json info = {{"familyName", i.family},
@@ -731,4 +731,4 @@ Font loadFont(const fs::path& path, std::vector<std::string>* warnings) {
     return fromSfnt(bytes, warnings);
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

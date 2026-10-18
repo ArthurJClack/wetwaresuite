@@ -5,15 +5,15 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/automate/automate.hpp"
-#include "achclwss/convert/convert.hpp"
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/photo/photo.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/automate/automate.hpp"
+#include "wetwaresuite/convert/convert.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/photo/photo.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
+using namespace wetwaresuite;
 namespace fs = std::filesystem;
 using nlohmann::json;
 
@@ -52,7 +52,7 @@ json call(mcp::Server& server, int id, const std::string& tool, const json& args
 }  // namespace
 
 int main() {
-    const fs::path dir = fs::temp_directory_path() / "achclwss_test_automate";
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_test_automate";
     fs::remove_all(dir);
     fs::create_directories(dir / "in" / "sub");
     fs::create_directories(dir / "logos");
@@ -288,7 +288,7 @@ steps:
     {
         Session ms;
         tools(ms);
-        mcp::Server server(ms, {"achclwss", "test", "automate"});
+        mcp::Server server(ms, {"wetwaresuite", "test", "automate"});
         json list = json::parse(*server.handle(R"({"jsonrpc":"2.0","id":1,"method":"tools/list"})"))["result"]["tools"];
         int seen = 0;
         bool shell = false;

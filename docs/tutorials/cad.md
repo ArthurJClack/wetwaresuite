@@ -11,7 +11,7 @@ the hole spacing and the rib all follow.
 Everything is a command, so the same part can be built three ways: typed at the
 shell, written as a batch script, or described to Claude, which calls the same
 commands over MCP and sees a picture after each step. Every example in this
-tutorial was run against the real `achclwss` binary, and the outputs shown are
+tutorial was run against the real `wetwaresuite` binary, and the outputs shown are
 what it printed (long outputs are shortened with `...`).
 
 ## contents
@@ -74,14 +74,14 @@ Build the suite once (see the README for compilers):
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
-alias achclwss="$PWD/build/apps/achclwss/achclwss"
+alias wetwaresuite="$PWD/build/apps/wetwaresuite/wetwaresuite"
 ```
 
 See the cad commands and the parameters of one:
 
 ```sh
-achclwss list cad
-achclwss help cad.hole
+wetwaresuite list cad
+wetwaresuite help cad.hole
 ```
 
 ```
@@ -101,22 +101,22 @@ number like `40` is fine everywhere.
 
 ### three ways to drive it
 
-- **CLI**: `achclwss <command> key=value ...` runs one command in a fresh
+- **CLI**: `wetwaresuite <command> key=value ...` runs one command in a fresh
   process. Open documents live only inside one process, so a one-shot command
-  can create or inspect a part (`achclwss cad.open path=bracket.achcad`) but
-  can't keep editing it. For edits, pipe a few lines into `achclwss batch` from
+  can create or inspect a part (`wetwaresuite cad.open path=bracket.achcad`) but
+  can't keep editing it. For edits, pipe a few lines into `wetwaresuite batch` from
   the shell (shown in every task below) or use a script file.
 - **Batch script**: a text file with one command per line, run with
-  `achclwss batch part.txt`. `-> name` at the end of a line saves the result
+  `wetwaresuite batch part.txt`. `-> name` at the end of a line saves the result
   (here the document id) and `$name` reuses it. `#` starts a comment. `undo` and
   `redo` work as lines. The script stops at the first failing line unless you
   add `--keep-going`.
-- **Claude over MCP**: `achclwss mcp` (or `achclwss mcp --tools cad`) serves
+- **Claude over MCP**: `wetwaresuite mcp` (or `wetwaresuite mcp --tools cad`) serves
   every command as a tool named with `_` instead of `.` (`cad_hole`). Connect
   it once (see [mcp.md](mcp.md)):
 
   ```sh
-  claude mcp add achclwss -- /path/to/achclwss/build/apps/achclwss/achclwss mcp --tools cad
+  claude mcp add wetwaresuite -- /path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite mcp --tools cad
   ```
 
   Every edit tool takes `preview=true` (and `view=iso|front|top|...`), which
@@ -166,7 +166,7 @@ cad.save doc=$part path=bracket.png size=800
 ```
 
 ```sh
-achclwss batch bracket.txt
+wetwaresuite batch bracket.txt
 ```
 
 Each edit prints what it did and the state of the model:
@@ -235,7 +235,7 @@ What each step did:
 The same thing without a script file: pipe the lines into `batch`.
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 cad.new -> p
 cad.param_set doc=$p name=width value=40
 cad.param_set doc=$p name=t value=5
@@ -250,7 +250,7 @@ Single commands are for things that fit in one step. Open a saved part and
 print its summary:
 
 ```sh
-achclwss cad.open path=bracket.achcad
+wetwaresuite cad.open path=bracket.achcad
 ```
 
 ```
@@ -331,7 +331,7 @@ mass of each (the default density is PLA, 1.25 g/cm^3):
 
 ```sh
 for w in 30 40 60; do
-  achclwss batch <<EOF | grep '^mass_g'
+  wetwaresuite batch <<EOF | grep '^mass_g'
 cad.open path=bracket.achcad -> p
 cad.param_set doc=\$p name=width value=$w
 cad.save doc=\$p path=bracket-$w.stl
@@ -393,12 +393,12 @@ From the shell, export and render a preview of the export in one go (the
 `convert` tool renders any mesh to an image):
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 cad.open path=bracket.achcad -> p
 cad.param_set doc=$p name=width value=80
 cad.save doc=$p path=bracket-80.stl
 EOF
-achclwss convert.file input=bracket-80.stl output=bracket-80.png
+wetwaresuite convert.file input=bracket-80.stl output=bracket-80.png
 ```
 
 ```
@@ -471,7 +471,7 @@ to run any time.
 ### from the shell
 
 ```sh
-achclwss batch <<'EOF' | grep '^volume\|^mass_g'
+wetwaresuite batch <<'EOF' | grep '^volume\|^mass_g'
 cad.open path=bracket.achcad -> p
 cad.measure_mass doc=$p density=1.27
 EOF
@@ -562,7 +562,7 @@ cad.param_list doc=$p
 ```
 
 ```sh
-achclwss batch --keep-going edit.txt
+wetwaresuite batch --keep-going edit.txt
 ```
 
 ```
@@ -1102,7 +1102,7 @@ ever reports "not watertight" after a boolean of exactly coincident faces,
 change one value by a hair (0.01 mm) or let the two solids overlap a little
 instead of meeting face to face, as the bracket's rib does.
 
-**"no open cad document called 'cad1'"**: each `achclwss <command>` run is a
+**"no open cad document called 'cad1'"**: each `wetwaresuite <command>` run is a
 new process with nothing open. Use a batch script or the MCP server for
 anything with more than one step.
 

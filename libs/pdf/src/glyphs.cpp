@@ -4,10 +4,10 @@
 #include <mutex>
 #include <string>
 
-#include "achclwss/pdf/page.hpp"
+#include "wetwaresuite/pdf/page.hpp"
 #include "internal.hpp"
 
-namespace achclwss::pdf::detail {
+namespace wetwaresuite::pdf::detail {
 
 namespace {
 #include "fontdata.inc"
@@ -52,4 +52,4 @@ std::string num(double v) {
     return s;
 }
 
-}  // namespace achclwss::pdf::detail
+}  // namespace wetwaresuite::pdf::detail

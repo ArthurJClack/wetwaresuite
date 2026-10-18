@@ -11,7 +11,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::board {
+namespace wetwaresuite::board {
 
 using namespace detail;
 
@@ -888,4 +888,4 @@ std::vector<Pt> connectorPath(const Board& board, const Element& c) {
     return flattenCubic(s.p, {s.p.x + sd.x * k, s.p.y + sd.y * k}, {e.p.x + ed.x * k, e.p.y + ed.y * k}, e.p, 32);
 }
 
-}  // namespace achclwss::board
+}  // namespace wetwaresuite::board

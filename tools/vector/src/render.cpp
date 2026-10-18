@@ -3,10 +3,10 @@
 #include <algorithm>
 #include <cmath>
 
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/vector/vector.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 
-namespace achclwss::vector {
+namespace wetwaresuite::vector {
 
 namespace {
 
@@ -113,4 +113,4 @@ std::string VectorDoc::add(Shape shape) {
     return shapes.back().id;
 }
 
-}  // namespace achclwss::vector
+}  // namespace wetwaresuite::vector

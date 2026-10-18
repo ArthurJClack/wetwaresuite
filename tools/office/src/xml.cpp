@@ -3,9 +3,9 @@
 #include <cstdlib>
 #include <stdexcept>
 
-#include "achclwss/pdf/fonts.hpp"
+#include "wetwaresuite/pdf/fonts.hpp"
 
-namespace achclwss::office::xml {
+namespace wetwaresuite::office::xml {
 
 std::string_view Node::local() const {
     std::string_view n = name;
@@ -321,4 +321,4 @@ std::string Writer::str() {
     return out_;
 }
 
-}  // namespace achclwss::office::xml
+}  // namespace wetwaresuite::office::xml

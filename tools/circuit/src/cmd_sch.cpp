@@ -3,7 +3,7 @@
 
 #include "cmd_common.hpp"
 
-namespace achclwss::circuit::cmd {
+namespace wetwaresuite::circuit::cmd {
 
 namespace {
 
@@ -772,4 +772,4 @@ void registerSchematicQueryCommands(Session& session) {
                 View::Schematic, false));
 }
 
-}  // namespace achclwss::circuit::cmd
+}  // namespace wetwaresuite::circuit::cmd

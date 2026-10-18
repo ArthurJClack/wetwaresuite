@@ -1,23 +1,23 @@
-// achclwss-toolkit: the "open anything" tool. CLI today, Qt UI on top later.
+// wetwaresuite-toolkit: the "open anything" tool. CLI today, Qt UI on top later.
 #include <iostream>
 #include <string>
 
-#include "achclwss/mcp/server.hpp"
-#include "achclwss/toolkit/detect.hpp"
+#include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/toolkit/detect.hpp"
 
 namespace {
 
 constexpr const char* kVersion = "0.1.0";
 
 void usage() {
-    std::cout << "usage: achclwss-toolkit <command> [args]\n\n"
+    std::cout << "usage: wetwaresuite-toolkit <command> [args]\n\n"
                  "  inspect <file>                  say what a file is and which tool opens it\n"
                  "  hex <file> [offset] [length]    hex dump (default 256 bytes)\n"
                  "  mcp                             run as an MCP server on stdin/stdout\n"
                  "  --version\n";
 }
 
-int report(const achclwss::Result& result) {
+int report(const wetwaresuite::Result& result) {
     (result.ok ? std::cout : std::cerr) << result.message << (result.message.ends_with('\n') ? "" : "\n");
     return result.ok ? 0 : 1;
 }
@@ -25,7 +25,7 @@ int report(const achclwss::Result& result) {
 }  // namespace
 
 int main(int argc, char** argv) {
-    using namespace achclwss;
+    using namespace wetwaresuite;
 
     Session session;
     toolkit::registerCommands(session.registry());
@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
 
     try {
         if (command == "--version") {
-            std::cout << "achclwss-toolkit " << kVersion << "\n";
+            std::cout << "wetwaresuite-toolkit " << kVersion << "\n";
             return 0;
         }
         if (command == "inspect" && argc == 3) {
@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
             return report(session.run("toolkit.hex", p));
         }
         if (command == "mcp" && argc == 2) {
-            mcp::Server server(session, "achclwss-toolkit", kVersion);
+            mcp::Server server(session, "wetwaresuite-toolkit", kVersion);
             server.run(std::cin, std::cout);
             return 0;
         }

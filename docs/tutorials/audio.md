@@ -12,9 +12,9 @@
 
 There is no playback and no GUI yet; the GUI that comes later will call these same commands. Each task below is shown three ways:
 
-- **CLI**: single `achclwss` commands that read files and write files.
-- **Batch**: a script for multi-step editing with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)). Documents only live inside one `achclwss` process, so editing sessions are batch scripts or MCP.
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools audio` serves just the audio tools.
+- **CLI**: single `wetwaresuite` commands that read files and write files.
+- **Batch**: a script for multi-step editing with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)). Documents only live inside one `wetwaresuite` process, so editing sessions are batch scripts or MCP.
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools audio` serves just the audio tools.
 
 Every example was run against the real binary and the outputs are copied from those runs. Long outputs are shortened where marked with `...`. The example recordings were made for this tutorial (a synthesized voice with hiss, mains hum and rumble added, a synth jingle, a drum loop, four drum hits), so your numbers will differ.
 
@@ -44,7 +44,7 @@ Every example was run against the real binary and the outputs are copied from th
 First, measure and look. Both are read-only, so they work as one-shot commands on the file:
 
 ```sh
-$ achclwss audio.measure input=interview.wav
+$ wetwaresuite audio.measure input=interview.wav
 interview: duration 0:14.200, peak -12.4 dB (true peak -12.4 dB), RMS -26.4 dB, loudness -26 LUFS, range 2.54 LU
 seconds: 14.2
 peak_db: -12.3609
@@ -59,7 +59,7 @@ clipped: 0
 channel_peak_db: -12.3609
 channel_rms_db: -26.3524
 
-$ achclwss audio.detect_silence input=interview.wav threshold=-35 min_silence=0.3
+$ wetwaresuite audio.detect_silence input=interview.wav threshold=-35 min_silence=0.3
 2 silent stretches in interview, 0:03.980 in all
   silence 1: 0.000 s to 0:02.230 (0:02.230)
   silence 2: 0:12.450 to 0:14.200 (0:01.750)
@@ -67,7 +67,7 @@ count: 2
 silence_seconds: 3.98
 regions: 0,2.23,12.45,14.2
 
-$ achclwss audio.render input=interview.wav spectrogram=true output=interview_spec.png
+$ wetwaresuite audio.render input=interview.wav spectrogram=true output=interview_spec.png
 wrote interview_spec.png: spectrogram of interview from 0.000 s to 0:14.200, 20 Hz to 22050 Hz (log scale)
 output: interview_spec.png
 width: 1200
@@ -79,14 +79,14 @@ At -26 LUFS it is 10 LU too quiet. The first 2.2 seconds are room tone only: tha
 **CLI.** `audio.batch` does a quick clean-up of every recording in a folder in one command: a high-pass filter for the rumble, noise reduction with the noise estimated from each file's quietest parts, loudness normalizing and silence trimming:
 
 ```sh
-$ achclwss audio.batch input_dir=recordings output_dir=cleaned highpass=80 denoise=15 normalize=loudness target=-16 trim_silence=true threshold=-45
+$ wetwaresuite audio.batch input_dir=recordings output_dir=cleaned highpass=80 denoise=15 normalize=loudness target=-16 trim_silence=true threshold=-45
 processed 1 of 1 files into cleaned
   cleaned/interview.wav (0:10.230, +10.4 dB)
 processed: 1
 skipped: 0
 failed: 0
 
-$ achclwss audio.measure input=cleaned/interview.wav
+$ wetwaresuite audio.measure input=cleaned/interview.wav
 interview: duration 0:10.230, peak -1.8 dB (true peak -1.8 dB), RMS -14.9 dB, loudness -15.9 LUFS, range 0.966 LU
 ...
 ```
@@ -114,7 +114,7 @@ audio.save doc=$voice path=interview_clean.wav
 ```
 
 ```sh
-$ achclwss batch cleanup.txt
+$ wetwaresuite batch cleanup.txt
 opened interview.wav as aud1: 1 ch, 44100 Hz, 0:14.200
 ...
 wrote before.png: spectrogram of interview from 0.000 s to 0:14.200, 20 Hz to 22050 Hz (log scale)
@@ -183,7 +183,7 @@ audio.measure input=episode.mp3
 ```
 
 ```sh
-$ achclwss batch episode.txt
+$ wetwaresuite batch episode.txt
 ...
 made proj1: 0 tracks, 0 clips, 0.000 s, 44100 Hz stereo
 project: proj1
@@ -242,10 +242,10 @@ Claude calls `audio_open` twice, `audio_project_new`, `audio_track_add` twice, `
 `samples/` holds four drum hits recorded at very different levels (one of them an MP3), each with silence before and after:
 
 ```sh
-$ achclwss audio.measure input=samples/hit_2.wav true_peak=false
+$ wetwaresuite audio.measure input=samples/hit_2.wav true_peak=false
 hit_2: duration 0:02.200, peak -17.1 dB (true peak -17.1 dB), RMS -33.4 dB, loudness -27.6 LUFS
 ...
-$ achclwss audio.measure input=samples/hit_3.mp3 true_peak=false
+$ wetwaresuite audio.measure input=samples/hit_3.mp3 true_peak=false
 hit_3: duration 0:02.200, peak -29.5 dB (true peak -29.5 dB), RMS -45.9 dB, loudness -39.2 LUFS
 ...
 ```
@@ -253,7 +253,7 @@ hit_3: duration 0:02.200, peak -29.5 dB (true peak -29.5 dB), RMS -45.9 dB, loud
 **CLI.** Bring every peak to -1 dBFS, cut the silence around each hit, add a 10 ms fade at the end so the cut doesn't click, and write 24-bit WAVs into a new folder (the originals are never touched):
 
 ```sh
-$ achclwss audio.batch input_dir=samples output_dir=samples_norm normalize=peak target=-1 trim_silence=true threshold=-36 fade_out=0.01 to=wav bits=24
+$ wetwaresuite audio.batch input_dir=samples output_dir=samples_norm normalize=peak target=-1 trim_silence=true threshold=-36 fade_out=0.01 to=wav bits=24
 processed 4 of 4 files into samples_norm
   samples_norm/hit_1.wav (0.740 s, +3.11 dB)
   samples_norm/hit_2.wav (0.750 s, +16.1 dB)
@@ -267,7 +267,7 @@ failed: 0
 Running it again skips files that already exist unless you pass `overwrite=true`. Without `to=`, each file keeps its own format (the MP3 stays an MP3):
 
 ```sh
-$ achclwss audio.batch input_dir=samples output_dir=samples_norm normalize=peak target=-1
+$ wetwaresuite audio.batch input_dir=samples output_dir=samples_norm normalize=peak target=-1
 processed 1 of 4 files into samples_norm
   samples_norm/hit_3.mp3 (0:02.200, +28.5 dB)
 3 skipped because the output exists (pass overwrite=true)
@@ -279,12 +279,12 @@ failed: 0
 To match how loud they *sound* rather than their peaks, use `normalize=loudness target=-14` (peaks over `ceiling`, -1 dBFS by default, are limited). Here as FLAC:
 
 ```sh
-$ achclwss audio.batch input_dir=samples output_dir=samples_loud normalize=loudness target=-14 to=flac bits=24
+$ wetwaresuite audio.batch input_dir=samples output_dir=samples_loud normalize=loudness target=-14 to=flac bits=24
 processed 4 of 4 files into samples_loud
   samples_loud/hit_1.flac (0:02.200, +2.06 dB)
   samples_loud/hit_2.flac (0:02.200, +13.6 dB)
 ...
-$ achclwss audio.measure input=samples_loud/hit_3.flac
+$ wetwaresuite audio.measure input=samples_loud/hit_3.flac
 hit_3: duration 0:02.200, peak -4.4 dB (true peak -4.4 dB), RMS -20.7 dB, loudness -14 LUFS
 ...
 ```
@@ -306,7 +306,7 @@ audio.batch input_dir=hits output_dir=hits_level normalize=peak target=-1 trim_s
 ```
 
 ```sh
-$ achclwss batch takes.txt
+$ wetwaresuite batch takes.txt
 made aud1: silence, 2 ch, 44100 Hz, 0:10.000
 ...
 mixed in 0:02.200 at 0.000 s
@@ -344,13 +344,13 @@ A spectrogram shows time left to right, frequency bottom to top, and loudness as
 **CLI.**
 
 ```sh
-$ achclwss audio.render input=interview.wav spectrogram=true output=interview_spec.png
+$ wetwaresuite audio.render input=interview.wav spectrogram=true output=interview_spec.png
 wrote interview_spec.png: spectrogram of interview from 0.000 s to 0:14.200, 20 Hz to 22050 Hz (log scale)
 output: interview_spec.png
 width: 1200
 height: 400
 
-$ achclwss audio.render input=interview.wav spectrogram=true log_frequency=false max_frequency=8000 start=2 end=5 height=300 output=zoom.png
+$ wetwaresuite audio.render input=interview.wav spectrogram=true log_frequency=false max_frequency=8000 start=2 end=5 height=300 output=zoom.png
 wrote zoom.png: spectrogram of interview from 0:02.000 to 0:05.000, 0 to 8000 Hz
 output: zoom.png
 width: 1200
@@ -389,7 +389,7 @@ audio.save doc=$tape path=loop_chipmunk.wav
 ```
 
 ```sh
-$ achclwss batch loop.txt
+$ wetwaresuite batch loop.txt
 opened loop.wav as aud1: 2 ch, 44100 Hz, 0:04.000
 ...
 stretched 0:04.000 to 0:04.800 (1.2x), pitch unchanged
@@ -417,7 +417,7 @@ Three different commands:
 **CLI.** `audio.batch` takes `tempo=` and `pitch=` too, for a whole folder of loops:
 
 ```sh
-$ achclwss audio.batch input_dir=loops output_dir=loops_100bpm tempo=0.8333 to=wav
+$ wetwaresuite audio.batch input_dir=loops output_dir=loops_100bpm tempo=0.8333 to=wav
 ```
 
 **Claude.** Ask:
@@ -451,7 +451,7 @@ audio.save doc=$v path=interview_edit.flac bits=24
 ```
 
 ```sh
-$ achclwss batch edit.txt
+$ wetwaresuite batch edit.txt
 opened interview_clean.wav as aud1: 1 ch, 44100 Hz, 0:10.840
 ...
 cut 0.700 s to the clipboard
@@ -483,7 +483,7 @@ bytes: 1909098
 
 ## Asking Claude, in general
 
-Connect with `claude mcp add achclwss -- /path/to/achclwss mcp` (or `achclwss mcp --tools audio` for just the audio tools). Things Claude handles well because it can measure and look:
+Connect with `claude mcp add wetwaresuite -- /path/to/wetwaresuite mcp` (or `wetwaresuite mcp --tools audio` for just the audio tools). Things Claude handles well because it can measure and look:
 
 - "Why does this recording sound muddy?": `audio_preview spectrogram=true`, `audio_measure`, then a low shelf or a peaking cut around 250 Hz with `audio_eq`.
 - "Is this master too loud for Spotify?": `audio_measure` reads `lufs`, `true_peak_db` and `clipped`, and compares with -14 LUFS and -1 dBTP.
@@ -494,7 +494,7 @@ Every edit is undoable with `undo`, `history` lists the steps, and `documents` l
 
 ## Reference
 
-Common parameters: `doc` (an open document), `start`/`end` (seconds; default the whole file), `channels` (list of channel numbers, 0 = left), `preview` (true attaches a waveform PNG of the result). Run `achclwss help <command>` for the full list of any command.
+Common parameters: `doc` (an open document), `start`/`end` (seconds; default the whole file), `channels` (list of channel numbers, 0 = left), `preview` (true attaches a waveform PNG of the result). Run `wetwaresuite help <command>` for the full list of any command.
 
 ### Files, pictures and measuring
 

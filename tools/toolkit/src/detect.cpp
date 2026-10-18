@@ -1,4 +1,4 @@
-#include "achclwss/toolkit/detect.hpp"
+#include "wetwaresuite/toolkit/detect.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -9,7 +9,7 @@
 #include <stdexcept>
 #include <vector>
 
-namespace achclwss::toolkit {
+namespace wetwaresuite::toolkit {
 
 namespace {
 
@@ -404,4 +404,4 @@ void registerCommands(CommandRegistry& registry) {
                  });
 }
 
-}  // namespace achclwss::toolkit
+}  // namespace wetwaresuite::toolkit

@@ -12,10 +12,10 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::maps {
+namespace wetwaresuite::maps {
 
 namespace fs = std::filesystem;
 using nlohmann::json;
@@ -1155,7 +1155,7 @@ GpxData parseGpx(const std::string& text) {
 
 std::string toGpx(const Layer& layer) {
     std::string s =
-        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"ACHCLWSS maps\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n";
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<gpx version=\"1.1\" creator=\"wetwaresuite maps\" xmlns=\"http://www.topografix.com/GPX/1/1\">\n";
     s += "<metadata><name>" + xmlEscape(layer.name) + "</name></metadata>\n";
     auto pointBody = [](const Coord& c) {
         std::string b;
@@ -1590,7 +1590,7 @@ Style styleFrom(const json& j) {
 }  // namespace
 
 std::string toProject(const Map& map) {
-    json j = {{"format", "achclwss-map"}, {"version", 1}, {"title", map.title}};
+    json j = {{"format", "wetwaresuite-map"}, {"version", 1}, {"title", map.title}};
     json layers = json::array();
     for (const auto& l : map.layers) {
         json lj = {{"name", l.name}, {"visible", l.visible}, {"source", l.source}, {"style", styleJson(l.style)}};
@@ -1626,7 +1626,7 @@ Map fromProject(const std::string& text, const fs::path&) {
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not a map project (bad JSON): ") + e.what());
     }
-    if (j.value("format", "") != "achclwss-map") throw std::runtime_error("not an ACHCLWSS map project (.achmap)");
+    if (j.value("format", "") != "wetwaresuite-map") throw std::runtime_error("not an wetwaresuite map project (.achmap)");
     Map m;
     m.title = j.value("title", "");
     for (const auto& lj : j.value("layers", json::array())) {
@@ -1666,4 +1666,4 @@ Map fromProject(const std::string& text, const fs::path&) {
     return m;
 }
 
-}  // namespace achclwss::maps
+}  // namespace wetwaresuite::maps

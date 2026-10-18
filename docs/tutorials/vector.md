@@ -55,18 +55,18 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release
 ```
 
-The umbrella binary is `build/apps/achclwss/achclwss`. To keep the commands
+The umbrella binary is `build/apps/wetwaresuite/wetwaresuite`. To keep the commands
 below short, either add that folder to your `PATH` or make an alias:
 
 ```sh
-alias achclwss="$PWD/build/apps/achclwss/achclwss"
+alias wetwaresuite="$PWD/build/apps/wetwaresuite/wetwaresuite"
 ```
 
 Check that the vector commands are there, and ask for help on one:
 
 ```sh
-achclwss list vector
-achclwss help vector.add_rect
+wetwaresuite list vector
+wetwaresuite help vector.add_rect
 ```
 
 `help` prints every parameter with its type, whether it's required, and its
@@ -84,11 +84,11 @@ spaces in it: `d="M10 10 L90 90"`, `path="my drawing.svg"`.
 
 ## 3. one-shot commands
 
-`achclwss run <command> key=value ...` runs a single command and exits
-(`achclwss <command> ...` without `run` does the same):
+`wetwaresuite run <command> key=value ...` runs a single command and exits
+(`wetwaresuite <command> ...` without `run` does the same):
 
 ```sh
-achclwss run vector.new width=800 height=600
+wetwaresuite run vector.new width=800 height=600
 ```
 
 ```
@@ -106,10 +106,10 @@ The most useful one is `vector.convert`, which turns an SVG file into a PNG
 (or JPEG, BMP, TGA, PPM, or a cleaned-up SVG) without opening it first:
 
 ```sh
-achclwss run vector.convert input=logo.svg output=logo.png
-achclwss run vector.convert input=logo.svg output=logo@2x.png scale=2
-achclwss run vector.convert input=logo.svg output=logo-600.png width=600
-achclwss run vector.convert input=logo.svg output=thumb.jpg scale=0.25 quality=80
+wetwaresuite run vector.convert input=logo.svg output=logo.png
+wetwaresuite run vector.convert input=logo.svg output=logo@2x.png scale=2
+wetwaresuite run vector.convert input=logo.svg output=logo-600.png width=600
+wetwaresuite run vector.convert input=logo.svg output=thumb.jpg scale=0.25 quality=80
 ```
 
 For anything with more than one step, use a batch script.
@@ -128,7 +128,7 @@ vector.save doc=$pic path=first.png
 and run it:
 
 ```sh
-achclwss batch first.txt
+wetwaresuite batch first.txt
 ```
 
 What happened, line by line:
@@ -144,7 +144,7 @@ You can also pipe a script in instead of making a file:
 ```sh
 echo 'vector.new width=200 height=200 -> pic
 vector.add_ellipse doc=$pic cx=100 cy=100 rx=80 fill=orange stroke=black stroke_width=4
-vector.save doc=$pic path=circle.svg' | achclwss batch
+vector.save doc=$pic path=circle.svg' | wetwaresuite batch
 ```
 
 Leaving out `ry` on `vector.add_ellipse` gives a circle.
@@ -203,7 +203,7 @@ vector.save doc=$logo path=logo.png scale=2
 Run it:
 
 ```sh
-achclwss batch logo.txt
+wetwaresuite batch logo.txt
 ```
 
 You get `logo.svg` (a real SVG you can open in Inkscape, Illustrator or a
@@ -395,13 +395,13 @@ CLI only reports its size; over MCP Claude actually sees the image.
 The same commands are MCP tools. Register the suite with Claude Code:
 
 ```sh
-claude mcp add achclwss -- "$PWD/build/apps/achclwss/achclwss" mcp
+claude mcp add wetwaresuite -- "$PWD/build/apps/wetwaresuite/wetwaresuite" mcp
 ```
 
 or only the vector tools (a shorter tool list for Claude to read):
 
 ```sh
-claude mcp add achclwss-vector -- "$PWD/build/apps/achclwss/achclwss" mcp --tools vector
+claude mcp add wetwaresuite-vector -- "$PWD/build/apps/wetwaresuite/wetwaresuite" mcp --tools vector
 ```
 
 For Claude Desktop, put the same command in its config file
@@ -411,7 +411,7 @@ For Claude Desktop, put the same command in its config file
 ```json
 {
   "mcpServers": {
-    "achclwss": { "command": "/full/path/to/build/apps/achclwss/achclwss", "args": ["mcp"] }
+    "wetwaresuite": { "command": "/full/path/to/build/apps/wetwaresuite/wetwaresuite", "args": ["mcp"] }
   }
 }
 ```
@@ -465,7 +465,7 @@ Tips for working with Claude:
 
 ## 11. command reference
 
-`achclwss help <command>` shows every parameter. In short (shape commands
+`wetwaresuite help <command>` shows every parameter. In short (shape commands
 take `doc` and `shape`, adds take `doc`; ✓ = undoable):
 
 | command | what it does | main parameters |
@@ -497,12 +497,12 @@ outline; lines and polylines have a 2px black outline and no fill.
 
 ## 12. troubleshooting
 
-**`no open vector document called 'vec1'`.** Each `achclwss run` starts
+**`no open vector document called 'vec1'`.** Each `wetwaresuite run` starts
 fresh, so a document made in one run isn't there in the next. Put the steps
 in one batch script, or use MCP, where documents stay open until closed.
 
 **`unknown parameter 'colour'`.** The names are `fill` and `stroke`. Run
-`achclwss help vector.add_rect` to see them all.
+`wetwaresuite help vector.add_rect` to see them all.
 
 **`'blurple' isn't a colour`.** Use a hex code (`#5865f2`), `rgb(...)`, or
 a basic name (red, green, blue, orange, purple, pink, ...).

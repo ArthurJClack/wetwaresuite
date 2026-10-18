@@ -26,7 +26,7 @@
 #pragma GCC diagnostic pop
 #endif
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 bool cffOutlines(const std::string& file, std::size_t offset, std::vector<std::vector<Contour>>& glyphs, std::string& error) {
     stbtt_fontinfo info;
@@ -76,4 +76,4 @@ bool cffOutlines(const std::string& file, std::size_t offset, std::vector<std::v
     return true;
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

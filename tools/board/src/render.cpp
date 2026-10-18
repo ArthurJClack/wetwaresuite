@@ -9,14 +9,14 @@
 #include <sstream>
 #include <variant>
 
-#include "achclwss/pdf/page.hpp"
-#include "achclwss/pdfdoc/writer.hpp"
-#include "achclwss/raster/codec.hpp"
-#include "achclwss/raster/ops.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/pdf/page.hpp"
+#include "wetwaresuite/pdfdoc/writer.hpp"
+#include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/ops.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 #include "internal.hpp"
 
-namespace achclwss::board {
+namespace wetwaresuite::board {
 
 using namespace detail;
 namespace fs = std::filesystem;
@@ -858,8 +858,8 @@ std::string toPdf(const Board& board, const RenderOptions& options) {
     w.set(pages, "<< /Type /Pages /Kids [" + std::to_string(page) + " 0 R] /Count 1 >>");
     w.set(catalog, "<< /Type /Catalog /Pages " + std::to_string(pages) + " 0 R >>");
     int info = 0;
-    if (!board.title.empty()) info = w.add("<< /Title " + pdfdoc::text(board.title) + " /Producer (ACHCLWSS board) >>");
+    if (!board.title.empty()) info = w.add("<< /Title " + pdfdoc::text(board.title) + " /Producer (wetwaresuite board) >>");
     return w.finish(catalog, info);
 }
 
-}  // namespace achclwss::board
+}  // namespace wetwaresuite::board

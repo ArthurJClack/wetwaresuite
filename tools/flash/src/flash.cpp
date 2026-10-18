@@ -1,6 +1,6 @@
 // The flash flow: resolve the board, open the port, run the right protocol.
 // Also board detection and planning the external tools.
-#include "achclwss/flash/flash.hpp"
+#include "wetwaresuite/flash/flash.hpp"
 
 #include <algorithm>
 #include <cctype>
@@ -10,10 +10,10 @@
 #include <sstream>
 #include <thread>
 
-#include "achclwss/core/process.hpp"
+#include "wetwaresuite/core/process.hpp"
 #include "internal.hpp"
 
-namespace achclwss::flash {
+namespace wetwaresuite::flash {
 
 namespace fs = std::filesystem;
 
@@ -546,4 +546,4 @@ ExternalPlan planExternal(const std::string& backend, const FlashRequest& req, c
     return plan;
 }
 
-}  // namespace achclwss::flash
+}  // namespace wetwaresuite::flash

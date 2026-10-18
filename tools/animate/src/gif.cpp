@@ -6,9 +6,9 @@
 #include <cstdint>
 #include <stdexcept>
 
-#include "achclwss/animate/animate.hpp"
+#include "wetwaresuite/animate/animate.hpp"
 
-namespace achclwss::animate {
+namespace wetwaresuite::animate {
 
 namespace {
 
@@ -268,4 +268,4 @@ std::string encodeGif(const std::vector<Image>& frames, const std::vector<int>& 
     return out;
 }
 
-}  // namespace achclwss::animate
+}  // namespace wetwaresuite::animate

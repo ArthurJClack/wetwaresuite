@@ -2,10 +2,10 @@
 #include <algorithm>
 #include <cmath>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "cmdutil.hpp"
 
-namespace achclwss::typeface::cmd {
+namespace wetwaresuite::typeface::cmd {
 
 namespace {
 
@@ -242,4 +242,4 @@ void registerTraceCommands(Session& session) {
             });
 }
 
-}  // namespace achclwss::typeface::cmd
+}  // namespace wetwaresuite::typeface::cmd

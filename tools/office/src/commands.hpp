@@ -9,13 +9,13 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/core/command.hpp"
-#include "achclwss/office/deck.hpp"
-#include "achclwss/office/doc.hpp"
-#include "achclwss/office/sheet.hpp"
-#include "achclwss/raster/image.hpp"
+#include "wetwaresuite/core/command.hpp"
+#include "wetwaresuite/office/deck.hpp"
+#include "wetwaresuite/office/doc.hpp"
+#include "wetwaresuite/office/sheet.hpp"
+#include "wetwaresuite/raster/image.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 namespace fs = std::filesystem;
 
@@ -218,4 +218,4 @@ void saveDeck(const Deck& deck, const std::string& path);  // throws
 Deck deckFromOutline(const std::string& markdown, const std::string& baseDir);
 std::string deckToOutline(const Deck& deck, const std::string& mediaPrefix, std::vector<MediaFile>& media);
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

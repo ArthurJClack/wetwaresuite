@@ -1,13 +1,13 @@
-#include "achclwss/paint/paint.hpp"
+#include "wetwaresuite/paint/paint.hpp"
 
 #include <algorithm>
 #include <cmath>
 #include <map>
 
-#include "achclwss/raster/document.hpp"
-#include "achclwss/raster/paint.hpp"
+#include "wetwaresuite/raster/document.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 
-namespace achclwss::paint {
+namespace wetwaresuite::paint {
 
 using namespace raster;
 
@@ -421,4 +421,4 @@ void registerCommands(Session& session) {
             }));
 }
 
-}  // namespace achclwss::paint
+}  // namespace wetwaresuite::paint

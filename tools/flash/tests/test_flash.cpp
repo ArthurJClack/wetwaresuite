@@ -11,13 +11,13 @@
 #include <unistd.h>
 #endif
 
-#include "achclwss/core/cli.hpp"
-#include "achclwss/flash/flash.hpp"
-#include "achclwss/mcp/server.hpp"
+#include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/flash/flash.hpp"
+#include "wetwaresuite/mcp/server.hpp"
 #include "check.hpp"
 
-using namespace achclwss;
-using namespace achclwss::flash;
+using namespace wetwaresuite;
+using namespace wetwaresuite::flash;
 namespace fs = std::filesystem;
 
 namespace {
@@ -32,7 +32,7 @@ std::string join_(const std::vector<std::string>& v) {
 
 fs::path makeTempDir() {
     std::random_device rd;
-    fs::path dir = fs::temp_directory_path() / ("achclwss_flash_" + std::to_string(rd()) + std::to_string(rd()));
+    fs::path dir = fs::temp_directory_path() / ("wetwaresuite_flash_" + std::to_string(rd()) + std::to_string(rd()));
     fs::create_directories(dir);
     return dir;
 }

@@ -6,9 +6,9 @@ Sculpt documents are ordinary `libs/mesh` meshes, so they mix freely with the ot
 
 There is no GUI yet; the GUI that comes later will call these same commands. Each task below is shown three ways:
 
-- **CLI**: single `achclwss` commands. Documents only live inside one process, so for one-shots every editing command also takes `input=` (a model file) and `output=` (where to write the result) instead of `doc=`.
+- **CLI**: single `wetwaresuite` commands. Documents only live inside one process, so for one-shots every editing command also takes `input=` (a model file) and `output=` (where to write the result) instead of `doc=`.
 - **Batch**: a script of commands with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools sculpt` serves just sculpt (plus photo, for heightmap images).
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools sculpt` serves just sculpt (plus photo, for heightmap images).
 
 Every example below was run against the real binary; outputs are copied from those runs, shortened where marked with `...`.
 
@@ -61,7 +61,7 @@ sculpt.export doc=$h path=out/head.glb
 ```
 
 ```sh
-$ achclwss batch head.txt
+$ wetwaresuite batch head.txt
 new sphere sculpt1: 20480 triangles, 10242 vertices, size 2 x 2 x 2 at (-1, -1, -1), watertight
 ...
 draw stroke: 9 dabs moved 773 vertices (up to 0.1689)
@@ -94,26 +94,26 @@ The finished head, front view: a brow ridge, two eye sockets, a snout with a mou
 **CLI.** With `input=` and `output=`, every edit is a one-shot that reads a file and writes the result (the same file is fine). Make the starting sphere with a two-line batch on stdin, then shape it step by step:
 
 ```sh
-$ printf 'sculpt.new shape=sphere level=5 -> h\nsculpt.export doc=$h path=cli/ball.stl\n' | achclwss batch
+$ printf 'sculpt.new shape=sphere level=5 -> h\nsculpt.export doc=$h path=cli/ball.stl\n' | wetwaresuite batch
 new sphere sculpt1: 20480 triangles, 10242 vertices, size 2 x 2 x 2 at (-1, -1, -1), watertight
 ...
 saved cli/ball.stl
 
-$ achclwss sculpt.stroke input=cli/ball.stl output=cli/head.stl brush=draw points=0.55,-0.75,0.35,0,-0.92,0.42 radius=0.3 strength=0.8 symmetry=x
+$ wetwaresuite sculpt.stroke input=cli/ball.stl output=cli/head.stl brush=draw points=0.55,-0.75,0.35,0,-0.92,0.42 radius=0.3 strength=0.8 symmetry=x
 draw stroke: 9 dabs moved 773 vertices (up to 0.1689)
 saved cli/head.stl
 ...
 
-$ achclwss sculpt.stroke input=cli/head.stl output=cli/head.stl brush=grab points=0,-1,-0.15,0,-1.45,-0.25 radius=0.45
+$ wetwaresuite sculpt.stroke input=cli/head.stl output=cli/head.stl brush=grab points=0,-1,-0.15,0,-1.45,-0.25 radius=0.45
 grab stroke: 1 dabs moved 505 vertices (up to 0.4709)
 saved cli/head.stl
 ...
 
-$ achclwss sculpt.smooth input=cli/head.stl output=cli/head.stl iterations=2 strength=0.3
+$ wetwaresuite sculpt.smooth input=cli/head.stl output=cli/head.stl iterations=2 strength=0.3
 smoothed (2 passes, moved up to 0.0007428)
 saved cli/head.stl
 
-$ achclwss convert.file input=cli/head.stl output=cli/head.png width=512 view=front
+$ wetwaresuite convert.file input=cli/head.stl output=cli/head.png width=512 view=front
 rendered cli/head.stl to cli/head.png
 ```
 
@@ -157,7 +157,7 @@ slicer.export_gcode doc=$job path=out/knob.gcode
 ```
 
 ```sh
-$ achclwss batch knob.txt
+$ wetwaresuite batch knob.txt
 created cad1 (0 features, 0 params, 0 bodies, mm)
 ...
 added cylinder cylinder1 (1 body, volume 8468.68 mm^3)
@@ -200,7 +200,7 @@ Things to notice:
 **CLI.** The same remesh and decimate steps work on files:
 
 ```sh
-$ achclwss sculpt.remesh input=out/knob.stl output=cli/knob_even.stl voxel_size=0.5
+$ wetwaresuite sculpt.remesh input=out/knob.stl output=cli/knob_even.stl voxel_size=0.5
 remeshed at 72 cells: 20000 -> 26144 triangles (13072 quads)
 saved cli/knob_even.stl
 ...
@@ -238,7 +238,7 @@ sculpt.export doc=$lod1 path=game/head_lod2.png view=front size=512
 ```
 
 ```sh
-$ achclwss batch game.txt
+$ wetwaresuite batch game.txt
 opened out/head.stl as sculpt1: 20480 triangles, 10242 vertices, size 2 x 2.451 x 2.354 at (-1, -1.451, -1), watertight
 ...
 copied sculpt1 into sculpt2: 20480 triangles, 10242 vertices, size 2 x 2.451 x 2.354 at (-1, -1.451, -1), watertight
@@ -266,12 +266,12 @@ saved game/head_lod2.png
 **CLI.**
 
 ```sh
-$ achclwss sculpt.retopo input=out/head.stl output=cli/head_quads.obj quads=1500
+$ wetwaresuite sculpt.retopo input=out/head.stl output=cli/head_quads.obj quads=1500
 retopologized 20480 triangles into 1542 quads
 saved cli/head_quads.obj
 ...
 
-$ achclwss sculpt.decimate input=out/head.stl output=cli/head_2k.glb triangles=2000
+$ wetwaresuite sculpt.decimate input=out/head.stl output=cli/head_2k.glb triangles=2000
 decimated 20480 -> 2000 triangles
 saved cli/head_2k.glb
 ...
@@ -311,7 +311,7 @@ sculpt.export doc=$tile path=out/relief.obj
 ```
 
 ```sh
-$ achclwss batch relief.txt
+$ wetwaresuite batch relief.txt
 created img1 with layers Background and Layer 1
 ...
 saved out/height.png
@@ -336,12 +336,12 @@ On other shapes pick a projection: `mapping=spherical` for heads and rocks, `cyl
 **CLI.** With a plane saved first:
 
 ```sh
-$ printf 'sculpt.new shape=plane size=100 level=7 -> t\nsculpt.export doc=$t path=cli/tile.obj\n' | achclwss batch
+$ printf 'sculpt.new shape=plane size=100 level=7 -> t\nsculpt.export doc=$t path=cli/tile.obj\n' | wetwaresuite batch
 new plane sculpt1: 32768 triangles, 16641 vertices, size 100 x 100 x 0 at (-50, -50, 0), open
 ...
 saved cli/tile.obj
 
-$ achclwss sculpt.displace input=cli/tile.obj output=cli/tile_relief.stl image=out/height.png amount=6 midlevel=0
+$ wetwaresuite sculpt.displace input=cli/tile.obj output=cli/tile_relief.stl image=out/height.png amount=6 midlevel=0
 displaced by out/height.png (up to 6)
 saved cli/tile_relief.stl
 ...
@@ -380,7 +380,7 @@ sculpt.export doc=$h path=out/head_mirrored.stl
 ```
 
 ```sh
-$ achclwss batch screen.txt
+$ wetwaresuite batch screen.txt
 opened out/head.stl as sculpt1: 20480 triangles, 10242 vertices, size 2 x 2.451 x 2.354 at (-1, -1.451, -1), watertight
 ...
 saved out/screen_before.png
@@ -407,7 +407,7 @@ The screen points are densified along the picture and each one is cast onto the 
 **CLI.**
 
 ```sh
-$ achclwss sculpt.symmetrize input=out/head.stl output=cli/head_sym.stl axis=x direction=positive
+$ wetwaresuite sculpt.symmetrize input=out/head.stl output=cli/head_sym.stl axis=x direction=positive
 mirrored the +x half: 20708 triangles, 10356 vertices, size 2 x 2.451 x 2.354 at (-1, -1.451, -1), watertight
 saved cli/head_sym.stl
 ...

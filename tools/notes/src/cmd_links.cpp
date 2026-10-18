@@ -7,10 +7,10 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::notes::detail {
+namespace wetwaresuite::notes::detail {
 
 using nlohmann::json;
 
@@ -360,4 +360,4 @@ void registerLinkCommands(CommandRegistry& reg, const StatePtr& st) {
     registerGraph(reg, st);
 }
 
-}  // namespace achclwss::notes::detail
+}  // namespace wetwaresuite::notes::detail

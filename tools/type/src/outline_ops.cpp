@@ -6,7 +6,7 @@
 
 #include "internal.hpp"
 
-namespace achclwss::typeface {
+namespace wetwaresuite::typeface {
 
 // ---- curve fitting ----
 
@@ -476,4 +476,4 @@ std::vector<Contour> removeOverlaps(const std::vector<Contour>& contours, double
     return out;
 }
 
-}  // namespace achclwss::typeface
+}  // namespace wetwaresuite::typeface

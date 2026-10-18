@@ -1,5 +1,5 @@
 // Firmware file formats and the checksums the bootloaders use.
-#include "achclwss/flash/firmware.hpp"
+#include "wetwaresuite/flash/firmware.hpp"
 
 #include <algorithm>
 #include <array>
@@ -10,7 +10,7 @@
 #include <iterator>
 #include <sstream>
 
-namespace achclwss::flash {
+namespace wetwaresuite::flash {
 
 namespace {
 
@@ -539,4 +539,4 @@ Firmware loadFirmware(const std::filesystem::path& path, std::uint32_t binAddres
     return parseFirmware(bytes, path.string(), binAddress);
 }
 
-}  // namespace achclwss::flash
+}  // namespace wetwaresuite::flash

@@ -7,11 +7,11 @@
 #include <set>
 #include <sstream>
 
-#include "achclwss/pdfdoc/fonts.hpp"
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/pdfdoc/fonts.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::layout {
+namespace wetwaresuite::layout {
 
 namespace {
 
@@ -1814,4 +1814,4 @@ void registerCommands(Session& session) {
     registerCheckingAndOutput(session);
 }
 
-}  // namespace achclwss::layout
+}  // namespace wetwaresuite::layout

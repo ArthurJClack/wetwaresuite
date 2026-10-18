@@ -1,6 +1,6 @@
 # Headless use and batch scripts
 
-ACHCLWSS is built to run without a screen. Every feature is a command, and commands can run one at a time from your shell, many at a time from a script, or unattended in CI and cron jobs. This tutorial covers all three.
+wetwaresuite is built to run without a screen. Every feature is a command, and commands can run one at a time from your shell, many at a time from a script, or unattended in CI and cron jobs. This tutorial covers all three.
 
 If you have not used the CLI yet, read [getting started](getting-started.md) first: it explains `key=value` arguments, colours, lists and document ids.
 
@@ -9,16 +9,16 @@ If you have not used the CLI yet, read [getting started](getting-started.md) fir
 Commands that read a file and write a file need no script at all:
 
 ```sh
-achclwss convert.file input=interview.wav output=interview.mp3 quality=80
-achclwss photo.batch input_dir=photos output_dir=web max_size=1600 quality=82
-achclwss toolkit.inspect path=download.dat
+wetwaresuite convert.file input=interview.wav output=interview.mp3 quality=80
+wetwaresuite photo.batch input_dir=photos output_dir=web max_size=1600 quality=82
+wetwaresuite toolkit.inspect path=download.dat
 ```
 
 Anything that edits an open document over several steps (open, adjust, save) needs a batch script, because documents only live as long as the process that opened them.
 
 ## Your first batch script
 
-A batch script is a plain text file with one command per line, written exactly as you would after `achclwss run`. Save this as `fix-dark.txt`:
+A batch script is a plain text file with one command per line, written exactly as you would after `wetwaresuite run`. Save this as `fix-dark.txt`:
 
 ```text
 # brighten an underexposed photo and save a web copy
@@ -34,7 +34,7 @@ echo done with $pic
 Run it:
 
 ```sh
-$ achclwss batch fix-dark.txt
+$ wetwaresuite batch fix-dark.txt
 opened dark.jpg as img1
 doc: img1
 width: 1200
@@ -121,16 +121,16 @@ A `$word` that was never captured is left exactly as written. Longer names win, 
 
 | How | Command |
 | --- | --- |
-| from a file | `achclwss batch script.txt` |
-| from stdin | `achclwss batch` or `achclwss batch -` |
-| keep going after a failing line | `achclwss batch script.txt --keep-going` |
+| from a file | `wetwaresuite batch script.txt` |
+| from stdin | `wetwaresuite batch` or `wetwaresuite batch -` |
+| keep going after a failing line | `wetwaresuite batch script.txt --keep-going` |
 
 ### Errors and `--keep-going`
 
 By default a script stops at the first failing line. The error goes to stderr with the line number:
 
 ```sh
-$ printf 'photo.new width=1 height=1\nbogus.cmd\necho after\n' | achclwss batch
+$ printf 'photo.new width=1 height=1\nbogus.cmd\necho after\n' | wetwaresuite batch
 created img1
 ...
 line 2: unknown command: bogus.cmd
@@ -139,7 +139,7 @@ line 2: unknown command: bogus.cmd
 With `--keep-going` every line runs, errors are still reported, and the exit code still tells you something went wrong:
 
 ```sh
-$ printf 'photo.new width=1 height=1\nbogus.cmd\necho after\n' | achclwss batch - --keep-going
+$ printf 'photo.new width=1 height=1\nbogus.cmd\necho after\n' | wetwaresuite batch - --keep-going
 created img1
 ...
 line 2: unknown command: bogus.cmd
@@ -162,7 +162,7 @@ This script turns a folder of raw material into a week's blog assets: a hero ima
 
 ```text
 # publish.txt: build this week's blog assets from the raw files in release/
-# run with: mkdir -p out && achclwss batch publish.txt
+# run with: mkdir -p out && wetwaresuite batch publish.txt
 
 # 1. hero image: crop to 16:9, brighten a touch, save a large and a small copy
 photo.open path=release/hero.jpg -> hero
@@ -192,7 +192,7 @@ echo all done: $hero and $card
 ```
 
 ```sh
-$ mkdir -p out && achclwss batch publish.txt > publish.log
+$ mkdir -p out && wetwaresuite batch publish.txt > publish.log
 $ tail -1 publish.log
 all done: img1 and img2
 $ ls out
@@ -216,7 +216,7 @@ Because a script can come from stdin, a shell loop can build one per file. Here 
 mkdir -p square
 for f in photos/*.jpg; do
   name=$(basename "$f" .jpg)
-  achclwss batch <<EOF || echo "failed on $f" >&2
+  wetwaresuite batch <<EOF || echo "failed on $f" >&2
 photo.open path="$f" -> p
 photo.crop doc=\$p x=500 y=0 width=2000 height=2000
 photo.resize doc=\$p width=1080
@@ -225,7 +225,7 @@ EOF
 done
 ```
 
-Inside an unquoted heredoc (`<<EOF`) the shell expands `$f` and `$name` for you, so the ACHCLWSS variable has to be written `\$p` to reach the script intact. If you do not need shell variables, quote the heredoc (`<<'EOF'`) and write `$p` normally.
+Inside an unquoted heredoc (`<<EOF`) the shell expands `$f` and `$name` for you, so the wetwaresuite variable has to be written `\$p` to reach the script intact. If you do not need shell variables, quote the heredoc (`<<'EOF'`) and write `$p` normally.
 
 For whole-folder jobs, prefer the built-in folder commands, which are faster than a loop: `photo.batch` (resize, auto contrast, effects) and `convert.batch` (format changes).
 
@@ -241,7 +241,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Build ACHCLWSS
+      - name: Build wetwaresuite
         run: |
           cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
           cmake --build build -j
@@ -250,19 +250,19 @@ jobs:
       - name: Generate assets
         run: |
           mkdir -p out
-          ./build/apps/achclwss/achclwss batch publish.txt
+          ./build/apps/wetwaresuite/wetwaresuite batch publish.txt
       - uses: actions/upload-artifact@v4
         with:
           name: assets
           path: out/
 ```
 
-A failing line makes `achclwss batch` exit with 1, which fails the step. If you would rather collect every problem in one run, add `--keep-going`: the job still fails, but only after all lines have been tried.
+A failing line makes `wetwaresuite batch` exit with 1, which fails the step. If you would rather collect every problem in one run, add `--keep-going`: the job still fails, but only after all lines have been tried.
 
 To check up front that a machine has the backends a script needs, use `convert.check` (exit code 1 when no converter exists) or read `convert.formats`:
 
 ```sh
-achclwss convert.check input=release/report.docx to=pdf
+wetwaresuite convert.check input=release/report.docx to=pdf
 ```
 
 ## Running from cron
@@ -271,7 +271,7 @@ A nightly job that resizes the day's uploads and stays quiet unless something fa
 
 ```cron
 # m h  dom mon dow  command
-30 2  *   *   *    cd /srv/site && /opt/achclwss/achclwss photo.batch input_dir=uploads output_dir=public/img max_size=1600 quality=82 > /dev/null 2>> logs/achclwss.log
+30 2  *   *   *    cd /srv/site && /opt/wetwaresuite/wetwaresuite photo.batch input_dir=uploads output_dir=public/img max_size=1600 quality=82 > /dev/null 2>> logs/wetwaresuite.log
 ```
 
 Or wrap a script so that output is only shown (and mailed by cron) on failure:
@@ -279,14 +279,14 @@ Or wrap a script so that output is only shown (and mailed by cron) on failure:
 ```sh
 #!/bin/sh
 cd /srv/site || exit 1
-achclwss batch publish.txt > /dev/null 2> /tmp/achclwss-errors.log || {
+wetwaresuite batch publish.txt > /dev/null 2> /tmp/wetwaresuite-errors.log || {
   echo "publish failed:"
-  cat /tmp/achclwss-errors.log
+  cat /tmp/wetwaresuite-errors.log
   exit 1
 }
 ```
 
 ## Where next
 
-- [Using ACHCLWSS with Claude (MCP)](mcp.md): the same commands, driven by Claude.
+- [Using wetwaresuite with Claude (MCP)](mcp.md): the same commands, driven by Claude.
 - Per tool: [photo](photo.md), [paint](paint.md), [vector](vector.md), [convert](convert.md), [toolkit](toolkit.md).

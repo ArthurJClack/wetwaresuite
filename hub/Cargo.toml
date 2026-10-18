@@ -1,9 +1,9 @@
 [package]
-name = "achclwss-hub"
+name = "wetwaresuite-hub"
 version = "0.1.0"
 edition = "2021"
 license = "GPL-3.0-or-later"
-description = "Install manager for the ACHCLWSS suite"
+description = "Install manager for the wetwaresuite suite"
 
 [[bin]]
 name = "hub"

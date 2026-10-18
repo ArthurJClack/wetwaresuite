@@ -6,10 +6,10 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/mesh/io.hpp"
+#include "wetwaresuite/mesh/io.hpp"
 #include "internal.hpp"
 
-namespace achclwss::mesh {
+namespace wetwaresuite::mesh {
 
 using json = nlohmann::json;
 
@@ -118,7 +118,7 @@ Packed pack(const Mesh& input) {
     const std::size_t indexAccessor = accessors.size() - 1;
     pad(bin, '\0');
 
-    p.doc = {{"asset", {{"version", "2.0"}, {"generator", "achclwss"}}},
+    p.doc = {{"asset", {{"version", "2.0"}, {"generator", "wetwaresuite"}}},
              {"scene", 0},
              {"scenes", {{{"nodes", {0}}}}},
              {"nodes", {{{"mesh", 0}, {"name", "mesh"}}}},
@@ -407,4 +407,4 @@ Mesh readGltf(const std::string& bytes, const std::filesystem::path& baseDir) {
     }
 }
 
-}  // namespace achclwss::mesh
+}  // namespace wetwaresuite::mesh

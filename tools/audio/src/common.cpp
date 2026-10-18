@@ -4,9 +4,9 @@
 #include <cctype>
 #include <cmath>
 
-#include "achclwss/audio/commands.hpp"
+#include "wetwaresuite/audio/commands.hpp"
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 void registerCommands(Session& session) {
     auto state = std::make_shared<tool::State>();
@@ -15,9 +15,9 @@ void registerCommands(Session& session) {
     tool::registerProjectCommands(session);
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio
 
-namespace achclwss::audio::tool {
+namespace wetwaresuite::audio::tool {
 
 std::string lowerExt(const fs::path& p) {
     std::string e = p.extension().string();
@@ -103,4 +103,4 @@ std::vector<fs::path> audioFiles(const fs::path& dir, bool recursive) {
     return files;
 }
 
-}  // namespace achclwss::audio::tool
+}  // namespace wetwaresuite::audio::tool

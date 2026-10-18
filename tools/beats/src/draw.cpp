@@ -4,9 +4,9 @@
 #include <algorithm>
 #include <cmath>
 
-#include "achclwss/beats/song.hpp"
+#include "wetwaresuite/beats/song.hpp"
 
-namespace achclwss::beats {
+namespace wetwaresuite::beats {
 
 namespace {
 
@@ -177,4 +177,4 @@ Image drawPattern(const Song& s, const Pattern& p, TrackKind kind, int width) {
     return im;
 }
 
-}  // namespace achclwss::beats
+}  // namespace wetwaresuite::beats

@@ -4,9 +4,9 @@
 
 Each task below is shown three ways:
 
-- **CLI**: `achclwss <command> key=value` runs one command in a fresh process. A level only lives as long as the process, so one-shot commands are for opening and inspecting files; for edits, pipe a few lines into `achclwss batch` from the shell.
-- **Batch**: a script file run with `achclwss batch file.txt`. `-> name` at the end of a line saves the result (the level id) and `$name` reuses it; `#` starts a comment; `undo` and `redo` work as lines (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools levels` serves just this tool; add `forge` when you also want sprite sheets packed.
+- **CLI**: `wetwaresuite <command> key=value` runs one command in a fresh process. A level only lives as long as the process, so one-shot commands are for opening and inspecting files; for edits, pipe a few lines into `wetwaresuite batch` from the shell.
+- **Batch**: a script file run with `wetwaresuite batch file.txt`. `-> name` at the end of a line saves the result (the level id) and `$name` reuses it; `#` starts a comment; `undo` and `redo` work as lines (see [headless and batch](headless-and-batch.md)).
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools levels` serves just this tool; add `forge` when you also want sprite sheets packed.
 
 Every example was run against the real binary, in an empty folder; outputs are copied from those runs (long ones shortened where marked with `...`).
 
@@ -64,7 +64,7 @@ levels.save doc=$m path=out/cave.png
 ```
 
 ```sh
-$ achclwss batch cave.txt
+$ wetwaresuite batch cave.txt
 created lvl1: 48x32 cells of 16x16 px, 1 tile layer, 0 object layers, 0 objects, 0 tilesets
 ...
 drew 16 autotile tiles to art/rock.png and added tileset rock (gids 1..16)
@@ -116,7 +116,7 @@ What each step does:
 The same idea, shorter, without a script file:
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 levels.new width=48 height=32 layer=walls -> m
 levels.tileset_placeholder doc=$m path=art/rock.png style=autotile
 levels.gen_caves doc=$m wall=15 floor=-1 seed=11
@@ -160,7 +160,7 @@ levels.save doc=$d path=out/dungeon.png scale=0.5
 ```
 
 ```sh
-$ achclwss batch dungeon.txt
+$ wetwaresuite batch dungeon.txt
 ...
 generated 24 rooms on walls: 2,2 9x10; 3,31 5x5; 2,14 5x6; 2,22 10x5; 14,6 5x6; 22,5 7x6; ...
 rooms: 24
@@ -194,7 +194,7 @@ The plain JSON keeps one row of gids per line and properties as JSON values:
 
 ```json
 {
- "format": "achclwss-level",
+ "format": "wetwaresuite-level",
  "version": 1,
  "width": 56,
  "height": 40,
@@ -235,7 +235,7 @@ $ head -3 out/dungeon_csv/collision.csv | cut -c1-60
 ### From the shell
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 levels.new width=56 height=40 -> d
 levels.gen_rooms doc=$d wall=0 floor=-1 objects_layer=entities seed=21
 levels.export_csv doc=$d path=out/rooms.csv
@@ -265,7 +265,7 @@ forge.sprite_split input=art/loose.png output_dir=tiles cell_width=16 cell_heigh
 ```
 
 ```sh
-$ achclwss batch maketiles.txt
+$ wetwaresuite batch maketiles.txt
 ...
 wrote 8 frames to tiles
 frames: 8
@@ -299,7 +299,7 @@ levels.save doc=$w path=out/overworld.png scale=0.5
 ```
 
 ```sh
-$ achclwss batch overworld.txt
+$ wetwaresuite batch overworld.txt
 packed 8 frames into 74x38 art/overworld.png + art/overworld.json (opened as img1)
 ...
 added tileset overworld: 8 tiles (4 columns), gids 1..8
@@ -334,7 +334,7 @@ saved out/overworld.tmx (tmx)
 Try thresholds quickly without writing a script, then look at the PNG:
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 levels.new width=64 height=48 -> w
 levels.gen_noise doc=$w tiles=0,1,2 thresholds=0.4,0.7 scale=12 seed=7
 levels.save doc=$w path=out/noise-test.png scale=0.25
@@ -381,7 +381,7 @@ levels.save doc=$w path=out/overworld2.png scale=0.5
 ```
 
 ```sh
-$ achclwss batch edit.txt
+$ wetwaresuite batch edit.txt
 opened out/overworld.tmx as lvl1: 64x48 cells of 16x16 px, 2 tile layers, 1 object layer, 53 objects, 1 tileset, out/overworld.tmx
 ...
 filled 10x7 outline with overworld:4 (30 cells changed)
@@ -425,7 +425,7 @@ saved out/overworld2.tmj (tmj)
 Look at what's in a map before editing it (one-shot, nothing is changed):
 
 ```sh
-$ achclwss levels.open path=out/cave.tmx
+$ wetwaresuite levels.open path=out/cave.tmx
 opened out/cave.tmx as lvl1: 48x32 cells of 16x16 px, 2 tile layers, 2 object layers, 74 objects, 2 tilesets, out/cave.tmx
 lvl1
 doc: lvl1
@@ -441,7 +441,7 @@ objects: 74
 A quick edit-and-save pipes into `batch`:
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 levels.open path=out/cave.tmx -> m
 levels.paint doc=$m layer=props cells=10,16,11,16,12,16 tile=5 tileset=props
 levels.save doc=$m path=out/cave.tmx
@@ -459,7 +459,7 @@ Claude calls `levels_open`, `levels_info` (to learn the tile ids), `levels_layer
 **CLI.** `levels.open` is read-only, so it works as a one-shot inspector for any supported file:
 
 ```sh
-$ achclwss levels.open path=out/dungeon.ldtk
+$ wetwaresuite levels.open path=out/dungeon.ldtk
 opened out/dungeon.ldtk as lvl1: 56x40 cells of 16x16 px, 3 tile layers, 1 object layer, 27 objects, 1 tileset, out/dungeon.ldtk
 lvl1
 doc: lvl1
@@ -473,7 +473,7 @@ The LDtk file came back with its floor and walls tile layers, the collision IntG
 **Batch.** Convert between formats; the output extension picks the format:
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 levels.open path=out/cave.tmx -> m
 levels.info doc=$m
 levels.count doc=$m
@@ -520,7 +520,7 @@ The usual workflow: paint or generate rough terrain with one tile (`levels.fill_
 **Objects.** `levels.object_add` takes `type` (enemy, chest, door...), `name`, a position (`x`/`y` in px, or `cell=column,row`), a size (default one tile; points have none) and `properties="key=value; key2=value2"`. A point placed with `cell=` sits in the middle of the cell; a rect at its top-left. `levels.object_move` takes a new position, `dx`/`dy`, or `layer=` to move it to another object layer; `levels.object_set` changes name, type, size and shape and sets or removes one property (`key`, `value`, an empty value removes) or several (`properties`). `levels.object_list` shows ids, filtered by `type` or `layer`.
 
 ```sh
-achclwss batch <<'EOF'
+wetwaresuite batch <<'EOF'
 levels.new width=20 height=15 -> m
 levels.object_add doc=$m type=enemy name=bat cell=5,5 properties="hp=3; speed=1.5; flying=true"
 levels.object_add doc=$m type=door x=144 y=96 width=16 height=32 properties="target=level2"
@@ -553,7 +553,7 @@ Which tiles are solid: `solid=any` (any tile on the `from` layers, default every
 | --- | --- | --- | --- |
 | Tiled TMX (`.tmx`) | yes | yes | orthogonal maps; tile data CSV, base64, base64+zlib or base64+gzip (read); writes `csv`, `base64` or `zlib`; embedded or external `.tsx` tilesets (read); group layers are flattened; tile objects (`gid`) open as objects with a `gid` property |
 | Tiled JSON (`.tmj`, or `.json` from Tiled) | yes | yes | same coverage as TMX; external `.tsj`/`.tsx` tilesets read |
-| plain JSON (`.json`) | yes | yes | `format: achclwss-level`: `data` is rows of gids (0 empty), tilesets with `firstGid`, objects with typed properties |
+| plain JSON (`.json`) | yes | yes | `format: wetwaresuite-level`: `data` is rows of gids (0 empty), tilesets with `firstGid`, objects with typed properties |
 | LDtk-lite (`.ldtk`, or `.json` from LDtk) | yes (one level) | yes | Tiles and auto-layer tiles, IntGrid (as collision grids), entities with fields; one tileset per tile layer (others are left out with a warning); cells must be square |
 | CSV (per layer) | `levels.import_csv` | `levels.export_csv` | tile ids within the tileset with -1 empty, or raw gids with `values=gid` |
 | PNG/JPG/BMP/TGA | no | yes | flattened render of visible tile layers at `scale` |
@@ -562,7 +562,7 @@ Which tiles are solid: `solid=any` (any tile on the `from` layers, default every
 
 ## 10. Command reference
 
-`achclwss help levels.<command>` prints the same information; over MCP the tool names use `_` (`levels_fill_rect`). Every edit command is undoable and takes `preview` (attach a PNG render to the result).
+`wetwaresuite help levels.<command>` prints the same information; over MCP the tool names use `_` (`levels_fill_rect`). Every edit command is undoable and takes `preview` (attach a PNG render to the result).
 
 ### Documents and files
 

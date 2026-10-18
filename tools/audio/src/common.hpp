@@ -7,13 +7,13 @@
 #include <string>
 #include <vector>
 
-#include "achclwss/audio/analysis.hpp"
-#include "achclwss/audio/document.hpp"
-#include "achclwss/audio/dsp.hpp"
-#include "achclwss/audio/io.hpp"
-#include "achclwss/core/command.hpp"
+#include "wetwaresuite/audio/analysis.hpp"
+#include "wetwaresuite/audio/document.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
+#include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/core/command.hpp"
 
-namespace achclwss::audio::tool {
+namespace wetwaresuite::audio::tool {
 
 namespace fs = std::filesystem;
 
@@ -68,4 +68,4 @@ void registerFileCommands(Session& session, const std::shared_ptr<State>& state)
 void registerEditCommands(Session& session, const std::shared_ptr<State>& state);
 void registerProjectCommands(Session& session);
 
-}  // namespace achclwss::audio::tool
+}  // namespace wetwaresuite::audio::tool

@@ -14,12 +14,12 @@
 #include <stdexcept>
 #include <unordered_map>
 
-#include "achclwss/office/sheet.hpp"
-#include "achclwss/pdf/fonts.hpp"
+#include "wetwaresuite/office/sheet.hpp"
+#include "wetwaresuite/pdf/fonts.hpp"
 #include "sheet_internal.hpp"
 #include "text.hpp"
 
-namespace achclwss::office {
+namespace wetwaresuite::office {
 
 struct FormulaNode {
     enum Kind { Num, Str, Bool, Err, Ref, Unary, Binary, Percent, Call, Missing };
@@ -1848,4 +1848,4 @@ std::vector<Range> formulaReferences(const Workbook& wb, const std::string& form
     return out;
 }
 
-}  // namespace achclwss::office
+}  // namespace wetwaresuite::office

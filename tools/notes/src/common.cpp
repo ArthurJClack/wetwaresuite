@@ -6,10 +6,10 @@
 #include <sstream>
 #include <stdexcept>
 
-#include "achclwss/raster/codec.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "internal.hpp"
 
-namespace achclwss::notes {
+namespace wetwaresuite::notes {
 
 void registerCommands(Session& session) {
     auto st = std::make_shared<detail::State>();
@@ -855,4 +855,4 @@ std::string ensureDaily(Vault& v, FileTxn& txn, const Date& d, const Params& p, 
 }
 
 }  // namespace detail
-}  // namespace achclwss::notes
+}  // namespace wetwaresuite::notes

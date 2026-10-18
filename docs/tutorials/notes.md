@@ -6,9 +6,9 @@ The folder is the source of truth. You can keep editing it in Obsidian, VS Code,
 
 There is no GUI yet; the GUI that comes later will call these same commands. Each task below is shown three ways:
 
-- **CLI**: single `achclwss notes.*` commands. The vault lives on disk, so (unlike photo documents) one-shot commands build on each other.
+- **CLI**: single `wetwaresuite notes.*` commands. The vault lives on disk, so (unlike photo documents) one-shot commands build on each other.
 - **Batch**: a script for multi-step work with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)). Batch scripts and MCP sessions can also `undo`.
-- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `achclwss mcp --tools notes` serves just this tool.
+- **Claude**: a prompt for Claude over MCP and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools notes` serves just this tool.
 
 Every example was run against the real binary on the sample vault below; outputs are copied from those runs (the vault was at `/home/me/Notes`; long outputs are shortened where marked).
 
@@ -76,7 +76,7 @@ Sam suggested raised beds. See [[Website Relaunch#Timeline]] for the photo shoot
 
 ```sh
 $ cd ~/Notes
-$ achclwss notes.vault.info
+$ wetwaresuite notes.vault.info
 /home/me/Notes
   11 notes, 1 attachment, 4 folders, 249 words
   13 links (2 unresolved), 5 tags
@@ -88,7 +88,7 @@ path: /home/me/Notes
 notes: 11
 attachments: 1
 ...
-$ achclwss notes.list sort=-words limit=5
+$ wetwaresuite notes.list sort=-words limit=5
 11 notes, showing 5
 Projects/Garden Redesign.md  70 words  2026-10-16 08:58 #project #project/garden
 Projects/Website Relaunch.md  61 words  2026-10-16 08:58 #project #work
@@ -102,7 +102,7 @@ total: 11
 Read a note by its alias, one section of a note, or its outline:
 
 ```sh
-$ achclwss notes.read note=Dashboard
+$ wetwaresuite notes.read note=Dashboard
 ---
 title: Home
 aliases: [Start, Dashboard]
@@ -120,14 +120,14 @@ note: Home.md
 title: Home
 tags: #hub
 words: 28
-$ achclwss notes.read note="Garden Redesign" heading=Budget
+$ wetwaresuite notes.read note="Garden Redesign" heading=Budget
 ## Budget
 | Item | Cost |
 |------|-----:|
 | Soil | 120 |
 | Plants | 340 |
 ...
-$ achclwss notes.outline note="Garden Redesign"
+$ wetwaresuite notes.outline note="Garden Redesign"
 Projects/Garden Redesign.md: 4 headings
 # Garden Redesign  (line 6)
   ## Budget  (line 12)
@@ -152,12 +152,12 @@ notes.list vault=$v folder=Projects
 **Templates.** Templates are notes in the templates folder. `{{title}}` is the new note's name, `{{date}}` and `{{time}}` use the vault's formats (`YYYY-MM-DD` and `HH:mm` unless `.obsidian/templates.json` says otherwise), `{{date:dddd D MMMM YYYY}}` takes any moment.js format (as Obsidian does), `{{yesterday}}` and `{{tomorrow}}` work too, and `vars=` fills any other `{{name}}`:
 
 ```sh
-$ achclwss notes.templates.list
+$ wetwaresuite notes.templates.list
 3 templates in Templates/
 Templates/Daily.md  uses {{date}} {{date:dddd D MMMM YYYY}}
 Templates/Meeting.md  uses {{attendees}} {{date}} {{title}}
 Templates/Person.md  uses {{title}}
-$ achclwss notes.templates.render template=Person title="Jo Park"
+$ wetwaresuite notes.templates.render template=Person title="Jo Park"
 ---
 tags: [person]
 ---
@@ -169,13 +169,13 @@ tags: [person]
 **CLI.** Create a meeting note from a template and fill a section:
 
 ```sh
-$ achclwss notes.create note="Meetings/Website kickoff" template=Meeting vars="attendees=Priya, Sam" today="2026-10-16 10:00"
+$ wetwaresuite notes.create note="Meetings/Website kickoff" template=Meeting vars="attendees=Priya, Sam" today="2026-10-16 10:00"
 created Meetings/Website kickoff.md
 Meetings/Website kickoff.md
 note: Meetings/Website kickoff.md
 path: /home/me/Notes/Meetings/Website kickoff.md
 bytes: 117
-$ achclwss notes.append note="Website kickoff" heading=Decisions content="- Launch moves to 2026-11-15"
+$ wetwaresuite notes.append note="Website kickoff" heading=Decisions content="- Launch moves to 2026-11-15"
 added to Meetings/Website kickoff.md under Decisions
 $ cat "Meetings/Website kickoff.md"
 ---
@@ -198,7 +198,7 @@ Attendees: Priya, Sam
 (`today=` pins the date for the example; normally leave it out.) The new folder `Meetings/` is created. `notes.append` adds to the end of the note, or with `heading=` to the end of that heading's section (`prepend=true` puts it right under the heading); a heading that doesn't exist is added. List items join the list above them. Without `create=false`, appending to a note that doesn't exist creates it, which makes an inbox one command:
 
 ```sh
-$ achclwss notes.append note=Inbox content="- idea: rain barrel"
+$ wetwaresuite notes.append note=Inbox content="- idea: rain barrel"
 added to Inbox.md
 ```
 
@@ -207,7 +207,7 @@ added to Inbox.md
 **Daily notes** follow the vault's daily note settings (folder, file name format, template):
 
 ```sh
-$ achclwss notes.daily today=2026-10-16 append="- 09:30 call with Priya about copy" heading=Log
+$ wetwaresuite notes.daily today=2026-10-16 append="- 09:30 call with Priya about copy" heading=Log
 created Journal/2026-10-16.md
 ---
 created: 2026-10-16
@@ -224,7 +224,7 @@ Journal/2026-10-16.md
 note: Journal/2026-10-16.md
 created: true
 date: 2026-10-16
-$ achclwss notes.daily date=yesterday today=2026-10-16
+$ wetwaresuite notes.daily date=yesterday today=2026-10-16
 Journal/2026-10-15.md
 ...
 created: false
@@ -245,7 +245,7 @@ notes.backlinks note=$m
 ```
 
 ```sh
-$ achclwss batch meeting.txt
+$ wetwaresuite batch meeting.txt
 opened vault1: /home/me/Notes (13 notes, 1 attachment, 7 open tasks)
 ...
 created Meetings/Garden walk.md
@@ -291,7 +291,7 @@ Journal/2026-10-16.md:9  - Garden walk with [[Sam Lee]], see [[Garden walk]]
 **CLI.**
 
 ```sh
-$ achclwss notes.search query=budget
+$ wetwaresuite notes.search query=budget
 2 matches
 Projects/Website Relaunch.md  (1.58)
     18: > [!warning] **Budget** > The hosting **budget** is capped at 20 a month.
@@ -301,19 +301,19 @@ count: 2
 total: 2
 notes: Projects/Website Relaunch.md
 Projects/Garden Redesign.md
-$ achclwss notes.search query='"raised beds"'
+$ wetwaresuite notes.search query='"raised beds"'
 1 match
 Projects/Garden Redesign.md  (4.18)
     24: Sam suggested **raised beds**. See [[Website Relaunch#Timeline]] for the photo shoot date.
-$ achclwss notes.search query="budget -hosting"
+$ wetwaresuite notes.search query="budget -hosting"
 1 match
 Projects/Garden Redesign.md  (1.54)
 ...
-$ achclwss notes.search query="garden tag:project path:Projects/" snippets=false
+$ wetwaresuite notes.search query="garden tag:project path:Projects/" snippets=false
 2 matches
 Projects/Garden Redesign.md  (3.71)
 Projects/Website Relaunch.md  (0.45)
-$ achclwss notes.search query="irrig*" limit=3
+$ wetwaresuite notes.search query="irrig*" limit=3
 2 matches
 People/Sam Lee.md  (2.03)
     7: Neighbour, knows **irrigation**. Met through the [[Garden Redesign]].
@@ -324,7 +324,7 @@ Projects/Garden Redesign.md  (0.97)
 A query of only filters lists the matching notes, newest first:
 
 ```sh
-$ achclwss notes.search query="tag:person"
+$ wetwaresuite notes.search query="tag:person"
 3 matches
 People/Priya.md
     4: # Priya Copy editor for the [[Website Relaunch]].
@@ -350,7 +350,7 @@ notes.search query="tag:project -tag:done" json=true
 **CLI.** Who links to a note, and what it links to:
 
 ```sh
-$ achclwss notes.backlinks note="Sam Lee" mentions=true
+$ wetwaresuite notes.backlinks note="Sam Lee" mentions=true
 2 links to People/Sam Lee.md from 2 notes
 Home.md:9  People: [[Sam Lee]], [[Priya]].
 Projects/Garden Redesign.md:20  - [ ] Ask [[Sam Lee]] about the irrigation timer
@@ -358,7 +358,7 @@ unlinked mentions: 0
 count: 2
 notes: 2
 mentions: 0
-$ achclwss notes.links note="Garden Redesign"
+$ wetwaresuite notes.links note="Garden Redesign"
 3 links in Projects/Garden Redesign.md
 10: ![[garden-sketch.png|400]] -> Attachments/garden-sketch.png
 20: [[Sam Lee]] -> People/Sam Lee.md
@@ -368,11 +368,11 @@ $ achclwss notes.links note="Garden Redesign"
 `mentions=true` also finds *unlinked mentions*: notes that use the note's name or an alias as text without linking it. Links that go nowhere, and notes nothing links to:
 
 ```sh
-$ achclwss notes.links.unresolved
+$ wetwaresuite notes.links.unresolved
 2 unresolved targets
 Deep Work  <- Books to Read.md
 Designing Data-Intensive Applications  <- Books to Read.md
-$ achclwss notes.orphans
+$ wetwaresuite notes.orphans
 4 orphans
 Inbox.md
 Journal/2026-10-15.md
@@ -385,7 +385,7 @@ Meetings/Website kickoff.md
 **Rename and move.** `notes.rename` rewrites every link to the note across the vault, keeping headings, block ids and display text (`[[Website Relaunch#Timeline]]` becomes `[[Website 2.0#Timeline]]`, `[[Projects/Beta|the beta]]` keeps its path style and alias, `[text](Beta.md)` gets the new relative path):
 
 ```sh
-$ achclwss notes.rename note="Website Relaunch" to="Website 2.0"
+$ wetwaresuite notes.rename note="Website Relaunch" to="Website 2.0"
 renamed Projects/Website Relaunch.md -> Projects/Website 2.0.md; updated 3 links in 3 notes
   Home.md
   People/Priya.md
@@ -395,7 +395,7 @@ note: Projects/Website 2.0.md
 from: Projects/Website Relaunch.md
 links_updated: 3
 notes_changed: 3
-$ achclwss notes.links note="Garden Redesign"
+$ wetwaresuite notes.links note="Garden Redesign"
 ...
 24: [[Website 2.0#Timeline]] -> Projects/Website 2.0.md
 ```
@@ -405,17 +405,17 @@ A bare `to=` name keeps the folder; `to="Archive/Website 2.0"` moves it too. `no
 **Delete and the trash.** Deleting moves the file into `.trash/`, keeping its folder path, and says how many links now go nowhere:
 
 ```sh
-$ achclwss notes.move note=Inbox folder=Archive
+$ wetwaresuite notes.move note=Inbox folder=Archive
 moved Inbox.md -> Archive/Inbox.md
-$ achclwss notes.delete note=Archive/Inbox
+$ wetwaresuite notes.delete note=Archive/Inbox
 moved Archive/Inbox.md to .trash/Archive/Inbox.md
 Archive/Inbox.md
 note: Archive/Inbox.md
 broken_links: 0
-$ achclwss notes.trash.list
+$ wetwaresuite notes.trash.list
 1 file in /home/me/Notes/.trash
 Archive/Inbox.md
-$ achclwss notes.trash.restore path=Archive/Inbox.md
+$ wetwaresuite notes.trash.restore path=Archive/Inbox.md
 restored Archive/Inbox.md
 ```
 
@@ -433,7 +433,7 @@ notes.read note="Garden Redesign" heading=Tasks
 ```
 
 ```sh
-$ achclwss batch rename.txt
+$ wetwaresuite batch rename.txt
 opened vault1: /home/me/Notes (15 notes, 1 attachment, 9 open tasks)
 ...
 renamed People/Sam Lee.md -> People/Sam Lee (gardener).md; updated 3 links in 3 notes
@@ -461,36 +461,36 @@ undone
 **CLI.** Every tag with how many notes carry it (`nested=true` counts `#project/garden` for `#project` too), the notes with a tag, and renaming a tag everywhere (inline and in frontmatter, nested tags included):
 
 ```sh
-$ achclwss notes.tags nested=true
+$ wetwaresuite notes.tags nested=true
 5 tags
 #person  3
 #project  2
 #work  2
 #hub  1
 #project/garden  1
-$ achclwss notes.tags.find tag=project
+$ wetwaresuite notes.tags.find tag=project
 2 notes tagged #project
 Projects/Garden Redesign.md
 Projects/Website 2.0.md
-$ achclwss notes.tags.rename from=person to=people
+$ wetwaresuite notes.tags.rename from=person to=people
 renamed the tag in 3 notes
 ```
 
 Frontmatter (Obsidian's *properties*):
 
 ```sh
-$ achclwss notes.frontmatter.get note="Garden Redesign"
+$ wetwaresuite notes.frontmatter.get note="Garden Redesign"
 status: active
 tags: project
 due: 2026-11-30
 note: Projects/Garden Redesign.md
 keys: 3
 frontmatter: {"due":"2026-11-30","status":"active","tags":["project"]}
-$ achclwss notes.frontmatter.set note="Garden Redesign" key=status value=done
+$ wetwaresuite notes.frontmatter.set note="Garden Redesign" key=status value=done
 Projects/Garden Redesign.md: status: done
-$ achclwss notes.frontmatter.set note="Sam Lee" key=aliases value="Sam, S. Lee" list=true
+$ wetwaresuite notes.frontmatter.set note="Sam Lee" key=aliases value="Sam, S. Lee" list=true
 People/Sam Lee.md: aliases: Sam, S. Lee
-$ achclwss notes.frontmatter.get note=Sam key=aliases
+$ wetwaresuite notes.frontmatter.get note=Sam key=aliases
 Sam, S. Lee
 found: true
 value: ["Sam","S. Lee"]
@@ -518,7 +518,7 @@ Any `- [ ]` line in any note is a task (`* [ ]`, `1. [ ]` and tasks inside quote
 **CLI.**
 
 ```sh
-$ achclwss notes.tasks today=2026-10-16
+$ wetwaresuite notes.tasks today=2026-10-16
 6 tasks
 [ ] Renew the domain 📅 2026-10-12  (Home.md:12, due 2026-10-12) OVERDUE
 [ ] Draft the new home page due:2026-10-18  (Projects/Website 2.0.md:15, due 2026-10-18)
@@ -529,12 +529,12 @@ $ achclwss notes.tasks today=2026-10-16
 count: 6
 total: 6
 overdue: 1
-$ achclwss notes.tasks due=week today=2026-10-16
+$ wetwaresuite notes.tasks due=week today=2026-10-16
 3 tasks
 [ ] Renew the domain 📅 2026-10-12  (Home.md:12, due 2026-10-12) OVERDUE
 [ ] Draft the new home page due:2026-10-18  (Projects/Website 2.0.md:15, due 2026-10-18)
 [ ] Order soil 📅 2026-10-20  (Projects/Garden Redesign.md:19, due 2026-10-20)
-$ achclwss notes.tasks tag=work status=all
+$ wetwaresuite notes.tasks tag=work status=all
 2 tasks
 [ ] Draft the new home page due:2026-10-18  (Projects/Website 2.0.md:15, due 2026-10-18)
 [ ] Review copy with [[Priya]] 📅 2026-10-25  (Projects/Website 2.0.md:16, due 2026-10-25)
@@ -543,11 +543,11 @@ $ achclwss notes.tasks tag=work status=all
 Tick tasks by text (it must pick one task) or by note and line; add tasks to any note, or to today's daily note when no note is given:
 
 ```sh
-$ achclwss notes.tasks.toggle match="order soil" stamp=true today=2026-10-16
+$ wetwaresuite notes.tasks.toggle match="order soil" stamp=true today=2026-10-16
 done: - [x] Order soil 📅 2026-10-20 ✅ 2026-10-16  (Projects/Garden Redesign.md:19)
-$ achclwss notes.tasks.add text="Buy seed trays" due=+3 today=2026-10-16
+$ wetwaresuite notes.tasks.add text="Buy seed trays" due=+3 today=2026-10-16
 added to Journal/2026-10-16.md: - [ ] Buy seed trays 📅 2026-10-19
-$ achclwss notes.tasks.add note="Garden Redesign" heading=Tasks text="Book the skip" due=2026-10-22
+$ wetwaresuite notes.tasks.add note="Garden Redesign" heading=Tasks text="Book the skip" due=2026-10-22
 added to Projects/Garden Redesign.md: - [ ] Book the skip 📅 2026-10-22
 ```
 
@@ -568,7 +568,7 @@ notes.read note=$r
 ```
 
 ```sh
-$ achclwss batch review.txt
+$ wetwaresuite batch review.txt
 ...
 1 task
 [ ] Renew the domain 📅 2026-10-12  (Home.md:12, due 2026-10-12) OVERDUE
@@ -591,7 +591,7 @@ tags:
 **CLI.** The link graph as JSON (nodes with positions and degree, edges), Graphviz DOT, PNG or SVG. `focus=` and `depth=` make a local graph around one note:
 
 ```sh
-$ achclwss notes.graph format=dot focus="Garden Redesign" depth=1
+$ wetwaresuite notes.graph format=dot focus="Garden Redesign" depth=1
 4 nodes, 6 links
 nodes: 4
 edges: 6
@@ -605,9 +605,9 @@ graph: digraph vault {
   "Home.md" -> "Projects/Garden Redesign.md";
   ...
 }
-$ achclwss notes.graph.export out=graph.png unresolved=true labels=all
+$ wetwaresuite notes.graph.export out=graph.png unresolved=true labels=all
 wrote graph.png (15 nodes, 12 links)
-$ achclwss notes.graph.export out=graph.json
+$ wetwaresuite notes.graph.export out=graph.json
 wrote graph.json (13 nodes, 10 links)
 ```
 
@@ -628,23 +628,23 @@ notes.graph.export out=graph-sam.svg focus="Sam Lee" depth=2
 **CLI.** One note as a self-contained HTML page (images inlined, properties table, callouts, tables, task checkboxes, embedded notes rendered in place, links pointing to the other notes' `.html` files next to it):
 
 ```sh
-$ achclwss notes.render note="Garden Redesign" out=garden.html
+$ wetwaresuite notes.render note="Garden Redesign" out=garden.html
 wrote garden.html (1 note, 4757 bytes)
 ```
 
 Without `out=`, the HTML comes back in the result's `html` field (handy over MCP). Leave out `note=` for the whole vault (or a `folder=`) in one file, with a table of contents and in-page links; `backlinks=true` lists the notes linking to each one:
 
 ```sh
-$ achclwss notes.render out=vault.html backlinks=true
+$ wetwaresuite notes.render out=vault.html backlinks=true
 wrote vault.html (10 notes, 11093 bytes)
 ```
 
 PDF goes through the office layout engine (A4, page numbers, one note per page when rendering several); wikilinks become text, embedded notes and images are inlined:
 
 ```sh
-$ achclwss notes.render note="Garden Redesign" out=garden.pdf
+$ wetwaresuite notes.render note="Garden Redesign" out=garden.pdf
 wrote garden.pdf (1 page, 1 note)
-$ achclwss notes.render folder=Projects out=projects.pdf
+$ wetwaresuite notes.render folder=Projects out=projects.pdf
 wrote projects.pdf (2 pages, 2 notes)
 ```
 
@@ -653,7 +653,7 @@ wrote projects.pdf (2 pages, 2 notes)
 **A static site.** One `.html` page per note at the same path, `index.html` (the vault's `index`, `Home`, `README` or `Welcome` note if there is one, or `home=`, then every note by folder), `tags.html`, a light/dark `style.css`, the attachments the notes use, and a "Linked from" list on every page:
 
 ```sh
-$ achclwss notes.export.site out=../site title="Our notes" graph=true
+$ wetwaresuite notes.export.site out=../site title="Our notes" graph=true
 exported 10 pages, 5 tags and 1 attachment to ../site (open index.html)
 ../site/index.html
 path: ../site
@@ -674,7 +674,7 @@ notes.render folder=Projects out=/var/www/notes/projects.pdf
 ```
 
 ```sh
-0 2 * * * achclwss batch /home/me/publish.txt
+0 2 * * * wetwaresuite batch /home/me/publish.txt
 ```
 
 **Claude.** "Make me a PDF of the garden project to send to Sam." Claude calls `notes_render` with `note="Garden Redesign" out=... preview=true` and looks at the page before telling you where it is.

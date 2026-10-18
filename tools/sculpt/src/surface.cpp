@@ -4,10 +4,10 @@
 #include <stdexcept>
 #include <unordered_map>
 
-#include "achclwss/mesh/topology.hpp"
-#include "achclwss/sculpt/ops.hpp"
+#include "wetwaresuite/mesh/topology.hpp"
+#include "wetwaresuite/sculpt/ops.hpp"
 
-namespace achclwss::sculpt {
+namespace wetwaresuite::sculpt {
 
 namespace {
 
@@ -361,4 +361,4 @@ Stats stats(const Mesh& m) {
     return s;
 }
 
-}  // namespace achclwss::sculpt
+}  // namespace wetwaresuite::sculpt

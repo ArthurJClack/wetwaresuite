@@ -1,5 +1,5 @@
 // Multitrack mixing, project pictures and the project file format.
-#include "achclwss/audio/project.hpp"
+#include "wetwaresuite/audio/project.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -8,11 +8,11 @@
 
 #include <nlohmann/json.hpp>
 
-#include "achclwss/audio/dsp.hpp"
-#include "achclwss/audio/io.hpp"
+#include "wetwaresuite/audio/dsp.hpp"
+#include "wetwaresuite/audio/io.hpp"
 #include "draw.hpp"
 
-namespace achclwss::audio {
+namespace wetwaresuite::audio {
 
 namespace fs = std::filesystem;
 using json = nlohmann::ordered_json;
@@ -202,7 +202,7 @@ void saveProject(const Project& p, const fs::path& path) {
     std::error_code ec;
     fs::create_directories(dir, ec);
     if (ec) throw std::runtime_error("can't create " + dir.string() + ": " + ec.message());
-    json j = {{"achclwss_audio_project", 1}, {"rate", p.rate}, {"channels", p.channels}, {"master_gain", p.masterGainDb}};
+    json j = {{"wetwaresuite_audio_project", 1}, {"rate", p.rate}, {"channels", p.channels}, {"master_gain", p.masterGainDb}};
     json tracks = json::array();
     SaveOptions wav;
     wav.format = SampleFormat::Float32;
@@ -236,7 +236,7 @@ Project loadProject(const fs::path& path) {
     } catch (const std::exception& e) {
         throw std::runtime_error(path.string() + " isn't a project file: " + e.what());
     }
-    if (!j.contains("achclwss_audio_project")) throw std::runtime_error(path.string() + " isn't an achclwss audio project");
+    if (!j.contains("wetwaresuite_audio_project")) throw std::runtime_error(path.string() + " isn't an wetwaresuite audio project");
     Project p;
     p.rate = j.value("rate", 44100);
     p.channels = std::clamp(j.value("channels", 2), 1, 32);
@@ -274,4 +274,4 @@ Project loadProject(const fs::path& path) {
     return p;
 }
 
-}  // namespace achclwss::audio
+}  // namespace wetwaresuite::audio

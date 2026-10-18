@@ -27,6 +27,9 @@ struct RenderOptions {
     bool outline = true;    // dark lines on silhouettes and sharp edges
     bool antialias = true;  // render at 2x and downsample
     double margin = 0.06;   // empty border, as a fraction of the image size
+    // one colour per triangle (overrides `color`), for highlighting parts or
+    // gap maps; ignored unless it has exactly triangleCount() entries
+    std::vector<raster::Color> faceColors;
 };
 
 raster::Image render(const Mesh& mesh, int width, int height, const RenderOptions& options = {});

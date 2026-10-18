@@ -58,7 +58,7 @@ set(WETWARESUITE_APP_TOOLS_image photo paint)
 set(WETWARESUITE_APP_TOOLS_draw vector type board)
 set(WETWARESUITE_APP_TOOLS_model sculpt render animate)
 set(WETWARESUITE_APP_TOOLS_game forge levels)
-set(WETWARESUITE_APP_TOOLS_cad cad blueprint slicer)
+set(WETWARESUITE_APP_TOOLS_cad cad blueprint slicer fit)
 set(WETWARESUITE_APP_TOOLS_electronics circuit flash)
 set(WETWARESUITE_APP_TOOLS_sound audio beats)
 set(WETWARESUITE_APP_TOOLS_video cut capture)
@@ -104,12 +104,13 @@ set(_ww_tool_deps_type vector)
 set(_ww_tool_deps_library vector toolkit)
 set(_ww_tool_deps_automate photo vector convert)  # its tests drive them
 set(_ww_tool_deps_paint photo)                    # its tests open through photo
+set(_ww_tool_deps_fit sculpt)                     # smoothing, simplifying and picking
 foreach(t IN LISTS _ww_tools)
   list(APPEND _ww_tools ${_ww_tool_deps_${t}})
 endforeach()
 list(REMOVE_DUPLICATES _ww_tools)
 foreach(t toolkit vector blueprint photo paint convert forge slicer cad layout audio cut capture library automate
-          office levels sculpt beats animate render circuit flash board notes maps type)
+          office levels sculpt beats animate render circuit flash board notes maps type fit)
   if("${t}" IN_LIST _ww_tools)
     add_subdirectory(tools/${t})
   endif()

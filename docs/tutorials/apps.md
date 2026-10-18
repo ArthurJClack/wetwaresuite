@@ -12,7 +12,7 @@ If you want everything in one program (handy for scripts, servers and Claude), t
 | draw | `wetwaresuite-draw` | vector art and logos, fonts, whiteboards and diagrams | vector, type, board | ~5 MB |
 | model | `wetwaresuite-model` | 3D modeling and sculpting, rendered pictures, animation | sculpt, render, animate | ~4 MB |
 | game | `wetwaresuite-game` | game assets (meshes, sprites, textures) and game levels | forge, levels | ~4 MB |
-| cad | `wetwaresuite-cad` | precise parts, technical drawings and floor plans, 3D printing | cad, blueprint, slicer | ~4 MB |
+| cad | `wetwaresuite-cad` | precise parts, technical drawings and floor plans, 3D printing, car parts and mounts that fit a phone 3D scan | cad, blueprint, slicer, fit | ~5 MB |
 | electronics | `wetwaresuite-electronics` | circuit diagrams, circuit boards, flashing microcontrollers | circuit, flash | ~4 MB |
 | sound | `wetwaresuite-sound` | record and clean up audio, make music | audio, beats | ~4 MB |
 | video | `wetwaresuite-video` | edit videos, screenshots, screen recording | cut, capture | ~3 MB |

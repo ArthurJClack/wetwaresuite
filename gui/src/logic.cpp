@@ -528,6 +528,7 @@ std::string toolBlurb(const std::string& tool) {
         {"blueprint", "Floor plans and technical drawings printed to scale."},
         {"cad", "Design exact parts to 3D print or make."},
         {"slicer", "Turn a 3D model into instructions for a 3D printer."},
+        {"fit", "Make car parts and mounts that fit a 3D scan from your phone."},
         {"forge", "Make models, textures and sprites for games."},
         {"audio", "Record, clean up and mix sound."},
         {"cut", "Edit videos: trim, join, titles and music."},
@@ -554,6 +555,7 @@ std::string toolBlurb(const std::string& tool) {
 
 std::string toolTitle(const std::string& tool) {
     if (tool == "forge") return "Asset forge";
+    if (tool == "fit") return "Scan fit";
     return capitalise(tool);
 }
 

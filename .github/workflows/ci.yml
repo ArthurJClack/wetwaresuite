@@ -19,9 +19,10 @@ jobs:
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
       - name: build
         shell: bash
+        # a bare --parallel means unlimited make jobs, which runs the runner out of memory
         run: |
           set -o pipefail
-          cmake --build build --config Release --parallel 2>&1 | tee build.log
+          cmake --build build --config Release --parallel 4 2>&1 | tee build.log
       - name: test
         shell: bash
         run: |
@@ -35,8 +36,11 @@ jobs:
           # readable through the API without downloading the full log
           for f in build.log test.log; do
             [ -f "$f" ] || continue
-            body=$(grep -viE "^\s*$|Building CXX|Linking CXX|Passed" "$f" | tail -120 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}')
+            body=$(grep -viE "^\s*$|Building CXX|Linking CXX|Passed" "$f" | tail -120 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' || true)
             echo "::error title=$f::$body"
+            # annotations are cut at a few KB, so also send just the error lines and their context
+            errs=$(grep -iE -B2 -A4 "error|FAILED|fatal" "$f" | grep -viE "^\s*$|warning C|-Werror|Errors while running CTest" | head -60 | sed 's/%/%25/g' | awk 'BEGIN{ORS="%0A"} {print}' || true)
+            if [ -n "$errs" ]; then echo "::error title=$f errors::$errs"; fi
           done
 
   hub:

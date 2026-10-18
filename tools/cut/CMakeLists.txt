@@ -1,0 +1,10 @@
+add_library(achclwss_cut src/model.cpp src/graph.cpp src/media.cpp src/commands.cpp)
+add_library(achclwss::cut ALIAS achclwss_cut)
+target_include_directories(achclwss_cut PUBLIC include)
+target_link_libraries(achclwss_cut PUBLIC achclwss::core PRIVATE nlohmann_json::nlohmann_json)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_cut tests/test_cut.cpp)
+  target_link_libraries(test_cut PRIVATE achclwss::cut achclwss::mcp achclwss_check)
+  add_test(NAME cut COMMAND test_cut)
+endif()

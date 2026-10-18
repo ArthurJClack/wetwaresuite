@@ -17,11 +17,12 @@ real tool, and the outputs shown are what it prints.
 5. [a full batch script: a logo](#5-a-full-batch-script-a-logo)
 6. [path data, the pen tool in text form](#6-path-data-the-pen-tool-in-text-form)
 7. [styling, moving, stacking](#7-styling-moving-stacking)
-8. [opening existing SVG files](#8-opening-existing-svg-files)
-9. [exporting](#9-exporting)
-10. [letting Claude draw over MCP](#10-letting-claude-draw-over-mcp)
-11. [command reference](#11-command-reference)
-12. [troubleshooting](#12-troubleshooting)
+8. [text, gradients and combining shapes](#8-text-gradients-and-combining-shapes)
+9. [opening existing SVG files](#9-opening-existing-svg-files)
+10. [exporting](#10-exporting)
+11. [letting Claude draw over MCP](#11-letting-claude-draw-over-mcp)
+12. [command reference](#12-command-reference)
+13. [troubleshooting](#13-troubleshooting)
 
 ## 1. the five ideas you need
 
@@ -347,7 +348,89 @@ vector.delete doc=$d shape=$copy
 vector.canvas doc=$d width=1024 height=512 background=#eeeeee
 ```
 
-## 8. opening existing SVG files
+## 8. text, gradients and combining shapes
+
+![text, gradients and booleans](images/vector-text-gradient.png)
+
+That picture comes from this script (`wetwaresuite batch scene.txt`):
+
+```text
+vector.new width=640 height=360 -> d
+vector.add_rect doc=$d x=0 y=0 width=640 height=360 name=sky
+vector.gradient doc=$d shape=sky colors=#0b1d3a,#3a6ea5,#f6c177 angle=90
+vector.add_ellipse doc=$d cx=470 cy=230 rx=90 name=sun
+vector.gradient doc=$d shape=sun type=radial colors=#fff7c2,#ffb347,#ff6b35
+vector.add_rect doc=$d x=60 y=200 width=220 height=120 fill=#e63946 name=body
+vector.add_ellipse doc=$d cx=170 cy=200 rx=60 fill=#e63946 name=dome
+vector.boolean doc=$d op=union shapes=body,dome name=house
+vector.add_ellipse doc=$d cx=170 cy=260 rx=30 name=hole
+vector.boolean doc=$d op=subtract shapes=house,hole
+vector.add_text doc=$d text="wetwaresuite\nВектор Ωmega" x=320 y=90 size=54 anchor=middle fill=white name=title
+vector.gradient doc=$d shape=title colors=#ffffff,#9ad1ff angle=90
+vector.save doc=$d path=scene.svg
+vector.save doc=$d path=scene.png
+```
+
+**Text.** `vector.add_text` puts words on the canvas. `x`, `y` is where the
+first line's baseline starts; `\n` starts a new line.
+
+```text
+vector.add_text doc=$d text="Big Sale" x=400 y=120 size=72 anchor=middle fill=#222 -> t
+vector.set_text doc=$d shape=$t text="Bigger Sale" letter_spacing=4
+```
+
+- `font=sans` (the default) is a font built into wetwaresuite, so the text
+  looks the same on every computer. It covers Latin, Greek and Cyrillic.
+- `font=serif`, `font=mono`, or a family like `font=Arial` use a font
+  installed on the computer, with `bold=true` / `italic=true` if it has those
+  faces. `font=C:/Fonts/MyFont.ttf` (or `.otf`) uses that file. Letters the
+  font lacks fall back to the built-in font.
+- `anchor` is `start` (left, default), `middle` or `end` (right).
+- `letter_spacing` adds px between letters (negative squeezes them);
+  `line_height` is the gap between lines, times the size (1.2).
+
+Text stays editable: `vector.set_text` changes only what you pass, and the
+SVG file keeps it as real `<text>`. If you're sending the SVG somewhere that
+may not have the font, turn it into outlines first:
+
+```text
+vector.to_path doc=$d shape=$t
+```
+
+`vector.to_path` works on any shape: rectangles, ellipses and polygons become
+editable path data too.
+
+**Gradients.** `vector.gradient` fills a shape with a colour ramp.
+
+```text
+vector.gradient doc=$d shape=sky colors=navy,skyblue angle=90         # top to bottom
+vector.gradient doc=$d shape=bar stops=0:red,0.2:gold,1:green         # pick each position
+vector.gradient doc=$d shape=sun type=radial colors=white,orange cx=0.3 cy=0.3 radius=0.8
+vector.gradient doc=$d shape=sun remove=true                          # back to a flat fill
+```
+
+`colors` spreads the colours evenly; `stops` gives each one a position from 0
+to 1. `angle` is the direction of a linear gradient: 0 runs left to right, 90
+top to bottom, 45 corner to corner. Positions (`cx`, `cy`, `radius`) are
+fractions of the shape's own box, so the gradient moves and scales with it.
+Gradients save to SVG as `linearGradient` / `radialGradient`.
+
+**Combining shapes.** `vector.boolean` merges filled shapes into one path:
+
+| `op` | keeps |
+| --- | --- |
+| `union` | everything covered by any shape |
+| `subtract` | the first shape with the others cut out |
+| `intersect` | only where they all overlap |
+| `exclude` | what's covered by an odd number of shapes (the overlap becomes a hole) |
+
+The result takes the first shape's colours and its place in the stacking
+order. The originals are removed; add `keep=true` to leave them. Shapes are
+combined where they're drawn, so moved and rotated shapes work as you'd
+expect. Curves become many short straight lines, and outlines (strokes) aren't
+counted, only filled areas.
+
+## 9. opening existing SVG files
 
 ```text
 vector.open path=drawing.svg -> d
@@ -366,16 +449,20 @@ The importer reads the parts of SVG that describe shapes:
 - `transform` with `translate`, `rotate`, `scale`, `matrix`, `skewX`/`skewY`
 - `width`/`height` in px, mm, cm, in, pt, plus `viewBox` scaling
 
-Text, images, gradients, filters, `<use>` and anything inside `<defs>` are
-skipped rather than failing the whole file. A gradient fill turns into its
-fallback colour, or grey. Skew can't be represented on a shape, so it's
+- `text` with `tspan` lines, `font-size`, `font-family`, `font-weight`,
+  `font-style`, `text-anchor` and `letter-spacing`
+- `linearGradient` and `radialGradient` fills (with `href` to share stops)
+
+Images, filters, patterns, `<use>`, text on a path and anything else inside
+`<defs>` are skipped rather than failing the whole file. A pattern fill
+turns into its fallback colour, or grey. Skew can't be represented on a shape, so it's
 dropped. Imported shapes get fresh ids (`s1`, `s2`, ...) in file order and
 keep their `id` (or Inkscape label) as their name.
 
 Files saved by `vector.save` open again with the same ids, names, colours
 and transforms.
 
-## 9. exporting
+## 10. exporting
 
 ```text
 vector.save doc=$d path=out.svg               # real SVG
@@ -390,7 +477,7 @@ The extension picks the format: `svg`, `png`, `jpg`/`jpeg`, `bmp`, `tga`,
 `vector.preview doc=$d size=256` gives back a PNG without writing a file. The
 CLI only reports its size; over MCP Claude actually sees the image.
 
-## 10. letting Claude draw over MCP
+## 11. letting Claude draw over MCP
 
 The same commands are MCP tools. Register the suite with Claude Code:
 
@@ -463,7 +550,7 @@ Tips for working with Claude:
 - You can hand it an existing file: "open ~/art/logo.svg, make the red parts
   teal and export a 1024px PNG".
 
-## 11. command reference
+## 12. command reference
 
 `wetwaresuite help <command>` shows every parameter. In short (shape commands
 take `doc` and `shape`, adds take `doc`; ✓ = undoable):
@@ -490,12 +577,17 @@ take `doc` and `shape`, adds take `doc`; ✓ = undoable):
 | `vector.reorder` ✓ | stacking order | `to` = front, back, up, down |
 | `vector.duplicate` ✓ | copy just above the original, returns `shape` | `dx`, `dy`, `name` |
 | `vector.delete` ✓ | remove a shape | |
+| `vector.add_text` ✓ | text, returns `shape` | `text`, `x`, `y`, `size` (48), `font` (sans), `bold`, `italic`, `anchor`, `letter_spacing`, `line_height` |
+| `vector.set_text` ✓ | change a text shape | any `add_text` parameter |
+| `vector.gradient` ✓ | gradient fill | `type` (linear/radial), `colors` or `stops`, `angle`, `cx`, `cy`, `radius`, `remove` |
+| `vector.boolean` ✓ | union, subtract, intersect, exclude, returns `shape` | `op`, `shapes` (s1,s2,...), `keep`, `name` |
+| `vector.to_path` ✓ | turn any shape (text too) into path data | |
 
 Every add command also takes `fill`, `stroke`, `stroke_width`, `opacity`,
 `name` and `preview`. Defaults: closed shapes are filled black with no
 outline; lines and polylines have a 2px black outline and no fill.
 
-## 12. troubleshooting
+## 13. troubleshooting
 
 **`no open vector document called 'vec1'`.** Each `wetwaresuite run` starts
 fresh, so a document made in one run isn't there in the next. Put the steps
@@ -514,6 +606,14 @@ with at least 3 points for a polygon and 2 for a polyline.
 on top of it, or it's hidden (`visible=false`), or it's the same colour as
 the background. `vector.info` shows the order and whether a shape is
 `hidden`.
+
+**`vector.boolean` left nothing.** The shapes don't overlap the way the
+operation needs (for example, `intersect` on shapes that don't touch).
+`vector.info` shows each shape's `bounds`.
+
+**My text looks different in another program.** That program doesn't have
+the font. Run `vector.to_path` on the text before saving to bake the letters
+in.
 
 **The PNG looks small or blurry.** Save with `scale=2` (or more). SVG output
 never loses quality.

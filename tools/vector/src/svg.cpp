@@ -113,6 +113,7 @@ struct Element {
     std::string name;
     std::map<std::string, std::string> attrs;
     std::vector<Element> children;
+    std::string text;  // character data directly inside, joined
     const std::string* attr(const std::string& key) const {
         auto it = attrs.find(key);
         return it == attrs.end() ? nullptr : &it->second;
@@ -159,6 +160,7 @@ public:
         std::vector<Element*> stack{&root};
         while (i_ < s_.size()) {
             auto lt = s_.find('<', i_);
+            if (stack.size() > 1 && lt != i_) stack.back()->text += decodeEntities(s_.substr(i_, lt == std::string::npos ? std::string::npos : lt - i_));
             if (lt == std::string::npos) break;
             i_ = lt;
             if (starts("<?")) skipPast("?>");
@@ -369,6 +371,7 @@ struct Style {
     double opacity = 1;  // product of group opacities
     bool hidden = false;
     Matrix matrix;
+    std::string fillUrl;  // fill="url(#id)": a gradient
 };
 
 double clamp01(const std::string& s) {
@@ -401,11 +404,104 @@ public:
             refW_ = w;
             refH_ = h;
         }
+        collectGradients(svg);
         children(svg, style);
     }
 
 private:
     VectorDoc& doc_;
+    struct GradientDef {
+        Gradient g;
+        bool userSpace = false;
+        std::string href;
+        bool hasStops = false;
+    };
+    std::map<std::string, GradientDef> gradients_;
+
+    static double fraction(const std::string* v, double fallback) {
+        if (!v) return fallback;
+        auto n = numbers(*v);
+        if (n.empty()) return fallback;
+        return v->find('%') != std::string::npos ? n[0] / 100 : n[0];
+    }
+
+    void collectGradients(const Element& el) {
+        for (const auto& c : el.children) {
+            if (c.name == "linearGradient" || c.name == "radialGradient") {
+                GradientDef def;
+                def.g.radial = c.name == "radialGradient";
+                def.userSpace = c.attr("gradientUnits") && *c.attr("gradientUnits") == "userSpaceOnUse";
+                def.g.x1 = fraction(c.attr("x1"), 0);
+                def.g.y1 = fraction(c.attr("y1"), 0);
+                def.g.x2 = fraction(c.attr("x2"), def.userSpace ? 0 : 1);
+                def.g.y2 = fraction(c.attr("y2"), 0);
+                def.g.cx = fraction(c.attr("cx"), 0.5);
+                def.g.cy = fraction(c.attr("cy"), 0.5);
+                def.g.r = fraction(c.attr("r"), 0.5);
+                if (auto h = c.attr("xlink:href")) def.href = *h;
+                else if (auto h2 = c.attr("href")) def.href = *h2;
+                if (!def.href.empty() && def.href[0] == '#') def.href.erase(0, 1);
+                for (const auto& stop : c.children) {
+                    if (stop.name != "stop") continue;
+                    std::map<std::string, std::string> props;
+                    for (const char* k : {"offset", "stop-color", "stop-opacity"}) {
+                        if (auto v = stop.attr(k)) props[k] = *v;
+                    }
+                    if (auto st = stop.attr("style")) {
+                        std::stringstream ss(*st);
+                        std::string decl;
+                        while (std::getline(ss, decl, ';')) {
+                            auto colon = decl.find(':');
+                            if (colon != std::string::npos) props[lower(trim(decl.substr(0, colon)))] = trim(decl.substr(colon + 1));
+                        }
+                    }
+                    GradientStop gs;
+                    gs.offset = props.count("offset") ? std::clamp(fraction(&props["offset"], 0), 0.0, 1.0) : 0;
+                    gs.color = props.count("stop-color") ? parseColor(props["stop-color"]).value_or(Color{0, 0, 0, 255}) : Color{0, 0, 0, 255};
+                    if (props.count("stop-opacity")) gs.color.a = static_cast<std::uint8_t>(std::lround(gs.color.a * clamp01(props["stop-opacity"])));
+                    if (!def.g.stops.empty()) gs.offset = std::max(gs.offset, def.g.stops.back().offset);
+                    def.g.stops.push_back(gs);
+                }
+                def.hasStops = !def.g.stops.empty();
+                if (auto id = c.attr("id")) gradients_[*id] = def;
+            }
+            collectGradients(c);
+        }
+        // stops borrowed through href
+        for (auto& [id, def] : gradients_) {
+            std::string ref = def.href;
+            for (int depth = 0; !def.hasStops && !ref.empty() && depth < 8; ++depth) {
+                auto it = gradients_.find(ref);
+                if (it == gradients_.end()) break;
+                if (it->second.hasStops) {
+                    def.g.stops = it->second.g.stops;
+                    def.hasStops = true;
+                }
+                ref = it->second.href;
+            }
+        }
+    }
+
+    static std::string allText(const Element& el) {
+        std::string t = el.text;
+        for (const auto& c : el.children) t += allText(c);
+        return t;
+    }
+
+    static std::string collapse(const std::string& t) {
+        std::string out;
+        bool space = false;
+        for (char ch : t) {
+            if (std::isspace(static_cast<unsigned char>(ch))) {
+                space = !out.empty();
+                continue;
+            }
+            if (space) out += ' ';
+            space = false;
+            out += ch;
+        }
+        return out;
+    }
     double refW_ = 800, refH_ = 600;
 
     void children(const Element& el, const Style& style) {
@@ -429,6 +525,13 @@ private:
         }
         for (const auto& [key, value] : props) {
             if (key == "fill") {
+                const std::string v = trim(value);
+                if (v.rfind("url(", 0) == 0) {
+                    auto hash = v.find('#'), close = v.find(')');
+                    s.fillUrl = hash != std::string::npos && close != std::string::npos && close > hash ? v.substr(hash + 1, close - hash - 1) : "";
+                } else {
+                    s.fillUrl.clear();
+                }
                 if (auto p = paint(value)) s.fill = *p;
             } else if (key == "stroke") {
                 if (auto p = paint(value)) s.stroke = *p;
@@ -455,7 +558,7 @@ private:
     static bool skipped(const std::string& name) {
         static const char* names[] = {"defs", "clipPath", "mask", "pattern", "marker", "symbol", "linearGradient",
                                       "radialGradient", "style", "script", "metadata", "title", "desc", "filter",
-                                      "text", "image", "use", "foreignObject", "namedview"};
+                                      "image", "use", "foreignObject", "namedview"};
         for (const char* n : names) {
             if (name == n) return true;
         }
@@ -508,6 +611,39 @@ private:
             auto v = el.attr("points") ? numbers(*el.attr("points")) : std::vector<double>{};
             for (std::size_t i = 0; i + 1 < v.size(); i += 2) s.points.push_back({v[i], v[i + 1]});
             if (s.points.size() < 2) return;
+        } else if (el.name == "text") {
+            s.kind = ShapeKind::Text;
+            auto xs = el.attr("x") ? numbers(*el.attr("x")) : std::vector<double>{};
+            auto ys = el.attr("y") ? numbers(*el.attr("y")) : std::vector<double>{};
+            s.x = xs.empty() ? 0 : xs[0];
+            s.y = ys.empty() ? 0 : ys[0];
+            s.fontSize = el.attr("font-size") ? length(el.attr("font-size"), diag, 16) : 16;
+            if (auto style = el.attr("style")) {
+                auto at = style->find("font-size:");
+                if (at != std::string::npos) {
+                    std::string v = style->substr(at + 10);
+                    s.fontSize = length(&v, diag, s.fontSize);
+                }
+            }
+            if (auto f = el.attr("data-font")) s.font = *f;
+            else if (auto fam = el.attr("font-family")) {
+                const std::string f = lower(*fam);
+                s.font = f.find("mono") != std::string::npos || f.find("courier") != std::string::npos ? "mono"
+                         : (f.find("serif") != std::string::npos && f.find("sans") == std::string::npos) || f.find("times") != std::string::npos ? "serif"
+                                                                                                                                         : "sans";
+            }
+            if (auto w = el.attr("font-weight")) s.bold = *w == "bold" || *w == "bolder" || std::atoi(w->c_str()) >= 600;
+            if (auto it = el.attr("font-style")) s.italic = *it == "italic" || *it == "oblique";
+            if (auto a = el.attr("text-anchor")) s.anchor = *a == "middle" || *a == "end" ? *a : "start";
+            if (auto ls = el.attr("letter-spacing")) s.letterSpacing = length(ls, diag, 0);
+            if (auto lh = el.attr("data-line-height")) s.lineHeight = std::max(0.1, std::atof(lh->c_str()));
+            std::vector<std::string> lines;
+            for (const auto& c : el.children) {
+                if (c.name == "tspan") lines.push_back(collapse(allText(c)));
+            }
+            if (lines.empty()) lines.push_back(collapse(allText(el)));
+            for (std::size_t i = 0; i < lines.size(); ++i) s.text += (i ? "\n" : "") + lines[i];
+            if (s.text.empty()) return;
         } else if (el.name == "path") {
             s.kind = ShapeKind::Path;
             if (auto d = el.attr("d")) s.d = trim(*d);
@@ -528,6 +664,19 @@ private:
         s.opacity = st.opacity;
         s.visible = !st.hidden;
         if (s.kind == ShapeKind::Line) s.fill.reset();
+        if (auto g = gradients_.find(st.fillUrl); !st.fillUrl.empty() && g != gradients_.end() && g->second.hasStops) {
+            Gradient grad = g->second.g;
+            if (g->second.userSpace) {  // to fractions of the shape's own box
+                const Bounds b = bounds(localOutline(s, 1.0));
+                const double bw = std::max(b.width(), 1e-9), bh = std::max(b.height(), 1e-9);
+                grad.x1 = (grad.x1 - b.x0) / bw, grad.x2 = (grad.x2 - b.x0) / bw;
+                grad.y1 = (grad.y1 - b.y0) / bh, grad.y2 = (grad.y2 - b.y0) / bh;
+                grad.cx = (grad.cx - b.x0) / bw, grad.cy = (grad.cy - b.y0) / bh;
+                grad.r = grad.r / std::max(bw, bh);
+            }
+            s.gradient = grad;
+            if (!s.fill) s.fill = grad.stops.front().color;
+        }
 
         const Matrix& m = st.matrix;
         if (!(m.a == 1 && m.b == 0 && m.c == 0 && m.d == 1 && m.e == 0 && m.f == 0)) {
@@ -550,8 +699,23 @@ std::string toSvg(const VectorDoc& doc) {
         out += "  <rect data-role=\"background\" x=\"0\" y=\"0\" width=\"" + std::to_string(doc.width) + "\" height=\"" +
                std::to_string(doc.height) + "\"" + paintAttrs("fill", doc.background) + "/>\n";
     }
+    std::string defs;
     for (const auto& s : doc.shapes) {
-        std::string el;
+        if (!s.gradient || s.gradient->stops.empty() || s.kind == ShapeKind::Line) continue;
+        const Gradient& g = *s.gradient;
+        defs += g.radial ? "    <radialGradient id=\"g-" + escape(s.id) + "\" cx=\"" + num(g.cx) + "\" cy=\"" + num(g.cy) + "\" r=\"" + num(g.r) + "\">\n"
+                         : "    <linearGradient id=\"g-" + escape(s.id) + "\" x1=\"" + num(g.x1) + "\" y1=\"" + num(g.y1) + "\" x2=\"" + num(g.x2) +
+                               "\" y2=\"" + num(g.y2) + "\">\n";
+        for (const auto& st : g.stops) {
+            defs += "      <stop offset=\"" + num(st.offset) + "\" stop-color=\"" + rgb(st.color) + "\"";
+            if (st.color.a < 255) defs += " stop-opacity=\"" + num(st.color.a / 255.0) + "\"";
+            defs += "/>\n";
+        }
+        defs += g.radial ? "    </radialGradient>\n" : "    </linearGradient>\n";
+    }
+    if (!defs.empty()) out += "  <defs>\n" + defs + "  </defs>\n";
+    for (const auto& s : doc.shapes) {
+        std::string el, body;
         switch (s.kind) {
             case ShapeKind::Rect:
                 el = "<rect x=\"" + num(std::min(s.x, s.x + s.w)) + "\" y=\"" + num(std::min(s.y, s.y + s.h)) + "\" width=\"" +
@@ -574,9 +738,38 @@ std::string toSvg(const VectorDoc& doc) {
             case ShapeKind::Polyline: el = "<polyline points=\"" + pointsAttr(s.points) + "\""; break;
             case ShapeKind::Polygon: el = "<polygon points=\"" + pointsAttr(s.points) + "\""; break;
             case ShapeKind::Path: el = "<path d=\"" + escape(s.d) + "\""; break;
+            case ShapeKind::Text: {
+                const std::string f = lower(s.font);
+                const std::string family = f == "serif" ? "Times New Roman, serif" : f == "mono" ? "Courier New, monospace"
+                                           : f == "sans" ? "Roboto, Arial, sans-serif" : s.font;
+                el = "<text x=\"" + num(s.x) + "\" y=\"" + num(s.y) + "\" font-size=\"" + num(s.fontSize) + "\" font-family=\"" +
+                     escape(family) + "\" data-font=\"" + escape(s.font) + "\"";
+                if (s.bold) el += " font-weight=\"bold\"";
+                if (s.italic) el += " font-style=\"italic\"";
+                if (s.anchor != "start") el += " text-anchor=\"" + s.anchor + "\"";
+                if (s.letterSpacing != 0) el += " letter-spacing=\"" + num(s.letterSpacing) + "\"";
+                if (s.lineHeight != 1.2) el += " data-line-height=\"" + num(s.lineHeight) + "\"";
+                std::vector<std::string> lines;
+                std::size_t start = 0;
+                while (true) {
+                    const std::size_t end = s.text.find('\n', start);
+                    lines.push_back(s.text.substr(start, end == std::string::npos ? std::string::npos : end - start));
+                    if (end == std::string::npos) break;
+                    start = end + 1;
+                }
+                if (lines.size() == 1) body = escape(lines[0]);
+                else {
+                    for (std::size_t i = 0; i < lines.size(); ++i) {
+                        body += "<tspan x=\"" + num(s.x) + "\" dy=\"" + (i ? num(s.fontSize * s.lineHeight) : std::string("0")) + "\">" +
+                                escape(lines[i]) + "</tspan>";
+                    }
+                }
+                break;
+            }
         }
         std::string attrs = " id=\"" + escape(s.id) + "\" data-name=\"" + escape(s.name) + "\"";
-        attrs += paintAttrs("fill", s.kind == ShapeKind::Line ? std::nullopt : s.fill);
+        if (s.gradient && !s.gradient->stops.empty() && s.kind != ShapeKind::Line) attrs += " fill=\"url(#g-" + escape(s.id) + ")\"";
+        else attrs += paintAttrs("fill", s.kind == ShapeKind::Line ? std::nullopt : s.fill);
         attrs += paintAttrs("stroke", s.stroke);
         if (s.stroke) attrs += " stroke-width=\"" + num(s.strokeWidth) + "\" stroke-linecap=\"round\" stroke-linejoin=\"round\"";
         if (s.opacity < 1) attrs += " opacity=\"" + num(s.opacity) + "\"";
@@ -588,7 +781,8 @@ std::string toSvg(const VectorDoc& doc) {
             if (s.transform.sx != 1 || s.transform.sy != 1) t += " scale(" + num(s.transform.sx) + " " + num(s.transform.sy) + ")";
             attrs += " transform=\"" + t + "\"";
         }
-        out += "  " + el + attrs + "/>\n";
+        if (s.kind == ShapeKind::Text) out += "  " + el + attrs + ">" + body + "</text>\n";
+        else out += "  " + el + attrs + "/>\n";
     }
     out += "</svg>\n";
     return out;

@@ -21,7 +21,7 @@ namespace wetwaresuite::vector {
 using raster::Color;
 using raster::Point;
 
-enum class ShapeKind { Rect, Ellipse, Line, Polyline, Polygon, Path };
+enum class ShapeKind { Rect, Ellipse, Line, Polyline, Polygon, Path, Text };
 
 const char* toString(ShapeKind kind);  // "rect", "ellipse", ...
 
@@ -44,6 +44,20 @@ struct Matrix {
     static Matrix rotate(double degrees);
 };
 
+// A colour ramp filling a shape. Positions are fractions of the shape's own box (0..1), like SVG's
+// objectBoundingBox, so the gradient moves, turns and scales with the shape.
+struct GradientStop {
+    double offset = 0;  // 0..1
+    Color color;
+};
+struct Gradient {
+    bool radial = false;
+    double x1 = 0, y1 = 0.5, x2 = 1, y2 = 0.5;  // linear: from (x1,y1) to (x2,y2)
+    double cx = 0.5, cy = 0.5, r = 0.5;          // radial: centre and radius
+    std::vector<GradientStop> stops;             // sorted by offset, at least one
+    Color at(double t) const;                    // colour at position t (clamped to 0..1)
+};
+
 struct Shape {
     std::string id;    // "s1", unique within the document
     std::string name;  // free text, defaults to e.g. "rect 1"
@@ -54,6 +68,17 @@ struct Shape {
     double cx = 0, cy = 0, rx = 0, ry = 0;
     std::vector<Point> points;  // line (2 points), polyline, polygon
     std::string d;              // path data
+
+    // text: one line per \n, baseline of the first line at (x, y)
+    std::string text;
+    double fontSize = 48;
+    std::string font = "sans";       // sans (built in), serif, mono, a family name, or a .ttf/.otf file
+    bool bold = false, italic = false;  // for system fonts (the built-in one has a single weight)
+    std::string anchor = "start";    // start, middle or end of the line sits at x
+    double letterSpacing = 0;        // extra px between letters
+    double lineHeight = 1.2;         // times fontSize
+
+    std::optional<Gradient> gradient;  // fills with a gradient instead of `fill` (fill stays as the fallback colour)
 
     std::optional<Color> fill;    // nullopt = none
     std::optional<Color> stroke;  // nullopt = none
@@ -103,6 +128,17 @@ Bounds bounds(const Outline& outline);
 // drawn at (more segments when larger). On malformed data the path is kept up
 // to the error and `error`, when given, is set.
 Outline flattenPath(const std::string& d, double detail = 1.0, std::string* error = nullptr);
+
+// Text laid out as SVG path data (glyph curves kept), in the shape's own coordinates.
+std::string textPathData(const Shape& text);
+// Any shape as path data: text keeps its glyph curves, the rest are flattened outlines.
+std::string toPathData(const Shape& shape, double detail = 4.0);
+
+// Boolean operations on filled areas (even-odd inside test). The result is non-overlapping
+// closed contours: outer edges and holes.
+enum class BoolOp { Union, Subtract, Intersect, Exclude };
+Outline booleanOp(const Outline& a, const Outline& b, BoolOp op);
+std::string outlinePathData(const Outline& outline);  // "M x y L ... Z" per contour
 
 // The shape in its own coordinates, before its transform.
 Outline localOutline(const Shape& shape, double detail = 1.0);

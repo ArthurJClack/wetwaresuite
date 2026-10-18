@@ -4,6 +4,7 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -34,6 +35,9 @@
 #endif
 
 namespace wetwaresuite::pdfdoc {
+
+extern const unsigned char kBuiltinSans[];
+extern const unsigned int kBuiltinSansSize;
 
 namespace {
 
@@ -201,13 +205,19 @@ std::shared_ptr<TrueType> TrueType::load(const std::filesystem::path& path) {
     if (!in) throw std::runtime_error("can't open font " + path.string());
     std::ostringstream ss;
     ss << in.rdbuf();
+    auto font = fromBytes(ss.str(), path.string());
+    font->impl_->path = path;
+    return font;
+}
+
+std::shared_ptr<TrueType> TrueType::fromBytes(std::string bytes, const std::string& name) {
     std::shared_ptr<TrueType> font(new TrueType());
     auto& im = *font->impl_;
-    im.path = path;
-    im.bytes = ss.str();
+    im.path = name;
+    im.bytes = std::move(bytes);
     const auto* data = reinterpret_cast<const unsigned char*>(im.bytes.data());
     const int offset = im.bytes.size() > 12 ? stbtt_GetFontOffsetForIndex(data, 0) : -1;
-    if (offset < 0 || !stbtt_InitFont(&im.info, data, offset)) throw std::runtime_error(path.string() + " is not a TrueType font");
+    if (offset < 0 || !stbtt_InitFont(&im.info, data, offset)) throw std::runtime_error(name + " is not a TrueType font");
     im.scale = 1000.0 * stbtt_ScaleForMappingEmToPixels(&im.info, 1.0f);
     return font;
 }
@@ -315,6 +325,49 @@ const Contours& TrueType::outline(unsigned cp) const {
     if (v) stbtt_FreeShape(&impl_->info, v);
     out.erase(std::remove_if(out.begin(), out.end(), [](const auto& c) { return c.size() < 3; }), out.end());
     return out;
+}
+
+std::string TrueType::svgPath(unsigned cp, double x, double y, double size) const {
+    stbtt_vertex* v = nullptr;
+    const int n = stbtt_GetCodepointShape(&impl_->info, static_cast<int>(cp), &v);
+    const double k = impl_->scale * size / 1000.0;
+    std::string d;
+    char buf[160];
+    auto X = [&](double fx) { return x + fx * k; };
+    auto Y = [&](double fy) { return y - fy * k; };
+    bool open = false;
+    for (int i = 0; i < n; ++i) {
+        switch (v[i].type) {
+            case STBTT_vmove:
+                if (open) d += "Z";
+                std::snprintf(buf, sizeof buf, "M%.2f %.2f", X(v[i].x), Y(v[i].y));
+                open = true;
+                break;
+            case STBTT_vline: std::snprintf(buf, sizeof buf, "L%.2f %.2f", X(v[i].x), Y(v[i].y)); break;
+            case STBTT_vcurve:
+                std::snprintf(buf, sizeof buf, "Q%.2f %.2f %.2f %.2f", X(v[i].cx), Y(v[i].cy), X(v[i].x), Y(v[i].y));
+                break;
+            default:
+                std::snprintf(buf, sizeof buf, "C%.2f %.2f %.2f %.2f %.2f %.2f", X(v[i].cx), Y(v[i].cy), X(v[i].cx1), Y(v[i].cy1),
+                              X(v[i].x), Y(v[i].y));
+                break;
+        }
+        d += buf;
+    }
+    if (open) d += "Z";
+    if (v) stbtt_FreeShape(&impl_->info, v);
+    return d;
+}
+
+double TrueType::kern(unsigned left, unsigned right) const {
+    return stbtt_GetCodepointKernAdvance(&impl_->info, static_cast<int>(left), static_cast<int>(right)) * impl_->scale;
+}
+
+std::shared_ptr<TrueType> builtinSans() {
+    static std::shared_ptr<TrueType> font = [] {
+        return TrueType::fromBytes(std::string(reinterpret_cast<const char*>(kBuiltinSans), kBuiltinSansSize), "Roboto Medium (built in)");
+    }();
+    return font;
 }
 
 // ---- system fonts -------------------------------------------------------------

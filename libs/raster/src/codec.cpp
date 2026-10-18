@@ -84,13 +84,20 @@ std::string encodePpm(const Image& img) {
 }  // namespace
 
 const std::vector<std::string>& readableExtensions() {
-    static const std::vector<std::string> list = {"png", "jpg", "jpeg", "bmp", "tga", "gif",
-                                                  "psd", "hdr", "pic", "ppm", "pgm", "pnm"};
+    static const std::vector<std::string> list = [] {
+        std::vector<std::string> l = {"png", "jpg", "jpeg", "bmp", "tga", "gif", "psd", "hdr", "pic", "ppm", "pgm", "pnm", "tif", "tiff"};
+        if (webpSupported()) l.push_back("webp");
+        return l;
+    }();
     return list;
 }
 
 const std::vector<std::string>& writableExtensions() {
-    static const std::vector<std::string> list = {"png", "jpg", "jpeg", "bmp", "tga", "ppm"};
+    static const std::vector<std::string> list = [] {
+        std::vector<std::string> l = {"png", "jpg", "jpeg", "bmp", "tga", "ppm", "tif", "tiff"};
+        if (webpSupported()) l.push_back("webp");
+        return l;
+    }();
     return list;
 }
 
@@ -98,6 +105,11 @@ bool canRead(const std::filesystem::path& path) { return contains(readableExtens
 bool canWrite(const std::filesystem::path& path) { return contains(writableExtensions(), ext(path)); }
 
 Image decode(const std::string& bytes) {
+    if (bytes.size() >= 4 && (bytes.compare(0, 4, "II*\0", 4) == 0 || bytes.compare(0, 4, "MM\0*", 4) == 0 ||
+                              bytes.compare(0, 4, "II+\0", 4) == 0 || bytes.compare(0, 4, "MM\0+", 4) == 0)) {
+        return decodeTiff(bytes);
+    }
+    if (bytes.size() >= 12 && bytes.compare(0, 4, "RIFF") == 0 && bytes.compare(8, 4, "WEBP") == 0) return decodeWebp(bytes);
     int w = 0, h = 0, n = 0;
     auto* data = stbi_load_from_memory(reinterpret_cast<const stbi_uc*>(bytes.data()), static_cast<int>(bytes.size()),
                                        &w, &h, &n, 4);
@@ -146,8 +158,12 @@ void save(const Image& img, const std::filesystem::path& path, int quality) {
         }
     } else if (e == "ppm") {
         bytes = encodePpm(img);
+    } else if (e == "tif" || e == "tiff") {
+        bytes = encodeTiff(img);
+    } else if (e == "webp") {
+        bytes = encodeWebp(img, quality);
     } else {
-        throw std::runtime_error("can't write ." + e + " images yet (supported: png, jpg, bmp, tga, ppm, ora)");
+        throw std::runtime_error("can't write ." + e + " images yet (supported: png, jpg, bmp, tga, ppm, tif, webp, ora)");
     }
     writeFile(path, bytes);
 }

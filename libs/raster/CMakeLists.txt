@@ -1,9 +1,14 @@
 find_package(Threads REQUIRED)
+include(${PROJECT_SOURCE_DIR}/cmake/webp.cmake)
 add_library(wetwaresuite_raster src/image.cpp src/codec.cpp src/ops.cpp src/paint.cpp src/ora.cpp src/document.cpp src/parallel.cpp
-            src/pyramid.cpp)
+            src/pyramid.cpp src/tiff.cpp src/webp.cpp)
 add_library(wetwaresuite::raster ALIAS wetwaresuite_raster)
 target_include_directories(wetwaresuite_raster PUBLIC include PRIVATE ${PROJECT_SOURCE_DIR}/third_party/stb)
 target_link_libraries(wetwaresuite_raster PUBLIC wetwaresuite::core PRIVATE Threads::Threads)
+if(TARGET wetwaresuite_webp)
+  target_link_libraries(wetwaresuite_raster PRIVATE wetwaresuite_webp)
+  target_compile_definitions(wetwaresuite_raster PRIVATE WETWARESUITE_HAS_WEBP=1)
+endif()
 # no fused multiply-adds behind our back: the SIMD and scalar loops (and every platform) give the same bytes
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(wetwaresuite_raster PRIVATE -ffp-contract=off)

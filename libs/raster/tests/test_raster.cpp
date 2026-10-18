@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <functional>
 #include <random>
+#include <string>
+#include <vector>
 
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/document.hpp"
@@ -122,6 +124,67 @@ void testSimd() {
     setSimdEnabled(was);
 }
 
+#include "tiff_samples.inc"
+
+void testTiffAndWebp(const fs::path& dir) {
+    for (const auto& t : tiffSamples()) {
+        Image img = decode(t.bytes);
+        const bool ok = img.width() == 7 && img.height() == 5 && img.at(1, 1) == t.left && img.at(5, 2) == t.right;
+        if (!ok) std::printf("  tiff sample %s decoded wrong\n", t.name);
+        CHECK(ok);
+    }
+    // round trip, with and without alpha, through a file
+    Image src(37, 23, {10, 20, 30, 255});
+    for (int y = 0; y < 23; ++y)
+        for (int x = 0; x < 37; ++x) {
+            std::uint8_t* p = src.pixel(x, y);
+            p[0] = static_cast<std::uint8_t>(x * 7);
+            p[1] = static_cast<std::uint8_t>(y * 11);
+            p[2] = static_cast<std::uint8_t>((x * y) & 255);
+        }
+    save(src, dir / "rt.tif");
+    Image back = load(dir / "rt.tif");
+    CHECK(back.width() == 37 && back.height() == 23 && std::equal(src.data(), src.data() + src.bytes(), back.data()));
+    src.pixel(3, 4)[3] = 77;
+    const std::string alpha = encodeTiff(src);
+    back = decodeTiff(alpha);
+    CHECK(std::equal(src.data(), src.data() + src.bytes(), back.data()));
+    CHECK(canRead("x.TIFF") && canWrite("y.tif"));
+    bool threw = false;
+    try {
+        decodeTiff("II*\0garbage");
+    } catch (const std::runtime_error&) {
+        threw = true;
+    }
+    CHECK(threw);
+
+    if (webpSupported()) {
+        CHECK(canRead("a.webp") && canWrite("b.WEBP"));
+        save(src, dir / "rt.webp", 100);  // lossless
+        back = load(dir / "rt.webp");
+        CHECK(back.width() == 37 && std::equal(src.data(), src.data() + src.bytes(), back.data()));
+        // lossy: a smooth picture comes back close
+        Image smooth(64, 48);
+        for (int y = 0; y < 48; ++y)
+            for (int x = 0; x < 64; ++x) {
+                std::uint8_t* p = smooth.pixel(x, y);
+                p[0] = static_cast<std::uint8_t>(x * 4);
+                p[1] = static_cast<std::uint8_t>(y * 5);
+                p[2] = 128;
+                p[3] = 255;
+            }
+        const std::string lossy = encodeWebp(smooth, 80);
+        back = decode(lossy);
+        int worst = 0;
+        for (int y = 0; y < 48; ++y)
+            for (int x = 0; x < 64; ++x)
+                for (int c = 0; c < 3; ++c) worst = std::max(worst, std::abs(back.pixel(x, y)[c] - smooth.pixel(x, y)[c]));
+        CHECK(back.width() == 64 && worst < 24 && lossy.size() < smooth.bytes() / 4);
+    } else {
+        CHECK(!canRead("a.webp"));
+    }
+}
+
 }  // namespace
 
 int main() {
@@ -221,6 +284,7 @@ int main() {
     // files
     auto dir = fs::temp_directory_path() / "wetwaresuite_test_raster";
     fs::create_directories(dir);
+    testTiffAndWebp(dir);
     save(grad, dir / "grad.png");
     Image back = load(dir / "grad.png");
     CHECK(back.width() == 40 && back.at(7, 3) == grad.at(7, 3));

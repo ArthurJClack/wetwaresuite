@@ -19,8 +19,20 @@ enum class View { Iso, Front, Back, Left, Right, Top, Bottom };
 const std::vector<std::string>& viewNames();  // iso front back left right top bottom ("side" parses as right)
 std::optional<View> parseView(const std::string& name);
 
+// A free camera for orbiting: yaw turns around the vertical (Z) axis, pitch tilts
+// up and down (degrees). yaw 0 pitch 0 is the front view; yaw 45 pitch 35.26 is iso.
+// The model's bounding sphere is fitted, so its size stays put while orbiting.
+struct Orbit {
+    double yaw = 45;
+    double pitch = 35.26;
+    double zoom = 1;  // 2 = twice as big
+    double panX = 0;  // shift in model radii, right and up on screen
+    double panY = 0;
+};
+
 struct RenderOptions {
     View view = View::Iso;
+    std::optional<Orbit> orbit;  // overrides view
     raster::Color background{246, 247, 249, 255};  // alpha 0 gives a transparent background
     raster::Color color{122, 158, 204, 255};       // surface colour
     bool smooth = true;     // smooth normals across shallow edges; false = flat facets

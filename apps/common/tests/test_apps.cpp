@@ -77,6 +77,25 @@ std::string readFile(const fs::path& p) {
 
 }  // namespace
 
+// a stand-in 3D document: draws a solid colour so app.view's plumbing can be checked without a tool
+class Fake3d : public Document {
+public:
+    std::string kind() const override { return "mesh"; }
+    std::string summary() const override { return "fake"; }
+    bool renderView(const OrbitView& v, int w, int h, std::vector<std::uint8_t>& rgba) const override {
+        last = v;
+        if (w == 0 && h == 0) return true;
+        rgba.assign(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4, 200);
+        return true;
+    }
+    mutable OrbitView last;
+};
+class Flat : public Document {
+public:
+    std::string kind() const override { return "image"; }
+    std::string summary() const override { return "flat"; }
+};
+
 int main() {
     auto home = fs::temp_directory_path() / "wetwaresuite_test_apps";
     fs::remove_all(home);
@@ -426,5 +445,26 @@ int main() {
 #endif
 
     fs::remove_all(home);
+    // ---- app.view: any 3D document from any angle ----
+    {
+        Session s;
+        apps::registerCommands(s, "cad");
+        auto fake = std::make_shared<Fake3d>();
+        s.workspace().put("mesh1", fake);
+        s.workspace().put("img1", std::make_shared<Flat>());
+        const std::string out = (fs::temp_directory_path() / "wetwaresuite_test_view.png").string();
+        Result r = s.run("app.view", {{"doc", std::string("mesh1")}, {"view", std::string("front")}, {"yaw", 30.0}, {"pitch", 100.0},
+                                      {"zoom", 2.0}, {"width", std::int64_t{64}}, {"height", std::int64_t{48}}, {"output", out}});
+        CHECK(r.ok && r.attachments.size() == 1 && r.attachments[0].bytes.substr(1, 3) == "PNG");
+        CHECK(fake->last.yaw == 30 && fake->last.pitch == 89.9 && fake->last.zoom == 2);  // pitch is clamped
+        CHECK(r.ok && fs::file_size(out) == r.attachments[0].bytes.size());
+        fs::remove(out);
+        CHECK(s.run("app.view", {{"doc", std::string("mesh1")}, {"view", std::string("top")}}).ok && fake->last.pitch > 89);
+        Result flat = s.run("app.view", {{"doc", std::string("img1")}});
+        CHECK(!flat.ok && flat.message.find("not a 3D document") != std::string::npos);
+        CHECK(!s.run("app.view", {{"doc", std::string("nope")}}).ok);
+        CHECK(!s.run("app.view", {{"doc", std::string("mesh1")}, {"zoom", 0.0}}).ok);
+    }
+
     return check::summary("apps");
 }

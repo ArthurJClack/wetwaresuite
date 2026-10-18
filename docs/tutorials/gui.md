@@ -130,8 +130,18 @@ When a file is open, the middle of the window shows it.
 - **Fit** shows the whole picture, **100%** shows it at its real size.
 - The list of **Open files** on the left switches between files.
 
-Files that aren't pictures (a 3D model, a song, a map) show their preview picture if the tool has one,
-or a one-line summary.
+3D files (cad parts, models, sculpts, scan fits, prints) open in a **3D view** you can turn around:
+
+- **Drag** with the left button to turn the model, **right- or middle-drag** (or Shift+drag) to move it, **scroll** to zoom.
+- **Iso**, **Front**, **Right** and **Top** jump to those angles; **Fit** (or a double-click) shows the whole model again.
+- The angle shows in the bottom-left corner. It stays put while you edit, so you can watch a change from the side you care about.
+
+![a cad part in the 3D view](images/gui-cad-3d-view.jpg)
+
+It draws in software, so it works on any computer, GPU or not. While you drag it skips the smoothing for speed and redraws sharp when you let go. The same view is `app.view` from the command line and for Claude (see [3D view](3d-view.md)).
+
+Other files that aren't pictures (a song, a map) show their preview picture if the tool has one,
+or a one-line summary. Sound files get a play bar too (see [playback](playback.md)).
 
 ## 7. Painting
 

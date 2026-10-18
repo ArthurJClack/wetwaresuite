@@ -57,6 +57,7 @@ public:
     std::string kind() const override { return "fit"; }
     std::string summary() const override;
     std::unique_ptr<Attachment> preview() const override;  // 512x512 PNG of everything
+    bool renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const override;
 
     // Index over the current scan, rebuilt when the scan changes.
     const Bvh& bvh() const;

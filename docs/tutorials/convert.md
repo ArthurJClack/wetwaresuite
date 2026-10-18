@@ -19,10 +19,11 @@ wetwaresuite converts images and SVG itself. For everything else it hands the jo
 | audio, video, and extra image formats (AVIF, HEIC, ICO, JXL, EXR) | [ffmpeg](https://ffmpeg.org) | optional |
 | Word, Excel, PowerPoint, OpenDocument, RTF and friends | [LibreOffice](https://www.libreoffice.org) (`soffice`) | optional |
 | Markdown, HTML, reStructuredText, LaTeX, Org, EPUB, plain text | [pandoc](https://pandoc.org) | optional |
+| 3D: STEP, STL, OBJ, PLY, OFF, glTF/GLB, 3MF, FBX (to each other, or to a picture) | built-in mesh engine | yes |
 
 The helper programs just need to be on your `PATH`. On Debian or Ubuntu: `sudo apt install ffmpeg libreoffice-writer pandoc` (add `libreoffice-calc` and `libreoffice-impress` for spreadsheets and slides). On macOS with Homebrew: `brew install ffmpeg pandoc` and `brew install --cask libreoffice`. On Windows: `winget install ffmpeg`, `winget install TheDocumentFoundation.LibreOffice` and `winget install pandoc`.
 
-3D and CAD formats (OBJ, STL, STEP, ...) arrive with later tools; asking for them gives a clear "coming in phase 3" message.
+STEP files from other CAD programs come in as fine triangles (curved faces tessellated), and a mesh written to STEP keeps flat faces whole, so `convert.file input=part.stl output=part.step` gives FreeCAD or Fusion a solid. IGES, Collada, USD, Blender and 3DS files aren't built in; export them to STEP, glTF or STL from the program that made them.
 
 ### What is available on this machine?
 
@@ -33,7 +34,8 @@ svg (vector tool, ready): svg -> bmp, jpeg, jpg, png, ppm, svg, tga
 audio/video/more images (ffmpeg, ready): aac, ac3, aif, aiff, amr, flac, m4a, mp3, ogg, opus, wav, wma, 3gp, avi, flv, gif, m4v, mkv, mov, mp4, mpeg, mpg, ts, webm, wmv, avif, exr, heic, heif, ico, jxl, tif, tiff, webp
 office documents (LibreOffice, ready): doc, docx, key, numbers, odp, ods, odt, pages, ppt, pptx, rtf, wpd, xls, xlsx -> csv, doc, docx, epub, html, odp, ods, odt, pdf, ppt, pptx, rtf, txt, xls, xlsx
 markup (pandoc, ready): docx, epub, htm, html, markdown, md, odt, org, rst, tex, txt -> docx, epub, html, md, odt, org, pdf, rst, tex, txt
-3D and CAD: coming with asset forge and cad (phase 3)
+3D meshes (built in, ready): 3mf, fbx, glb, gltf, obj, off, ply, step, stl, stp -> 3mf, fbx, glb, gltf, obj, off, ply, step, stl, stp, or rendered to bmp, jpeg, jpg, png, ppm, tga
+other 3D and CAD (3ds, blend, dae, iges, igs, usd, usda, usdc, usdz, wrl, x3d): not built in yet
 ffmpeg: true
 libreoffice: true
 pandoc: true

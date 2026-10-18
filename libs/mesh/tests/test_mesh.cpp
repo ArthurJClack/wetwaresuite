@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 
 #include "wetwaresuite/mesh/csg.hpp"
 #include "wetwaresuite/mesh/document.hpp"
@@ -293,6 +294,47 @@ int main() {
         CHECK(clusterVertices(s, 0.5).triangleCount() < s.triangleCount());
     }
 
+    // ---- STEP ----
+    {
+        // flat faces become one B-rep face each
+        const std::string text = writeStep(box({20, 10, 5}));
+        CHECK(text.rfind("ISO-10303-21;", 0) == 0 && text.find("MANIFOLD_SOLID_BREP") != std::string::npos);
+        std::size_t faces = 0;
+        for (std::size_t at = text.find("ADVANCED_FACE"); at != std::string::npos; at = text.find("ADVANCED_FACE", at + 1)) ++faces;
+        CHECK(faces == 6);
+        Mesh back = readStep(text);
+        CHECK(approx(volume(back), 1000, 1e-9) && isWatertight(back));
+        // parts written by OpenCASCADE (gmsh): planes, cylinders, cones, spheres, tori, rational B-splines, an assembly
+        const std::string data = WETWARESUITE_MESH_TEST_DATA;
+        struct Sample {
+            const char* name;
+            double volume;  // what OpenCASCADE reports for the exact solid
+            double tolerance;
+        };
+        for (const Sample& sample : {Sample{"filleted", 10950.6254, 0.002}, Sample{"cone", 3267.2564, 0.005}, Sample{"sphere", 4188.7902, 0.01},
+                                     Sample{"torus", 9869.6044, 0.005}, Sample{"loft", 9726.6155, 0.005}, Sample{"two", 1125.0, 1e-9}}) {
+            std::string notes;
+            Mesh m;
+            try {
+                std::ifstream in(data + "/occ-" + sample.name + ".step", std::ios::binary);
+                std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                m = readStep(bytes, &notes);
+            } catch (const std::exception& e) {
+                std::printf("  %s: %s\n", sample.name, e.what());
+            }
+            const bool ok = isWatertight(m) && approx(volume(m), sample.volume, sample.volume * sample.tolerance);
+            if (!ok) std::printf("  STEP %s: volume %g, %s\n", sample.name, volume(m), isWatertight(m) ? "closed" : "open");
+            CHECK(ok);
+        }
+        bool threw = false;
+        try {
+            readStep("solid cube\nendsolid\n");
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
     // ---- IO round trips ----
     {
         auto dir = fs::temp_directory_path() / "wetwaresuite_test_mesh";
@@ -301,13 +343,14 @@ int main() {
         Mesh shape = booleanDifference(box({20, 10, 5}), cylinder(2, 10, 24));
         const double v = volume(shape);
 
-        CHECK(readableExtensions().size() == 8 && writableExtensions().size() == 8);
+        CHECK(readableExtensions().size() == 10 && writableExtensions().size() == 10);
         CHECK(canRead("a.STL") && canWrite("x.glb") && canRead("a.FBX") && !canRead("a.dae"));
         for (const auto& ext : writableExtensions()) {
             const fs::path p = dir / ("shape." + ext);
             save(p, shape);
             Mesh back = load(p);
-            const bool ok = back.triangleCount() == shape.triangleCount() && approx(volume(back), v, 1e-5) &&
+            const bool step = ext == "step" || ext == "stp";  // flat faces come back re-triangulated
+            const bool ok = (step || back.triangleCount() == shape.triangleCount()) && approx(volume(back), v, 1e-5) &&
                             sameBounds(back, shape, 1e-4) && isWatertight(back);
             if (!ok) std::printf("round trip failed for .%s\n", ext.c_str());
             CHECK(ok);

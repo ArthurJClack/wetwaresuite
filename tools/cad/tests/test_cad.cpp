@@ -531,6 +531,31 @@ void testBlends() {
     CHECK(near(num(run(s, "cad.measure_section doc=cad6 z=10"), "loops"), 2));
     CHECK(!run(s, "cad.feature_set doc=cad6 feature=sh param=thickness value=30").ok);
     CHECK(!run(s, "cad.feature_set doc=cad6 feature=sh param=open value=upwards").ok);
+
+    // STEP out and back in: the tray keeps its volume and stays closed
+    const std::string step = (std::filesystem::temp_directory_path() / "wetwaresuite_cad_tray.step").string();
+    CHECK(run(s, "cad.save doc=cad6 path=\"" + step + "\"").ok);
+    Result opened = run(s, "cad.open path=\"" + step + "\"");
+    CHECK(opened.ok);
+    const std::string back = toText(*opened.field("doc"));
+    CHECK(near(volumeOf(s, back), 50000 - 46 * 36 * 23, 1e-3) && watertight(back));
+
+    // the tutorial's tray: its STEP comes back with long sliver faces, and a hole
+    // drilled right on a sliver's diagonal still has to close
+    const std::string t = toText(*run(s, "cad.new").field("doc"));
+    run(s, "cad.extrude_rect doc=" + t + " name=block width=60 depth=40 height=25");
+    run(s, "cad.fillet doc=" + t + " name=round target=block radius=4 edges=vertical");
+    run(s, "cad.shell doc=" + t + " name=tray target=round thickness=2 open=top");
+    run(s, "cad.chamfer doc=" + t + " name=bevel target=tray distance=1 edges=bottom");
+    CHECK(run(s, "cad.fillet doc=" + t + " name=lip target=bevel radius=0.8 edges=top").ok && watertight(t));
+    const double trayVolume = volumeOf(s, t);
+    CHECK(run(s, "cad.save doc=" + t + " path=\"" + step + "\"").ok);
+    opened = run(s, "cad.open path=\"" + step + "\"");
+    const std::string drilled = toText(*opened.field("doc"));
+    CHECK(within(volumeOf(s, drilled), trayVolume, 1e-6));
+    CHECK(run(s, "cad.hole doc=" + drilled + " target=imported1 diameter=5 x=30 y=20").ok);
+    CHECK(within(volumeOf(s, drilled), trayVolume - ngon(2.5, 64) * 2, 1e-6) && watertight(drilled));
+    std::filesystem::remove(step);
 }
 
 int main() {

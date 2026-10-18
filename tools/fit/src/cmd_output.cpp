@@ -148,7 +148,7 @@ void registerOutput(Session& session) {
                     raster::save(renderScene(doc, p, size, {}), path);
                     return Result::success("wrote a picture to " + path.string()).with("path", path.string());
                 }
-                if (!mesh::canWrite(path)) return Result::failure("can't save ." + ext + "; use stl, 3mf, obj, ply, glb, gltf, fbx or off (or png)");
+                if (!mesh::canWrite(path)) return Result::failure("can't save ." + ext + "; use stl, 3mf, obj, ply, glb, gltf, fbx, step or off (or png)");
                 if (doc.state.parts.empty()) return Result::failure("no parts yet (fit.plate, fit.clamp, fit.phone_mount, ... make them)");
                 const std::string which = stringParam(p, "part", "all");
                 std::vector<std::string> names;

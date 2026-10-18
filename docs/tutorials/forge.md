@@ -479,7 +479,7 @@ Open a model as a mesh document. Read-only (changes nothing outside the session)
 
 | Parameter | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `path` | string | yes | | `.stl` `.obj` `.ply` `.off` `.glb` `.gltf` `.3mf` |
+| `path` | string | yes | | `.stl` `.obj` `.ply` `.off` `.glb` `.gltf` `.3mf` `.fbx` `.step` |
 
 #### forge.mesh_save
 Write the mesh, or a picture of it. Not undoable.

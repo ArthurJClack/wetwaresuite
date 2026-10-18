@@ -177,8 +177,8 @@ std::vector<FeatureType> buildTypes() {
                   num("cy", "pivot Y", "0"), num("cz", "pivot Z", "0")}});
     t.push_back({"fillet", "Fillet",
                  "Round the sharp edges of a feature with radius: outer edges are cut round, inner edges filled round. "
-                 "Pick edges by kind (edges=top,vertical) or by points near them (near=0,0,5). Where three rounded edges meet "
-                 "the corner is the meeting of the three rounds, not a ball.",
+                 "Pick edges by kind (edges=top,vertical) or by points near them (near=0,0,5). Where three rounded outer edges "
+                 "meet, the corner becomes a ball.",
                  {ref("target", "feature to round"), num("radius", "fillet radius", {}, true), words("edges", "which edges: all, outer, inner, top, bottom, vertical, horizontal, x, y, z (comma-separated, combined)", "all"),
                   words("near", "instead of edges: points x,y,z,x,y,z,... picking the edge closest to each (cad.edges lists them)", ""),
                   num("angle", "only edges whose faces meet at this many degrees or more", "30"),
@@ -405,11 +405,10 @@ struct Ctx {
     }
 };
 
-// CSG can leave zero-volume "fins": two triangles on the same three vertices
-// with opposite winding. They enclose nothing, so dropping both pairs keeps
+// CSG can leave zero-volume "fins": triangles on the same three vertices with
+// opposite winding. They enclose nothing, so dropping each opposite pair keeps
 // the solid and makes it watertight again.
-Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
-    Mesh m = mesh::booleanOp(a, b, op);
+bool dropFins(Mesh& m) {
     std::map<std::array<std::uint32_t, 3>, std::vector<std::size_t>> byCorners;
     for (std::size_t t = 0; t < m.triangleCount(); ++t) {
         std::array<std::uint32_t, 3> k{m.indices[t * 3], m.indices[t * 3 + 1], m.indices[t * 3 + 2]};
@@ -419,23 +418,34 @@ Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
     std::vector<bool> drop(m.triangleCount(), false);
     bool any = false;
     for (const auto& [k, tris] : byCorners) {
-        if (tris.size() != 2) continue;
+        if (tris.size() < 2) continue;
+        // split by winding: same cyclic order as the first = same side
+        std::vector<std::size_t> same, flipped;
         const auto* a0 = &m.indices[tris[0] * 3];
-        const auto* b0 = &m.indices[tris[1] * 3];
-        // same cyclic order = same winding; only opposite pairs are fins
-        bool same = false;
-        for (int r = 0; r < 3; ++r) same = same || (a0[0] == b0[r] && a0[1] == b0[(r + 1) % 3] && a0[2] == b0[(r + 2) % 3]);
-        if (same) continue;
-        drop[tris[0]] = drop[tris[1]] = true;
-        any = true;
+        for (std::size_t t : tris) {
+            const auto* b0 = &m.indices[t * 3];
+            bool s = false;
+            for (int r = 0; r < 3; ++r) s = s || (a0[0] == b0[r] && a0[1] == b0[(r + 1) % 3] && a0[2] == b0[(r + 2) % 3]);
+            (s ? same : flipped).push_back(t);
+        }
+        for (std::size_t i = 0; i < std::min(same.size(), flipped.size()); ++i) {
+            drop[same[i]] = drop[flipped[i]] = true;
+            any = true;
+        }
     }
-    if (!any) return m;
+    if (!any) return false;
     std::vector<std::uint32_t> kept;
     for (std::size_t t = 0; t < m.triangleCount(); ++t) {
         if (!drop[t]) kept.insert(kept.end(), {m.indices[t * 3], m.indices[t * 3 + 1], m.indices[t * 3 + 2]});
     }
     m.indices = std::move(kept);
     mesh::cleanup(m);
+    return true;
+}
+
+Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
+    Mesh m = mesh::booleanOp(a, b, op);
+    dropFins(m);
     return m;
 }
 
@@ -472,11 +482,22 @@ Mesh tidy(Mesh m) {
     return m;
 }
 
+// Long sliver triangles (flat faces read from STEP or other programs) can
+// leave crumbs a hundred-thousandth of a millimetre across where a cut crosses
+// them; merging points that close and dropping the fins that leaves closes it.
+bool mend(Mesh& m, double d) {
+    mesh::weld(m, d * 1e-6);
+    dropFins(m);
+    m = tidy(std::move(m));
+    return !m.empty() && clean(m);
+}
+
 Mesh csg(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
     Mesh m = tidy(csgOnce(a, b, op));
     if (m.empty() || clean(m) || !mesh::isWatertight(a) || !mesh::isWatertight(b)) return m;
     const mesh::Bounds bb = mesh::bounds(b);
     const double d = std::max(mesh::bounds(a).diagonal(), bb.diagonal());
+    if (Mesh r = m; mend(r, d)) return r;
     const Vec3 c = bb.center(), skew = normalize(Vec3{1, 0.618, 0.382});
     const Mat4 nudges[] = {Mat4::translate(c) * Mat4::rotateAxis(skew, 1e-5) * Mat4::translate(-c),
                            Mat4::translate(skew * (d * 1e-7)), Mat4::translate(Vec3{-0.382, 1, -0.618} * (d * 3e-7)),
@@ -1050,7 +1071,7 @@ std::shared_ptr<CadDoc> openCad(const std::filesystem::path& path) {
         doc->features.push_back(std::move(f));
         doc->regenerate();
     } else {
-        throw std::runtime_error("cad opens .wwcad files and meshes (stl obj ply off glb gltf 3mf fbx), not " + path.string());
+        throw std::runtime_error("cad opens .wwcad files, STEP and meshes (step stp stl obj ply off glb gltf 3mf fbx), not " + path.string());
     }
     doc->path = path.string();
     return doc;

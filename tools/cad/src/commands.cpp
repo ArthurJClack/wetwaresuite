@@ -391,9 +391,10 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"cad.open", "Open Part",
-             "Open a .wwcad part (parameters and feature tree), or import a mesh file (stl, obj, ply, off, glb, gltf, "
-             "3mf) as a new part with one fixed 'imported' feature. Returns the document id.",
-             {{"path", ParamType::String, "path to a .wwcad or mesh file", true}}, false, true},
+             "Open a .wwcad part (parameters and feature tree), or import a STEP or mesh file (step, stl, obj, ply, off, "
+             "glb, gltf, 3mf, fbx) as a new part with one fixed 'imported' feature. STEP faces (planes, cylinders, cones, "
+             "spheres, tori, B-splines) are turned into fine triangles. Returns the document id.",
+             {{"path", ParamType::String, "path to a .wwcad, .step or mesh file", true}}, false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     try {
@@ -405,7 +406,7 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"cad.import", "Import Mesh",
-             "Add a mesh file (stl, obj, ply, off, glb, gltf, 3mf, fbx) to a part as a fixed 'imported' feature, which "
+             "Add a mesh or STEP file (stl, obj, ply, off, glb, gltf, 3mf, fbx, step) to a part as a fixed 'imported' feature, which "
              "booleans, holes and patterns can use like any other.",
              [] {
                  std::vector<ParamSpec> s{docParam(), {"path", ParamType::String, "mesh file", true}};
@@ -433,8 +434,8 @@ void registerCommands(Session& session) {
             })));
 
     reg.add({"cad.save", "Save Part",
-             "Save a part. .wwcad keeps the parameters and feature tree (reopen with cad.open); stl, obj, ply, off, "
-             "glb, gltf or 3mf export the solid; png, jpg, bmp, tga or ppm render a picture (view, size).",
+             "Save a part. .wwcad keeps the parameters and feature tree (reopen with cad.open); step exports a solid "
+             "B-rep for other CAD programs (flat faces; curved ones as facets); stl, obj, ply, off, glb, gltf, 3mf or fbx export the mesh; png, jpg, bmp, tga or ppm render a picture (view, size).",
              {docParam(),
               {"path", ParamType::String, "output file; the extension picks the format", true},
               {"ascii", ParamType::Bool, "STL/PLY: write text instead of binary", false, {}, false},
@@ -465,7 +466,7 @@ void registerCommands(Session& session) {
                     return r;
                 }
                 if (!mesh::canWrite(path)) {
-                    return Result::failure("unknown format '" + ext + "': use .wwcad, stl, obj, ply, off, glb, gltf, 3mf, fbx, png or jpg");
+                    return Result::failure("unknown format '" + ext + "': use .wwcad, step, stl, obj, ply, off, glb, gltf, 3mf, fbx, png or jpg");
                 }
                 mesh::SaveOptions so;
                 so.ascii = boolParam(p, "ascii", false);

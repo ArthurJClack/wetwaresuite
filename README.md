@@ -45,7 +45,7 @@ install only what you need (`hub install image model --from <release folder>`); 
 | `tools/paint/` | painting: pressure brushes, eraser, fills, shapes, gradients, layers |
 | `tools/vector/` | vector design: shapes, paths, text, SVG in and out |
 | `tools/blueprint/` | technical drafting and floor plans: walls, doors, dimensions, layers, DXF in/out, PDF/SVG to scale |
-| `tools/cad/` | parametric CAD: feature tree, expressions, holes, patterns, booleans, measuring, STL/3MF export |
+| `tools/cad/` | parametric CAD: feature tree, expressions, holes, patterns, booleans, fillets, chamfers, shells, measuring, STEP import/export, STL/3MF export |
 | `tools/slicer/` | 3D printing: printer/filament presets, perimeters, infill, supports, G-code with time and filament estimates |
 | `tools/forge/` | game assets: mesh cleanup, LODs, UVs, sprite sheets and atlases, normal maps, tileable textures, pixel art |
 | `tools/layout/` | print layout and publishing: posters, flyers, cards, booklets; linked text frames, styles, masters, CMYK, preflight, PDF with bleed and crop marks, N-up imposition |

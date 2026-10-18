@@ -1,10 +1,10 @@
 add_library(achclwss_convert src/convert.cpp)
 add_library(achclwss::convert ALIAS achclwss_convert)
 target_include_directories(achclwss_convert PUBLIC include)
-target_link_libraries(achclwss_convert PUBLIC achclwss::raster)
+target_link_libraries(achclwss_convert PUBLIC achclwss::raster PRIVATE achclwss::mesh)
 
 if(ACHCLWSS_BUILD_TESTS)
   add_executable(test_convert tests/test_convert.cpp)
-  target_link_libraries(test_convert PRIVATE achclwss::convert achclwss_check)
+  target_link_libraries(test_convert PRIVATE achclwss::convert achclwss::mesh achclwss_check)
   add_test(NAME convert COMMAND test_convert)
 endif()

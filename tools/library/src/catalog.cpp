@@ -129,6 +129,12 @@ Item fromJson(const json& j, const fs::path& base) {
 
 }  // namespace
 
+fs::path catalogIn(const fs::path& dir) {
+    std::error_code ec;
+    const fs::path fresh = dir / kCatalogName, old = dir / kOldCatalogName;
+    return !fs::exists(fresh, ec) && fs::exists(old, ec) ? old : fresh;
+}
+
 Catalog Catalog::load(const fs::path& file) {
     Catalog c;
     c.file = file;
@@ -146,7 +152,7 @@ Catalog Catalog::load(const fs::path& file) {
             throw std::runtime_error(file.string() + " line " + std::to_string(lineNo) + " is not valid JSON");
         }
         try {
-            if (j.contains("wetwaresuite_library")) {
+            if (j.contains("wetwaresuite_library") || j.contains("achclwss_library")) {  // achclwss_: before the rename
                 for (const auto& r : j.value("roots", json::array())) c.roots.push_back(loadPath(r.get<std::string>(), base));
                 for (const auto& cj : j.value("collections", json::array())) {
                     Collection col;

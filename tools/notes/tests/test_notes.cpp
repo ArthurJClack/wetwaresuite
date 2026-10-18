@@ -172,10 +172,13 @@ int main() {
     auto run = [&](const std::string& id, Params p) { return s.run(id, p); };
 
     // ---- open and info ----
+    // a cache folder from before the rename is dropped for the new one
+    fs::create_directories(vault / ".achnotes");
+    writeText(vault / ".achnotes" / "cache.json", "{\"version\": 0}");
     Result open = run("notes.vault.open", {{"path", vault.string()}, {"preview", true}});
     CHECK(open.ok && strField(open, "doc") == "vault1" && intField(open, "notes") == 6 && intField(open, "attachments") == 1);
     CHECK(open.attachments.size() == 1 && open.attachments[0].mime == "image/png");
-    CHECK(fs::exists(vault / ".achnotes" / "cache.json"));
+    CHECK(fs::exists(vault / ".wwnotes" / "cache.json") && !fs::exists(vault / ".achnotes"));
     Result info = run("notes.vault.info", {});
     CHECK(info.ok && intField(info, "unresolved") == 1 && intField(info, "open_tasks") == 3 && intField(info, "done_tasks") == 1);
     CHECK(strField(info, "daily_folder") == "Journal" && strField(info, "templates_folder") == "Templates");
@@ -345,7 +348,7 @@ int main() {
         notes::registerCommands(s2);
         Result o2 = s2.run("notes.vault.info", {{"vault", vault.string()}});
         CHECK(o2.ok && intField(o2, "notes") == intField(run("notes.vault.info", {}), "notes"));
-        CHECK(s2.run("notes.vault.reindex", {}).ok && fs::exists(vault / ".achnotes" / "cache.json"));
+        CHECK(s2.run("notes.vault.reindex", {}).ok && fs::exists(vault / ".wwnotes" / "cache.json"));
     }
 
     // ---- CRLF files (Windows editors) ----

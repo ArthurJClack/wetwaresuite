@@ -63,9 +63,10 @@ negative size, an unknown name, a hole that can't be cut) is refused with the
 reason and changes nothing. Reading commands (`cad.info`, `cad.preview`,
 `cad.measure_*`) never touch the history.
 
-**The tree is saved, not just the mesh.** `.achcad` files keep the parameters
+**The tree is saved, not just the mesh.** `.wwcad` files keep the parameters
 and features, so you can reopen a part next month and change one number. Mesh
-formats (STL, OBJ, PLY, OFF, glTF, 3MF) and images are exports.
+formats (STL, OBJ, PLY, OFF, glTF, 3MF) and images are exports. Parts saved
+before the rename (`.achcad`) still open with `cad.open`.
 
 ## 2. setting up
 
@@ -103,7 +104,7 @@ number like `40` is fine everywhere.
 
 - **CLI**: `wetwaresuite <command> key=value ...` runs one command in a fresh
   process. Open documents live only inside one process, so a one-shot command
-  can create or inspect a part (`wetwaresuite cad.open path=bracket.achcad`) but
+  can create or inspect a part (`wetwaresuite cad.open path=bracket.wwcad`) but
   can't keep editing it. For edits, pipe a few lines into `wetwaresuite batch` from
   the shell (shown in every task below) or use a script file.
 - **Batch script**: a text file with one command per line, run with
@@ -160,7 +161,7 @@ cad.hole doc=$part name=wall_hole target=foot_holes diameter=bolt axis=x y=margi
 cad.pattern_linear doc=$part name=wall_holes target=wall_hole count=2 dy=width-2*margin
 
 cad.info doc=$part
-cad.save doc=$part path=bracket.achcad
+cad.save doc=$part path=bracket.wwcad
 cad.save doc=$part path=bracket.stl
 cad.save doc=$part path=bracket.png size=800
 ```
@@ -227,7 +228,7 @@ What each step did:
 6. **The upright holes** drill along `+x` from the back face (`x` is left out,
    so it starts at the face the drill enters: the back of the upright at x=0),
    with a 90 degree countersink of twice the bolt diameter on that side.
-7. **`cad.save`** writes the tree to `bracket.achcad`, the solid to
+7. **`cad.save`** writes the tree to `bracket.wwcad`, the solid to
    `bracket.stl`, and an 800x800 iso render to `bracket.png`.
 
 ### from the shell
@@ -242,7 +243,7 @@ cad.param_set doc=$p name=t value=5
 cad.extrude doc=$p name=body plane=xz points="0,0, 50,0, 50,t, t,t, t,45, 0,45" height=width
 cad.hole doc=$p name=foot_hole target=body diameter=5.5 x=38 y=8
 cad.pattern_linear doc=$p target=foot_hole count=2 dy=width-16
-cad.save doc=$p path=quick-bracket.achcad
+cad.save doc=$p path=quick-bracket.wwcad
 EOF
 ```
 
@@ -250,11 +251,11 @@ Single commands are for things that fit in one step. Open a saved part and
 print its summary:
 
 ```sh
-wetwaresuite cad.open path=bracket.achcad
+wetwaresuite cad.open path=bracket.wwcad
 ```
 
 ```
-opened cad1 (7 features, 7 params, 1 bodies, mm, 1328 triangles, 658 vertices, size 50 x 40 x 45 at (0, 0, 0), watertight, bracket.achcad)
+opened cad1 (7 features, 7 params, 1 bodies, mm, 1328 triangles, 658 vertices, size 50 x 40 x 45 at (0, 0, 0), watertight, bracket.wwcad)
 cad1
 doc: cad1
 units: mm
@@ -270,7 +271,7 @@ With the MCP server connected, describe the part:
 > upright, 5 mm walls, a triangular rib in the middle, two M5 clearance holes
 > in the foot and two countersunk M5 holes in the upright, 8 mm from the edges.
 > Make every dimension a parameter. Show me a preview, then save it as
-> bracket.achcad and bracket.stl.
+> bracket.wwcad and bracket.stl.
 
 Claude works through the same commands, roughly:
 
@@ -299,23 +300,23 @@ Nothing else needs touching: the margin is `width/5`, the hole spacing is
 
 ```text
 # resize.txt: make the bracket wider and thicker, with three foot holes
-cad.open path=bracket.achcad -> part
+cad.open path=bracket.wwcad -> part
 cad.param_set doc=$part name=width value=60
 cad.param_set doc=$part name=t value=6
 cad.feature_set doc=$part feature=foot_holes values="count=3; dy=(width-2*margin)/2"
 cad.info doc=$part
-cad.save doc=$part path=bracket-wide.achcad
+cad.save doc=$part path=bracket-wide.wwcad
 cad.save doc=$part path=bracket-wide.stl
 ```
 
 ```
-opened cad1 (7 features, 7 params, 1 bodies, mm, 1328 triangles, 658 vertices, size 50 x 40 x 45 at (0, 0, 0), watertight, bracket.achcad)
+opened cad1 (7 features, 7 params, 1 bodies, mm, 1328 triangles, 658 vertices, size 50 x 40 x 45 at (0, 0, 0), watertight, bracket.wwcad)
 width = 60 (1 body, volume 27351.6 mm^3)
 t = 6 (1 body, volume 32437.5 mm^3)
 set foot_holes count=3, dy=(width-2*margin)/2 (1 body, volume 32295.2 mm^3)
 ...
 model: size 50 x 60 x 45 mm, min (0, 0, 0), max (50, 60, 45), volume 32295.2 mm^3, area 13024.7 mm^2, watertight
-saved bracket-wide.achcad
+saved bracket-wide.wwcad
 saved bracket-wide.stl
 ```
 
@@ -332,7 +333,7 @@ mass of each (the default density is PLA, 1.25 g/cm^3):
 ```sh
 for w in 30 40 60; do
   wetwaresuite batch <<EOF | grep '^mass_g'
-cad.open path=bracket.achcad -> p
+cad.open path=bracket.wwcad -> p
 cad.param_set doc=\$p name=width value=$w
 cad.save doc=\$p path=bracket-$w.stl
 cad.measure_mass doc=\$p
@@ -351,7 +352,7 @@ mass_g: 34.1896
 
 ### asking Claude
 
-> Open bracket.achcad, make it 60 mm wide and 6 mm thick, and put three holes
+> Open bracket.wwcad, make it 60 mm wide and 6 mm thick, and put three holes
 > in the foot instead of two, evenly spaced. Show me the top view and save it
 > as bracket-wide.stl.
 
@@ -394,7 +395,7 @@ From the shell, export and render a preview of the export in one go (the
 
 ```sh
 wetwaresuite batch <<'EOF'
-cad.open path=bracket.achcad -> p
+cad.open path=bracket.wwcad -> p
 cad.param_set doc=$p name=width value=80
 cad.save doc=$p path=bracket-80.stl
 EOF
@@ -423,7 +424,7 @@ PETG it takes."* Claude calls `cad_info` (checks `watertight: true`),
 
 ```text
 # measure.txt: check the bracket before printing it
-cad.open path=bracket.achcad -> part
+cad.open path=bracket.wwcad -> part
 cad.measure_bounds doc=$part
 cad.measure_mass doc=$part density=1.27
 cad.measure_section doc=$part z=t/2
@@ -472,7 +473,7 @@ to run any time.
 
 ```sh
 wetwaresuite batch <<'EOF' | grep '^volume\|^mass_g'
-cad.open path=bracket.achcad -> p
+cad.open path=bracket.wwcad -> p
 cad.measure_mass doc=$p density=1.27
 EOF
 ```
@@ -486,7 +487,7 @@ mass_g: 23.3066
 
 ### asking Claude
 
-> How heavy is bracket.achcad in aluminium, what's the cross-section area of
+> How heavy is bracket.wwcad in aluminium, what's the cross-section area of
 > the foot, and how far apart are the foot holes?
 
 Claude calls `cad_open`, `cad_measure_mass` with `density: "2.70"`,
@@ -514,7 +515,7 @@ cad.hole doc=$f name=bolt_hole target=disc diameter=bolt x=pcd/2 counterbore_dia
 cad.pattern_circular doc=$f name=bolt_circle target=bolt_hole count=bolts
 cad.measure_section doc=$f z=1
 cad.measure_mass doc=$f density=2.70
-cad.save doc=$f path=flange.achcad
+cad.save doc=$f path=flange.wwcad
 cad.save doc=$f path=flange.3mf
 cad.save doc=$f path=flange.png view=top size=600
 ```
@@ -525,7 +526,7 @@ added hole bolt_hole (1 body, volume 40356.1 mm^3)
 added pattern_circular bolt_circle (1 body, volume 38079 mm^3)
 section at z=1: area 4896.5 mm^2, 8 loops, perimeter 532.691 mm
 volume 38079 mm^3 (38.079 cm^3), area 14303.2 mm^2, mass 102.813 g at 2.7 g/cm^3
-saved flange.achcad
+saved flange.wwcad
 saved flange.3mf
 saved flange.png
 ```
@@ -546,7 +547,7 @@ six counterbored M6 holes on the bolt circle; tell me its weight."* It calls
 
 ```text
 # edit.txt: change the tree, see what is refused, undo
-cad.open path=bracket.achcad -> p
+cad.open path=bracket.wwcad -> p
 cad.param_set doc=$p name=t value=-2
 cad.param_delete doc=$p name=bolt
 cad.feature_delete doc=$p feature=rib
@@ -684,11 +685,11 @@ Create an empty parametric part and return its id (e.g. cad1). Then define param
 
 #### `cad.open`: Open Part
 
-Open an .achcad part (parameters and feature tree), or import a mesh file (stl, obj, ply, off, glb, gltf, 3mf) as a new part with one fixed 'imported' feature. Returns the document id.
+Open a .wwcad part (parameters and feature tree), or import a mesh file (stl, obj, ply, off, glb, gltf, 3mf) as a new part with one fixed 'imported' feature. Returns the document id.
 
 | param | required | default | meaning |
 |---|---|---|---|
-| `path` | yes |  | path to an .achcad or mesh file |
+| `path` | yes |  | path to a .wwcad or mesh file |
 
 #### `cad.import`: Import Mesh
 
@@ -703,7 +704,7 @@ Add a mesh file (stl, obj, ply, off, glb, gltf, 3mf) to a part as a fixed 'impor
 
 #### `cad.save`: Save Part
 
-Save a part. .achcad keeps the parameters and feature tree (reopen with cad.open); stl, obj, ply, off, glb, gltf or 3mf export the solid; png, jpg, bmp, tga or ppm render a picture (view, size).
+Save a part. .wwcad keeps the parameters and feature tree (reopen with cad.open); stl, obj, ply, off, glb, gltf or 3mf export the solid; png, jpg, bmp, tga or ppm render a picture (view, size).
 
 | param | required | default | meaning |
 |---|---|---|---|

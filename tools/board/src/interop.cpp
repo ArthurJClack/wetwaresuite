@@ -253,6 +253,17 @@ std::string toExcalidraw(const Board& b) {
 
 namespace {
 
+// Our extra data on an Excalidraw element, or nullptr. "achclwss" is its key from before the rename.
+const json* ourData(const json& o) {
+    auto cd = o.find("customData");
+    if (cd == o.end() || !cd->is_object()) return nullptr;
+    for (const char* key : {"wetwaresuite", "achclwss"}) {
+        auto it = cd->find(key);
+        if (it != cd->end()) return &*it;
+    }
+    return nullptr;
+}
+
 std::string jstr(const json& j, const char* k, const std::string& f = {}) {
     auto it = j.find(k);
     return it != j.end() && it->is_string() ? it->get<std::string>() : f;
@@ -346,9 +357,9 @@ Board fromExcalidraw(const std::string& text) {
         if (jnum(o, "roughness", 0) > 0) anyRough = true;
         if (type == "rectangle" || type == "ellipse" || type == "diamond") {
             e.kind = type == "ellipse" ? Kind::Ellipse : type == "diamond" ? Kind::Diamond : (o.contains("roundness") && !o["roundness"].is_null() ? Kind::Rounded : Kind::Rect);
-            if (o.contains("customData") && o["customData"].is_object() && o["customData"].contains("wetwaresuite")) {
-                if (auto k = parseKind(jstr(o["customData"]["wetwaresuite"], "type"))) e.kind = *k;
-                e.name = jstr(o["customData"]["wetwaresuite"], "name");
+            if (const json* mine = ourData(o)) {
+                if (auto k = parseKind(jstr(*mine, "type"))) e.kind = *k;
+                e.name = jstr(*mine, "name");
             }
             exStyle(e, o, true);
         } else if (type == "frame" || type == "magicframe") {
@@ -439,12 +450,13 @@ Board fromExcalidraw(const std::string& text) {
         c.from = bindingId("startBinding");
         c.to = bindingId("endBinding");
         std::string route = o.value("elbowed", false) ? "elbow" : (o.contains("roundness") && !o["roundness"].is_null() ? "curved" : "straight");
-        if (o.contains("customData") && o["customData"].is_object() && o["customData"].contains("wetwaresuite")) {
-            const std::string r = jstr(o["customData"]["wetwaresuite"], "route");
+        const json* mine = ourData(o);
+        if (mine) {
+            const std::string r = jstr(*mine, "route");
             if (!r.empty()) route = r;
         }
         c.route = route;
-        const bool ours = o.contains("customData") && o["customData"].is_object() && o["customData"].contains("wetwaresuite");
+        const bool ours = mine != nullptr;
         if (pts.size() > 2 && (route == "straight" || (route == "curved" && !ours))) c.waypoints.assign(pts.begin() + 1, pts.end() - 1);
         parentOf(c, o);
         idMap[exId] = b.add(c);

@@ -1,4 +1,4 @@
-// The timeline document: tracks, clips, .achcut JSON and snapshot undo.
+// The timeline document: tracks, clips, .wwcut JSON and snapshot undo.
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -272,7 +272,7 @@ std::string toJson(const Timeline& tl) {
         if (t.hidden) tj["hidden"] = true;
         tracks.push_back(tj);
     }
-    json j = {{"format", "achcut"},
+    json j = {{"format", "wwcut"},
               {"version", 1},
               {"settings",
                {{"width", tl.settings.width},
@@ -289,10 +289,11 @@ std::shared_ptr<Timeline> fromJson(const std::string& text, const fs::path& base
     try {
         j = json::parse(text);
     } catch (const std::exception& e) {
-        throw std::runtime_error(std::string("not a valid .achcut file: ") + e.what());
+        throw std::runtime_error(std::string("not a valid .wwcut file: ") + e.what());
     }
-    if (!j.is_object() || j.value("format", std::string()) != "achcut") {
-        throw std::runtime_error("not an .achcut timeline (missing \"format\": \"achcut\")");
+    const std::string format = j.is_object() ? j.value("format", std::string()) : std::string();
+    if (format != "wwcut" && format != "achcut") {  // "achcut": timelines saved before the rename
+        throw std::runtime_error("not a .wwcut timeline (missing \"format\": \"wwcut\")");
     }
     auto tl = std::make_shared<Timeline>();
     try {
@@ -320,10 +321,10 @@ std::shared_ptr<Timeline> fromJson(const std::string& text, const fs::path& base
         }
         tl->nextClip = std::max(j.value("next_clip", 1), highest + 1);
     } catch (const json::exception& e) {
-        throw std::runtime_error(std::string("broken .achcut file: ") + e.what());
+        throw std::runtime_error(std::string("broken .wwcut file: ") + e.what());
     }
     if (tl->settings.width < 16 || tl->settings.height < 16 || !(tl->settings.fps > 0)) {
-        throw std::runtime_error("broken .achcut file: bad resolution or fps");
+        throw std::runtime_error("broken .wwcut file: bad resolution or fps");
     }
     tl->sortClips();
     return tl;

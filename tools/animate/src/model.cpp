@@ -514,8 +514,9 @@ std::shared_ptr<AnimDoc> fromJson(const std::string& text, const fs::path& baseD
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not valid JSON: ") + e.what());
     }
-    if (!j.is_object() || j.value("format", std::string()) != "wetwaresuite-animate") {
-        throw std::runtime_error("not an wetwaresuite animation (.anim.json) file");
+    const std::string format = j.is_object() ? j.value("format", std::string()) : std::string();
+    if (format != "wetwaresuite-animate" && format != "achclwss-animate") {  // achclwss-: saved before the rename
+        throw std::runtime_error("not a wetwaresuite animation (.anim.json) file");
     }
     try {
         auto doc = std::make_shared<AnimDoc>();

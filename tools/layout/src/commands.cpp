@@ -676,8 +676,8 @@ static void registerDocuments(Session& session) {
                 });
     }
 
-    reg.add({"layout.open", "Open Layout", "Open an .achlay layout file and return its id.",
-             {{"path", ParamType::String, "path to an .achlay file", true}}, false, true},
+    reg.add({"layout.open", "Open Layout", "Open a .wwlay layout file (older .achlay files open too) and return its id.",
+             {{"path", ParamType::String, "path to a .wwlay file", true}}, false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     try {
@@ -689,13 +689,13 @@ static void registerDocuments(Session& session) {
             });
 
     reg.add({"layout.save", "Save Layout",
-             "Save the layout as .achlay (JSON: pages, frames, stories, styles, colours; pictures stay linked by path). "
+             "Save the layout as .wwlay (JSON: pages, frames, stories, styles, colours; pictures stay linked by path). "
              "For print files use layout.export.",
-             {docParam(), {"path", ParamType::String, "output .achlay file", true}}, false},
+             {docParam(), {"path", ParamType::String, "output .wwlay file", true}}, false},
             layoutCommand(session, [](LayoutDoc& doc, const Params& p) -> Result {
                 const std::string file = stringParam(p, "path");
                 const std::string ext = lower(std::filesystem::path(file).extension().string());
-                if (ext != ".achlay") return Result::failure("layouts save as .achlay; use layout.export for pdf or png");
+                if (ext != ".wwlay" && ext != ".achlay") return Result::failure("layouts save as .wwlay; use layout.export for pdf or png");
                 saveLayout(doc, file);
                 Result r = Result::success("saved " + file, file);
                 r.with("path", file);

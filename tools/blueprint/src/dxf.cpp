@@ -25,6 +25,9 @@ namespace {
 constexpr const char* kApp = "wetwaresuite";
 constexpr const char* kSheetLayer = "BP_SHEET";
 constexpr const char* kMeta = "wetwaresuite-blueprint";
+// the same two in files written before the rename, still read
+constexpr const char* kOldApp = "achclwss";
+constexpr const char* kOldMeta = "achclwss-blueprint";
 
 
 std::string upper(std::string s) {
@@ -818,7 +821,7 @@ struct Record {
         std::string data;
         bool mine = false;
         for (const auto& [c, v] : groups) {
-            if (c == 1001) mine = v == kApp;
+            if (c == 1001) mine = v == kApp || v == kOldApp;
             else if (mine && c == 1000) data += v;
         }
         return data;
@@ -1025,7 +1028,7 @@ std::shared_ptr<Drawing> fromDxf(const std::string& text, std::string* notes, bo
             for (const auto& [c, v] : r.groups) {
                 if (c == 1) lines.push_back(v);
             }
-            if (lines.empty() || lines[0].rfind(kMeta, 0) != 0) continue;
+            if (lines.empty() || (lines[0].rfind(kMeta, 0) != 0 && lines[0].rfind(kOldMeta, 0) != 0)) continue;
             meta = true;
             for (const auto& line : lines) {
                 auto eq = line.find('=');

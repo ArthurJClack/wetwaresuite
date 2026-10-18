@@ -224,6 +224,17 @@ int main() {
     }
 
     // ---- save / open ----
+    {
+        auto renamed = [](std::string t, const std::string& from, const std::string& to) {  // undo the rename in a saved file
+            for (auto at = t.find(from); at != std::string::npos; at = t.find(from, at + to.size())) t.replace(at, from.size(), to);
+            return t;
+        };
+        // songs saved before the rename ("achclwss-beats") still load
+        auto a = s.workspace().getAs<SongDoc>("song1");
+        const std::string fresh = beats::toJson(a->song);
+        CHECK(fresh.find("\"wetwaresuite-beats\"") != std::string::npos);
+        CHECK(beats::fromJson(renamed(fresh, "wetwaresuite-beats", "achclwss-beats")).tracks.size() == a->song.tracks.size());
+    }
     CHECK(s.run("beats.save", {{"song", g}, {"path", (dir / "demo.beats.json").string()}}).ok);
     Result op = s.run("beats.open", {{"path", (dir / "demo.beats.json").string()}, {"preview", true}});
     CHECK(op.ok && str(op, "song") == "song2" && numField(op, "tracks") == 3 && numField(op, "bars") == 4 && op.attachments.size() == 1);

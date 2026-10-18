@@ -304,7 +304,7 @@ void testCommands(const std::filesystem::path& dir) {
     CHECK(run(s, "layout.frame_set doc=lay1 frame=f1 x=15 preview=true").attachments.size() == 1);
 
     // save / open / close
-    const auto file = dir / "flyer.achlay";
+    const auto file = dir / "flyer.wwlay";
     CHECK(run(s, "layout.save doc=lay1 path=" + q(file)).ok && std::filesystem::exists(file));
     CHECK(!run(s, "layout.save doc=lay1 path=" + q(dir / "x.pdf")).ok);
     r = run(s, "layout.open path=" + q(file));
@@ -314,7 +314,19 @@ void testCommands(const std::filesystem::path& dir) {
     CHECK(run(s, "layout.close doc=" + toText(r.value)).ok && !docOf(s, toText(r.value)));
     s.history().undo();
     CHECK(docOf(s, "lay3") != nullptr);
-    CHECK(!run(s, "layout.open path=" + q(dir / "missing.achlay")).ok);
+    CHECK(!run(s, "layout.open path=" + q(dir / "missing.wwlay")).ok);
+    // .achlay files with the old "achclwss-layout" id, from before the rename, still open
+    std::string old = toJson(*doc);
+    const std::string id = "\"wetwaresuite-layout\"";
+    CHECK(old.find(id) != std::string::npos);
+    old.replace(old.find(id), id.size(), "\"achclwss-layout\"");
+    {
+        std::ofstream out(dir / "old.achlay", std::ios::binary);
+        out << old;
+    }
+    r = run(s, "layout.open path=" + q(dir / "old.achlay"));
+    CHECK(r.ok);
+    if (r.ok) CHECK(toJson(*docOf(s, toText(r.value))) == toJson(*doc));
 }
 
 void testPicturesAndOutput(const std::filesystem::path& dir) {

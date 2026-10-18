@@ -358,9 +358,9 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"cad.open", "Open Part",
-             "Open an .achcad part (parameters and feature tree), or import a mesh file (stl, obj, ply, off, glb, gltf, "
+             "Open a .wwcad part (parameters and feature tree), or import a mesh file (stl, obj, ply, off, glb, gltf, "
              "3mf) as a new part with one fixed 'imported' feature. Returns the document id.",
-             {{"path", ParamType::String, "path to an .achcad or mesh file", true}}, false, true},
+             {{"path", ParamType::String, "path to a .wwcad or mesh file", true}}, false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     try {
@@ -400,7 +400,7 @@ void registerCommands(Session& session) {
             })));
 
     reg.add({"cad.save", "Save Part",
-             "Save a part. .achcad keeps the parameters and feature tree (reopen with cad.open); stl, obj, ply, off, "
+             "Save a part. .wwcad keeps the parameters and feature tree (reopen with cad.open); stl, obj, ply, off, "
              "glb, gltf or 3mf export the solid; png, jpg, bmp, tga or ppm render a picture (view, size).",
              {docParam(),
               {"path", ParamType::String, "output file; the extension picks the format", true},
@@ -414,7 +414,7 @@ void registerCommands(Session& session) {
                 if (!ext.empty()) ext = ext.substr(1);
                 Result r = Result::success("saved " + path, path);
                 r.with("path", path);
-                if (ext == "achcad") {
+                if (ext == "wwcad" || ext == "achcad") {  // achcad: the old name, still accepted
                     std::ofstream out(path, std::ios::binary);
                     if (!out) return Result::failure("can't write " + path);
                     out << toJson(doc);
@@ -432,7 +432,7 @@ void registerCommands(Session& session) {
                     return r;
                 }
                 if (!mesh::canWrite(path)) {
-                    return Result::failure("unknown format '" + ext + "': use .achcad, stl, obj, ply, off, glb, gltf, 3mf, png or jpg");
+                    return Result::failure("unknown format '" + ext + "': use .wwcad, stl, obj, ply, off, glb, gltf, 3mf, png or jpg");
                 }
                 mesh::SaveOptions so;
                 so.ascii = boolParam(p, "ascii", false);

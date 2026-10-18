@@ -558,7 +558,8 @@ Song fromJson(const std::string& text, const fs::path& songFile) {
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not a valid .beats.json file: ") + e.what());
     }
-    if (!j.is_object() || j.value("format", std::string()) != "wetwaresuite-beats") throw std::runtime_error("not a beats song (no \"format\": \"wetwaresuite-beats\")");
+    const std::string format = j.is_object() ? j.value("format", std::string()) : std::string();
+    if (format != "wetwaresuite-beats" && format != "achclwss-beats") throw std::runtime_error("not a beats song (no \"format\": \"wetwaresuite-beats\")");
     const fs::path dir = songFile.empty() ? fs::path() : songFile.parent_path();
     try {
         Song s;

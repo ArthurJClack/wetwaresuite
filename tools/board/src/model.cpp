@@ -733,7 +733,9 @@ Board loadBoard(const fs::path& path) {
     std::string fmt = formatFor(path);
     if (fmt == "board") {
         // a .json may be an Excalidraw scene
-        if (bytes.find("\"excalidraw\"") != std::string::npos && bytes.find("wetwaresuite-board") == std::string::npos) fmt = "excalidraw";
+        if (bytes.find("\"excalidraw\"") != std::string::npos && bytes.find("wetwaresuite-board") == std::string::npos &&
+            bytes.find("achclwss-board") == std::string::npos)  // achclwss-board: saved before the rename
+            fmt = "excalidraw";
     }
     if (fmt.empty()) {
         if (bytes.find("<mxfile") != std::string::npos || bytes.find("<mxGraphModel") != std::string::npos) fmt = "drawio";

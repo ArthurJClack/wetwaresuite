@@ -206,7 +206,7 @@ std::shared_ptr<VaultDoc> getVault(State& st, const Params& p, std::string& erro
         if (!doc) {
             std::error_code ec;
             for (fs::path dir = fs::current_path(ec); !dir.empty(); dir = dir.parent_path()) {
-                if (fs::is_directory(dir / ".obsidian", ec) || fs::is_directory(dir / kCacheDir, ec)) {
+                if (fs::is_directory(dir / ".obsidian", ec) || fs::is_directory(dir / kCacheDir, ec) || fs::is_directory(dir / kOldCacheDir, ec)) {
                     if (!openFolder(dir)) return nullptr;
                     break;
                 }
@@ -318,7 +318,7 @@ ActionFactory editor(StatePtr st, EditFn fn) {
 ParamSpec vaultParam() {
     return {"vault", ParamType::String,
             "the vault: an id from notes.vault.open (like vault1) or a folder (opened on the spot); default: the vault used "
-            "last, else a folder holding .obsidian or .achnotes here or above",
+            "last, else a folder holding .obsidian or .wwnotes here or above",
             false};
 }
 ParamSpec noteParam(const std::string& what, bool required) { return {"note", ParamType::String, what, required}; }
@@ -757,7 +757,7 @@ std::size_t moveWithLinks(Vault& v, FileTxn& txn, const std::string& from, const
     }
     if (lower(from) == lower(to)) {
         // case-only rename: go through a temporary name so case-insensitive file systems see it
-        fs::path tmp = v.abs(from + ".achnotes-tmp");
+        fs::path tmp = v.abs(from + ".wwnotes-tmp");
         txn.move(v.abs(from), tmp);
         txn.move(tmp, v.abs(to));
     } else {

@@ -236,7 +236,10 @@ Project loadProject(const fs::path& path) {
     } catch (const std::exception& e) {
         throw std::runtime_error(path.string() + " isn't a project file: " + e.what());
     }
-    if (!j.contains("wetwaresuite_audio_project")) throw std::runtime_error(path.string() + " isn't an wetwaresuite audio project");
+    // achclwss_audio_project: projects saved before the rename
+    if (!j.contains("wetwaresuite_audio_project") && !j.contains("achclwss_audio_project")) {
+        throw std::runtime_error(path.string() + " isn't a wetwaresuite audio project");
+    }
     Project p;
     p.rate = j.value("rate", 44100);
     p.channels = std::clamp(j.value("channels", 2), 1, 32);

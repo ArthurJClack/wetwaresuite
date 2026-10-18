@@ -222,6 +222,15 @@ private:
     void runTimelineEdit(const TimelineLayout& layout, const TimelineEdit& edit);
     // spreadsheet grid (grid_view.cpp)
     void gridView(const CellGrid& layout);
+    // the PDF editor (pdf_view.cpp)
+    void pdfView();
+    void pdfToolbar();
+    void pdfThumbs(float width);
+    void pdfPage();
+    void pdfPopup();
+    void pdfLoad(bool force);
+    void pdfRun(const std::string& command, Params params, const std::string& title);
+    void pdfRelease();
     bool commitCell(const CellGrid& layout, int sheet, int row, int col, const std::string& input);
     // selections on the canvas (selection_view.cpp)
     void selectSettings();

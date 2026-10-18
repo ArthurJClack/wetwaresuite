@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <deque>
+#include <map>
 #include <filesystem>
 #include <set>
 #include <string>
@@ -264,7 +265,48 @@ struct ClockPanel {
     int tab = 0, pickTab = -1;
 };
 
+// The PDF editor's page view (pdf_view.cpp), shown for pdf documents.
+struct PdfPanel {
+    enum class Tool { Select, Text, EditText, Highlight, Underline, Strikeout, Note, Draw, Box, Ellipse, Line, Arrow, Whiteout, Redact, Sign, Picture };
+    std::string doc;
+    int page = 0;  // 0-based
+    int pages = 0;
+    float zoom = 0;  // screen px per point; 0 = fit the width on the next frame
+    ImVec2 pan{0, 0};
+    double lastZoom = 0;  // when the wheel last zoomed, so the page is redrawn sharp once it settles
+    std::uint64_t seen = ~0ull;
+    int shownPage = -1;
+    float shownScale = 0;
+    Texture tex;
+    double pageW = 0, pageH = 0;  // points, as shown
+    tp::Rows marks, lines, fields, widgets;
+    std::map<int, Texture> thumbs;
+    std::uint64_t thumbsSeen = ~0ull;
+
+    Tool tool = Tool::Select;
+    float color[4] = {0.9f, 0.1f, 0.1f, 1};
+    float width = 2;
+    float textSize = 12;
+    bool dragging = false;
+    ImVec2 dragFrom{0, 0}, dragTo{0, 0};  // points
+    std::vector<double> stroke;          // points, x,y pairs
+    int selected = -1;                   // edit (mark) number
+    bool moving = false;
+
+    // the text box popup: add text, edit text, notes, signatures, form fields
+    std::string popup;  // what it is for; empty = closed
+    bool openPopup = false;
+    std::string input, original, field, fieldType;
+    std::vector<std::string> options;
+    double px = 0, py = 0, pw = 0, ph = 0;
+
+    std::string findInput;
+    tp::Rows found;  // page, x, y, w, h, text
+    int foundAt = -1;
+};
+
 struct ToolPanels {
+    PdfPanel pdf;
     CalcPanel calc;
     CodePanel code;
     ExplorerPanel explorer;
@@ -274,6 +316,9 @@ struct ToolPanels {
     void resetTextures() {
         calc.graph.reset();
         explorer.previewImage.reset();
+        pdf.tex.reset();
+        for (auto& [page, t] : pdf.thumbs) t.reset();
+        pdf.thumbs.clear();
     }
 };
 

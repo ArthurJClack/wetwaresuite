@@ -185,6 +185,7 @@ int main() {
     CHECK(form.ok && intField(form, "fields") == 2);
     Result fields = run("pdf.fields", {});
     CHECK(fields.ok && contains(fields.message, "Name") && contains(fields.message, "Agree"));
+    CHECK(contains(strField(fields, "widgets"), "Name\t1\t20\t40\t200\t20"));
     CHECK(run("pdf.fill", {{"values", str("Name=Ann Example; Agree=yes")}}).ok);
     CHECK(!run("pdf.fill", {{"name", str("Nope")}, {"value", str("x")}}).ok);
     CHECK(run("pdf.save", {{"path", (dir / "filled.pdf").string()}}).ok);

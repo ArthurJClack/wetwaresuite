@@ -438,6 +438,10 @@ void Shell::documentView() {
     ImGui::SameLine();
     ImGui::TextDisabled("%s", doc->summary().c_str());
     suggestionBannerView();
+    if (doc->kind() == "pdf" && find("pdf.view")) {
+        pdfView();
+        return;
+    }
     transportBar();
     if (CellGrid layout; doc->grid(layout) && !layout.sheets.empty()) {
         gridView(layout);

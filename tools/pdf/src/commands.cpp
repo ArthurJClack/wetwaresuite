@@ -477,7 +477,7 @@ void registerFileCommands(Session& session) {
                        },
                        false));
 
-    reg.add({"pdf.fields", "Form Fields", "The form's fields: name, type, value, choices and page (rows). Fill them with pdf.fill.", {docSpec()}, false, true},
+    reg.add({"pdf.fields", "Form Fields", "The form's fields: name, type, value, choices and page (rows), and where their boxes are (widgets: name, page, x, y, w, h). Fill them with pdf.fill.", {docSpec()}, false, true},
             docCommand(session,
                        [](PdfDoc& d, const Params&, const std::string&) -> Result {
                            const auto& fields = d.fields();
@@ -493,7 +493,26 @@ void registerFileCommands(Session& session) {
                                       (opts.empty() ? "" : "  [" + opts + "]");
                                rows += f.name + "\t" + f.type + "\t" + value + "\t" + opts + "\t" + std::to_string(page + 1) + "\n";
                            }
-                           return Result::success(std::to_string(fields.size()) + " field(s):" + out, static_cast<std::int64_t>(fields.size())).with("rows", rows);
+                           // where each box sits on the pages as shown now: name, page, x, y, w, h
+                           std::string widgets;
+                           for (std::size_t i = 0; i < d.data.pages.size(); ++i) {
+                               const PageEntry& e = d.data.pages[i];
+                               if (e.file != 0) continue;
+                               const PageGeom g = geometry(d.data, static_cast<int>(i));
+                               for (const auto& f : fields) {
+                                   for (const auto& w : f.widgets) {
+                                       if (w.page != e.index) continue;
+                                       double xs[2], ys[2];
+                                       g.userToBase.apply(w.rect[0], w.rect[1], xs[0], ys[0]);
+                                       g.userToBase.apply(w.rect[2], w.rect[3], xs[1], ys[1]);
+                                       const auto b = boxFromBase(g, std::min(xs[0], xs[1]), std::min(ys[0], ys[1]), std::abs(xs[1] - xs[0]), std::abs(ys[1] - ys[0]));
+                                       widgets += f.name + "\t" + std::to_string(i + 1) + "\t" + fmt(b[0]) + "\t" + fmt(b[1]) + "\t" + fmt(b[2]) + "\t" + fmt(b[3]) + "\n";
+                                   }
+                               }
+                           }
+                           return Result::success(std::to_string(fields.size()) + " field(s):" + out, static_cast<std::int64_t>(fields.size()))
+                               .with("rows", rows)
+                               .with("widgets", widgets);
                        },
                        false));
 

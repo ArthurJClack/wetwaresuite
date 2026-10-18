@@ -5,7 +5,7 @@
 - **Spreadsheets** (`office.sheet_*`): a formula engine with the common Excel functions (SUM, IF, VLOOKUP, XLOOKUP, SUMIFS, TEXT, dates and more), number formats, sorting, filtering and fill, charts as PNG. It reads and writes `.xlsx` and `.csv`, reads `.ods`, and prints to PDF.
 - **Documents** (`office.doc_*`): headings, styled paragraphs, lists, tables, images, quotes, code and page breaks. It reads and writes `.docx`, Markdown and HTML, reads `.odt`, and exports PDF through its own layout engine.
 - **Slide decks** (`office.deck_*`): build slides from a Markdown outline or one by one, pick from eight colour themes, add speaker notes, and save `.pptx` (PowerPoint, Keynote, Google Slides and LibreOffice open it), PDF and PNG.
-- **PDF tools** (`office.pdf_*`): info, text extraction, merge, split, extract, delete or rotate pages, and images to PDF. Any PDF can also be rendered to PNG (this needs `pdftoppm` from poppler-utils).
+- **PDF tools** (`office.pdf_*`): info, text extraction, merge, split, extract, delete or rotate pages, and images to PDF. Any PDF can also be rendered to PNG (this needs `pdftoppm` from poppler-utils). To view, mark up, edit, redact, fill in or sign a PDF, use the [PDF editor](pdf.md) that ships in the same app.
 
 All of the formats above are handled inside the suite, with no other programs. `office.convert` converts between them in one step. When LibreOffice is installed it adds the rest: `.doc`, `.xls`, `.ppt`, `.rtf`, OpenDocument output (`.odt`, `.ods`, `.odp`) and more.
 

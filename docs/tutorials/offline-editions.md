@@ -35,7 +35,7 @@ Sizes are estimates, in the same decimal gigabytes printed on USB sticks; an edi
 
 Everything is free to copy and pass on. Every edition has a `LICENSES.txt` listing each pack's licence and source. The map data needs credit: "© OpenStreetMap contributors".
 
-Map tiles come as single [PMTiles](https://github.com/protomaps/PMTiles) files (`packs/maps-world-*/world.pmtiles`; MBTiles is the other accepted format), read straight from disk by the maps app with no tile server.
+Map tiles come as single [PMTiles](https://github.com/protomaps/PMTiles) files of vector tiles (`packs/maps-world-*/world.pmtiles`), read straight from disk by the maps app with no tile server and no internet. Once installed, the maps app uses the most detailed pack by itself (`basemap=auto`); `wetwaresuite maps.tiles_info` shows what a pack covers. To use a pack without installing, pass its file: `basemap=/media/usb/wetwaresuite-32gb/packs/maps-world-low/world.pmtiles`. MBTiles files aren't read directly (they need SQLite): convert one with `pmtiles convert in.mbtiles out.pmtiles`. See [maps.md](maps.md#task-8-street-maps-with-no-internet-map-packs).
 
 ## Install from an edition (no internet)
 

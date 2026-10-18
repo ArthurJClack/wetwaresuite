@@ -400,11 +400,12 @@ struct RenderOptions {
     Crs crs = Crs::webMercator();
     std::optional<BBox> bbox;      // lon/lat; default: all visible layers plus a margin
     double margin = 0.06;          // fraction added around the auto extent
-    std::string basemap = "countries";  // none, countries, osm
-    std::string tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+    // auto (an installed map pack, else countries), countries, none, pack, osm, or a .pmtiles file
+    std::string basemap = "auto";
+    std::string tileUrl = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";  // osm: a server, a {z}/{x}/{y} folder or a .pmtiles file
     std::string tileCache;         // default: the user cache dir + wetwaresuite/tiles
     bool offline = false;          // osm: use cached tiles only
-    int maxTiles = 64;             // osm: refuse to fetch more than this per render
+    int maxTiles = 64;             // osm and map packs: most tiles one render uses (the zoom drops to fit)
     Color background{0xdd, 0xe8, 0xf0, 255};
     Color land{0xf4, 0xf1, 0xea, 255};
     Color borders{0xa8, 0xa4, 0x9c, 255};
@@ -419,6 +420,8 @@ struct RenderInfo {
     double metresPerPixel = 0;
     int width = 0, height = 0;
     int tilesUsed = 0, tilesFetched = 0, zoom = -1;
+    std::string tileSource;   // the .pmtiles file drawn, empty for OSM/folder tiles
+    std::string attribution;  // the credit drawn in the corner
     std::vector<std::string> warnings;
 };
 

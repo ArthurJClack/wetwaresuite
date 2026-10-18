@@ -18,7 +18,7 @@ if(NOT _old STREQUAL _src)
   file(WRITE ${_countries_cpp} "${_src}")
 endif()
 
-add_library(wetwaresuite_maps src/geo.cpp src/analysis.cpp src/io.cpp src/shapefile.cpp src/raster_io.cpp src/render.cpp src/commands.cpp
+add_library(wetwaresuite_maps src/geo.cpp src/analysis.cpp src/io.cpp src/shapefile.cpp src/raster_io.cpp src/render.cpp src/pmtiles.cpp src/mvt.cpp src/vector_style.cpp src/commands.cpp
             ${_countries_cpp})
 add_library(wetwaresuite::maps ALIAS wetwaresuite_maps)
 target_include_directories(wetwaresuite_maps PUBLIC include)

@@ -20,6 +20,7 @@ Hands-on guides to the suite. Every example was run against the real binaries: t
 - [Convert](convert.md): images, SVG, audio, video, office documents and markup, one file or a whole folder.
 - [Asset forge](forge.md): game assets: models to glb with the right up axis, scale and LODs, sprite sheets and atlases, tileable textures and normal maps, pixel art.
 - [Audio](audio.md): clean up a voice recording to podcast loudness, build an episode from music and voice tracks with ducking and fades, batch-normalize samples, spectrograms, pitch and tempo changes.
+- [Playback](playback.md): hear clips, project mixes, songs and video edits through your speakers from the window, the command line, scripts and Claude: pause, seek, loop, volume and output devices.
 - [Office](office.md): a budget spreadsheet with formulas and a chart, CSV cleanup with VLOOKUP, a report exported to PDF, a slide deck from bullet points, merging and splitting PDFs.
 - [Slicer](slicer.md): 3D models to G-code: printer and filament presets, infill, brim and supports, layer previews, parts from cad.
 - [Scan fit](fit.md): car parts and mounts that fit a phone 3D scan: clean up a Polycam/Scaniverse scan, fit planes, cylinders, circles and curves to it, then a phone mount, gauge pod, switch panel and speaker ring on a curved dash, clamps and a GoPro mount on a roll bar, trim strips, your own plates and blocks, gap checks, test slices and projects you can rebuild.

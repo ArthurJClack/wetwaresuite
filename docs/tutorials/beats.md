@@ -15,7 +15,7 @@
 - **beats.generate** builds a starting point from a genre, a key and a seed: drums, bass, chords and a melody.
 - **Pictures**: the arrangement, a pattern's step grid and piano roll, and the waveform, all as PNG. You and Claude can see what you're building.
 
-There is no live playback. You render and listen to the file. Each task below is shown three ways:
+`beats.play` plays the song (or a few bars, or one track) through your speakers, and can loop while you edit (see [playback](playback.md)). Each task below is shown three ways:
 
 - **CLI**: single `wetwaresuite` commands. Songs only live inside one process, so the one-shot commands that read a song take `input=song.beats.json` (or `input=song.mid`) in place of `song=`, and `beats.generate` can `save=` straight to a file.
 - **Batch**: a script for step-by-step building, with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
@@ -632,7 +632,7 @@ Fields left out take their defaults (`rate` 44100, volume 0 dB, no effects). A t
 
 ## Limitations
 
-- No live playback, MIDI input or real-time recording. You render to a file and listen to it.
+- No MIDI input or real-time recording. `beats.play` mixes the song before it starts, so edits are heard on the next play, not mid-loop.
 - Sound quality is "good sketch" rather than studio. The synth uses PolyBLEP oscillators with one filter per note and no LFOs, glide, unison stacks or modulation matrix. The drum kit is synthesized and simple, and the sampler pitches by resampling, so pitch and length change together.
 - One tempo and one time signature per song, with no tempo changes or automation. Volume, pan and effect settings are fixed for the whole song.
 - Effects are a fixed chain per track (distortion, compression, delay, reverb) with no sends, EQ or master bus effects other than the limiter. For more processing, bounce the mix and use the audio tool's EQ, compressor and loudness tools.

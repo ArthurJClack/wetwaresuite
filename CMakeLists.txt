@@ -45,6 +45,7 @@ add_subdirectory(mcp)
 add_subdirectory(libs/raster)
 add_subdirectory(libs/mesh)
 add_subdirectory(libs/audio)
+add_subdirectory(libs/playback)
 add_subdirectory(libs/pdf)
 add_subdirectory(libs/pdfdoc)
 

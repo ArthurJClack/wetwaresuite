@@ -429,6 +429,7 @@ void Shell::documentView() {
     ImGui::SameLine();
     ImGui::TextDisabled("%s", doc->summary().c_str());
     suggestionBannerView();
+    transportBar();
     canvasToolbar();
     canvasView();
 }

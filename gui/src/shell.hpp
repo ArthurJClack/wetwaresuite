@@ -71,6 +71,17 @@ struct Canvas {
     std::optional<PendingRetouch> pending;
 };
 
+// The play bar's view of playback (transport.cpp), read back from <tool>.playhead.
+struct Transport {
+    std::string tool;  // audio, beats or cut
+    std::string doc;   // the document the window last started
+    std::string source;
+    bool playing = false, paused = false, loop = false, silent = false;
+    double position = 0, length = 0, start = 0, end = 0;
+    double cue = 0;  // where Play starts when nothing is playing
+    float volumeDb = 0;
+};
+
 // Where a native file dialog's answer goes.
 struct DialogTarget {
     enum Kind { OpenDocument, FormField } kind = OpenDocument;
@@ -136,6 +147,14 @@ private:
     void queueRetouch(const std::string& command, const std::string& title, Params params);
     void runPendingRetouch();
     bool pictureSize(int& width, int& height) const;
+
+    // the play bar over sound documents (transport.cpp)
+    bool playTarget(std::string& tool, Params& target) const;
+    void transportBar();
+    void pollTransport();
+    void startPlaying(double from);
+    void togglePlay();
+    void seekTo(double seconds);
 
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);
@@ -203,6 +222,8 @@ private:
     bool scrollToResult_ = false;
 
     Canvas canvas_;
+    Transport transport_;
+    float playheadFraction_ = -1;  // where to draw the playhead over a waveform, 0..1
     float penPressure_ = 1.0f;
     bool penDown_ = false;
     bool penEraser_ = false;

@@ -291,6 +291,13 @@ int main() {
     Result gen = s.run("beats.generate", {{"genre", S("house")}, {"key", S("A minor")}, {"seed", std::int64_t{7}}, {"bars", std::int64_t{8}}});
     CHECK(gen.ok && str(gen, "song") == "song4" && numField(gen, "tracks") == 4 && numField(gen, "bars") == 8);
     CHECK(gen.message.find("A minor") != std::string::npos);
+    {
+        Result pl = s.run("beats.play", {{"song", S("song4")}, {"bars", std::int64_t{1}}, {"end", 0.3}, {"wait", true}});
+        CHECK(pl.ok && str(pl, "source") == "song4" && !std::get<bool>(*pl.field("playing")));
+        CHECK(s.run("beats.play", {{"song", S("song4")}, {"loop", true}}).ok);
+        CHECK(s.run("beats.stop", {}).ok && !std::get<bool>(*s.run("beats.playhead", {}).field("playing")));
+        CHECK(!s.run("beats.play", {{"song", S("nope")}}).ok);
+    }
     Result gen2 = s.run("beats.generate", {{"genre", S("house")}, {"key", S("A minor")}, {"seed", std::int64_t{7}}, {"bars", std::int64_t{8}}});
     {
         auto a = s.workspace().getAs<SongDoc>("song4");

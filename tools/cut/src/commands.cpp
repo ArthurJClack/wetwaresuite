@@ -8,7 +8,9 @@
 #include <cstdlib>
 #include <fstream>
 
+#include "wetwaresuite/audio/io.hpp"
 #include "wetwaresuite/cut/cut.hpp"
+#include "wetwaresuite/playback/commands.hpp"
 #include "media.hpp"
 
 namespace wetwaresuite::cut {
@@ -1067,6 +1069,34 @@ void registerCommands(Session& session) {
                 }
                 return renderTimeline(tl, stringParam(p, "output"), p, rq);
             }, false));
+
+    reg.add({"cut.play", "Play sound",
+             "Play the timeline's sound (every audio track and the video clips' own audio, mixed as cut.render would) "
+             "through the speakers, from start to end, optionally looping. Returns at once; cut.playhead says where it "
+             "is and cut.pause/resume/stop/seek control it. Needs ffmpeg.",
+             [] {
+                 std::vector<ParamSpec> v = {docParam()};
+                 for (auto& x : playback::playParams()) v.push_back(x);
+                 return v;
+             }(),
+             false, true},
+            cutCommand(session, [](Timeline& tl, const Params& p) {
+                TempDir tmp;
+                const fs::path wav = tmp.path() / "play.wav";
+                RenderRequest rq;
+                rq.quality = "draft";
+                rq.mode = "encode";
+                Result r = renderTimeline(tl, wav, {{"overwrite", true}}, rq);
+                if (!r.ok) return r.message.find("ffmpeg") != std::string::npos ? r : Result::failure("couldn't mix the sound: " + r.message);
+                std::shared_ptr<const audio::Buffer> mix;
+                try {
+                    mix = std::make_shared<const audio::Buffer>(audio::load(wav));
+                } catch (const std::exception& e) {
+                    return Result::failure(std::string("couldn't read the mixed sound: ") + e.what());
+                }
+                return playback::startPlayback(std::move(mix), stringParam(p, "doc"), p);
+            }, false));
+    playback::registerTransportCommands(session, "cut");
 
     // ---- one-shot helpers on files ----
     reg.add({"cut.trim_file", "Trim File",

@@ -1,10 +1,11 @@
 add_library(wetwaresuite_beats src/song.cpp src/synth.cpp src/midi.cpp src/generate.cpp src/draw.cpp src/cmd_song.cpp src/cmd_edit.cpp)
 add_library(wetwaresuite::beats ALIAS wetwaresuite_beats)
 target_include_directories(wetwaresuite_beats PUBLIC include)
-target_link_libraries(wetwaresuite_beats PUBLIC wetwaresuite::core wetwaresuite::raster wetwaresuite::audio PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(wetwaresuite_beats PUBLIC wetwaresuite::core wetwaresuite::raster wetwaresuite::audio wetwaresuite::playback PRIVATE nlohmann_json::nlohmann_json)
 
 if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_beats tests/test_beats.cpp)
   target_link_libraries(test_beats PRIVATE wetwaresuite::beats wetwaresuite::mcp nlohmann_json::nlohmann_json wetwaresuite_check)
   add_test(NAME beats COMMAND test_beats)
+  set_tests_properties(beats PROPERTIES ENVIRONMENT "WETWARESUITE_AUDIO=null")
 endif()

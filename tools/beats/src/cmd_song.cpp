@@ -10,6 +10,7 @@
 #include "wetwaresuite/audio/document.hpp"
 #include "wetwaresuite/audio/io.hpp"
 #include "wetwaresuite/beats/beats.hpp"
+#include "wetwaresuite/playback/commands.hpp"
 #include "wetwaresuite/raster/codec.hpp"
 #include "common.hpp"
 
@@ -592,6 +593,31 @@ void registerSongCommands(Session& session) {
 void registerOutputCommands(Session& session) {
     auto& reg = session.registry();
     Session* s = &session;
+
+    reg.add({"beats.play",
+             "Play song",
+             "Play the arrangement (or start_bar/bars of it, or one track) through the speakers. Returns at once; "
+             "beats.playhead says where it is and beats.pause/resume/stop/seek control it. loop=true loops it while you "
+             "edit (play again to hear the changes). From the command line the program stays open until it ends.",
+             [] {
+                 std::vector<ParamSpec> v = {songOrFileParam(), inputParam()};
+                 for (auto& x : renderParams()) v.push_back(x);
+                 for (auto& x : playback::playParams()) v.push_back(x);
+                 return v;
+             }(),
+             false, true},
+            songCommand(
+                session,
+                [](SongDoc& d, const Params& p) {
+                    RenderOptions o;
+                    std::string error;
+                    if (!renderArgs(d.song, p, o, error)) return failed(error);
+                    auto mix = std::make_shared<const audio::Buffer>(render(d.song, o));
+                    const std::string source = p.count("song") ? stringParam(p, "song") : d.song.name.empty() ? std::string("song") : d.song.name;
+                    return playback::startPlayback(std::move(mix), source, p);
+                },
+                false));
+    playback::registerTransportCommands(session, "beats");
 
     reg.add({"beats.render",
              "Render song",

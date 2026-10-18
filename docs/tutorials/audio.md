@@ -10,7 +10,7 @@
 - **Folders**: batch convert, normalize, trim, filter, de-noise or re-tempo a whole folder; find silences and split a long recording into numbered files.
 - **Pictures**: waveforms and spectrograms as PNG, so you (and Claude) can see what you're working on.
 
-There is no playback and no GUI yet; the GUI that comes later will call these same commands. Each task below is shown three ways:
+`audio.play` plays a clip, a project's mix or a file through your speakers, with pause, seek, loop and volume (see [playback](playback.md)), and the sound app's window has a play bar over the waveform. Each task below is shown three ways:
 
 - **CLI**: single `wetwaresuite` commands that read files and write files.
 - **Batch**: a script for multi-step editing with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)). Documents only live inside one `wetwaresuite` process, so editing sessions are batch scripts or MCP.
@@ -562,9 +562,22 @@ Common parameters: `doc` (an open document), `start`/`end` (seconds; default the
 | `audio.mixdown` | mix into a new document | `normalize`, `target`, `ceiling` |
 | `audio.export` | mix straight to a file | `path`, `bits`, `bitrate`, `normalize`, `target`, `ceiling` |
 
+### Playback
+
+| command | what it does | key parameters |
+| --- | --- | --- |
+| `audio.play` | play a clip, a project's mix or a file through the speakers | `doc`, `project` or `path`, `start`, `end`, `loop`, `wait`, `volume` |
+| `audio.pause` / `audio.resume` / `audio.stop` | control what's playing | |
+| `audio.seek` | move the playhead | `seconds` |
+| `audio.playhead` | where playback is | |
+| `audio.volume` / `audio.loop` / `audio.wait` | volume in dB, loop on/off, block until done | `db`, `on`, `timeout` |
+| `audio.devices` / `audio.output_device` | list and pick output devices | `name` |
+
+See [playback](playback.md) for the details.
+
 ## Limitations
 
-- **No playback** and no recording yet: you judge by measuring and looking (waveforms, spectrograms), or by opening the saved file in any player. The GUI will add both.
+- **No recording yet.** Playback is live (`audio.play`, see [playback](playback.md)), but it plays a copy taken when it starts, so edits are heard on the next play.
 - **Undo keeps a full copy** of the document for every step, so very long files (an hour of stereo is about 1.3 GB as float) use a lot of memory over many edits. Close documents you've saved, or work on parts.
 - **Effects on a range** only process that range: a reverb or echo tail stops at `end` (blended over 5 ms). Use `tail=` on whole-file edits, or leave room after the range.
 - **Noise reduction** is spectral gating, good on steady noise (hiss, hum, fans, room tone). It doesn't remove clicks, crackle, wind, reverb or a TV in the background, and pushed hard it sounds watery.

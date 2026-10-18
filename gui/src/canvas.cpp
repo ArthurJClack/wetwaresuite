@@ -397,6 +397,16 @@ void Shell::canvasView() {
         dl->AddCircle(io.MousePos, std::max(2.0f, canvas_.size * canvas_.zoom / 2), IM_COL32(128, 128, 128, 255), 0, 1.5f);
     }
     drawRetouch(dl, p0, hovered);
+
+    // the playhead over a waveform; a click (not a drag) moves it there
+    if (playheadFraction_ >= 0) {
+        const float x = p0.x + (p1.x - p0.x) * std::clamp(playheadFraction_, 0.0f, 1.0f);
+        dl->AddLine({x, p0.y}, {x, p1.y}, ImGui::ColorConvertFloat4ToU32(accent_), 2.0f);
+        if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x == 0 &&
+            ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y == 0 && io.MousePos.x >= p0.x && io.MousePos.x <= p1.x && transport_.length > 0) {
+            seekTo(transport_.length * (io.MousePos.x - p0.x) / (p1.x - p0.x));
+        }
+    }
     dl->PopClipRect();
 }
 

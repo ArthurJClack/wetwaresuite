@@ -1,10 +1,11 @@
 add_library(wetwaresuite_cut src/model.cpp src/graph.cpp src/media.cpp src/commands.cpp)
 add_library(wetwaresuite::cut ALIAS wetwaresuite_cut)
 target_include_directories(wetwaresuite_cut PUBLIC include)
-target_link_libraries(wetwaresuite_cut PUBLIC wetwaresuite::core PRIVATE nlohmann_json::nlohmann_json)
+target_link_libraries(wetwaresuite_cut PUBLIC wetwaresuite::core PRIVATE wetwaresuite::audio wetwaresuite::playback nlohmann_json::nlohmann_json)
 
 if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_cut tests/test_cut.cpp)
   target_link_libraries(test_cut PRIVATE wetwaresuite::cut wetwaresuite::mcp wetwaresuite_check)
   add_test(NAME cut COMMAND test_cut)
+  set_tests_properties(cut PROPERTIES ENVIRONMENT "WETWARESUITE_AUDIO=null")
 endif()

@@ -343,6 +343,7 @@ void testCommands() {
     CHECK(tl->track("v1") && tl->track("v1")->clips.size() == 2);  // titles share the titles track
     CHECK(tl->findClip("c2")->position == "custom");
     CHECK(near(tl->duration(), 5));
+    CHECK(s.registry().find("cut.play") && run(s, "cut.stop").ok && run(s, "cut.playhead").ok);
     CHECK(run(s, "cut.set_clip doc=cut1 clip=c1 text=Changed box=true").ok);
     CHECK(tl->findClip("c1")->text == "Changed" && tl->findClip("c1")->box);
     CHECK(!run(s, "cut.set_clip doc=cut1 clip=c1 fade_in=3 fade_out=3").ok);  // longer than the clip
@@ -430,6 +431,8 @@ void testWithFfmpeg() {
     r = run(s, "cut.preview doc=cut1 t=1.75 width=160");
     CHECK(r.ok && r.attachments.size() == 1 && r.attachments[0].bytes.substr(1, 3) == "PNG");
 
+    r = run(s, "cut.play doc=cut1 end=0.2 wait=true");  // the timeline's sound, mixed by ffmpeg
+    CHECK(r.ok && toText(*r.field("source")) == "cut1" && near(num(r, "length"), 3.5, 0.15));
     const std::string mp4 = (dir / "out.mp4").string();
     r = run(s, "cut.render doc=cut1 output=\"" + mp4 + "\" quality=draft");
     CHECK(r.ok && toText(*r.field("mode")) == "encode" && near(num(r, "duration"), 3.5, 0.1));

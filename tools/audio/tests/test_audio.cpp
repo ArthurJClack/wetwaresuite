@@ -58,6 +58,22 @@ int main() {
     CHECK(!s.run("audio.measure", {}).ok);
     CHECK(s.run("audio.save", {{"doc", std::string("aud1")}, {"path", (dir / "tone.wav").string()}, {"bits", std::string("24")}}).ok);
     CHECK(fs::file_size(dir / "tone.wav") == 44 + 2 * 44100 * 2 * 3);
+
+    // ---- live playback (silent device in tests) ----
+    {
+        Result pl = s.run("audio.play", {{"doc", std::string("aud1")}, {"start", 1.5}});
+        CHECK(pl.ok && str(pl, "source") == "aud1" && near(numField(pl, "start"), 1.5, 1e-3) && near(numField(pl, "length"), 2.0, 1e-6));
+        Result w = s.run("audio.wait", {{"timeout", 5.0}});
+        CHECK(w.ok && !std::get<bool>(*w.field("playing")) && numField(w, "position") >= 1.99);
+        Result f = s.run("audio.play", {{"path", (dir / "tone.wav").string()}, {"end", 0.2}, {"wait", true}});
+        CHECK(f.ok && str(f, "source") == "tone.wav" && f.message.find("played tone.wav") != std::string::npos);
+        CHECK(s.run("audio.play", {{"doc", std::string("aud1")}, {"loop", true}}).ok);
+        CHECK(std::get<bool>(*s.run("audio.playhead", {}).field("loop")));
+        CHECK(s.run("audio.stop", {}).ok);
+        CHECK(!s.run("audio.play", {}).ok);
+        CHECK(!s.run("audio.play", {{"doc", std::string("aud9")}}).ok);
+        CHECK(!s.run("audio.play", {{"path", (dir / "missing.wav").string()}}).ok);
+    }
     CHECK(!s.run("audio.save", {{"doc", std::string("aud1")}, {"path", (dir / "tone.xyz").string()}}).ok);
     Result opened = s.run("audio.open", {{"path", (dir / "tone.wav").string()}});
     CHECK(opened.ok && str(opened, "doc") == "aud2" && numField(opened, "channels") == 2);

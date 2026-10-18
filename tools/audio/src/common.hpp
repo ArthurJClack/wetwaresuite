@@ -67,5 +67,6 @@ std::vector<fs::path> audioFiles(const fs::path& dir, bool recursive);
 void registerFileCommands(Session& session, const std::shared_ptr<State>& state);
 void registerEditCommands(Session& session, const std::shared_ptr<State>& state);
 void registerProjectCommands(Session& session);
+void registerPlayCommands(Session& session);
 
 }  // namespace wetwaresuite::audio::tool

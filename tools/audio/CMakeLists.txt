@@ -1,10 +1,11 @@
-add_library(wetwaresuite_audio_tool src/common.cpp src/file_commands.cpp src/edit_commands.cpp src/project_commands.cpp)
+add_library(wetwaresuite_audio_tool src/common.cpp src/file_commands.cpp src/edit_commands.cpp src/project_commands.cpp src/play_commands.cpp)
 add_library(wetwaresuite::audio_tool ALIAS wetwaresuite_audio_tool)
 target_include_directories(wetwaresuite_audio_tool PUBLIC include)
-target_link_libraries(wetwaresuite_audio_tool PUBLIC wetwaresuite::audio)
+target_link_libraries(wetwaresuite_audio_tool PUBLIC wetwaresuite::audio wetwaresuite::playback)
 
 if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_audio tests/test_audio.cpp)
   target_link_libraries(test_audio PRIVATE wetwaresuite::audio_tool wetwaresuite::mcp nlohmann_json::nlohmann_json wetwaresuite_check)
   add_test(NAME audio COMMAND test_audio)
+  set_tests_properties(audio PROPERTIES ENVIRONMENT "WETWARESUITE_AUDIO=null")
 endif()

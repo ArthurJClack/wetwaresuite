@@ -7,6 +7,7 @@
 #include "wetwaresuite/audio/document.hpp"
 #include "wetwaresuite/audio/dsp.hpp"
 #include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
 #include "check.hpp"
 
@@ -235,6 +236,39 @@ int main() {
         }
         CHECK(s.run("audio.export", {{"project", P}, {"path", (dir / "episode.wav").string()}, {"normalize", std::string("loudness")}, {"target", -16.0}}).ok);
         CHECK(near(numField(s.run("audio.measure", {{"input", (dir / "episode.wav").string()}}), "lufs"), -16, 0.5));
+        // trim and split, non-destructive, and the same edits the window's timeline makes
+        {
+            const auto T = [](std::int64_t v) { return v; };
+            CHECK(s.run("audio.clip_trim", {{"project", P}, {"track", T(1)}, {"clip", T(0)}, {"start", 4.0}}).ok);  // 3..6 -> 4..6
+            auto pd = s.workspace().getAs<audio::ProjectDoc>(P);
+            const audio::Clip& c = pd->project.tracks[1].clips[0];
+            CHECK(near(c.at, 4.0, 1e-9) && near(c.offset, 1.0, 1e-9) && near(c.end(), 6.0, 1e-9));
+            CHECK(s.run("audio.clip_trim", {{"project", P}, {"track", T(1)}, {"clip", T(0)}, {"start", 1.0}}).ok);  // can only reveal back to 3
+            CHECK(near(pd->project.tracks[1].clips[0].at, 3.0, 1e-9) && near(pd->project.tracks[1].clips[0].offset, 0.0, 1e-9));
+            CHECK(s.run("audio.clip_trim", {{"project", P}, {"track", T(1)}, {"clip", T(0)}, {"length", 1.5}}).ok);
+            CHECK(near(pd->project.tracks[1].clips[0].end(), 4.5, 1e-9));
+            CHECK(s.run("audio.clip_trim", {{"project", P}, {"track", T(1)}, {"clip", T(0)}, {"length", 99.0}}).ok);  // back to the full 3 s
+            CHECK(near(pd->project.tracks[1].clips[0].end(), 6.0, 1e-9));
+            CHECK(!s.run("audio.clip_trim", {{"project", P}, {"track", T(1)}, {"clip", T(0)}}).ok);
+            Result sp = s.run("audio.clip_split", {{"project", P}, {"track", T(1)}, {"clip", T(0)}, {"at", 5.0}});
+            CHECK(sp.ok && numField(sp, "clip") == 1 && pd->project.tracks[1].clips.size() == 3);
+            CHECK(near(pd->project.tracks[1].clips[0].end(), 5.0, 1e-9) && near(pd->project.tracks[1].clips[1].at, 5.0, 1e-9) &&
+                  near(pd->project.tracks[1].clips[1].offset, 2.0, 1e-9) && near(pd->project.tracks[1].clips[1].end(), 6.0, 1e-9));
+            CHECK(!s.run("audio.clip_split", {{"project", P}, {"track", T(1)}, {"clip", T(0)}, {"at", 9.0}}).ok);
+            // the mix is unchanged by a split
+            CHECK(near(numField(s.run("audio.mixdown", {{"project", P}}), "seconds"), 8.0, 1e-3));
+            // timeline layout and commands
+            TimelineLayout layout;
+            CHECK(pd->timeline(layout) && layout.docParam == "project" && layout.tracks.size() == 2 && layout.tracks[1].clips.size() == 3);
+            CHECK(near(layout.tracks[1].clips[1].headroom, 2.0, 1e-9) && near(layout.tracks[1].clips[1].tailroom, 0.0, 1e-9));
+            const std::string mv = pd->timelineCommand({TimelineEditKind::Move, "2", "1", "0", 6.5});
+            CHECK(mv == "audio.clip_set track=1 clip=2 at=6.5000 to_track=0");
+            cli::Batch b(s);
+            CHECK(b.runLine(mv + " project=" + P).ok && pd->project.tracks[0].clips.size() == 2);
+            CHECK(b.runLine(pd->timelineCommand({TimelineEditKind::Delete, "1", "1"}) + " project=" + P).ok && pd->project.tracks[1].clips.size() == 1);
+            for (int i = 0; i < 7; ++i) CHECK(s.history().undo());  // back to before the trims
+            CHECK(pd->project.tracks[1].clips.size() == 2 && near(pd->project.tracks[1].clips[0].at, 3.0, 1e-9) && pd->project.tracks[1].clips[0].length < 0);
+        }
         CHECK(s.run("audio.track_set", {{"project", P}, {"track", std::int64_t{1}}, {"mute", true}}).ok);
         CHECK(s.history().undo());
         CHECK(s.run("audio.project_save", {{"project", P}, {"path", (dir / "show.json").string()}}).ok);

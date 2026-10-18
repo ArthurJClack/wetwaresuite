@@ -237,6 +237,26 @@ The mono voice is placed in the centre of the stereo mix automatically. More thi
 
 Claude calls `audio_open` twice, `audio_project_new`, `audio_track_add` twice, `audio_clip_add` twice, `audio_track_set` with `duck_under=1 duck_db=14`, `audio_project_info` with `preview=true` (it sees the lanes picture, with the ducking drawn in), and `audio_export` with `normalize=loudness target=-16`. Then it can `audio_measure` the MP3 to confirm the loudness.
 
+### Trim and split clips in a project
+
+Clips in a project can be trimmed and cut without losing anything: the clip keeps all its audio and only plays part of it, so you can always drag it back out.
+
+```text
+audio.clip_trim project=$show track=1 clip=0 start=4       # start later; the end stays where it was
+audio.clip_trim project=$show track=1 clip=0 length=1.5    # stop sooner; the start stays
+audio.clip_trim project=$show track=1 clip=0 start=0       # reveal it again (only as far as the audio goes)
+audio.clip_split project=$show track=1 clip=0 at=5         # two clips, the second one is clip 1
+```
+
+```text
+clip now plays 0:04.000 to 0:06.000
+...
+split at 0:05.000
+clip: 1
+```
+
+In the sound app the same edits are drags on the project's timeline (see [the window](gui.md#the-timeline)). Ask Claude "cut the first second off the voice clip and split it where the music comes back in" and it calls `audio_clip_trim` and `audio_clip_split`.
+
 ## Task 3: batch-normalize a folder of samples
 
 `samples/` holds four drum hits recorded at very different levels (one of them an MP3), each with silence before and after:
@@ -558,6 +578,8 @@ Common parameters: `doc` (an open document), `start`/`end` (seconds; default the
 | `audio.track_remove` | delete a track | `track` |
 | `audio.clip_add` | place a document or file on a track | `track`, `doc` or `input`, `at`, `start`/`end` of the source, `gain`, `fade_in`, `fade_out`, `name` |
 | `audio.clip_set` | move or change a clip | `track`, `clip`, `at`, `to_track`, `gain`, `fade_in`, `fade_out`, `name` |
+| `audio.clip_trim` | change which part of a clip plays (non-destructive: trimmed audio can be brought back) | `track`, `clip`, `start` (new start, end stays), `length` (new length, start stays) |
+| `audio.clip_split` | cut a clip in two at a timeline time | `track`, `clip`, `at` |
 | `audio.clip_remove` | delete a clip | `track`, `clip` |
 | `audio.mixdown` | mix into a new document | `normalize`, `target`, `ceiling` |
 | `audio.export` | mix straight to a file | `path`, `bits`, `bitrate`, `normalize`, `target`, `ceiling` |
@@ -570,6 +592,6 @@ Common parameters: `doc` (an open document), `start`/`end` (seconds; default the
 - **Noise reduction** is spectral gating, good on steady noise (hiss, hum, fans, room tone). It doesn't remove clicks, crackle, wind, reverb or a TV in the background, and pushed hard it sounds watery.
 - **Time stretching and pitch shifting** are WSOLA-based: clean on speech and steady material within about 0.5x-2x and a few semitones; extreme settings smear transients, and pitch shifting moves formants (no formant preservation).
 - **Loudness** follows ITU-R BS.1770-4 (K-weighting, 400 ms gated blocks); true peak is 4x oversampled near the loudest samples. Surround channel weights assume the L R C LFE Ls Rs order.
-- **Multitrack**: clips are copies made when added (later edits to the document don't reach the project); no per-clip effects, crossfades are done with overlapping clip fades, and ducking listens to one track.
+- **Multitrack**: clips are copies made when added (later edits to the document don't reach the project); no per-clip effects, crossfades are done with overlapping clip fades, and ducking listens to one track. In the sound app the project gets a timeline you drag clips around on (see [the window](gui.md#the-timeline)).
 - **Formats**: without ffmpeg only WAV, MP3, FLAC and Ogg Vorbis open and only WAV saves. WAV files are limited to 4 GB (no RF64); AIFF is written through ffmpeg as 16- or 24-bit. Metadata (tags, cover art, markers) isn't kept.
 - **Batch and split** write files and can't be undone; they never change their input folder.

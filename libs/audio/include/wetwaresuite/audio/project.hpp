@@ -4,6 +4,7 @@
 // freely, e.g. for undo snapshots).
 #pragma once
 
+#include <algorithm>
 #include <filesystem>
 #include <memory>
 #include <string>
@@ -21,7 +22,15 @@ struct Clip {
     double gainDb = 0;
     double fadeIn = 0;    // seconds
     double fadeOut = 0;
-    double end() const { return at + (audio ? audio->seconds() : 0.0); }
+    // the part of `audio` that plays (trimming is non-destructive): from offset, for length seconds
+    double offset = 0;
+    double length = -1;  // < 0 = to the end of the audio
+    double sourceSeconds() const { return audio ? audio->seconds() : 0.0; }
+    double seconds() const {
+        const double rest = std::max(0.0, sourceSeconds() - offset);
+        return length < 0 ? rest : std::min(length, rest);
+    }
+    double end() const { return at + seconds(); }
 };
 
 struct EnvelopePoint {

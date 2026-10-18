@@ -32,6 +32,8 @@ public:
     std::string kind() const override { return "audio project"; }
     std::string summary() const override;
     std::unique_ptr<Attachment> preview() const override;  // track lanes PNG
+    bool timeline(TimelineLayout& out) const override;
+    std::string timelineCommand(const TimelineEdit& edit) const override;
 };
 
 std::shared_ptr<AudioDoc> newAudio(Buffer b);

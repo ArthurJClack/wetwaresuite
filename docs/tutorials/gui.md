@@ -132,6 +132,20 @@ When a file is open, the middle of the window shows it.
 Files that aren't pictures (a 3D model, a song, a map) show their preview picture if the tool has one,
 or a one-line summary.
 
+### The timeline
+
+Video edits (the video app) and multitrack audio projects (the sound app) get a **timeline** under the preview, one row per track:
+
+![an audio project with its timeline](images/gui-sound-timeline.jpg)
+
+- **Drag a clip** to move it in time. Drag it up or down onto another track of the same kind (video onto video, sound onto sound) to move it there. While you drag, an outline shows where it will land and its new start time.
+- **Drag a clip's left or right edge** to trim it. Trimming never throws audio or video away: drag the edge back out and the rest comes back (as far as the source goes).
+- Clips **snap** to the start, the red cursor and the edges of other clips.
+- **Click the ruler** or an empty part of a track to put the **cursor** there. **Split** (or **S**) cuts the selected clip at the cursor; **Delete** (or the Delete key) removes it.
+- **Scroll** to move along the timeline, **Ctrl+scroll** to zoom, **Fit** to see all of it.
+
+Every drag is one ordinary command (`cut.move_clip`, `cut.trim_clip`, `audio.clip_set`, `audio.clip_trim`, `audio.clip_split`...), so it shows in the history and **Undo** takes it back, and a script or Claude can do exactly the same.
+
 ## 7. Painting
 
 In the image app (or any app with the paint tool), pictures get painting tools above the canvas:

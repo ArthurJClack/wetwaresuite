@@ -71,6 +71,17 @@ struct Canvas {
     std::optional<PendingRetouch> pending;
 };
 
+// The timeline panel's own state (timeline_view.cpp).
+struct TimelineState {
+    std::string doc;
+    double zoom = 0;    // px per second, 0 = fit
+    double scroll = 0;  // seconds at the left edge
+    double cursor = 0;  // where Split cuts
+    std::string selTrack, selClip;
+    enum class Drag { None, Cursor, Move, TrimStart, TrimEnd } drag = Drag::None;
+    double grabT = 0, origStart = 0, origLength = 0, headroom = -1, tailroom = -1;
+};
+
 // Where a native file dialog's answer goes.
 struct DialogTarget {
     enum Kind { OpenDocument, FormField } kind = OpenDocument;
@@ -136,6 +147,11 @@ private:
     void queueRetouch(const std::string& command, const std::string& title, Params params);
     void runPendingRetouch();
     bool pictureSize(int& width, int& height) const;
+
+    // the timeline under video edits and audio projects (timeline_view.cpp)
+    float timelineHeight(const TimelineLayout& layout) const;
+    void timelineView(const TimelineLayout& layout);
+    void runTimelineEdit(const TimelineLayout& layout, const TimelineEdit& edit);
 
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);
@@ -203,6 +219,7 @@ private:
     bool scrollToResult_ = false;
 
     Canvas canvas_;
+    TimelineState timeline_;
     float penPressure_ = 1.0f;
     bool penDown_ = false;
     bool penEraser_ = false;

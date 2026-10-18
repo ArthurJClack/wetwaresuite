@@ -701,6 +701,7 @@ All of them take `overwrite=true` to replace an existing output. Run `wetwaresui
 
 ## Limitations
 
+- In the video app, a timeline under the preview moves, trims, splits and deletes clips by dragging (see [the window](gui.md#the-timeline)); everything else is the actions on the right or commands.
 - Rendering is as fast as ffmpeg encoding the whole edit; there's no background rendering or proxy media. Use `quality=draft` while you iterate.
 - Titles are one line of plain text each (no rich text, outlines or animation besides fades); drawn with ffmpeg's `drawtext`. When ffmpeg has no fontconfig, a system font file is found and passed in (DejaVu, Liberation, Noto, Arial, Helvetica, ...); set `font=/path/to/font.ttf` to pick one.
 - Transitions only join clips on the same track, and every clip in a chain of transitions is drawn in the first clip's box. `fadeblack` also darkens the letterbox bars around a picture that doesn't fill the frame.

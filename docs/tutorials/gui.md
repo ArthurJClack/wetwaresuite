@@ -148,6 +148,24 @@ the brush), and flipping the pen over to its eraser end rubs out. **Eraser** rub
 
 Each stroke is one step in the history, so Ctrl+Z takes back exactly one stroke.
 
+### Retouching: Heal and Remove
+
+Two more tools sit next to Fill in the image app. They fix pictures by painting, with no numbers to type,
+and work with the mouse or a pen just like the Brush.
+
+- **Heal** makes spots, pimples, dust and scratches disappear. Pick a **Size** a bit bigger than the
+  spot and paint over it; when you let go it blends away. To copy texture from a clean area (grass,
+  fabric, skin with pores), first hold **Alt** (**Option** on a Mac) and click that clean area, or press
+  **Pick source** and then click or tap it. A white circle shows where it copies from. **Forget source**
+  goes back to smooth filling.
+- **Remove** makes a whole object disappear. Paint over it (it turns see-through red), then press
+  **Remove**. Tick **Remove when I let go** to do it straight away. **Clear** throws the red area away.
+  Very big areas are refused with a message saying so: remove the object in a few parts.
+
+While it works the picture shows **Working...**; a moment later it is redrawn. Each heal stroke and each
+Remove is one step in the history, so Ctrl+Z takes back exactly one. The
+[photo tutorial](photo.md#task-7-retouching-remove-spots-blend-in-erase-objects) has more tips.
+
 To start a fresh canvas: **Start something new**, then **New canvas (Paint)**, set the width and
 height, and press Run. To keep your work, search for **save**, pick **Save image**, press
 **Browse...** to choose where, and Run. Saving as `.ora` keeps the layers.

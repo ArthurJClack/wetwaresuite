@@ -151,7 +151,7 @@ if(_ww_sdl)
     DEPENDS ${_imgui}/fonts/Roboto-Medium.ttf ${CMAKE_CURRENT_SOURCE_DIR}/embed.cmake
     COMMENT "Embedding the UI font")
 
-  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/canvas.cpp src/handoff_panels.cpp src/window.cpp ${_font_cpp})
+  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/canvas.cpp src/retouch.cpp src/handoff_panels.cpp src/window.cpp ${_font_cpp})
   target_compile_options(wetwaresuite_gui PRIVATE ${WETWARESUITE_GUI_WARNINGS})
   target_link_libraries(wetwaresuite_gui PUBLIC wetwaresuite_gui_logic PRIVATE wetwaresuite_imgui wetwaresuite::raster)
   message(STATUS "gui: window enabled (${_ww_sdl})")

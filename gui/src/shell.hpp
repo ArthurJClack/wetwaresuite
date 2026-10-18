@@ -27,7 +27,16 @@ struct Texture {
     ImTextureID id() const { return static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(tex)); }
 };
 
-enum class CanvasTool { Move, Brush, Eraser, Fill };
+enum class CanvasTool { Move, Brush, Eraser, Fill, Heal, Remove };
+
+// A retouch command waiting to run: it runs on the frame after it is queued, so the
+// window first shows "Working..." over the canvas.
+struct PendingRetouch {
+    std::string command;
+    std::string title;
+    Params params;
+    bool shown = false;  // a frame with the busy sign has been drawn
+};
 
 struct Canvas {
     Texture texture;
@@ -50,6 +59,15 @@ struct Canvas {
     bool usedPen = false;
     std::vector<double> points;     // image px, x,y pairs
     std::vector<double> pressures;  // one per point when a pen is used
+
+    // retouching (retouch.cpp)
+    HealSource healSource;       // Alt+click spot the Heal tool copies from
+    bool pickingSource = false;  // "Pick source" is on: the next click picks the spot
+    std::vector<double> removeMark;  // painted area waiting for "Remove", picture px
+    float removeMarkSize = 0;
+    std::string removeMarkDoc;
+    bool autoRemove = false;  // remove as soon as the stroke ends
+    std::optional<PendingRetouch> pending;
 };
 
 // Where a native file dialog's answer goes.
@@ -95,7 +113,17 @@ private:
     void addStrokePoint(ImVec2 screen, float pressure);
     void endStroke();
     ImVec2 toImage(ImVec2 screen) const;
-    bool canPaint() const;
+    bool toolAvailable(CanvasTool tool) const;
+
+    // retouching by painting (retouch.cpp): Heal and Remove
+    void retouchSettings();
+    bool retouchPress(ImVec2 screen);  // true when the click picked a heal source instead of starting a stroke
+    void retouchRelease();
+    void drawRetouch(ImDrawList* dl, ImVec2 origin, bool hovered);
+    void applyRemove();
+    void queueRetouch(const std::string& command, const std::string& title, Params params);
+    void runPendingRetouch();
+    bool pictureSize(int& width, int& height) const;
 
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);

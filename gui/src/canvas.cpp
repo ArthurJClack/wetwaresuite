@@ -1,5 +1,6 @@
 // The canvas: shows the open document's picture with zoom and pan, and turns
-// mouse and pen input into paint.stroke / paint.erase / paint.fill commands.
+// mouse and pen input into paint.stroke / paint.erase / paint.fill commands
+// (Heal and Remove strokes go to retouch.cpp).
 // Images are drawn from a mipmap pyramid: zoomed out, the texture holds a half,
 // quarter, ... size copy instead of the full picture, and after an edit only the
 // changed area is re-flattened and re-uploaded.
@@ -66,9 +67,18 @@ bool showLevel(SDL_Renderer* renderer, Texture& tex, MipCache& mc, float zoom, b
 
 }  // namespace
 
-bool Shell::canPaint() const {
+bool Shell::toolAvailable(CanvasTool tool) const {
+    if (tool == CanvasTool::Move) return true;
     auto doc = session_.workspace().get(currentDoc_);
-    return doc && doc->kind() == "image" && find("paint.stroke");
+    if (!doc || doc->kind() != "image") return false;
+    switch (tool) {
+        case CanvasTool::Brush: return find("paint.stroke") != nullptr;
+        case CanvasTool::Eraser: return find("paint.erase") != nullptr;
+        case CanvasTool::Fill: return find("paint.fill") != nullptr;
+        case CanvasTool::Heal: return find("photo.heal") != nullptr;
+        case CanvasTool::Remove: return find("photo.remove_object") != nullptr;
+        default: return false;
+    }
 }
 
 void Shell::refreshCanvas() {
@@ -146,7 +156,8 @@ void Shell::canvasToolbar() {
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%d%%", static_cast<int>(std::lround(canvas_.zoom * 100)));
-    if (!canPaint()) return;
+    const CanvasTool editing[] = {CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal, CanvasTool::Remove};
+    if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
     ImGui::SameLine();
     ImGui::TextUnformatted("  Tool:");
     const struct {
@@ -156,13 +167,28 @@ void Shell::canvasToolbar() {
     } tools[] = {{"Move", CanvasTool::Move, "Drag to move around, scroll to zoom"},
                  {"Brush", CanvasTool::Brush, "Paint with the mouse or a pen (pressure works)"},
                  {"Eraser", CanvasTool::Eraser, "Rub out paint on the current layer"},
-                 {"Fill", CanvasTool::Fill, "Click to fill an area with the colour, like a paint bucket"}};
+                 {"Fill", CanvasTool::Fill, "Click to fill an area with the colour, like a paint bucket"},
+                 {"Heal", CanvasTool::Heal,
+                  "Paint over a spot, pimple or scratch to make it disappear. To copy texture from a clean spot, "
+                  "Alt+click it first (Option+click on a Mac)"},
+                 {"Remove", CanvasTool::Remove,
+                  "Paint over something you don't want (a person, a sign, a wire), then press Remove: the gap is filled "
+                  "from the picture around it"}};
     for (const auto& t : tools) {
+        if (!toolAvailable(t.tool)) continue;
         ImGui::SameLine();
+        // wrap onto the next line instead of running off a narrow window
+        const ImGuiStyle& style = ImGui::GetStyle();
+        const float need = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(t.name).x;
+        if (ImGui::GetContentRegionAvail().x < need) ImGui::NewLine();
         if (ImGui::RadioButton(t.name, canvas_.tool == t.tool)) canvas_.tool = t.tool;
         ImGui::SetItemTooltip("%s", t.tip);
     }
-    if (canvas_.tool == CanvasTool::Move) return;
+    if (canvas_.tool == CanvasTool::Move || !toolAvailable(canvas_.tool)) return;
+    if (canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove) {
+        retouchSettings();
+        return;
+    }
     // the tool's settings go on their own line so narrow windows still show them
     const float unit = ImGui::GetFontSize();
     bool first = true;
@@ -170,7 +196,7 @@ void Shell::canvasToolbar() {
         if (!first) ImGui::SameLine();
         first = false;
     };
-    if (canvas_.tool != CanvasTool::Eraser) {
+    if (canvas_.tool == CanvasTool::Brush || canvas_.tool == CanvasTool::Fill) {
         next();
         ImGui::ColorEdit4("Colour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
     }
@@ -228,6 +254,10 @@ void Shell::endStroke() {
     if (!canvas_.stroking) return;
     canvas_.stroking = false;
     if (canvas_.points.size() < 2) return;
+    if (canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove) {
+        retouchRelease();
+        return;
+    }
     const bool erase = canvas_.tool == CanvasTool::Eraser || canvas_.penErasing;
     const std::string id = erase ? "paint.erase" : "paint.stroke";
     const CommandInfo* info = find(id);
@@ -272,6 +302,7 @@ void Shell::onEvent(const SDL_Event& e) {
 }
 
 void Shell::canvasView() {
+    if (canvas_.pending && canvas_.pending->shown) runPendingRetouch();  // the busy sign is on screen: run it now
     refreshCanvas();
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -305,7 +336,8 @@ void Shell::canvasView() {
         canvas_.zoom = std::clamp(canvas_.zoom * std::pow(1.15f, io.MouseWheel), 0.02f, 64.0f);
         canvas_.pan = {io.MousePos.x - v0.x - img.x * canvas_.zoom, io.MousePos.y - v0.y - img.y * canvas_.zoom};
     }
-    const bool painting = canPaint() && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space);
+    const bool painting = toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
+                          !canvas_.pending;
     const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
                                     (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking));
     if (dragPan) {
@@ -321,8 +353,10 @@ void Shell::canvasView() {
     dl->AddRect({p0.x - 1, p0.y - 1}, {p1.x + 1, p1.y + 1}, ImGui::GetColorU32(ImGuiCol_Border));
 
     // painting
-    const bool stroke = canvas_.tool == CanvasTool::Brush || canvas_.tool == CanvasTool::Eraser;
-    if (painting && stroke && ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
+    const bool retouch = canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove;
+    const bool stroke = canvas_.tool == CanvasTool::Brush || canvas_.tool == CanvasTool::Eraser || retouch;
+    if (painting && stroke && ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
+        !(retouch && retouchPress(io.MousePos))) {
         const bool pen = io.MouseSource == ImGuiMouseSource_Pen || penDown_;
         beginStroke(io.MousePos, pen ? penPressure_ : 1.0f, pen, pen && penEraser_);
     }
@@ -342,7 +376,7 @@ void Shell::canvasView() {
     }
 
     // the stroke being drawn, before the command runs
-    if (canvas_.stroking && canvas_.points.size() >= 2) {
+    if (canvas_.stroking && canvas_.points.size() >= 2 && !retouch) {
         const bool erasing = canvas_.tool == CanvasTool::Eraser || canvas_.penErasing;
         const ImU32 col = erasing ? IM_COL32(255, 255, 255, 160)
                                   : ImGui::ColorConvertFloat4ToU32({canvas_.color[0], canvas_.color[1], canvas_.color[2],
@@ -359,6 +393,7 @@ void Shell::canvasView() {
     if (hovered && painting && stroke) {
         dl->AddCircle(io.MousePos, std::max(2.0f, canvas_.size * canvas_.zoom / 2), IM_COL32(128, 128, 128, 255), 0, 1.5f);
     }
+    drawRetouch(dl, p0, hovered);
     dl->PopClipRect();
 }
 

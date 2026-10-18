@@ -69,6 +69,15 @@ struct Canvas {
     std::string removeMarkDoc;
     bool autoRemove = false;  // remove as soon as the stroke ends
     std::optional<PendingRetouch> pending;
+
+    // the 3D view (orbit.cpp), for documents that can draw themselves from any angle
+    bool is3d = false;
+    std::string shown3dDoc;
+    OrbitView orbit;
+    bool orbitDirty = true;
+    bool orbitDragging = false;
+    bool orbitSharpPending = false;
+    int orbitW = 0, orbitH = 0;
 };
 
 // Where a native file dialog's answer goes.
@@ -126,6 +135,11 @@ private:
     void endStroke();
     ImVec2 toImage(ImVec2 screen) const;
     bool toolAvailable(CanvasTool tool) const;
+
+    // the 3D view (orbit.cpp)
+    bool probe3d(const Document& doc) const;
+    void orbitToolbar();
+    void orbitCanvas(ImDrawList* dl, ImVec2 origin, ImVec2 size, bool hovered, bool active);
 
     // retouching by painting (retouch.cpp): Heal and Remove
     void retouchSettings();

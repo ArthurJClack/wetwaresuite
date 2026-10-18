@@ -37,6 +37,23 @@ std::unique_ptr<Attachment> MeshDoc::preview() const {
     return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(render(mesh, 512, 512, previewOptions)), "preview.png"});
 }
 
+bool renderOrbit(const Mesh& mesh, const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba, RenderOptions o) {
+    if (width == 0 && height == 0) return true;  // just asking
+    if (width <= 0 || height <= 0) return false;
+    o.orbit = Orbit{view.yaw, view.pitch, view.zoom, view.panX, view.panY};
+    o.antialias = view.antialias;
+    o.outline = o.outline && view.antialias;  // outlines and smooth normals cost extra passes; skip them mid-drag
+    o.smooth = o.smooth && view.antialias;
+    const raster::Image img = render(mesh, width, height, o);
+    const std::uint8_t* px = img.data();
+    rgba.assign(px, px + static_cast<std::size_t>(width) * static_cast<std::size_t>(height) * 4);
+    return true;
+}
+
+bool MeshDoc::renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const {
+    return renderOrbit(mesh, view, width, height, rgba, previewOptions);
+}
+
 std::shared_ptr<MeshDoc> newMesh(Mesh mesh) {
     auto doc = std::make_shared<MeshDoc>();
     doc->mesh = std::move(mesh);

@@ -443,6 +443,38 @@ int main() {
         CHECK(ci.at(0, 0).a == 0 && ci.at(32, 20).a == 255);
         CHECK(nonBackground(render(Mesh{}, 16, 16), o.background) == 0);
         CHECK(nonBackground(render(plane(1, 1), 32, 32), o.background) > 100);  // flat, open meshes too
+
+        // orbit camera: pitch 90 is the top view, the size holds while turning, zoom and pan move it
+        RenderOptions front;
+        front.outline = front.antialias = false;
+        RenderOptions orb = front;
+        orb.orbit = Orbit{0, 90, 1, 0, 0};
+        const raster::Image oi = render(shape, 81, 81, orb);
+        CHECK(oi.at(40, 40) == front.background && oi.at(40, 25) != front.background);  // down through the hole
+        std::size_t lastCovered = 0;
+        bool steady = true;
+        for (double yaw : {0.0, 20.0, 45.0, 90.0}) {
+            orb.orbit->yaw = yaw;
+            orb.orbit->pitch = 0;
+            const std::size_t c = nonBackground(render(box({2, 2, 2}), 100, 100, orb), front.background);
+            if (lastCovered && (c < lastCovered / 2 || c > lastCovered * 2)) steady = false;
+            lastCovered = c;
+        }
+        CHECK(steady && lastCovered > 0);
+        orb.orbit = Orbit{30, 20, 1, 0, 0};
+        const std::size_t base = nonBackground(render(shape, 100, 100, orb), front.background);
+        orb.orbit->zoom = 2;
+        CHECK(nonBackground(render(shape, 100, 100, orb), front.background) > base * 2);
+        orb.orbit->zoom = 1;
+        orb.orbit->panX = 3;  // pushed off to the right, out of view
+        CHECK(nonBackground(render(shape, 100, 100, orb), front.background) < base / 4);
+        orb.orbit = Orbit{0, 0, 1, 0, 0};  // front
+        CHECK(nonBackground(render(shape, 64, 64, orb), front.background) > 64 * 64 / 10);
+        // documents: 0 x 0 asks, a real size draws
+        auto md = newMesh(shape);
+        std::vector<std::uint8_t> rgba;
+        CHECK(md->renderView(OrbitView{}, 0, 0, rgba) && rgba.empty());
+        CHECK(md->renderView(OrbitView{}, 40, 30, rgba) && rgba.size() == 40u * 30u * 4u);
     }
 
     // ---- document + commands ----

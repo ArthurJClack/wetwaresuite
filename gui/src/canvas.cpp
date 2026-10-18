@@ -93,6 +93,15 @@ void Shell::refreshCanvas() {
         return;
     }
     canvas_.summary = doc->summary();
+    const bool newDoc = canvas_.shown3dDoc != currentDoc_;
+    canvas_.shown3dDoc = currentDoc_;
+    canvas_.is3d = probe3d(*doc);
+    if (canvas_.is3d) {
+        mipCaches().erase(this);
+        if (newDoc) canvas_.orbit = OrbitView{};  // a different model starts from iso
+        canvas_.orbitDirty = true;               // drawn by orbitCanvas at the view's size
+        return;
+    }
     if (auto img = std::dynamic_pointer_cast<raster::ImageDoc>(doc); img && img->image.width > 0 && img->image.height > 0) {
         MipCache& mc = mipCaches()[this];
         const raster::ImageDoc::Changes changes = img->takeChanges();
@@ -145,6 +154,10 @@ void Shell::refreshCanvas() {
 }
 
 void Shell::canvasToolbar() {
+    if (canvas_.is3d) {
+        orbitToolbar();
+        return;
+    }
     if (ImGui::Button("Fit")) canvas_.fit = true;
     ImGui::SetItemTooltip("Show the whole picture");
     ImGui::SameLine();
@@ -319,6 +332,11 @@ void Shell::canvasView() {
     dl->PushClipRect(v0, v1, true);
     dl->AddRectFilled(v0, v1, darkLook() ? IM_COL32(40, 42, 46, 255) : IM_COL32(200, 202, 206, 255));
 
+    if (canvas_.is3d) {
+        orbitCanvas(dl, v0, size, hovered, active);
+        dl->PopClipRect();
+        return;
+    }
     const Texture& t = canvas_.texture;
     if (!t.tex) {
         const std::string text = canvas_.summary.empty() ? "No picture for this file." : canvas_.summary;

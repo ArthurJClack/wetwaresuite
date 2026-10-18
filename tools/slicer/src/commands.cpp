@@ -62,6 +62,9 @@ public:
         return s;
     }
     std::unique_ptr<Attachment> preview() const override;
+    bool renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const override {
+        return mesh::renderOrbit(state.mesh, view, width, height, rgba);
+    }
 };
 
 raster::Image renderOnBed(const PrintState& st, mesh::View view, int size, bool bed) {

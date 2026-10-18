@@ -21,6 +21,7 @@ pub struct Tool {
     pub mcp_binary: Option<&'static str>,
 }
 
+#[allow(dead_code)] // every catalog tool is built now; kept for the next ones
 const fn planned(id: &'static str, name: &'static str, summary: &'static str, phase: u8, approx_mb: u32) -> Tool {
     Tool { id, name, summary, phase, approx_mb, status: Status::Planned, mcp_binary: None }
 }
@@ -45,7 +46,7 @@ pub const TOOLS: &[Tool] = &[
     available("photo", "photo", "photo editing: adjust, crop, resize, effects, batch", 2, 4),
     available("paint", "paint", "digital painting with pen pressure and layers", 2, 4),
     available("convert", "convert", "change any file's type: images, audio, video, docs", 2, 2),
-    planned("vector", "vector", "vector design, SVG/AI/EPS", 2, 10),
+    available("vector", "vector", "vector design, SVG/AI/EPS", 2, 10),
     available("cad", "cad", "precision parametric CAD: feature tree, expressions, holes, patterns, STL/3MF", 3, 3),
     available("blueprint", "blueprint", "technical drafting and floor plans: DXF, PDF to scale", 3, 2),
     available("slicer", "slicer", "3D printing slicer: STL/3MF to G-code", 3, 20),
@@ -62,12 +63,12 @@ pub const TOOLS: &[Tool] = &[
     available("animate", "animate", "2D and 3D animation", 5, 15),
     available("levels", "levels", "game level and tilemap editor", 5, 10),
     available("beats", "beats", "music making: sequencer, synths, samples", 5, 15),
-    planned("circuit", "circuit", "schematics and PCB layout", 6, 25),
-    planned("flash", "flash", "flash firmware to Arduino, ESP32 and STM32", 6, 5),
-    planned("maps", "maps", "offline maps and GIS", 6, 15),
-    planned("board", "board", "whiteboard and diagrams", 6, 5),
-    planned("notes", "notes", "markdown notes and knowledge base", 6, 5),
-    planned("type", "type", "font design", 6, 8),
+    available("circuit", "circuit", "schematics and PCB layout", 6, 25),
+    available("flash", "flash", "flash firmware to Arduino, ESP32 and STM32", 6, 5),
+    available("maps", "maps", "offline maps and GIS", 6, 15),
+    available("board", "board", "whiteboard and diagrams", 6, 5),
+    available("notes", "notes", "markdown notes and knowledge base", 6, 5),
+    available("type", "type", "font design", 6, 8),
 ];
 
 pub fn find(id: &str) -> Option<&'static Tool> {

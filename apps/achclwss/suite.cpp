@@ -3,16 +3,21 @@
 #include "achclwss/animate/animate.hpp"
 #include "achclwss/audio/commands.hpp"
 #include "achclwss/beats/beats.hpp"
+#include "achclwss/board/board.hpp"
 #include "achclwss/automate/automate.hpp"
 #include "achclwss/blueprint/blueprint.hpp"
 #include "achclwss/cad/cad.hpp"
 #include "achclwss/capture/capture.hpp"
+#include "achclwss/circuit/circuit.hpp"
 #include "achclwss/convert/convert.hpp"
 #include "achclwss/cut/cut.hpp"
+#include "achclwss/flash/flash.hpp"
 #include "achclwss/forge/forge.hpp"
 #include "achclwss/layout/layout.hpp"
 #include "achclwss/levels/levels.hpp"
+#include "achclwss/maps/maps.hpp"
 #include "achclwss/library/library.hpp"
+#include "achclwss/notes/notes.hpp"
 #include "achclwss/office/office.hpp"
 #include "achclwss/paint/paint.hpp"
 #include "achclwss/photo/photo.hpp"
@@ -20,6 +25,7 @@
 #include "achclwss/render/render.hpp"
 #include "achclwss/slicer/slicer.hpp"
 #include "achclwss/toolkit/detect.hpp"
+#include "achclwss/type/type.hpp"
 #include "achclwss/vector/vector.hpp"
 
 namespace achclwss::suite {
@@ -47,6 +53,12 @@ const std::set<std::string>& toolNames() {
         "beats",
         "animate",
         "render",
+        "circuit",
+        "flash",
+        "board",
+        "notes",
+        "maps",
+        "type",
     };
     return names;
 }
@@ -81,6 +93,12 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("beats")) beats::registerCommands(session);
     if (want("animate")) animate::registerCommands(session);
     if (want("render")) render::registerCommands(session);
+    if (want("circuit")) circuit::registerCommands(session);
+    if (want("flash")) flash::registerCommands(session);
+    if (want("board")) board::registerCommands(session);
+    if (want("notes")) notes::registerCommands(session);
+    if (want("maps")) maps::registerCommands(session);
+    if (want("type")) typeface::registerCommands(session);
 }
 
 }  // namespace achclwss::suite

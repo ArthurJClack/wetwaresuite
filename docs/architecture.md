@@ -50,3 +50,4 @@ open files live in the session's `Workspace` as documents with short ids (`img1`
 3. precision and 3D: cad, blueprint, slicer, asset forge on a shared mesh engine (`libs/mesh`)
 4. media, office and the rest: audio (`libs/audio`), cut, capture, office (`libs/pdf`), layout (`libs/pdfdoc`), library, automate (plus a Python client in `python/`)
 5. 3D art and games: sculpt (shared `libs/mesh` topology helpers), render, animate, levels, beats
+6. making and organising: circuit, flash, maps (Natural Earth countries built in), board, notes, type

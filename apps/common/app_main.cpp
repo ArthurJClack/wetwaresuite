@@ -37,6 +37,7 @@ void usage(const std::string& bin, const App& app) {
               << "  " << bin << " batch [file] [--keep-going]  run a script of commands (stdin if no file)\n"
               << "  " << bin << " mcp [--tools a,b] [--http]  serve this app to Claude over MCP (stdin/stdout, or HTTP)\n"
               << "  " << bin << " app.receive              open the newest file another app sent here\n"
+              << "  " << bin << " app.palette_set primary=#rrggbb  window colours for every app (also secondary=, tertiary=)\n"
               << "  " << bin << " --version\n";
 }
 

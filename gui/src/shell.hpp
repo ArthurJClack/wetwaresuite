@@ -14,6 +14,7 @@
 #include "wetwaresuite/gui/gui.hpp"
 #include "wetwaresuite/gui/handoff.hpp"
 #include "wetwaresuite/gui/logic.hpp"
+#include "wetwaresuite/gui/palette.hpp"
 
 namespace wetwaresuite::gui {
 
@@ -86,7 +87,11 @@ public:
     void frame();                         // one ImGui frame of every panel
     void onEvent(const SDL_Event& event);  // raw input for strokes, before ImGui sees it
     void openFile(const std::string& path);
-    void showAction(const std::string& commandId) { select(commandId); }
+    // a command's form, or "settings" for the Aa menu (text size and colours)
+    void showAction(const std::string& commandId) {
+        if (commandId == "settings") openSettings_ = true;
+        else select(commandId);
+    }
     bool wantsQuit() const { return quit_; }
 
     static Uint32 wakeEvent;  // pushed from dialog threads to wake the event loop
@@ -103,6 +108,13 @@ private:
     void searchPopup();
     void newPopup();
     void settingsPopup();
+    void coloursSettings();  // colours.cpp
+
+    // the shared colour palette (colours.cpp), through the app.palette_* commands
+    bool loadPalette();  // true when the colours changed
+    void savePaletteNow();
+    void runPalette(const std::string& command, const Params& params);
+    bool darkLook() const { return custom_ ? theme_.dark : dark_; }
     void field(Field& f, std::size_t index);
 
     // canvas (canvas.cpp)
@@ -160,7 +172,16 @@ private:
     std::vector<CommandInfo> commands_;  // this app's commands
 
     bool pro_ = false;
-    bool dark_ = true;
+    bool dark_ = true;  // the Dark/Light choice for the app's own colours
+    bool custom_ = false;  // a palette was picked: every colour comes from theme_
+    Palette palette_;
+    Theme theme_;
+    bool paletteStale_ = false;    // re-read the palette on the next frame (the window got focus)
+    bool palettePending_ = false;  // a picker changed it: save once the mouse is let go
+    std::string paletteNote_;      // the last palette command's answer or error
+    bool paletteNoteOk_ = true;
+    bool openSettings_ = false;
+    ImVec4 accent_{0.24f, 0.49f, 1, 1}, accentHover_, accentActive_, accentText_{1, 1, 1, 1}, title_;
     float textScale_ = 1.0f;
     float dpi_ = 1.0f;
     bool quit_ = false;

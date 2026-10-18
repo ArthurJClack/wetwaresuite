@@ -293,7 +293,10 @@ void Shell::onEvent(const SDL_Event& e) {
         case SDL_EVENT_MOUSE_MOTION:
             if (canvas_.stroking && !canvas_.usedPen && e.motion.which != SDL_PEN_MOUSEID) addStrokePoint({e.motion.x, e.motion.y}, 1.0f);
             break;
-        case SDL_EVENT_WINDOW_FOCUS_GAINED: refreshInbox(); break;  // another app may have sent something
+        case SDL_EVENT_WINDOW_FOCUS_GAINED:  // another app may have sent something or changed the colours
+            refreshInbox();
+            paletteStale_ = true;
+            break;
         case SDL_EVENT_DROP_FILE:
             if (e.drop.data) openFile(e.drop.data);
             break;
@@ -314,7 +317,7 @@ void Shell::canvasView() {
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 v0 = canvas_.viewMin, v1{v0.x + size.x, v0.y + size.y};
     dl->PushClipRect(v0, v1, true);
-    dl->AddRectFilled(v0, v1, dark_ ? IM_COL32(40, 42, 46, 255) : IM_COL32(200, 202, 206, 255));
+    dl->AddRectFilled(v0, v1, darkLook() ? IM_COL32(40, 42, 46, 255) : IM_COL32(200, 202, 206, 255));
 
     const Texture& t = canvas_.texture;
     if (!t.tex) {

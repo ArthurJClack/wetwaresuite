@@ -84,6 +84,7 @@ Shell::Shell(Session& session, const AppInfo& app, SDL_Window* window, SDL_Rende
         }
     }
     loadRecent();
+    loadPalette();
 }
 
 Shell::~Shell() { canvas_.texture.reset(); }

@@ -484,8 +484,10 @@ std::shared_ptr<Grid> osmBasemap(const View& v, const RenderOptions& o, RenderIn
     const int y0 = std::clamp(static_cast<int>(std::floor(ty0)), 0, n - 1), y1 = std::clamp(static_cast<int>(std::floor(ty1)), 0, n - 1);
     info.zoom = z;
     const fs::path cache = o.tileCache.empty() ? defaultTileCache() : fs::path(o.tileCache);
-    const auto curl = o.offline ? std::nullopt : findProgram("curl");
-    if (!o.offline && !curl) info.warnings.push_back("curl isn't installed, so only cached OSM tiles can be used");
+    // a tile_url that isn't http(s) is a folder of tiles already on disk: read it, never download
+    const bool localTiles = o.tileUrl.rfind("http://", 0) != 0 && o.tileUrl.rfind("https://", 0) != 0;
+    const auto curl = o.offline || localTiles ? std::nullopt : findProgram("curl");
+    if (!o.offline && !localTiles && !curl) info.warnings.push_back("curl isn't installed, so only cached OSM tiles can be used");
     // a folder per tile server, so switching tile_url never mixes caches
     std::string serverKey;
     for (char c : o.tileUrl.substr(0, o.tileUrl.find('{'))) serverKey += std::isalnum(static_cast<unsigned char>(c)) ? c : '_';
@@ -501,11 +503,18 @@ std::shared_ptr<Grid> osmBasemap(const View& v, const RenderOptions& o, RenderIn
     bool failedDownload = false;
     for (int ty = y0; ty <= y1; ++ty) {
         for (int tx = x0; tx <= x1; ++tx) {
-            const fs::path file = base / std::to_string(z) / std::to_string(tx) / (std::to_string(ty) + ".png");
+            fs::path file = base / std::to_string(z) / std::to_string(tx) / (std::to_string(ty) + ".png");
+            if (localTiles) {
+                std::string local = o.tileUrl;
+                for (const auto& [key, val] : {std::pair<std::string, int>{"{z}", z}, {"{x}", tx}, {"{y}", ty}}) {
+                    for (auto at = local.find(key); at != std::string::npos; at = local.find(key)) local.replace(at, key.size(), std::to_string(val));
+                }
+                file = fs::path(local);
+            }
             std::error_code ec;
             bool have = fs::exists(file, ec);
             bool stale = false;
-            if (have) {
+            if (have && !localTiles) {
                 const auto age = fs::file_time_type::clock::now() - fs::last_write_time(file, ec);
                 stale = !ec && age > std::chrono::hours(24 * 30);
             }

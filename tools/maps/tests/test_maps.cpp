@@ -467,6 +467,14 @@ void testRendering(const fs::path& dir) {
     raster::Image withTiles = renderImage(m, o, &second);
     CHECK(second.tilesUsed > 0 && second.tilesFetched == 0);
     CHECK(withTiles.at(withTiles.width() / 3, 5).g > 150);
+    // a local tile folder as tile_url: read straight from disk, even with offline=false, never fetched
+    o.offline = false;
+    o.tileCache.clear();
+    o.tileUrl = (server / "{z}" / "{x}" / "{y}.png").string();
+    RenderInfo local;
+    raster::Image fromFolder = renderImage(m, o, &local);
+    CHECK(local.tilesUsed == second.tilesUsed && local.tilesFetched == 0);
+    CHECK(fromFolder.at(fromFolder.width() / 3, 5).g > 150);
 }
 
 void testCommands(const fs::path& dir) {

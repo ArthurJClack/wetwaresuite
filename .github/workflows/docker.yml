@@ -1,0 +1,33 @@
+name: docker
+
+# The container is optional, so it is only built when someone asks:
+# Actions > docker > Run workflow.
+on:
+  workflow_dispatch:
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: docker build -t wetwaresuite:ci .
+      - name: smoke test
+        run: |
+          set -euo pipefail
+          docker run --rm wetwaresuite:ci wetwaresuite --version
+          docker run --rm wetwaresuite:ci hub --version
+          docker run -d --name ww -p 127.0.0.1:8765:8765 -e WETWARESUITE_TOKEN=ci-token-0123456789 wetwaresuite:ci
+          for i in $(seq 1 30); do
+            if curl -sf -o /dev/null -H 'Authorization: Bearer ci-token-0123456789' http://127.0.0.1:8765/; then break; fi
+            sleep 1
+          done
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'Content-Type: application/json' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"ping"}' http://127.0.0.1:8765/mcp)
+          test "$code" = 401
+          curl -sf -X POST -H 'Content-Type: application/json' -H 'Authorization: Bearer ci-token-0123456789' \
+            -d '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}' \
+            http://127.0.0.1:8765/mcp | tee init.json
+          grep -q '"serverInfo"' init.json
+          docker logs ww
+          docker stop ww

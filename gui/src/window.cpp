@@ -3,18 +3,24 @@
 // time, so an idle window uses next to no CPU.
 #include <cstdio>
 #include <cstdlib>
+#include <exception>
 #include <fstream>
 #include <iostream>
+#include <string>
 
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 #include "shell.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 
 namespace wetwaresuite::gui {
 
 // The embedded UI font (Roboto Medium, Apache-2.0), generated at configure time.
 extern const unsigned char kUiFont[];
 extern const unsigned int kUiFontSize;
+// The app icon (branding/png/icon-128.png), embedded the same way.
+extern const unsigned char kAppIcon[];
+extern const unsigned int kAppIconSize;
 
 bool available() { return true; }
 
@@ -72,6 +78,19 @@ bool saveScreenshot(SDL_Renderer* renderer, const std::string& path) {
     return ok;
 }
 
+void setWindowIcon(SDL_Window* window) {
+    try {
+        raster::Image icon = raster::decode(std::string(reinterpret_cast<const char*>(kAppIcon), kAppIconSize));
+        SDL_Surface* surface = SDL_CreateSurfaceFrom(icon.width(), icon.height(), SDL_PIXELFORMAT_RGBA32,
+                                                     icon.data(), icon.width() * 4);
+        if (!surface) return;
+        SDL_SetWindowIcon(window, surface);  // SDL copies the pixels
+        SDL_DestroySurface(surface);
+    } catch (const std::exception&) {
+        // no icon is fine: the window still works
+    }
+}
+
 }  // namespace
 
 int run(Session& session, const AppInfo& app, const RunOptions& options) {
@@ -90,6 +109,7 @@ int run(Session& session, const AppInfo& app, const RunOptions& options) {
         SDL_Quit();
         return 1;
     }
+    setWindowIcon(window);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer) renderer = SDL_CreateRenderer(window, SDL_SOFTWARE_RENDERER);
     if (!renderer) {

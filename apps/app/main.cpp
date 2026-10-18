@@ -49,6 +49,9 @@
 #if WW_TOOL_SLICER
 #include "wetwaresuite/slicer/slicer.hpp"
 #endif
+#if WW_TOOL_FIT
+#include "wetwaresuite/fit/fit.hpp"
+#endif
 #if WW_TOOL_CIRCUIT
 #include "wetwaresuite/circuit/circuit.hpp"
 #endif
@@ -162,6 +165,9 @@ void registerTools(Session& session, const std::set<std::string>& requested) {
 #endif
 #if WW_TOOL_SLICER
     if (want("slicer")) slicer::registerCommands(session);
+#endif
+#if WW_TOOL_FIT
+    if (want("fit")) fit::registerCommands(session);
 #endif
 #if WW_TOOL_CIRCUIT
     if (want("circuit")) circuit::registerCommands(session);

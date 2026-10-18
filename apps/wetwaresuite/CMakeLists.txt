@@ -5,6 +5,7 @@ target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::blueprint)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::forge)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::slicer)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::cad)
+target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::fit)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::layout)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::audio_tool)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::cut)
@@ -26,14 +27,25 @@ target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::type)
 target_link_libraries(wetwaresuite_suite PUBLIC wetwaresuite::calc wetwaresuite::code wetwaresuite::explorer wetwaresuite::terminal wetwaresuite::monitor wetwaresuite::clock)
 
 add_executable(wetwaresuite main.cpp)
+wetwaresuite_add_icon(wetwaresuite)
 target_link_libraries(wetwaresuite PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::mcp)
 install(TARGETS wetwaresuite RUNTIME DESTINATION bin)
 
 # the window launcher: every tool, or --app image for one app's tools
 if(WETWARESUITE_GUI)
   add_executable(wetwaresuite-gui gui_main.cpp)
+  wetwaresuite_add_icon(wetwaresuite-gui)
   target_link_libraries(wetwaresuite-gui PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::gui wetwaresuite::mcp)
   install(TARGETS wetwaresuite-gui RUNTIME DESTINATION bin)
+  if(UNIX AND NOT APPLE)
+    # start-menu entry and icons for linux desktops
+    install(FILES ${PROJECT_SOURCE_DIR}/branding/wetwaresuite.desktop DESTINATION share/applications)
+    install(FILES ${PROJECT_SOURCE_DIR}/branding/icon.svg DESTINATION share/icons/hicolor/scalable/apps RENAME wetwaresuite.svg)
+    foreach(size 16 32 48 64 128 256 512)
+      install(FILES ${PROJECT_SOURCE_DIR}/branding/png/icon-${size}.png
+              DESTINATION share/icons/hicolor/${size}x${size}/apps RENAME wetwaresuite.png)
+    endforeach()
+  endif()
   if(WETWARESUITE_BUILD_TESTS)
     # the launcher must start and answer without a screen
     add_test(NAME gui_launcher_help COMMAND wetwaresuite-gui --help)

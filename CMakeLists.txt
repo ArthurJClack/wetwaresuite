@@ -28,6 +28,18 @@ if(WETWARESUITE_BUILD_TESTS)
   enable_testing()
 endif()
 
+# the logo and app icon live in branding/ (see branding/README.md).
+# wetwaresuite_add_icon(target) gives a Windows .exe the icon; elsewhere it does nothing
+if(WIN32)
+  enable_language(RC)
+  configure_file(${PROJECT_SOURCE_DIR}/branding/wetwaresuite.rc.in ${PROJECT_BINARY_DIR}/wetwaresuite.rc @ONLY)
+endif()
+function(wetwaresuite_add_icon target)
+  if(WIN32)
+    target_sources(${target} PRIVATE ${PROJECT_BINARY_DIR}/wetwaresuite.rc)
+  endif()
+endfunction()
+
 add_subdirectory(core)
 add_subdirectory(mcp)
 add_subdirectory(libs/raster)
@@ -47,7 +59,7 @@ set(WETWARESUITE_APP_TOOLS_image photo paint)
 set(WETWARESUITE_APP_TOOLS_draw vector type board)
 set(WETWARESUITE_APP_TOOLS_model sculpt render animate)
 set(WETWARESUITE_APP_TOOLS_game forge levels)
-set(WETWARESUITE_APP_TOOLS_cad cad blueprint slicer)
+set(WETWARESUITE_APP_TOOLS_cad cad blueprint slicer fit)
 set(WETWARESUITE_APP_TOOLS_electronics circuit flash)
 set(WETWARESUITE_APP_TOOLS_sound audio beats)
 set(WETWARESUITE_APP_TOOLS_video cut capture)
@@ -95,12 +107,13 @@ set(_ww_tool_deps_library vector toolkit)
 set(_ww_tool_deps_automate photo vector convert)  # its tests drive them
 set(_ww_tool_deps_explorer toolkit)
 set(_ww_tool_deps_paint photo)                    # its tests open through photo
+set(_ww_tool_deps_fit sculpt)                     # smoothing, simplifying and picking
 foreach(t IN LISTS _ww_tools)
   list(APPEND _ww_tools ${_ww_tool_deps_${t}})
 endforeach()
 list(REMOVE_DUPLICATES _ww_tools)
 foreach(t toolkit vector blueprint photo paint convert forge slicer cad layout audio cut capture library automate
-          office levels sculpt beats animate render circuit flash board notes maps type calc code explorer terminal monitor clock)
+          office levels sculpt beats animate render circuit flash board notes maps type fit calc code explorer terminal monitor clock)
   if("${t}" IN_LIST _ww_tools)
     add_subdirectory(tools/${t})
   endif()

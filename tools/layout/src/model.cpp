@@ -1,4 +1,4 @@
-// Documents: presets, styles, colours, markup parsing and the .achlay file format.
+// Documents: presets, styles, colours, markup parsing and the .wwlay file format.
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -899,7 +899,9 @@ std::shared_ptr<LayoutDoc> fromJson(const std::string& text) {
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not a layout file: ") + e.what());
     }
-    if (!j.is_object() || j.value("format", "") != "wetwaresuite-layout") throw std::runtime_error("not an .achlay layout file");
+    const std::string format = j.is_object() ? j.value("format", "") : std::string();
+    // "achclwss-layout": layouts saved before the rename still open
+    if (format != "wetwaresuite-layout" && format != "achclwss-layout") throw std::runtime_error("not a .wwlay layout file");
     auto doc = std::make_shared<LayoutDoc>();
     try {
         doc->title = j.value("title", "");

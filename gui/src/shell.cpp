@@ -87,6 +87,7 @@ Shell::Shell(Session& session, const AppInfo& app, SDL_Window* window, SDL_Rende
     loadRecent();
     panels_ = std::make_unique<ToolPanels>();
     hasClock_ = find("clock.due") != nullptr;
+    loadPalette();
 }
 
 Shell::~Shell() {

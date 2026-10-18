@@ -27,6 +27,7 @@
 #include "wetwaresuite/paint/paint.hpp"
 #include "wetwaresuite/photo/photo.hpp"
 #include "wetwaresuite/sculpt/sculpt.hpp"
+#include "wetwaresuite/fit/fit.hpp"
 #include "wetwaresuite/render/render.hpp"
 #include "wetwaresuite/slicer/slicer.hpp"
 #include "wetwaresuite/terminal/terminal.hpp"
@@ -47,6 +48,7 @@ const std::set<std::string>& toolNames() {
         "forge",
         "slicer",
         "cad",
+        "fit",
         "layout",
         "audio",
         "cut",
@@ -93,6 +95,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("forge")) forge::registerCommands(session);
     if (want("slicer")) slicer::registerCommands(session);
     if (want("cad")) cad::registerCommands(session);
+    if (want("fit")) fit::registerCommands(session);
     if (want("layout")) layout::registerCommands(session);
     if (want("audio")) audio::registerCommands(session);
     if (want("cut")) cut::registerCommands(session);

@@ -1,6 +1,7 @@
 // The app table, routing files to apps, the handoff manifest, and app.send /
 // app.receive between two sessions, with stand-in tools (no tool libraries).
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -16,7 +17,9 @@
 #include "gui_launch.hpp"
 #include "handoff.hpp"
 #include "launch.hpp"
+#include "palette_commands.hpp"
 #include "wetwaresuite/gui/handoff.hpp"
+#include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
 
 using namespace wetwaresuite;
@@ -337,6 +340,81 @@ int main() {
         Result l = image.run("app.launch", {{"app", std::string("model")}, {"path", obj.string()}});
         CHECK(!l.ok && l.message.find("isn't installed") != std::string::npos);
         setHome(home);
+    }
+
+    // ---- app.palette_*: one colour set shared by every app ----
+    {
+        setHome(home);
+        fs::remove(apps::paletteFile());
+        CHECK(apps::paletteFile() == home / "palette.txt");
+        Session image, model;
+        apps::registerCommands(image, "image");
+        apps::registerCommands(model, "model");
+        // no file: each app reports its own accent and nothing is custom
+        Result a = image.run("app.palette_get", {});
+        Result b = model.run("app.palette_get", {});
+        CHECK(a.ok && b.ok && !std::get<bool>(*a.field("custom")));
+        CHECK(toText(*a.field("primary")) == "#" + [] {
+            char buf[8];
+            std::snprintf(buf, sizeof buf, "%06x", apps::find("image")->accent);
+            return std::string(buf);
+        }());
+        CHECK(toText(*a.field("primary")) != toText(*b.field("primary")));
+        // set in one app, seen by the other
+        Result set = image.run("app.palette_set", {{"primary", std::string("#FF8800")}, {"secondary", std::string(" 123 ")},
+                                                   {"tertiary", std::string("white")}});
+        CHECK(set.ok);
+        CHECK(fs::exists(apps::paletteFile()));
+        Result seen = model.run("app.palette_get", {});
+        CHECK(std::get<bool>(*seen.field("custom")));
+        CHECK(toText(*seen.field("primary")) == "#ff8800" && toText(*seen.field("secondary")) == "#112233" &&
+              toText(*seen.field("tertiary")) == "#ffffff");
+        CHECK(toText(*seen.field("look")) == "dark");
+        // only one colour: the others stay
+        CHECK(model.run("app.palette_set", {{"tertiary", std::string("#00aa55")}}).ok);
+        Result one = image.run("app.palette_get", {});
+        CHECK(toText(*one.field("primary")) == "#ff8800" && toText(*one.field("tertiary")) == "#00aa55");
+        // friendly errors, and nothing changes
+        Result bad = image.run("app.palette_set", {{"primary", std::string("#12345")}});
+        CHECK(!bad.ok && bad.message.find("primary colour") != std::string::npos && bad.message.find("#3d7eff") != std::string::npos);
+        CHECK(!image.run("app.palette_set", {{"secondary", std::string("bluish")}}).ok);
+        CHECK(!image.run("app.palette_set", {}).ok);
+        CHECK(toText(*image.run("app.palette_get", {}).field("primary")) == "#ff8800");
+        // presets
+        Result light = image.run("app.palette_preset", {{"name", std::string("light")}});
+        CHECK(light.ok && toText(*light.field("look")) == "light");
+        CHECK(toText(*model.run("app.palette_get", {}).field("secondary")) == "#e4e7ec");
+        CHECK(image.run("app.palette_preset", {{"name", std::string("high-contrast")}}).ok);
+        CHECK(!image.run("app.palette_preset", {{"name", std::string("neon")}}).ok);
+        // reset (and preset default) go back to each app's own colours
+        CHECK(model.run("app.palette_reset", {}).ok);
+        CHECK(!fs::exists(apps::paletteFile()));
+        CHECK(!std::get<bool>(*image.run("app.palette_get", {}).field("custom")));
+        CHECK(toText(*image.run("app.palette_get", {}).field("primary")) == toText(*a.field("primary")));
+        CHECK(image.run("app.palette_reset", {}).ok);  // resetting twice is fine
+        CHECK(image.run("app.palette_preset", {{"name", std::string("warm")}}).ok);
+        CHECK(image.run("app.palette_preset", {{"name", std::string("default")}}).ok);
+        CHECK(!fs::exists(apps::paletteFile()));
+        // a file someone edited by hand, with CRLF, still reads
+        std::ofstream(apps::paletteFile(), std::ios::binary) << "# mine\r\nPrimary = #010203\r\nsecondary=#fafafa\r\ntertiary=#00f\r\n";
+        Result hand = model.run("app.palette_get", {});
+        CHECK(std::get<bool>(*hand.field("custom")) && toText(*hand.field("tertiary")) == "#0000ff");
+        CHECK(toText(*hand.field("look")) == "light");
+        // in a batch script ('#' right after '=' isn't a comment)
+        cli::Batch batch(image);
+        CHECK(batch.runLine("app.palette_set primary=#336699 secondary=#202020 tertiary=#ffcc00  # my colours").ok);
+        CHECK(toText(*model.run("app.palette_get", {}).field("primary")) == "#336699");
+        // over MCP
+        mcp::Server server(image, {"wetwaresuite-image", apps::kVersion, ""});
+        auto tools = nlohmann::json::parse(*server.handle(R"({"jsonrpc":"2.0","id":2,"method":"tools/list"})"));
+        std::string names = tools["result"]["tools"].dump();
+        for (const char* t : {"app_palette_get", "app_palette_set", "app_palette_preset", "app_palette_reset"})
+            CHECK(names.find(t) != std::string::npos);
+        auto call = nlohmann::json::parse(*server.handle(
+            R"({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"app_palette_preset","arguments":{"name":"colour-blind"}}})"));
+        CHECK(call["result"].value("isError", false) == false);
+        CHECK(toText(*model.run("app.palette_get", {}).field("primary")) == "#e69f00");
+        fs::remove(apps::paletteFile());
     }
 
 #ifndef _WIN32

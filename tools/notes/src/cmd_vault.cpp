@@ -64,7 +64,7 @@ void registerOpen(CommandRegistry& reg, const StatePtr& st) {
              "Open a folder of Markdown notes (an Obsidian vault or any folder of .md files) as a vault document, e.g. "
              "vault1. Every other notes.* command works on it (vault= picks one when several are open; a folder path "
              "works too). The files stay the source of truth: what the tool learns from them is cached in a hidden "
-             ".achnotes folder in the vault and checked against each file's size and time on every command, so edits "
+             ".wwnotes folder in the vault and checked against each file's size and time on every command, so edits "
              "made in Obsidian or any editor show up straight away. Hidden folders (.obsidian, .trash, .git) are skipped.",
              {{"path", ParamType::String, "the vault folder", true}, boolParamSpec("preview", "attach a picture of the link graph")},
              false, true},
@@ -206,7 +206,7 @@ void registerOpen(CommandRegistry& reg, const StatePtr& st) {
             }));
 
     reg.add({"notes.vault.reindex", "Rebuild index",
-             "Delete the vault's .achnotes cache and read every note again. Never needed for correctness (files are "
+             "Delete the vault's .wwnotes cache and read every note again. Never needed for correctness (files are "
              "checked on every command); useful after copying a vault with changed times, or to measure a full read.",
              {vaultParam()}, false, false},
             reader(st, [](Vault& v, const Params&) {

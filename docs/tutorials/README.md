@@ -2,7 +2,7 @@
 
 Hands-on guides to the suite. Every example was run against the real binaries: the all-in-one `wetwaresuite` or the per-app programs like `wetwaresuite-image`, which share the same commands. Everything is a command: the desktop window calls the same commands as the command line, scripts and Claude.
 
-- [The window (GUI)](gui.md): double-click any app to open its window; open files, find any action by typing, fill in simple forms, paint with a mouse or pen, send work to another app and pick it up from the inbox, undo, Simple and Pro modes, text size; works offline with no graphics card.
+- [The window (GUI)](gui.md): double-click any app to open its window; open files, find any action by typing, fill in simple forms, paint with a mouse or pen, send work to another app and pick it up from the inbox, undo, Simple and Advanced modes (everything is free), text size; works offline with no graphics card.
 - [Getting started](getting-started.md): build from source, find commands with `list` and `help`, write arguments, and understand document ids and undo.
 - [Headless and batch](headless-and-batch.md): batch scripts with variables and comments, shell loops, CI and cron, exit codes.
 - [The apps](apps.md): which app does what, installing only the ones you need, building only some.
@@ -22,6 +22,7 @@ Hands-on guides to the suite. Every example was run against the real binaries: t
 - [Audio](audio.md): clean up a voice recording to podcast loudness, build an episode from music and voice tracks with ducking and fades, batch-normalize samples, spectrograms, pitch and tempo changes.
 - [Office](office.md): a budget spreadsheet with formulas and a chart, CSV cleanup with VLOOKUP, a report exported to PDF, a slide deck from bullet points, merging and splitting PDFs.
 - [Slicer](slicer.md): 3D models to G-code: printer and filament presets, infill, brim and supports, layer previews, parts from cad.
+- [Scan fit](fit.md): car parts and mounts that fit a phone 3D scan: clean up a Polycam/Scaniverse scan, fit planes, cylinders, circles and curves to it, then a phone mount, gauge pod, switch panel and speaker ring on a curved dash, clamps and a GoPro mount on a roll bar, trim strips, your own plates and blocks, gap checks, test slices and projects you can rebuild.
 - [Layout](layout.md): print layout: an event poster, a tri-fold flyer, business cards 10-up, a booklet from Markdown, preflight and print PDFs with bleed and crop marks.
 - [Cut](cut.md): video editing: a talking head into a short with a title and music, picture-in-picture, crossfades, GIFs, burned-in subtitles, quick trims and joins.
 - [Capture](capture.md): screenshots of a screen, monitor or region, screen recordings with a microphone, webcam snapshots, and how Claude looks at your screen.

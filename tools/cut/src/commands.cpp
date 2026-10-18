@@ -558,15 +558,16 @@ void registerCommands(Session& session) {
                 });
             });
 
-    reg.add({"cut.open", "Open Timeline", "Open an .achcut timeline saved by cut.save. Returns the document id.",
-             {{"path", ParamType::String, "path to an .achcut file", true}}, false, true},
+    reg.add({"cut.open", "Open Timeline", "Open a .wwcut timeline saved by cut.save (older .achcut files open too). Returns the document id.",
+             {{"path", ParamType::String, "path to a .wwcut file", true}}, false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     const fs::path path = stringParam(p, "path");
                     std::error_code ec;
                     if (!fs::is_regular_file(path, ec)) return Result::failure("file not found: " + path.string());
-                    if (extOf(path) != "achcut") {
-                        return Result::failure(path.string() + " isn't an .achcut timeline; to edit a video file, "
+                    const std::string ext = extOf(path);
+                    if (ext != "wwcut" && ext != "achcut") {  // achcut: the name before the rename
+                        return Result::failure(path.string() + " isn't a .wwcut timeline; to edit a video file, "
                                                                "cut.new then cut.add_clip path=" + path.string());
                     }
                     try {
@@ -580,12 +581,13 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"cut.save", "Save Timeline",
-             "Save a timeline as an .achcut project file (JSON: settings, tracks, clips). It refers to the media files "
+             "Save a timeline as a .wwcut project file (JSON: settings, tracks, clips). It refers to the media files "
              "by absolute path; it doesn't copy them. To make a video file, use cut.render.",
-             {docParam(), {"path", ParamType::String, "where to save, e.g. edit.achcut", true}}, false},
+             {docParam(), {"path", ParamType::String, "where to save, e.g. edit.wwcut", true}}, false},
             cutCommand(session, [](Timeline& tl, const Params& p) {
                 const fs::path path = stringParam(p, "path");
-                if (extOf(path) != "achcut") return Result::failure("timelines save as .achcut; to export a video, use cut.render");
+                const std::string ext = extOf(path);
+                if (ext != "wwcut" && ext != "achcut") return Result::failure("timelines save as .wwcut; to export a video, use cut.render");
                 std::error_code ec;
                 if (!path.parent_path().empty()) fs::create_directories(path.parent_path(), ec);
                 if (!writeFile(path, toJson(tl))) return Result::failure("can't write " + path.string());

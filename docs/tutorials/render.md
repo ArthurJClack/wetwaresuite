@@ -421,7 +421,7 @@ All commands take `doc=` (an open scene id). `render.render`, `render.preview`, 
 | --- | --- | --- |
 | `type` | box (mesh with `path`/`mesh`) | `box`, `sphere`, `cylinder`, `cone`, `torus`, `plane`, `mesh` |
 | `name` | type + number | object name |
-| `path` | | model file (stl, obj, ply, off, glb, gltf, 3mf) |
+| `path` | | model file (stl, obj, ply, off, glb, gltf, 3mf, fbx, step) |
 | `mesh` | | id of an open mesh document (cad, forge) |
 | `center` | true | move a model so the middle of its base is its origin |
 | `size` | 1,1,1 | box x,y,z (one number for a cube); plane x,y (omit for the endless ground size) |

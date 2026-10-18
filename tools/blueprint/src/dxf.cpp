@@ -6,6 +6,7 @@
 // reopening the file here gets the editable wall back. Sheet settings
 // (paper, scale, title block) live in an XRECORD in the OBJECTS section.
 #include <algorithm>
+#include <functional>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -937,6 +938,131 @@ std::optional<Color> entityColor(const Record& r) {
     return aciColor(static_cast<int>(aci));
 }
 
+
+// 2D affine map: p' = (a x + c y + e, b x + d y + f).
+struct Affine {
+    double a = 1, b = 0, c = 0, d = 1, e = 0, f = 0;
+    static Affine translate(Vec2 t) { return {1, 0, 0, 1, t.x, t.y}; }
+    static Affine scale(double sx, double sy) { return {sx, 0, 0, sy, 0, 0}; }
+    static Affine rotate(double deg) {
+        const double cs = std::cos(deg * kPi / 180), sn = std::sin(deg * kPi / 180);
+        return {cs, sn, -sn, cs, 0, 0};
+    }
+    Affine operator*(const Affine& o) const {  // o first, then this
+        return {a * o.a + c * o.b, b * o.a + d * o.b, a * o.c + c * o.d, b * o.c + d * o.d, a * o.e + c * o.f + e, b * o.e + d * o.f + f};
+    }
+    Vec2 operator()(Vec2 p) const { return {a * p.x + c * p.y + e, b * p.x + d * p.y + f}; }
+    Vec2 vector(Vec2 v) const { return {a * v.x + c * v.y, b * v.x + d * v.y}; }
+    double det() const { return a * d - b * c; }
+    // uniform scale with no skew: circles stay circles
+    bool similar() const { return std::abs(a - d * (det() < 0 ? -1 : 1)) < 1e-9 * (1 + std::abs(a)) && std::abs(b + c * (det() < 0 ? -1 : 1)) < 1e-9 * (1 + std::abs(b)); }
+    double scale() const { return std::sqrt(std::abs(det())); }
+    double angle() const { return std::atan2(b, a) * 180 / kPi; }
+};
+
+// Places an entity read from a block. Circles and arcs under a non-uniform scale become polylines.
+bool transformEntity(Entity& e, const Affine& m) {
+    for (auto& p : e.pts) p = m(p);
+    const bool mirror = m.det() < 0;
+    switch (e.type) {
+        case EntityType::Point: e.c = m(e.c); break;
+        case EntityType::Circle:
+        case EntityType::Arc: {
+            if (m.similar()) {
+                e.c = m(e.c);
+                e.r *= m.scale();
+                if (e.type == EntityType::Arc) {
+                    double a0 = e.a0, a1 = e.a1;
+                    if (mirror) std::swap(a0, a1);
+                    auto map = [&](double deg) { return normalizeAngle(angleOf(m.vector(direction(deg)))); };
+                    e.a0 = map(a0);
+                    e.a1 = map(a1);
+                }
+            } else {
+                double a0 = 0, sweep = 360;
+                if (e.type == EntityType::Arc) {
+                    a0 = e.a0;
+                    sweep = normalizeAngle(e.a1 - e.a0);
+                    if (sweep < 1e-9) sweep = 360;
+                }
+                const int n = std::max(8, static_cast<int>(std::ceil(sweep / 5)));
+                const bool full = e.type == EntityType::Circle;
+                e.pts.clear();
+                for (int q = 0; q <= n - (full ? 1 : 0); ++q) e.pts.push_back(m(e.c + direction(a0 + sweep * q / n) * e.r));
+                e.type = EntityType::Polyline;
+                e.closed = full;
+            }
+            break;
+        }
+        case EntityType::Text:
+            e.c = m(e.c);
+            e.height *= std::abs(m.vector({0, 1}).y) > 0 ? std::hypot(m.c, m.d) : m.scale();
+            e.rotation = normalizeAngle(e.rotation + m.angle());
+            break;
+        case EntityType::Dimension:
+            if (e.dim == DimKind::Radius || e.dim == DimKind::Diameter) {
+                e.c = m(e.c);
+                e.r *= m.scale();
+                e.rotation = normalizeAngle(e.rotation + m.angle());
+            } else if (e.dim == DimKind::Horizontal || e.dim == DimKind::Vertical) {
+                if (std::abs(std::fmod(m.angle() + 360, 90)) > 1e-6) e.dim = DimKind::Aligned;
+                else if (std::abs(std::fmod(m.angle() + 360, 180) - 90) < 1e-6) e.dim = e.dim == DimKind::Horizontal ? DimKind::Vertical : DimKind::Horizontal;
+            }
+            break;
+        default: break;
+    }
+    return true;
+}
+
+// A SPLINE as points: the NURBS curve sampled (de Boor), or its fit points when it has no control points.
+std::vector<Vec2> splinePoints(const Record& r) {
+    std::vector<double> knots, weights;
+    std::vector<Vec2> ctrl, fit;
+    for (const auto& [c, v] : r.groups) {
+        const double x = std::strtod(v.c_str(), nullptr);
+        if (c == 40) knots.push_back(x);
+        else if (c == 41) weights.push_back(x);
+        else if (c == 10) ctrl.push_back({x, 0});
+        else if (c == 20 && !ctrl.empty()) ctrl.back().y = x;
+        else if (c == 11) fit.push_back({x, 0});
+        else if (c == 21 && !fit.empty()) fit.back().y = x;
+    }
+    const int p = static_cast<int>(r.integer(71, 3));
+    const int n = static_cast<int>(ctrl.size());
+    if (n < 2 || p < 1 || static_cast<int>(knots.size()) != n + p + 1) return fit.size() >= 2 ? fit : ctrl;
+    if (static_cast<int>(weights.size()) != n) weights.assign(static_cast<std::size_t>(n), 1.0);
+    const double u0 = knots[static_cast<std::size_t>(p)], u1 = knots[static_cast<std::size_t>(n)];
+    if (!(u1 > u0)) return ctrl;
+    const int samples = std::clamp(n * 12, 16, 2000);
+    std::vector<Vec2> out;
+    for (int s = 0; s <= samples; ++s) {
+        const double u = u0 + (u1 - u0) * s / samples;
+        int k = p;
+        while (k < n - 1 && u >= knots[static_cast<std::size_t>(k + 1)]) ++k;
+        // de Boor in homogeneous coordinates
+        std::vector<double> hx(static_cast<std::size_t>(p + 1)), hy(hx.size()), hw(hx.size());
+        for (int j = 0; j <= p; ++j) {
+            const std::size_t i = static_cast<std::size_t>(j + k - p);
+            hw[static_cast<std::size_t>(j)] = weights[i];
+            hx[static_cast<std::size_t>(j)] = ctrl[i].x * weights[i];
+            hy[static_cast<std::size_t>(j)] = ctrl[i].y * weights[i];
+        }
+        for (int rr = 1; rr <= p; ++rr) {
+            for (int j = p; j >= rr; --j) {
+                const double kl = knots[static_cast<std::size_t>(j + k - p)], kr = knots[static_cast<std::size_t>(j + 1 + k - rr)];
+                const double alpha = kr > kl ? (u - kl) / (kr - kl) : 0;
+                const std::size_t a = static_cast<std::size_t>(j), b = static_cast<std::size_t>(j - 1);
+                hx[a] = (1 - alpha) * hx[b] + alpha * hx[a];
+                hy[a] = (1 - alpha) * hy[b] + alpha * hy[a];
+                hw[a] = (1 - alpha) * hw[b] + alpha * hw[a];
+            }
+        }
+        const std::size_t t = static_cast<std::size_t>(p);
+        if (hw[t] != 0) out.push_back({hx[t] / hw[t], hy[t] / hw[t]});
+    }
+    return out;
+}
+
 // Strips MTEXT formatting codes, keeping plain text on one line.
 std::string plainMtext(const std::string& s) {
     std::string out;
@@ -989,6 +1115,359 @@ std::shared_ptr<Drawing> fromDxf(const std::string& text, std::string* notes, bo
         std::string n = name.empty() ? "0" : name;
         return doc->ensureLayer(n).name;
     };
+
+    // One plain DXF entity at records[i] (POLYLINE also eats its VERTEX/SEQEND records).
+    auto parseEntity = [&](std::size_t& i, Entity& e) -> bool {
+            const Record& r = records[i];
+            const std::string& type = r.type;
+            if (type == "LINE") {
+                e.type = EntityType::Line;
+                e.pts = {r.point(10), r.point(11)};
+            } else if (type == "LWPOLYLINE") {
+                e.type = EntityType::Polyline;
+                e.closed = (r.integer(70) & 1) != 0;
+                std::vector<Vec2> verts;
+                std::vector<double> bulges;
+                for (const auto& [c, v] : r.groups) {
+                    if (c == 10) {
+                        verts.push_back({std::strtod(v.c_str(), nullptr), 0});
+                        bulges.push_back(0);
+                    } else if (c == 20 && !verts.empty()) {
+                        verts.back().y = std::strtod(v.c_str(), nullptr);
+                    } else if (c == 42 && !bulges.empty()) {
+                        bulges.back() = std::strtod(v.c_str(), nullptr);
+                    }
+                }
+                if (verts.size() < 2) return false;
+                e.pts = {verts[0]};
+                const std::size_t n = verts.size();
+                for (std::size_t j = 0; j + 1 < n + (e.closed ? 1 : 0); ++j) {
+                    if (j + 1 == n && e.closed) {
+                        if (std::abs(bulges[j]) > 1e-9) {
+                            bulgePoints(e.pts, verts[j], verts[0], bulges[j]);
+                            e.pts.pop_back();  // closing point is implied
+                        }
+                    } else {
+                        bulgePoints(e.pts, verts[j], verts[j + 1], bulges[j]);
+                    }
+                }
+            } else if (type == "POLYLINE") {
+                const long flags = r.integer(70);
+                std::vector<Vec2> verts;
+                std::vector<double> bulges;
+                while (i + 1 < records.size() && records[i + 1].type == "VERTEX") {
+                    const Record& v = records[++i];
+                    if (v.integer(70) & 128) continue;  // polyface face record
+                    verts.push_back(v.point(10));
+                    bulges.push_back(v.num(42));
+                }
+                if (i + 1 < records.size() && records[i + 1].type == "SEQEND") ++i;
+                if (flags & (16 | 64)) {
+                    ++skipped["POLYLINE (mesh)"];
+                    return false;
+                }
+                if (verts.size() < 2) return false;
+                e.type = EntityType::Polyline;
+                e.closed = (flags & 1) != 0;
+                e.pts = {verts[0]};
+                for (std::size_t j = 0; j + 1 < verts.size(); ++j) bulgePoints(e.pts, verts[j], verts[j + 1], bulges[j]);
+                if (e.closed && std::abs(bulges.back()) > 1e-9) {
+                    bulgePoints(e.pts, verts.back(), verts[0], bulges.back());
+                    e.pts.pop_back();
+                }
+            } else if (type == "CIRCLE") {
+                e.type = EntityType::Circle;
+                e.c = r.point(10);
+                e.r = r.num(40);
+            } else if (type == "ARC") {
+                e.type = EntityType::Arc;
+                e.c = r.point(10);
+                e.r = r.num(40);
+                e.a0 = normalizeAngle(r.num(50));
+                e.a1 = normalizeAngle(r.num(51));
+            } else if (type == "POINT") {
+                e.type = EntityType::Point;
+                e.c = r.point(10);
+            } else if (type == "TEXT" || type == "ATTRIB" || type == "ATTDEF") {
+                if (type == "ATTDEF") return false;  // a template; its values arrive as ATTRIB
+                e.type = EntityType::Text;
+                e.text = decodeText(r.str(1));
+                e.height = r.num(40, 1);
+                e.rotation = r.num(50);
+                const long h72 = r.integer(72), v73 = r.integer(73);
+                e.halign = h72 == 1 || h72 == 4 ? HAlign::Center : h72 == 2 ? HAlign::Right : HAlign::Left;
+                e.valign = v73 == 2 || h72 == 4 ? VAlign::Middle : v73 == 3 ? VAlign::Top : VAlign::Baseline;
+                e.c = (h72 || v73) && r.has(11) ? r.point(11) : r.point(10);
+                if (h72 == 3 || h72 == 5) {  // aligned / fit: keep the left start
+                    e.halign = HAlign::Left;
+                    e.c = r.point(10);
+                }
+            } else if (type == "MTEXT") {
+                e.type = EntityType::Text;
+                std::string raw;
+                for (const auto& [c, v] : r.groups) {
+                    if (c == 3) raw += v;
+                }
+                raw += r.str(1);
+                e.text = decodeText(plainMtext(raw));
+                e.height = r.num(40, 1);
+                e.c = r.point(10);
+                e.rotation = r.has(50) ? r.num(50) : (r.has(11) ? angleOf(r.point(11)) : 0);
+                const long ap = r.integer(71, 1);
+                e.halign = (ap - 1) % 3 == 0 ? HAlign::Left : (ap - 1) % 3 == 1 ? HAlign::Center : HAlign::Right;
+                e.valign = ap <= 3 ? VAlign::Top : ap <= 6 ? VAlign::Middle : VAlign::Baseline;
+            } else if (type == "SOLID" || type == "TRACE") {
+                e.type = EntityType::Hatch;
+                e.pattern = "solid";
+                Vec2 p1 = r.point(10), p2 = r.point(11), p3 = r.point(12), p4 = r.has(13) ? r.point(13) : p3;
+                e.pts = {p1, p2, p4, p3};
+                if (distance(p3, p4) < 1e-12) e.pts = {p1, p2, p3};
+            } else if (type == "HATCH") {
+                e.type = EntityType::Hatch;
+                const bool solid = r.integer(70) == 1;
+                // walk the boundary paths in order; keep the loop with the largest area
+                std::vector<Vec2> bestLoop;
+                std::size_t j = 0;
+                const auto& gs = r.groups;
+                auto at = [&](std::size_t k2) { return std::strtod(gs[k2].second.c_str(), nullptr); };
+                while (j < gs.size() && gs[j].first != 91) ++j;
+                long paths = j < gs.size() ? std::strtol(gs[j].second.c_str(), nullptr, 10) : 0;
+                ++j;
+                for (long pth = 0; pth < paths && j < gs.size(); ++pth) {
+                    while (j < gs.size() && gs[j].first != 92) ++j;
+                    if (j >= gs.size()) break;
+                    long flags = std::strtol(gs[j].second.c_str(), nullptr, 10);
+                    ++j;
+                    std::vector<Vec2> loop;
+                    if (flags & 2) {
+                        bool hasBulge = false;
+                        long count = 0;
+                        while (j < gs.size() && gs[j].first != 93) {
+                            if (gs[j].first == 72) hasBulge = gs[j].second.find('1') != std::string::npos;
+                            ++j;
+                        }
+                        if (j < gs.size()) count = std::strtol(gs[j++].second.c_str(), nullptr, 10);
+                        std::vector<Vec2> verts;
+                        std::vector<double> bulges;
+                        while (j < gs.size() && static_cast<long>(verts.size()) <= count) {
+                            int c = gs[j].first;
+                            if (c == 10) {
+                                if (static_cast<long>(verts.size()) == count) break;
+                                verts.push_back({at(j), 0});
+                                bulges.push_back(0);
+                            } else if (c == 20 && !verts.empty()) {
+                                verts.back().y = at(j);
+                            } else if (c == 42 && hasBulge && !bulges.empty()) {
+                                bulges.back() = at(j);
+                            } else if (c == 97 || c == 92 || c == 75) {
+                                break;
+                            }
+                            ++j;
+                        }
+                        if (!verts.empty()) {
+                            loop.push_back(verts[0]);
+                            for (std::size_t q = 0; q < verts.size(); ++q) bulgePoints(loop, verts[q], verts[(q + 1) % verts.size()], bulges[q]);
+                            loop.pop_back();
+                        }
+                    } else {
+                        while (j < gs.size() && gs[j].first != 93) ++j;
+                        long edges = j < gs.size() ? std::strtol(gs[j++].second.c_str(), nullptr, 10) : 0;
+                        for (long ed = 0; ed < edges && j < gs.size(); ++ed) {
+                            while (j < gs.size() && gs[j].first != 72) ++j;
+                            if (j >= gs.size()) break;
+                            long et = std::strtol(gs[j++].second.c_str(), nullptr, 10);
+                            std::map<int, double> v;
+                            while (j < gs.size() && gs[j].first != 72 && gs[j].first != 97) {
+                                if (!v.count(gs[j].first)) v[gs[j].first] = at(j);
+                                ++j;
+                            }
+                            if (et == 1) {
+                                if (loop.empty()) loop.push_back({v[10], v[20]});
+                                loop.push_back({v[11], v[21]});
+                            } else if (et == 2) {
+                                Vec2 c{v[10], v[20]};
+                                double rad = v[40], s0 = v[50], s1 = v[51];
+                                bool ccw = v.count(73) ? v[73] != 0 : true;
+                                double sweep = normalizeAngle(s1 - s0);
+                                if (sweep < 1e-9) sweep = 360;
+                                int n = std::max(2, static_cast<int>(std::ceil(sweep / 10)));
+                                for (int q = 0; q <= n; ++q) {
+                                    double a = s0 + sweep * q / n;
+                                    Vec2 p = c + direction(ccw ? a : -a) * rad;
+                                    if (loop.empty() || distance(loop.back(), p) > 1e-9) loop.push_back(p);
+                                }
+                            } else if (et == 3 || et == 4) {
+                                if (v.count(10)) loop.push_back({v[10], v[20]});
+                            }
+                        }
+                        if (loop.size() > 2 && distance(loop.front(), loop.back()) < 1e-9) loop.pop_back();
+                    }
+                    if (std::abs(polygonArea(loop)) > std::abs(polygonArea(bestLoop))) bestLoop = loop;
+                }
+                if (bestLoop.size() < 3) {
+                    ++skipped["HATCH (no usable boundary)"];
+                    return false;
+                }
+                e.pts = bestLoop;
+                e.closed = true;
+                if (solid) {
+                    e.pattern = "solid";
+                } else {
+                    // pattern lines: angle of the first, spacing from its offset
+                    std::vector<std::pair<double, Vec2>> lines;
+                    for (std::size_t q = 0; q < gs.size(); ++q) {
+                        if (gs[q].first != 53) continue;
+                        double a = at(q);
+                        Vec2 off;
+                        for (std::size_t z = q + 1; z < gs.size() && gs[z].first != 53; ++z) {
+                            if (gs[z].first == 45) off.x = at(z);
+                            if (gs[z].first == 46) off.y = at(z);
+                        }
+                        lines.push_back({a, off});
+                    }
+                    e.pattern = lines.size() >= 2 ? "cross" : "lines";
+                    double ang = lines.empty() ? r.num(52, 45) : lines[0].first;
+                    double sp = lines.empty() ? r.num(41, 1) : std::abs(dot(lines[0].second, perp(direction(ang))));
+                    if (!(sp > 0)) sp = r.num(41, 1);
+                    e.angle = std::fmod(normalizeAngle(ang), 180.0);
+                    e.spacing = sp;  // drawing units for now, converted to paper mm once the scale is known
+                    e.thickness = -1;  // marks the spacing as still in drawing units
+                }
+            } else if (type == "DIMENSION") {
+                e.type = EntityType::Dimension;
+                const long t = r.integer(70) & 7;
+                std::string over = decodeText(r.str(1));
+                e.text = over == "<>" ? "" : over;
+                if (t == 0 || t == 1) {
+                    const double rot = r.num(50);
+                    e.dim = t == 1 ? DimKind::Aligned : std::abs(std::fmod(normalizeAngle(rot), 180.0)) < 1e-6 ? DimKind::Horizontal
+                            : std::abs(std::fmod(normalizeAngle(rot), 180.0) - 90) < 1e-6                          ? DimKind::Vertical
+                                                                                                                    : DimKind::Aligned;
+                    e.pts = {r.point(13), r.point(14), r.point(10)};
+                } else if (t == 4) {
+                    e.dim = DimKind::Radius;
+                    e.c = r.point(10);
+                    Vec2 on = r.point(15);
+                    e.r = distance(e.c, on);
+                    e.rotation = normalizeAngle(angleOf(on - e.c));
+                } else if (t == 3) {
+                    e.dim = DimKind::Diameter;
+                    Vec2 a = r.point(10), on = r.point(15);
+                    e.c = (a + on) / 2;
+                    e.r = distance(a, on) / 2;
+                    e.rotation = normalizeAngle(angleOf(on - e.c));
+                } else if (t == 5) {
+                    e.dim = DimKind::Angular;
+                    e.pts = {r.point(15), r.point(13), r.point(14), r.point(10)};
+                } else if (t == 2) {
+                    // two lines: 13-14 and 10-15, arc through 16
+                    Vec2 a1 = r.point(13), a2 = r.point(14), b1 = r.point(10), b2 = r.point(15);
+                    Vec2 da = a2 - a1, db = b2 - b1;
+                    double den = cross(da, db);
+                    if (std::abs(den) < 1e-12) {
+                        ++skipped["DIMENSION (parallel angular)"];
+                        return false;
+                    }
+                    double s = cross(b1 - a1, db) / den;
+                    Vec2 v = a1 + da * s;
+                    Vec2 p1 = distance(v, a2) > distance(v, a1) ? a2 : a1, p2 = distance(v, b2) > distance(v, b1) ? b2 : b1;
+                    e.dim = DimKind::Angular;
+                    e.pts = {v, p1, p2, r.point(16)};
+                } else {
+                    ++skipped["DIMENSION (ordinate)"];
+                    return false;
+                }
+            } else if (type == "ELLIPSE") {
+                e.type = EntityType::Polyline;
+                const Vec2 c = r.point(10), major = r.point(11);
+                const Vec2 minor = perp(major) * r.num(40, 1);
+                double t0 = r.num(41, 0), t1 = r.num(42, 2 * kPi);
+                while (t1 <= t0) t1 += 2 * kPi;
+                const double sweep = t1 - t0;
+                e.closed = sweep > 2 * kPi - 1e-6;
+                const int n = std::max(8, static_cast<int>(std::ceil(72 * sweep / (2 * kPi))));
+                for (int q = 0; q <= n - (e.closed ? 1 : 0); ++q) {
+                    const double t = t0 + sweep * q / n;
+                    e.pts.push_back(c + major * std::cos(t) + minor * std::sin(t));
+                }
+            } else if (type == "SPLINE") {
+                e.type = EntityType::Polyline;
+                e.pts = splinePoints(r);
+                e.closed = (r.integer(70) & 1) != 0;
+                if (e.closed && e.pts.size() > 2 && distance(e.pts.front(), e.pts.back()) < 1e-9) e.pts.pop_back();
+                if (e.pts.size() < 2) {
+                    ++skipped["SPLINE (no points)"];
+                    return false;
+                }
+            } else if (type == "SEQEND" || type == "VIEWPORT") {
+                return false;
+            } else {
+                ++skipped[type];
+                return false;
+            }
+        return true;
+    };
+
+    // blocks: name -> base point and the records of its entities
+    struct Block {
+        Vec2 base;
+        std::vector<std::size_t> items;
+    };
+    std::map<std::string, Block> blocks;
+    {
+        std::string sec;
+        Block* cur = nullptr;
+        for (std::size_t k = 0; k < records.size(); ++k) {
+            const Record& r = records[k];
+            if (r.type == "SECTION") sec = upper(r.str(2));
+            else if (r.type == "ENDSEC") sec.clear();
+            else if (sec != "BLOCKS") continue;
+            else if (r.type == "BLOCK") {
+                cur = &blocks[r.str(2)];
+                *cur = Block{r.point(10), {}};
+            } else if (r.type == "ENDBLK") {
+                cur = nullptr;
+            } else if (cur && r.type != "VERTEX" && r.type != "SEQEND") {
+                cur->items.push_back(k);
+            }
+        }
+    }
+
+    // INSERT: the block's entities placed, turned and scaled, for every row and column
+    std::function<void(const Record&, const Affine&, const std::string&, std::optional<Color>, int)> insert =
+        [&](const Record& ins, const Affine& outer, const std::string& layer, std::optional<Color> color, int depth) {
+            auto it = blocks.find(ins.str(2));
+            if (it == blocks.end() || depth > 16) {
+                ++skipped[depth > 16 ? "INSERT (nested too deep)" : "INSERT (missing block)"];
+                return;
+            }
+            const Block& blk = it->second;
+            const double sx = ins.num(41, 1), sy = ins.num(42, ins.num(41, 1)), rot = ins.num(50);
+            const long cols = std::max(1L, ins.integer(70, 1)), rows = std::max(1L, ins.integer(71, 1));
+            for (long row = 0; row < rows; ++row) {
+                for (long col = 0; col < cols; ++col) {
+                    const Affine m = outer * Affine::translate(ins.point(10)) * Affine::rotate(rot) *
+                                     Affine::translate({col * ins.num(44), row * ins.num(45)}) * Affine::scale(sx, sy) *
+                                     Affine::translate({-blk.base.x, -blk.base.y});
+                    for (std::size_t k : blk.items) {
+                        const Record& r = records[k];
+                        const std::string lay = r.str(8, "0") == "0" ? layer : r.str(8, "0");
+                        const bool byBlock = r.integer(62, 256) == 0 && !r.has(420);
+                        const std::optional<Color> col2 = byBlock ? color : entityColor(r);
+                        if (r.type == "INSERT") {
+                            insert(r, m, lay, col2, depth + 1);
+                            continue;
+                        }
+                        std::size_t idx = k;
+                        Entity e;
+                        if (!parseEntity(idx, e)) continue;
+                        e.layer = ensure(lay);
+                        e.color = col2;
+                        if (transformEntity(e, m)) doc->add(e);
+                    }
+                }
+            }
+        };
 
     for (std::size_t i = 0; i < records.size(); ++i) {
         const Record& r = records[i];
@@ -1136,272 +1615,11 @@ std::shared_ptr<Drawing> fromDxf(const std::string& text, std::string* notes, bo
             continue;
         }
 
-        const std::string& type = r.type;
-        if (type == "LINE") {
-            e.type = EntityType::Line;
-            e.pts = {r.point(10), r.point(11)};
-        } else if (type == "LWPOLYLINE") {
-            e.type = EntityType::Polyline;
-            e.closed = (r.integer(70) & 1) != 0;
-            std::vector<Vec2> verts;
-            std::vector<double> bulges;
-            for (const auto& [c, v] : r.groups) {
-                if (c == 10) {
-                    verts.push_back({std::strtod(v.c_str(), nullptr), 0});
-                    bulges.push_back(0);
-                } else if (c == 20 && !verts.empty()) {
-                    verts.back().y = std::strtod(v.c_str(), nullptr);
-                } else if (c == 42 && !bulges.empty()) {
-                    bulges.back() = std::strtod(v.c_str(), nullptr);
-                }
-            }
-            if (verts.size() < 2) continue;
-            e.pts = {verts[0]};
-            const std::size_t n = verts.size();
-            for (std::size_t j = 0; j + 1 < n + (e.closed ? 1 : 0); ++j) {
-                if (j + 1 == n && e.closed) {
-                    if (std::abs(bulges[j]) > 1e-9) {
-                        bulgePoints(e.pts, verts[j], verts[0], bulges[j]);
-                        e.pts.pop_back();  // closing point is implied
-                    }
-                } else {
-                    bulgePoints(e.pts, verts[j], verts[j + 1], bulges[j]);
-                }
-            }
-        } else if (type == "POLYLINE") {
-            const long flags = r.integer(70);
-            std::vector<Vec2> verts;
-            std::vector<double> bulges;
-            while (i + 1 < records.size() && records[i + 1].type == "VERTEX") {
-                const Record& v = records[++i];
-                if (v.integer(70) & 128) continue;  // polyface face record
-                verts.push_back(v.point(10));
-                bulges.push_back(v.num(42));
-            }
-            if (i + 1 < records.size() && records[i + 1].type == "SEQEND") ++i;
-            if (flags & (16 | 64)) {
-                ++skipped["POLYLINE (mesh)"];
-                continue;
-            }
-            if (verts.size() < 2) continue;
-            e.type = EntityType::Polyline;
-            e.closed = (flags & 1) != 0;
-            e.pts = {verts[0]};
-            for (std::size_t j = 0; j + 1 < verts.size(); ++j) bulgePoints(e.pts, verts[j], verts[j + 1], bulges[j]);
-            if (e.closed && std::abs(bulges.back()) > 1e-9) {
-                bulgePoints(e.pts, verts.back(), verts[0], bulges.back());
-                e.pts.pop_back();
-            }
-        } else if (type == "CIRCLE") {
-            e.type = EntityType::Circle;
-            e.c = r.point(10);
-            e.r = r.num(40);
-        } else if (type == "ARC") {
-            e.type = EntityType::Arc;
-            e.c = r.point(10);
-            e.r = r.num(40);
-            e.a0 = normalizeAngle(r.num(50));
-            e.a1 = normalizeAngle(r.num(51));
-        } else if (type == "POINT") {
-            e.type = EntityType::Point;
-            e.c = r.point(10);
-        } else if (type == "TEXT" || type == "ATTDEF") {
-            if (type == "ATTDEF") {
-                ++skipped[type];
-                continue;
-            }
-            e.type = EntityType::Text;
-            e.text = decodeText(r.str(1));
-            e.height = r.num(40, 1);
-            e.rotation = r.num(50);
-            const long h72 = r.integer(72), v73 = r.integer(73);
-            e.halign = h72 == 1 || h72 == 4 ? HAlign::Center : h72 == 2 ? HAlign::Right : HAlign::Left;
-            e.valign = v73 == 2 || h72 == 4 ? VAlign::Middle : v73 == 3 ? VAlign::Top : VAlign::Baseline;
-            e.c = (h72 || v73) && r.has(11) ? r.point(11) : r.point(10);
-            if (h72 == 3 || h72 == 5) {  // aligned / fit: keep the left start
-                e.halign = HAlign::Left;
-                e.c = r.point(10);
-            }
-        } else if (type == "MTEXT") {
-            e.type = EntityType::Text;
-            std::string raw;
-            for (const auto& [c, v] : r.groups) {
-                if (c == 3) raw += v;
-            }
-            raw += r.str(1);
-            e.text = decodeText(plainMtext(raw));
-            e.height = r.num(40, 1);
-            e.c = r.point(10);
-            e.rotation = r.has(50) ? r.num(50) : (r.has(11) ? angleOf(r.point(11)) : 0);
-            const long ap = r.integer(71, 1);
-            e.halign = (ap - 1) % 3 == 0 ? HAlign::Left : (ap - 1) % 3 == 1 ? HAlign::Center : HAlign::Right;
-            e.valign = ap <= 3 ? VAlign::Top : ap <= 6 ? VAlign::Middle : VAlign::Baseline;
-        } else if (type == "SOLID" || type == "TRACE") {
-            e.type = EntityType::Hatch;
-            e.pattern = "solid";
-            Vec2 p1 = r.point(10), p2 = r.point(11), p3 = r.point(12), p4 = r.has(13) ? r.point(13) : p3;
-            e.pts = {p1, p2, p4, p3};
-            if (distance(p3, p4) < 1e-12) e.pts = {p1, p2, p3};
-        } else if (type == "HATCH") {
-            e.type = EntityType::Hatch;
-            const bool solid = r.integer(70) == 1;
-            // walk the boundary paths in order; keep the loop with the largest area
-            std::vector<Vec2> bestLoop;
-            std::size_t j = 0;
-            const auto& gs = r.groups;
-            auto at = [&](std::size_t k2) { return std::strtod(gs[k2].second.c_str(), nullptr); };
-            while (j < gs.size() && gs[j].first != 91) ++j;
-            long paths = j < gs.size() ? std::strtol(gs[j].second.c_str(), nullptr, 10) : 0;
-            ++j;
-            for (long pth = 0; pth < paths && j < gs.size(); ++pth) {
-                while (j < gs.size() && gs[j].first != 92) ++j;
-                if (j >= gs.size()) break;
-                long flags = std::strtol(gs[j].second.c_str(), nullptr, 10);
-                ++j;
-                std::vector<Vec2> loop;
-                if (flags & 2) {
-                    bool hasBulge = false;
-                    long count = 0;
-                    while (j < gs.size() && gs[j].first != 93) {
-                        if (gs[j].first == 72) hasBulge = gs[j].second.find('1') != std::string::npos;
-                        ++j;
-                    }
-                    if (j < gs.size()) count = std::strtol(gs[j++].second.c_str(), nullptr, 10);
-                    std::vector<Vec2> verts;
-                    std::vector<double> bulges;
-                    while (j < gs.size() && static_cast<long>(verts.size()) <= count) {
-                        int c = gs[j].first;
-                        if (c == 10) {
-                            if (static_cast<long>(verts.size()) == count) break;
-                            verts.push_back({at(j), 0});
-                            bulges.push_back(0);
-                        } else if (c == 20 && !verts.empty()) {
-                            verts.back().y = at(j);
-                        } else if (c == 42 && hasBulge && !bulges.empty()) {
-                            bulges.back() = at(j);
-                        } else if (c == 97 || c == 92 || c == 75) {
-                            break;
-                        }
-                        ++j;
-                    }
-                    if (!verts.empty()) {
-                        loop.push_back(verts[0]);
-                        for (std::size_t q = 0; q < verts.size(); ++q) bulgePoints(loop, verts[q], verts[(q + 1) % verts.size()], bulges[q]);
-                        loop.pop_back();
-                    }
-                } else {
-                    while (j < gs.size() && gs[j].first != 93) ++j;
-                    long edges = j < gs.size() ? std::strtol(gs[j++].second.c_str(), nullptr, 10) : 0;
-                    for (long ed = 0; ed < edges && j < gs.size(); ++ed) {
-                        while (j < gs.size() && gs[j].first != 72) ++j;
-                        if (j >= gs.size()) break;
-                        long et = std::strtol(gs[j++].second.c_str(), nullptr, 10);
-                        std::map<int, double> v;
-                        while (j < gs.size() && gs[j].first != 72 && gs[j].first != 97) {
-                            if (!v.count(gs[j].first)) v[gs[j].first] = at(j);
-                            ++j;
-                        }
-                        if (et == 1) {
-                            if (loop.empty()) loop.push_back({v[10], v[20]});
-                            loop.push_back({v[11], v[21]});
-                        } else if (et == 2) {
-                            Vec2 c{v[10], v[20]};
-                            double rad = v[40], s0 = v[50], s1 = v[51];
-                            bool ccw = v.count(73) ? v[73] != 0 : true;
-                            double sweep = normalizeAngle(s1 - s0);
-                            if (sweep < 1e-9) sweep = 360;
-                            int n = std::max(2, static_cast<int>(std::ceil(sweep / 10)));
-                            for (int q = 0; q <= n; ++q) {
-                                double a = s0 + sweep * q / n;
-                                Vec2 p = c + direction(ccw ? a : -a) * rad;
-                                if (loop.empty() || distance(loop.back(), p) > 1e-9) loop.push_back(p);
-                            }
-                        } else if (et == 3 || et == 4) {
-                            if (v.count(10)) loop.push_back({v[10], v[20]});
-                        }
-                    }
-                    if (loop.size() > 2 && distance(loop.front(), loop.back()) < 1e-9) loop.pop_back();
-                }
-                if (std::abs(polygonArea(loop)) > std::abs(polygonArea(bestLoop))) bestLoop = loop;
-            }
-            if (bestLoop.size() < 3) {
-                ++skipped["HATCH (no usable boundary)"];
-                continue;
-            }
-            e.pts = bestLoop;
-            e.closed = true;
-            if (solid) {
-                e.pattern = "solid";
-            } else {
-                // pattern lines: angle of the first, spacing from its offset
-                std::vector<std::pair<double, Vec2>> lines;
-                for (std::size_t q = 0; q < gs.size(); ++q) {
-                    if (gs[q].first != 53) continue;
-                    double a = at(q);
-                    Vec2 off;
-                    for (std::size_t z = q + 1; z < gs.size() && gs[z].first != 53; ++z) {
-                        if (gs[z].first == 45) off.x = at(z);
-                        if (gs[z].first == 46) off.y = at(z);
-                    }
-                    lines.push_back({a, off});
-                }
-                e.pattern = lines.size() >= 2 ? "cross" : "lines";
-                double ang = lines.empty() ? r.num(52, 45) : lines[0].first;
-                double sp = lines.empty() ? r.num(41, 1) : std::abs(dot(lines[0].second, perp(direction(ang))));
-                if (!(sp > 0)) sp = r.num(41, 1);
-                e.angle = std::fmod(normalizeAngle(ang), 180.0);
-                e.spacing = sp;  // drawing units for now, converted to paper mm once the scale is known
-                e.thickness = -1;  // marks the spacing as still in drawing units
-            }
-        } else if (type == "DIMENSION") {
-            e.type = EntityType::Dimension;
-            const long t = r.integer(70) & 7;
-            std::string over = decodeText(r.str(1));
-            e.text = over == "<>" ? "" : over;
-            if (t == 0 || t == 1) {
-                const double rot = r.num(50);
-                e.dim = t == 1 ? DimKind::Aligned : std::abs(std::fmod(normalizeAngle(rot), 180.0)) < 1e-6 ? DimKind::Horizontal
-                        : std::abs(std::fmod(normalizeAngle(rot), 180.0) - 90) < 1e-6                          ? DimKind::Vertical
-                                                                                                                : DimKind::Aligned;
-                e.pts = {r.point(13), r.point(14), r.point(10)};
-            } else if (t == 4) {
-                e.dim = DimKind::Radius;
-                e.c = r.point(10);
-                Vec2 on = r.point(15);
-                e.r = distance(e.c, on);
-                e.rotation = normalizeAngle(angleOf(on - e.c));
-            } else if (t == 3) {
-                e.dim = DimKind::Diameter;
-                Vec2 a = r.point(10), on = r.point(15);
-                e.c = (a + on) / 2;
-                e.r = distance(a, on) / 2;
-                e.rotation = normalizeAngle(angleOf(on - e.c));
-            } else if (t == 5) {
-                e.dim = DimKind::Angular;
-                e.pts = {r.point(15), r.point(13), r.point(14), r.point(10)};
-            } else if (t == 2) {
-                // two lines: 13-14 and 10-15, arc through 16
-                Vec2 a1 = r.point(13), a2 = r.point(14), b1 = r.point(10), b2 = r.point(15);
-                Vec2 da = a2 - a1, db = b2 - b1;
-                double den = cross(da, db);
-                if (std::abs(den) < 1e-12) {
-                    ++skipped["DIMENSION (parallel angular)"];
-                    continue;
-                }
-                double s = cross(b1 - a1, db) / den;
-                Vec2 v = a1 + da * s;
-                Vec2 p1 = distance(v, a2) > distance(v, a1) ? a2 : a1, p2 = distance(v, b2) > distance(v, b1) ? b2 : b1;
-                e.dim = DimKind::Angular;
-                e.pts = {v, p1, p2, r.point(16)};
-            } else {
-                ++skipped["DIMENSION (ordinate)"];
-                continue;
-            }
-        } else {
-            ++skipped[type];
+        if (r.type == "INSERT") {
+            insert(r, Affine{}, e.layer, e.color, 0);
             continue;
         }
-        doc->add(e);
+        if (parseEntity(i, e)) doc->add(e);
     }
 
     // hosts written with the file's ids
@@ -1445,11 +1663,19 @@ std::shared_ptr<Drawing> fromDxf(const std::string& text, std::string* notes, bo
 }
 
 std::shared_ptr<Drawing> openDxf(const std::filesystem::path& path, std::string* notes, bool* hadSheetInfo) {
-    std::ifstream in(path, std::ios::binary);
-    if (!in) throw std::runtime_error("cannot open " + path.string());
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    auto doc = fromDxf(ss.str(), notes, hadSheetInfo);
+    std::string ext = path.extension().string();
+    for (auto& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    std::string text;
+    if (ext == ".dwg") {
+        text = dwgToDxf(path);
+    } else {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) throw std::runtime_error("cannot open " + path.string());
+        std::ostringstream ss;
+        ss << in.rdbuf();
+        text = ss.str();
+    }
+    auto doc = fromDxf(text, notes, hadSheetInfo);
     doc->path = path.string();
     return doc;
 }

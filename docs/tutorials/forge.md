@@ -479,7 +479,7 @@ Open a model as a mesh document. Read-only (changes nothing outside the session)
 
 | Parameter | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `path` | string | yes | | `.stl` `.obj` `.ply` `.off` `.glb` `.gltf` `.3mf` |
+| `path` | string | yes | | `.stl` `.obj` `.ply` `.off` `.glb` `.gltf` `.3mf` `.fbx` `.step` |
 
 #### forge.mesh_save
 Write the mesh, or a picture of it. Not undoable.
@@ -662,7 +662,7 @@ These make a new image (opened as a new document, written to `output` when given
 
 ## Limits
 
-- FBX, DAE, USD and .blend aren't read yet; export glTF/GLB or OBJ from the source program. Materials, textures and node names in files are not kept (geometry, normals and UVs are).
+- FBX (binary or ASCII, any version) is read and written: every mesh in the file, placed where its scene puts it, with normals and the first UV set; written files are Y-up in millimetres. Animation, skinning and cameras are dropped. DAE, USD and .blend aren't read yet; export glTF/GLB, FBX or OBJ from the source program. Materials, textures and node names in files are not kept (geometry, normals and UVs are).
 - Decimation is vertex clustering: quick and fine for LODs and props, but rougher than edge-collapse tools, it can leave non-manifold edges, and it drops UVs (`uv=` regenerates them).
 - UV projections are simple; they don't unwrap. For characters and hero props, unwrap in a modelling program.
 - `forge.seamless` blends; it doesn't synthesise new texture, so strong features near the edges ghost.

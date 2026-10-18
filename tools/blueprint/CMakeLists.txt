@@ -1,4 +1,4 @@
-add_library(wetwaresuite_blueprint src/model.cpp src/render.cpp src/dxf.cpp src/commands.cpp)
+add_library(wetwaresuite_blueprint src/model.cpp src/render.cpp src/dxf.cpp src/dwg.cpp src/commands.cpp)
 add_library(wetwaresuite::blueprint ALIAS wetwaresuite_blueprint)
 target_include_directories(wetwaresuite_blueprint PUBLIC include)
 target_link_libraries(wetwaresuite_blueprint PUBLIC wetwaresuite::core wetwaresuite::raster)

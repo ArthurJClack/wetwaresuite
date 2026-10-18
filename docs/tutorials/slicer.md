@@ -1,6 +1,6 @@
 # Slicer: from a 3D model to G-code
 
-`slicer` turns a 3D model (STL, 3MF, OBJ, PLY, OFF, glTF) into G-code for an FDM 3D printer. It knows a few common printers and filaments, works out walls, top and bottom skins, infill, skirt, brim and simple supports, and tells you how long the print takes and how much filament it uses. The simplest use is one command:
+`slicer` turns a 3D model (STL, 3MF, OBJ, PLY, OFF, glTF, FBX, STEP) into G-code for an FDM 3D printer. It knows a few common printers and filaments, works out walls, top and bottom skins, infill, skirt, brim and simple supports, and tells you how long the print takes and how much filament it uses. The simplest use is one command:
 
 ```sh
 wetwaresuite slicer.slice_file input=3DBenchy.stl printer=prusa_mk4 filament=pla
@@ -316,7 +316,7 @@ cad.save path=part.stl
 slicer.slice_file input=part.stl output=part.gcode filament=petg perimeters=4 infill=40 lay_flat=true
 ```
 
-The same job, step by step, and going through 3MF with [convert](convert.md) on the way (convert changes mesh formats: STL, OBJ, PLY, OFF, glTF, 3MF, and can render a mesh to PNG):
+The same job, step by step, and going through 3MF with [convert](convert.md) on the way (convert changes mesh formats: STL, OBJ, PLY, OFF, glTF, 3MF, FBX, STEP, and can render a mesh to PNG):
 
 ```text
 # part.txt: print a cad part (part.stl) strong, in PETG, on its side

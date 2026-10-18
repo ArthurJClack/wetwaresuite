@@ -13,6 +13,7 @@
 #include "wetwaresuite/mesh/csg.hpp"
 #include "wetwaresuite/mesh/io.hpp"
 #include "wetwaresuite/mesh/primitives.hpp"
+#include "blend.hpp"
 #include "repair.hpp"
 
 namespace wetwaresuite::cad {
@@ -39,6 +40,9 @@ FieldDef choice(std::string name, std::string help, std::vector<std::string> cho
 }
 FieldDef flag(std::string name, std::string help, bool fallback) {
     return {std::move(name), FieldKind::Bool, std::move(help), fallback ? "true" : "false", false, {}};
+}
+FieldDef words(std::string name, std::string help, std::string fallback) {
+    return {std::move(name), FieldKind::Text, std::move(help), std::move(fallback), false, {}};
 }
 FieldDef points(std::string name, std::string help, bool required) {
     return {std::move(name), FieldKind::Points, std::move(help), {}, required, {}};
@@ -171,6 +175,26 @@ std::vector<FeatureType> buildTypes() {
                   num("z", "move Z", "0"), num("rx", "rotate about X", "0"), num("ry", "rotate about Y", "0"),
                   num("rz", "rotate about Z", "0"), num("scale", "uniform scale", "1"), num("cx", "pivot X", "0"),
                   num("cy", "pivot Y", "0"), num("cz", "pivot Z", "0")}});
+    t.push_back({"fillet", "Fillet",
+                 "Round the sharp edges of a feature with radius: outer edges are cut round, inner edges filled round. "
+                 "Pick edges by kind (edges=top,vertical) or by points near them (near=0,0,5). Where three rounded outer edges "
+                 "meet, the corner becomes a ball.",
+                 {ref("target", "feature to round"), num("radius", "fillet radius", {}, true), words("edges", "which edges: all, outer, inner, top, bottom, vertical, horizontal, x, y, z (comma-separated, combined)", "all"),
+                  words("near", "instead of edges: points x,y,z,x,y,z,... picking the edge closest to each (cad.edges lists them)", ""),
+                  num("angle", "only edges whose faces meet at this many degrees or more", "30"),
+                  integer("segments", "segments per quarter circle", "8")}});
+    t.push_back({"chamfer", "Chamfer",
+                 "Bevel the sharp edges of a feature: distance is measured along both faces from the edge. Outer edges are cut, "
+                 "inner edges filled. Pick edges like fillet does.",
+                 {ref("target", "feature to bevel"), num("distance", "chamfer size along each face", {}, true), words("edges", "which edges: all, outer, inner, top, bottom, vertical, horizontal, x, y, z (comma-separated, combined)", "all"),
+                  words("near", "instead of edges: points x,y,z,x,y,z,... picking the edge closest to each (cad.edges lists them)", ""),
+                  num("angle", "only edges whose faces meet at this many degrees or more", "30")}});
+    t.push_back({"shell", "Shell",
+                 "Hollow a feature out, leaving walls of thickness. open removes the outermost faces facing those ways "
+                 "(top, bottom, front, back, left, right or +x -x +y -y +z -z; comma-separated), e.g. open=top makes a box "
+                 "into a tray.",
+                 {ref("target", "feature to hollow"), num("thickness", "wall thickness", {}, true),
+                  words("open", "faces to remove: top, bottom, front, back, left, right, +x, -x, ...", "")}});
     return t;
 }
 
@@ -381,11 +405,10 @@ struct Ctx {
     }
 };
 
-// CSG can leave zero-volume "fins": two triangles on the same three vertices
-// with opposite winding. They enclose nothing, so dropping both pairs keeps
+// CSG can leave zero-volume "fins": triangles on the same three vertices with
+// opposite winding. They enclose nothing, so dropping each opposite pair keeps
 // the solid and makes it watertight again.
-Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
-    Mesh m = mesh::booleanOp(a, b, op);
+bool dropFins(Mesh& m) {
     std::map<std::array<std::uint32_t, 3>, std::vector<std::size_t>> byCorners;
     for (std::size_t t = 0; t < m.triangleCount(); ++t) {
         std::array<std::uint32_t, 3> k{m.indices[t * 3], m.indices[t * 3 + 1], m.indices[t * 3 + 2]};
@@ -395,23 +418,34 @@ Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
     std::vector<bool> drop(m.triangleCount(), false);
     bool any = false;
     for (const auto& [k, tris] : byCorners) {
-        if (tris.size() != 2) continue;
+        if (tris.size() < 2) continue;
+        // split by winding: same cyclic order as the first = same side
+        std::vector<std::size_t> same, flipped;
         const auto* a0 = &m.indices[tris[0] * 3];
-        const auto* b0 = &m.indices[tris[1] * 3];
-        // same cyclic order = same winding; only opposite pairs are fins
-        bool same = false;
-        for (int r = 0; r < 3; ++r) same = same || (a0[0] == b0[r] && a0[1] == b0[(r + 1) % 3] && a0[2] == b0[(r + 2) % 3]);
-        if (same) continue;
-        drop[tris[0]] = drop[tris[1]] = true;
-        any = true;
+        for (std::size_t t : tris) {
+            const auto* b0 = &m.indices[t * 3];
+            bool s = false;
+            for (int r = 0; r < 3; ++r) s = s || (a0[0] == b0[r] && a0[1] == b0[(r + 1) % 3] && a0[2] == b0[(r + 2) % 3]);
+            (s ? same : flipped).push_back(t);
+        }
+        for (std::size_t i = 0; i < std::min(same.size(), flipped.size()); ++i) {
+            drop[same[i]] = drop[flipped[i]] = true;
+            any = true;
+        }
     }
-    if (!any) return m;
+    if (!any) return false;
     std::vector<std::uint32_t> kept;
     for (std::size_t t = 0; t < m.triangleCount(); ++t) {
         if (!drop[t]) kept.insert(kept.end(), {m.indices[t * 3], m.indices[t * 3 + 1], m.indices[t * 3 + 2]});
     }
     m.indices = std::move(kept);
     mesh::cleanup(m);
+    return true;
+}
+
+Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
+    Mesh m = mesh::booleanOp(a, b, op);
+    dropFins(m);
     return m;
 }
 
@@ -448,11 +482,22 @@ Mesh tidy(Mesh m) {
     return m;
 }
 
+// Long sliver triangles (flat faces read from STEP or other programs) can
+// leave crumbs a hundred-thousandth of a millimetre across where a cut crosses
+// them; merging points that close and dropping the fins that leaves closes it.
+bool mend(Mesh& m, double d) {
+    mesh::weld(m, d * 1e-6);
+    dropFins(m);
+    m = tidy(std::move(m));
+    return !m.empty() && clean(m);
+}
+
 Mesh csg(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
     Mesh m = tidy(csgOnce(a, b, op));
     if (m.empty() || clean(m) || !mesh::isWatertight(a) || !mesh::isWatertight(b)) return m;
     const mesh::Bounds bb = mesh::bounds(b);
     const double d = std::max(mesh::bounds(a).diagonal(), bb.diagonal());
+    if (Mesh r = m; mend(r, d)) return r;
     const Vec3 c = bb.center(), skew = normalize(Vec3{1, 0.618, 0.382});
     const Mat4 nudges[] = {Mat4::translate(c) * Mat4::rotateAxis(skew, 1e-5) * Mat4::translate(-c),
                            Mat4::translate(skew * (d * 1e-7)), Mat4::translate(Vec3{-0.382, 1, -0.618} * (d * 3e-7)),
@@ -755,6 +800,52 @@ Built buildOperation(const Ctx& c, const std::map<std::string, CadDoc::Cached>& 
                        Mat4::translate(-pivot);
         return {share(placed(*target.mesh, m)), {}};
     }
+    if (type == "fillet" || type == "chamfer") {
+        if (!target.mesh) return {};
+        const double angle = c.number("angle");
+        if (!(angle > 0 && angle < 180)) c.fail("angle must be between 0 and 180 degrees");
+        std::vector<Vec3> near;
+        const auto items = splitList(c.text("near"));
+        if (items.size() % 3 != 0) c.fail("near must be x,y,z triples");
+        for (std::size_t i = 0; i < items.size(); i += 3) {
+            try {
+                near.push_back({c.doc.eval(items[i]), c.doc.eval(items[i + 1]), c.doc.eval(items[i + 2])});
+            } catch (const ExprError& e) {
+                c.fail(std::string("near: ") + e.what());
+            }
+        }
+        try {
+            const auto all = detail::sharpEdges(*target.mesh, angle);
+            const auto edges = detail::pickEdges(*target.mesh, all, splitList(c.text("edges")), near);
+            if (edges.empty()) c.fail("no edges matched (cad.edges lists the sharp edges)");
+            const bool chamfer = type == "chamfer";
+            return {share(detail::blendEdges(*target.mesh, edges, c.number(chamfer ? "distance" : "radius"), chamfer,
+                                             chamfer ? 1 : c.whole("segments", 1, 64), csg)),
+                    {}};
+        } catch (const std::invalid_argument& e) {
+            c.fail(e.what());
+        } catch (const std::runtime_error& e) {
+            const std::string what = e.what();
+            if (what.rfind("feature ", 0) == 0) throw;
+            c.fail(what);
+        }
+    }
+    if (type == "shell") {
+        if (!target.mesh) return {};
+        std::vector<Vec3> open;
+        for (const auto& name : splitList(c.text("open"))) {
+            Vec3 d;
+            if (!detail::directionByName(name, d)) c.fail("open: unknown side '" + name + "' (top, bottom, front, back, left, right, +x, -x, ...)");
+            open.push_back(d);
+        }
+        try {
+            return {share(detail::shell(*target.mesh, c.number("thickness"), open, csg)), {}};
+        } catch (const std::runtime_error& e) {
+            const std::string what = e.what();
+            if (what.rfind("feature ", 0) == 0) throw;
+            c.fail(what);
+        }
+    }
     c.fail("unknown feature type " + type);
 }
 
@@ -980,7 +1071,7 @@ std::shared_ptr<CadDoc> openCad(const std::filesystem::path& path) {
         doc->features.push_back(std::move(f));
         doc->regenerate();
     } else {
-        throw std::runtime_error("cad opens .wwcad files and meshes (stl obj ply off glb gltf 3mf), not " + path.string());
+        throw std::runtime_error("cad opens .wwcad files, STEP and meshes (step stp stl obj ply off glb gltf 3mf fbx), not " + path.string());
     }
     doc->path = path.string();
     return doc;

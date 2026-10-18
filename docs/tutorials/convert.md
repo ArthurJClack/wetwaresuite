@@ -16,24 +16,26 @@ wetwaresuite converts images and SVG itself. For everything else it hands the jo
 | --- | --- | --- |
 | PNG, JPEG, BMP, TGA, GIF, PSD, HDR, PNM, ORA to PNG, JPEG, BMP, TGA, PPM, ORA | built-in raster engine | yes |
 | SVG to PNG, JPEG, BMP, TGA, PPM (or a cleaned-up SVG) | the suite's [vector](vector.md) tool | yes |
-| audio, video, and extra image formats (WebP, AVIF, HEIC, TIFF, ICO, JXL, EXR) | [ffmpeg](https://ffmpeg.org) | optional |
+| audio, video, and extra image formats (AVIF, HEIC, ICO, JXL, EXR) | [ffmpeg](https://ffmpeg.org) | optional |
 | Word, Excel, PowerPoint, OpenDocument, RTF and friends | [LibreOffice](https://www.libreoffice.org) (`soffice`) | optional |
 | Markdown, HTML, reStructuredText, LaTeX, Org, EPUB, plain text | [pandoc](https://pandoc.org) | optional |
+| 3D: STEP, STL, OBJ, PLY, OFF, glTF/GLB, 3MF, FBX (to each other, or to a picture) | built-in mesh engine | yes |
 
 The helper programs just need to be on your `PATH`. On Debian or Ubuntu: `sudo apt install ffmpeg libreoffice-writer pandoc` (add `libreoffice-calc` and `libreoffice-impress` for spreadsheets and slides). On macOS with Homebrew: `brew install ffmpeg pandoc` and `brew install --cask libreoffice`. On Windows: `winget install ffmpeg`, `winget install TheDocumentFoundation.LibreOffice` and `winget install pandoc`.
 
-3D and CAD formats (OBJ, STL, STEP, ...) arrive with later tools; asking for them gives a clear "coming in phase 3" message.
+STEP files from other CAD programs come in as fine triangles (curved faces tessellated), and a mesh written to STEP keeps flat faces whole, so `convert.file input=part.stl output=part.step` gives FreeCAD or Fusion a solid. IGES, Collada, USD, Blender and 3DS files aren't built in; export them to STEP, glTF or STL from the program that made them.
 
 ### What is available on this machine?
 
 ```sh
 $ wetwaresuite convert.formats
-images (built in, ready): bmp, gif, hdr, jpeg, jpg, ora, pgm, pic, png, pnm, ppm, psd, tga -> bmp, jpeg, jpg, ora, png, ppm, tga
+images (built in, ready): bmp, gif, hdr, jpeg, jpg, ora, pgm, pic, png, pnm, ppm, psd, tga, tif, tiff, webp -> bmp, jpeg, jpg, ora, png, ppm, tga, tif, tiff, webp
 svg (vector tool, ready): svg -> bmp, jpeg, jpg, png, ppm, svg, tga
 audio/video/more images (ffmpeg, ready): aac, ac3, aif, aiff, amr, flac, m4a, mp3, ogg, opus, wav, wma, 3gp, avi, flv, gif, m4v, mkv, mov, mp4, mpeg, mpg, ts, webm, wmv, avif, exr, heic, heif, ico, jxl, tif, tiff, webp
 office documents (LibreOffice, ready): doc, docx, key, numbers, odp, ods, odt, pages, ppt, pptx, rtf, wpd, xls, xlsx -> csv, doc, docx, epub, html, odp, ods, odt, pdf, ppt, pptx, rtf, txt, xls, xlsx
 markup (pandoc, ready): docx, epub, htm, html, markdown, md, odt, org, rst, tex, txt -> docx, epub, html, md, odt, org, pdf, rst, tex, txt
-3D and CAD: coming with asset forge and cad (phase 3)
+3D meshes (built in, ready): 3mf, fbx, glb, gltf, obj, off, ply, step, stl, stp -> 3mf, fbx, glb, gltf, obj, off, ply, step, stl, stp, or rendered to bmp, jpeg, jpg, png, ppm, tga
+other 3D and CAD (3ds, blend, dae, iges, igs, usd, usda, usdc, usdz, wrl, x3d): not built in yet
 ffmpeg: true
 libreoffice: true
 pandoc: true
@@ -166,7 +168,7 @@ failed: 0
 - Existing outputs are never replaced unless you pass `overwrite=true`; running the same command twice reports each file as `already exists` and exits with 1.
 - If a folder holds `photo.png` and `photo.jpg`, both map to the same output name; the second one is reported as `already exists`.
 
-Transparency becomes white in JPEG. To WebP, AVIF or TIFF instead, just change `to=` (these use ffmpeg).
+Transparency becomes white in JPEG. To WebP or TIFF instead, just change `to=` (both built in); AVIF uses ffmpeg.
 
 **Batch.** In a script, mix conversions with other steps:
 
@@ -197,7 +199,7 @@ Use `scale` rather than `width` or `height`: for SVG input those are currently i
 - `convert.file` never overwrites unless `overwrite=true`, and refuses to write over its own input.
 - It creates missing output folders for you.
 - The output needs an extension (`output=out` fails with a hint).
-- [photo](photo.md) opens only the built-in image formats; to edit a WebP, TIFF or HEIC, convert it to PNG first.
+- [photo](photo.md) opens only the built-in image formats (WebP and TIFF included); to edit a HEIC or AVIF, convert it to PNG first.
 - `convert` commands do not open documents, so they are not part of undo history.
 
 ## Command reference

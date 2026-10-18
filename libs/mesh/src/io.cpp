@@ -619,12 +619,12 @@ std::string writeOff(const Mesh& m) {
 // ---- dispatch ----
 
 const std::vector<std::string>& readableExtensions() {
-    static const std::vector<std::string> v = {"stl", "obj", "ply", "off", "glb", "gltf", "3mf"};
+    static const std::vector<std::string> v = {"stl", "obj", "ply", "off", "glb", "gltf", "3mf", "fbx", "step", "stp"};
     return v;
 }
 
 const std::vector<std::string>& writableExtensions() {
-    static const std::vector<std::string> v = {"stl", "obj", "ply", "off", "glb", "gltf", "3mf"};
+    static const std::vector<std::string> v = {"stl", "obj", "ply", "off", "glb", "gltf", "3mf", "fbx", "step", "stp"};
     return v;
 }
 
@@ -645,8 +645,10 @@ Mesh decode(const std::string& bytes, const std::string& extIn, const std::files
     if (ext == "ply") return readPly(bytes);
     if (ext == "off") return readOff(bytes);
     if (ext == "glb" || ext == "gltf") return readGltf(bytes, baseDir);
+    if (ext == "fbx") return readFbx(bytes);
+    if (ext == "step" || ext == "stp") return readStep(bytes);
     if (ext == "3mf") return read3mf(bytes);
-    throw std::runtime_error("can't read ." + ext + " meshes (readable: stl, obj, ply, off, glb, gltf, 3mf)");
+    throw std::runtime_error("can't read ." + ext + " meshes (readable: stl, obj, ply, off, glb, gltf, 3mf, fbx, step)");
 }
 
 std::string encode(const Mesh& mesh, const std::string& extIn, const SaveOptions& o) {
@@ -656,9 +658,11 @@ std::string encode(const Mesh& mesh, const std::string& extIn, const SaveOptions
     if (ext == "ply") return writePly(mesh, o.ascii);
     if (ext == "off") return writeOff(mesh);
     if (ext == "glb") return writeGlb(mesh);
+    if (ext == "fbx") return writeFbx(mesh);
+    if (ext == "step" || ext == "stp") return writeStep(mesh);
     if (ext == "gltf") return writeGltf(mesh);
     if (ext == "3mf") return write3mf(mesh);
-    throw std::runtime_error("can't write ." + ext + " meshes (writable: stl, obj, ply, off, glb, gltf, 3mf)");
+    throw std::runtime_error("can't write ." + ext + " meshes (writable: stl, obj, ply, off, glb, gltf, 3mf, fbx, step)");
 }
 
 Mesh load(const std::filesystem::path& path) {

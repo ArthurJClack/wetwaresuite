@@ -425,7 +425,7 @@ void registerCommands(Session& session) {
     Session* s = &session;
 
     std::vector<ParamSpec> loadParams = {
-        {"path", ParamType::String, "model file: stl, obj, ply, off, 3mf, glb or gltf", false},
+        {"path", ParamType::String, "model file: stl, obj, ply, off, 3mf, glb, gltf, fbx or step", false},
         {"mesh", ParamType::String, "or the id of a mesh already open in this session (e.g. mesh1 from cad)", false},
         {"lay_flat", ParamType::Bool, "turn the largest flat face down first", false, {}, false},
         num("scale", "scale factor, e.g. 25.4 for a model drawn in inches"),
@@ -688,7 +688,7 @@ void registerCommands(Session& session) {
             }));
 
     std::vector<ParamSpec> oneShot = {
-        {"input", ParamType::String, "model file: stl, obj, ply, off, 3mf, glb or gltf", true},
+        {"input", ParamType::String, "model file: stl, obj, ply, off, 3mf, glb, gltf, fbx or step", true},
         {"output", ParamType::String, "G-code file to write (default: input with .gcode)", false},
         {"lay_flat", ParamType::Bool, "turn the largest flat face down first", false, {}, false},
         num("scale", "scale factor"),

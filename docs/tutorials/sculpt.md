@@ -444,7 +444,7 @@ All editing commands take `doc=` (or `input=`/`output=`) plus `preview=true` to 
 | Command | Parameters | What it does |
 | --- | --- | --- |
 | `sculpt.new` | `shape` sphere/cube/plane (sphere), `level` (4), `size` (2) | New sculpt from a primitive. Sphere: icosphere, 20 x 4^level triangles, `size` is the diameter. Cube: 12 x 4^level, a grid on each face. Plane: 2 x 4^level in XY facing +Z, with UVs. Read-only (makes a new document). |
-| `sculpt.open` | `path` | Opens a model (stl, obj, ply, off, glb, gltf, 3mf) welded for sculpting. Read-only. |
+| `sculpt.open` | `path` | Opens a model (stl, obj, ply, off, glb, gltf, 3mf, fbx, step) welded for sculpting. Read-only. |
 | `sculpt.copy` | `source` | New sculpt from any open mesh (forge, cad, another sculpt), leaving the source alone. Read-only. |
 | `sculpt.close` | `doc` | Closes a document. |
 

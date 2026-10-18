@@ -175,7 +175,7 @@ TimeValue parseTime(const std::string& text) {
 
 bool inGroup(const std::string& type, const std::string& ext, const std::string& want) {
     if (want == "mesh") {
-        static const std::set<std::string> meshes = {"stl", "obj", "ply", "off", "gltf", "glb", "3mf", "fbx", "dae", "usd", "usdz", "blend"};
+        static const std::set<std::string> meshes = {"stl", "obj", "ply", "off", "gltf", "glb", "3mf", "fbx", "step", "stp", "dae", "usd", "usdz", "blend"};
         return meshes.count(ext) > 0;
     }
     if (want == "picture") return type == "image" || type == "raw" || type == "texture";

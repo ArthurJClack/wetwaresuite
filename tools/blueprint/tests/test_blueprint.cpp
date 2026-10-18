@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <sstream>
@@ -513,6 +514,147 @@ void testFiles() {
         threw = true;
     }
     CHECK(threw);
+
+    // blocks: INSERT with scale, rotation, an array, a nested block, layer 0 inheritance; ELLIPSE, SPLINE, ATTRIB
+    const std::string blk =
+        "0\nSECTION\n2\nBLOCKS\n"
+        "0\nBLOCK\n8\n0\n2\nBOX\n70\n0\n10\n1\n20\n1\n"
+        "0\nLWPOLYLINE\n8\n0\n90\n4\n70\n1\n10\n1\n20\n1\n10\n3\n20\n1\n10\n3\n20\n2\n10\n1\n20\n2\n"
+        "0\nCIRCLE\n8\nHOLES\n62\n0\n10\n2\n20\n1.5\n40\n0.25\n"
+        "0\nATTDEF\n8\n0\n10\n1\n20\n1\n40\n1\n1\nX\n2\nTAG\n"
+        "0\nENDBLK\n8\n0\n"
+        "0\nBLOCK\n8\n0\n2\nPAIR\n70\n0\n10\n0\n20\n0\n"
+        "0\nINSERT\n8\n0\n2\nBOX\n10\n0\n20\n0\n"
+        "0\nINSERT\n8\n0\n2\nBOX\n10\n10\n20\n0\n"
+        "0\nENDBLK\n8\n0\n"
+        "0\nENDSEC\n"
+        "0\nSECTION\n2\nENTITIES\n"
+        // BOX at (100,0), doubled, turned 90 degrees, red (ByBlock circle takes it)
+        "0\nINSERT\n8\nPARTS\n62\n1\n66\n1\n2\nBOX\n10\n100\n20\n0\n41\n2\n42\n2\n50\n90\n"
+        "0\nATTRIB\n8\nPARTS\n10\n100\n20\n0\n40\n1\n1\nA-17\n2\nTAG\n"
+        "0\nSEQEND\n8\nPARTS\n"
+        // BOX 3 columns x 2 rows, 5 apart
+        "0\nINSERT\n8\nGRID\n2\nBOX\n10\n0\n20\n50\n70\n3\n71\n2\n44\n5\n45\n5\n"
+        // nested: PAIR = two BOXes
+        "0\nINSERT\n8\nNEST\n2\nPAIR\n10\n0\n20\n100\n"
+        // BOX squashed: circle becomes a polyline
+        "0\nINSERT\n8\nSQ\n2\nBOX\n10\n0\n20\n200\n41\n2\n42\n1\n"
+        "0\nELLIPSE\n8\n0\n10\n0\n20\n0\n11\n10\n21\n0\n40\n0.5\n41\n0\n42\n6.283185307179586\n"
+        // a degree-1 spline through four control points is the polyline itself
+        "0\nSPLINE\n8\n0\n70\n0\n71\n1\n72\n6\n73\n4\n40\n0\n40\n0\n40\n1\n40\n2\n40\n3\n40\n3\n"
+        "10\n0\n20\n0\n10\n1\n20\n1\n10\n2\n20\n0\n10\n3\n20\n1\n"
+        // a clamped quadratic: starts and ends at its end control points, bends toward the middle one
+        "0\nSPLINE\n8\n0\n70\n8\n71\n2\n72\n6\n73\n3\n40\n0\n40\n0\n40\n0\n40\n1\n40\n1\n40\n1\n"
+        "10\n0\n20\n0\n10\n5\n20\n10\n10\n10\n20\n0\n"
+        "0\nENDSEC\n0\nEOF\n";
+    std::string bnotes;
+    auto bd = fromDxf(blk, &bnotes);
+    auto onLayer = [&](const std::string& l) {
+        std::vector<const Entity*> out;
+        for (const auto& e : bd->entities) {
+            if (e.layer == l) out.push_back(&e);
+        }
+        return out;
+    };
+    {
+        auto parts = onLayer("PARTS");
+        auto holes = onLayer("HOLES");
+        CHECK(parts.size() == 2 && holes.size() == 10);  // box + attrib; one hole per placed box
+        const Entity* box = parts[0]->type == EntityType::Polyline ? parts[0] : parts[1];
+        const Entity* tag = parts[0]->type == EntityType::Text ? parts[0] : parts[1];
+        CHECK(tag->text == "A-17");
+        // (1,1)-(3,2) about base (1,1), x2 and turned 90: x in [98,100], y in [0,4]
+        double x0 = 1e9, x1 = -1e9, y0 = 1e9, y1 = -1e9;
+        for (auto p : box->pts) {
+            x0 = std::min(x0, p.x), x1 = std::max(x1, p.x), y0 = std::min(y0, p.y), y1 = std::max(y1, p.y);
+        }
+        CHECK(near(x0, 98) && near(x1, 100) && near(y0, 0) && near(y1, 4));
+        CHECK(!box->color);  // ByLayer on layer 0 follows the insert's layer, not its colour
+        const Entity* hole = nullptr;
+        for (auto h : holes) {
+            if (h->c.x > 90) hole = h;
+        }
+        // the hole keeps its own layer, takes the insert's colour (ByBlock), and doubles in size
+        CHECK(hole && hole->type == EntityType::Circle && near(hole->r, 0.5) && near(hole->c.x, 99) && near(hole->c.y, 2));
+        CHECK(hole && hole->color && *hole->color == (Color{255, 0, 0, 255}));
+    }
+    CHECK(onLayer("GRID").size() == 6);
+    {
+        double maxX = -1e9, maxY = -1e9;
+        for (auto e : onLayer("GRID")) {
+            for (auto p : e->pts) maxX = std::max(maxX, p.x), maxY = std::max(maxY, p.y);
+        }
+        CHECK(near(maxX, 12) && near(maxY, 56));  // last column at x 10, last row at y 55
+    }
+    CHECK(onLayer("NEST").size() == 2);
+    {
+        int squashed = 0;
+        for (const auto& e : bd->entities) {
+            if (e.type == EntityType::Polyline && e.closed && e.pts.size() > 8 && e.layer == "HOLES") ++squashed;
+        }
+        CHECK(squashed == 1);
+    }
+    {
+        const Entity* ell = nullptr;
+        std::vector<const Entity*> splines;
+        for (auto e : onLayer("0")) {
+            if (e->closed) ell = e;
+            else splines.push_back(e);
+        }
+        CHECK(ell && near(std::abs(polygonArea(ell->pts)), kPi * 10 * 5, 1.0));
+        CHECK(splines.size() == 2);
+        if (splines.size() == 2) {
+            const auto& lin = splines[0]->pts;
+            CHECK(near(lin.front().x, 0) && near(lin.back().x, 3) && near(lin.back().y, 1));
+            bool hasCorner = false;
+            for (auto p : lin) hasCorner = hasCorner || (near(p.x, 2) && near(p.y, 0));
+            CHECK(hasCorner);
+            const auto& q = splines[1]->pts;
+            double top = 0;
+            for (auto p : q) top = std::max(top, p.y);
+            CHECK(near(q.front().x, 0) && near(q.back().x, 10) && near(top, 5, 1e-6));  // a quadratic peaks halfway
+        }
+    }
+    CHECK(bnotes.find("ATTDEF") == std::string::npos && bnotes.find("ELLIPSE") == std::string::npos);
+
+    // ---- DWG through a converter ----
+    {
+        const char* oldPath = std::getenv("PATH");
+        const std::string savedPath = oldPath ? oldPath : "";
+        const fs::path empty = tmp("nobin");
+        fs::remove_all(empty);
+        fs::create_directories(empty);
+#ifdef _WIN32
+        _putenv_s("PATH", empty.string().c_str());
+#else
+        setenv("PATH", empty.string().c_str(), 1);
+#endif
+        Result none = s.run("blueprint.save", {{"doc", bp}, {"path", Value{tmp("house.dwg").string()}}});
+        CHECK(!none.ok && none.message.find("LibreDWG") != std::string::npos);
+#ifndef _WIN32
+        // stand-ins for LibreDWG that copy the file through: the plumbing is what's tested here
+        for (const char* name : {"dwg2dxf", "dxf2dwg"}) {
+            const fs::path script = empty / name;
+            std::ofstream(script) << "#!/bin/sh\n# -y -o OUT IN\n/bin/cp \"$4\" \"$3\"\n";
+            fs::permissions(script, fs::perms::owner_all);
+        }
+        CHECK(dwgSupported());
+        const fs::path dwg = tmp("house.dwg");
+        fs::remove(dwg);
+        Result saved = s.run("blueprint.save", {{"doc", bp}, {"path", Value{dwg.string()}}});
+        CHECK(saved.ok && fs::exists(dwg));
+        Result opened = s.run("blueprint.open", {{"path", Value{dwg.string()}}});
+        CHECK(opened.ok);
+        if (opened.ok) CHECK(drawing(s, textField(opened, "doc"))->entities.size() == doc->entities.size());
+        const fs::path pdf2 = tmp("house_dwg.pdf");
+        CHECK(s.run("blueprint.convert", {{"input", Value{dwg.string()}}, {"output", Value{pdf2.string()}}}).ok && fs::exists(pdf2));
+#endif
+#ifdef _WIN32
+        _putenv_s("PATH", savedPath.c_str());
+#else
+        setenv("PATH", savedPath.c_str(), 1);
+#endif
+    }
 
     // ---- SVG ----
     const fs::path svg = tmp("house.svg");

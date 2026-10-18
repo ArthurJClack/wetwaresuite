@@ -383,9 +383,11 @@ The extension of `path` picks the format:
 | `.ora` | yes | OpenRaster; opens in the suite, Krita, GIMP and MyPaint |
 | `.png` | no | lossless, keeps transparency |
 | `.jpg` / `.jpeg` | no | `quality` 1..100 (default 90); transparency becomes white |
+| `.webp` | no | `quality` 1..99 is lossy, `quality=100` is lossless; keeps transparency |
+| `.tif` / `.tiff` | no | lossless (Deflate), 8-bit RGB or RGBA |
 | `.bmp`, `.tga`, `.ppm` | no | |
 
-Other formats (WebP, TIFF, AVIF, HEIC) go through [convert](convert.md): save a PNG, then `wetwaresuite convert.file input=out.png output=out.webp`.
+Opening also reads TIFFs from scanners and cameras (1 to 16-bit and float, gray, RGB, palette or CMYK, uncompressed, LZW, PackBits or Deflate, strips or tiles; the first page of a multi-page file) and still WebP. JPEG-compressed TIFFs and animated WebP aren't read. Other formats (AVIF, HEIC) go through [convert](convert.md): save a PNG, then `wetwaresuite convert.file input=out.png output=out.avif`.
 
 In a CLI run, `photo.preview` (and `preview=true`) only reports the size of the PNG it made; previews are meant for Claude. To look at a result yourself, save it.
 

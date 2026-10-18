@@ -23,11 +23,13 @@ what it printed (long outputs are shortened with `...`).
 5. [task: export for 3D printing](#5-task-export-for-3d-printing)
 6. [task: measure a part](#6-task-measure-a-part)
 7. [task: a flange with a circular bolt pattern](#7-task-a-flange-with-a-circular-bolt-pattern)
-8. [editing the tree: suppress, rename, delete, undo](#8-editing-the-tree-suppress-rename-delete-undo)
-9. [expressions](#9-expressions)
-10. [how features combine](#10-how-features-combine)
-11. [command reference](#11-command-reference)
-12. [limits and troubleshooting](#12-limits-and-troubleshooting)
+8. [task: round, bevel and hollow a part](#8-task-round-bevel-and-hollow-a-part)
+9. [task: STEP files in and out](#9-task-step-files-in-and-out)
+10. [editing the tree: suppress, rename, delete, undo](#10-editing-the-tree-suppress-rename-delete-undo)
+11. [expressions](#11-expressions)
+12. [how features combine](#12-how-features-combine)
+13. [command reference](#13-command-reference)
+14. [limits and troubleshooting](#14-limits-and-troubleshooting)
 
 ## 1. the ideas you need
 
@@ -543,7 +545,115 @@ six counterbored M6 holes on the bolt circle; tell me its weight."* It calls
 `cad_hole`, `cad_pattern_circular` with `preview: true` and `view: "top"`, then
 `cad_measure_mass` with `density: "2.70"`.
 
-## 8. editing the tree: suppress, rename, delete, undo
+## 8. task: round, bevel and hollow a part
+
+A storage tray: a 60 x 40 x 25 mm block with rounded corners, hollowed to
+2 mm walls with the top open, a small bevel round the foot and a soft lip.
+
+```text
+# tray.txt: fillet, shell and chamfer
+cad.new -> t
+cad.param_set doc=$t name=wall value=2
+cad.extrude_rect doc=$t name=block width=60 depth=40 height=25
+cad.edges doc=$t feature=block
+cad.fillet doc=$t name=round target=block radius=4 edges=vertical
+cad.shell doc=$t name=tray target=round thickness=wall open=top
+cad.chamfer doc=$t name=bevel target=tray distance=1 edges=bottom
+cad.fillet doc=$t name=lip target=bevel radius=0.8 edges=top
+cad.measure_mass doc=$t
+cad.save doc=$t path=tray.step
+cad.save doc=$t path=tray.png size=500
+```
+
+```
+added extrude_rect block (1 body, volume 60000 mm^3)
+12 sharp edges (12 outer, 0 inner)
+  1: 30,0,0  length 60, along x, outer, 90 deg
+  2: 0,20,0  length 40, along y, outer, 90 deg
+  ...
+  5: 0,0,12.5  length 25, along z, outer, 90 deg
+  ...
+added fillet round (1 body, volume 59648.6 mm^3)
+added shell tray (1 body, volume 13364.3 mm^3)
+added chamfer bevel (1 body, volume 13268.8 mm^3)
+added fillet lip (1 body, volume 13216.5 mm^3)
+volume 13216.5 mm^3 (13.2165 cm^3), area 13507.2 mm^2, mass 16.5206 g at 1.25 g/cm^3
+saved tray.step
+saved tray.png
+```
+
+How the edges are picked:
+
+- `edges=` names kinds of edge, comma-separated and combined: `all` (the
+  default), `outer` (convex, cut away), `inner` (concave, filled in), `top`
+  and `bottom` (edges lying on the highest or lowest Z), `vertical`,
+  `horizontal`, `x`, `y`, `z`.
+- `near=x,y,z,...` picks the edge closest to each point instead. `cad.edges`
+  lists every sharp edge with its midpoint, so copy a midpoint from there:
+  `cad.chamfer doc=$t target=block distance=2 near=30,0,25` bevels just the
+  front top edge.
+- `angle` (30 degrees by default) is how sharply two faces have to meet to
+  count as an edge, so the facets of a cylinder aren't rounded one by one but
+  its rim is.
+
+A round rim (like the tray's foot after the corners were rounded) is swept as
+one piece, and where three rounded outer edges meet at a corner the corner
+becomes a ball. Inner edges (an L-bracket's inside corner) are filled with a
+round instead of cut.
+
+`cad.shell` moves every face inwards by `thickness` and keeps the skin. `open`
+names the outermost faces to remove, `top bottom front back left right` or
+`+x -x +y -y +z -z`, comma-separated; leave it out for a closed hollow part.
+Order matters: shell before small chamfers. A wall thicker than a narrow face
+(here the 1 mm chamfer) would turn that face inside out, and the shell stops
+with "thickness is too large for this shape".
+
+Asking Claude: *"Make a 60 by 40 by 25 mm tray with 2 mm walls, rounded
+corners and a soft top edge, and save it as STEP."* It calls `cad_new`,
+`cad_extrude_rect`, `cad_fillet` with `edges: "vertical"`, `cad_shell` with
+`open: "top"`, another `cad_fillet` with `edges: "top"`, then `cad_save` with
+`path: "tray.step"`.
+
+## 9. task: STEP files in and out
+
+STEP (`.step`, `.stp`) is what other CAD programs (FreeCAD, Fusion, SolidWorks,
+Onshape) trade solids in.
+
+**Export.** `cad.save path=part.step` writes an AP214 file. Each flat region
+becomes one planar face (with its holes), and a closed part becomes a solid,
+so the tray above opens in FreeCAD as one solid of 13216.5 mm^3. Curved faces
+(fillets, cylinders) go out as the flat facets you see on screen, so raise
+`segments` before exporting if the other program needs them smoother.
+
+**Import.** `cad.open path=part.step` opens a STEP file as a new part with one
+fixed imported feature; `cad.import doc=$t path=part.step` adds one to the
+part you have open, so you can drill, cut and fillet it like anything else.
+Planes, cylinders, cones, spheres, tori and B-spline surfaces are read and
+turned into triangles that stay within about 0.05% of the model's size of the
+true surface, assemblies are placed, and units are converted to millimetres.
+
+```sh
+wetwaresuite batch <<'EOF'
+cad.open path=tray.step -> b
+cad.measure_mass doc=$b density=2.70
+cad.hole doc=$b target=imported1 diameter=5 x=30 y=20
+cad.save doc=$b path=tray-drilled.step
+EOF
+```
+
+```
+opened cad1 (1 features, 0 params, 1 bodies, mm, 1652 triangles, 828 vertices, size 60 x 40 x 25 at (0, 0, 0), watertight, tray.step)
+volume 13216.5 mm^3 (13.2165 cm^3), area 13507.2 mm^2, mass 35.6846 g at 2.7 g/cm^3
+added hole hole1 (1 body, volume 13177.3 mm^3)
+saved tray-drilled.step
+```
+
+The imported feature is called `imported1` (`cad.info` lists it).
+
+`convert`, `slicer`, `sculpt`, `library` and `fit` read STEP the same way, and
+opening a `.step` file in the cad app's window opens it as a part.
+
+## 10. editing the tree: suppress, rename, delete, undo
 
 ```text
 # edit.txt: change the tree, see what is refused, undo
@@ -605,7 +715,7 @@ with `feature: "rib"` and `cad_feature_set` with `feature: "wall_hole"`,
 `values: "countersink_diameter=; counterbore_diameter=10; counterbore_depth=2"`.
 To go back it calls `undo`.
 
-## 9. expressions
+## 11. expressions
 
 Every numeric field and every parameter value is an expression:
 
@@ -634,7 +744,7 @@ Point lists (`points`, `hole_points`) are comma-separated expressions, read as
 x,y pairs: `points="0,0, w,0, w,h, 0,h"`. Commas inside function calls don't
 split: `points="0,0, min(a,b),0, 0,5"`.
 
-## 10. how features combine
+## 12. how features combine
 
 - **Order matters.** Operations can only use features earlier in the tree.
   The tree is rebuilt from the top whenever something changes.
@@ -665,7 +775,7 @@ split: `points="0,0, min(a,b),0, 0,5"`.
   document, so tools that read meshes can take `doc=cad1` and see the current
   solid (edits they make to the mesh are replaced at the next regeneration).
 
-## 11. command reference
+## 13. command reference
 
 Every edit command also takes `preview=true` (attach a PNG render) and
 `view=iso|front|back|left|right|top|bottom`. Primitive and sketch features take
@@ -685,15 +795,15 @@ Create an empty parametric part and return its id (e.g. cad1). Then define param
 
 #### `cad.open`: Open Part
 
-Open a .wwcad part (parameters and feature tree), or import a mesh file (stl, obj, ply, off, glb, gltf, 3mf) as a new part with one fixed 'imported' feature. Returns the document id.
+Open a .wwcad part (parameters and feature tree), or import a STEP or mesh file (step, stl, obj, ply, off, glb, gltf, 3mf, fbx) as a new part with one fixed 'imported' feature. STEP faces (planes, cylinders, cones, spheres, tori, B-splines) are turned into fine triangles. Returns the document id.
 
 | param | required | default | meaning |
 |---|---|---|---|
-| `path` | yes |  | path to a .wwcad or mesh file |
+| `path` | yes |  | path to a .wwcad, .step or mesh file |
 
 #### `cad.import`: Import Mesh
 
-Add a mesh file (stl, obj, ply, off, glb, gltf, 3mf) to a part as a fixed 'imported' feature, which booleans, holes and patterns can use like any other.
+Add a mesh or STEP file (stl, obj, ply, off, glb, gltf, 3mf, fbx, step) to a part as a fixed 'imported' feature, which booleans, holes and patterns can use like any other.
 
 | param | required | default | meaning |
 |---|---|---|---|
@@ -704,7 +814,7 @@ Add a mesh file (stl, obj, ply, off, glb, gltf, 3mf) to a part as a fixed 'impor
 
 #### `cad.save`: Save Part
 
-Save a part. .wwcad keeps the parameters and feature tree (reopen with cad.open); stl, obj, ply, off, glb, gltf or 3mf export the solid; png, jpg, bmp, tga or ppm render a picture (view, size).
+Save a part. .wwcad keeps the parameters and feature tree (reopen with cad.open); step exports a solid B-rep for other CAD programs (flat faces; curved ones as facets); stl, obj, ply, off, glb, gltf, 3mf or fbx export the mesh; png, jpg, bmp, tga or ppm render a picture (view, size).
 
 | param | required | default | meaning |
 |---|---|---|---|
@@ -984,6 +1094,44 @@ Mirror a feature across a plane (yz flips X, xz flips Y, xy flips Z) at offset a
 | `keep` |  | `true` | keep the original as well |
 | `name` |  |  | name for the feature (default: type + number, e.g. mirror1) |
 
+#### `cad.fillet`: Fillet
+
+Round the sharp edges of a feature with radius: outer edges are cut round, inner edges filled round. Pick edges by kind (edges=top,vertical) or by points near them (near=0,0,5). Where three rounded outer edges meet, the corner becomes a ball. Returns the feature name.
+
+| param | required | default | meaning |
+|---|---|---|---|
+| `target` | yes |  | feature to round |
+| `radius` | yes |  | fillet radius |
+| `edges` |  | `all` | which edges: all, outer, inner, top, bottom, vertical, horizontal, x, y, z (comma-separated, combined) |
+| `near` |  |  | instead of edges: points x,y,z,x,y,z,... picking the edge closest to each (cad.edges lists them) |
+| `angle` |  | `30` | only edges whose faces meet at this many degrees or more |
+| `segments` |  | `8` | segments per quarter circle |
+| `name` |  |  | name for the feature (default: type + number, e.g. fillet1) |
+
+#### `cad.chamfer`: Chamfer
+
+Bevel the sharp edges of a feature: distance is measured along both faces from the edge. Outer edges are cut, inner edges filled. Pick edges like fillet does. Returns the feature name.
+
+| param | required | default | meaning |
+|---|---|---|---|
+| `target` | yes |  | feature to bevel |
+| `distance` | yes |  | chamfer size along each face |
+| `edges` |  | `all` | which edges, as for fillet |
+| `near` |  |  | instead of edges: points near the edges, as for fillet |
+| `angle` |  | `30` | only edges whose faces meet at this many degrees or more |
+| `name` |  |  | name for the feature (default: type + number, e.g. chamfer1) |
+
+#### `cad.shell`: Shell
+
+Hollow a feature out, leaving walls of thickness. open removes the outermost faces facing those ways (top, bottom, front, back, left, right or +x -x +y -y +z -z; comma-separated), e.g. open=top makes a box into a tray. Returns the feature name.
+
+| param | required | default | meaning |
+|---|---|---|---|
+| `target` | yes |  | feature to hollow |
+| `thickness` | yes |  | wall thickness |
+| `open` |  |  | faces to remove: top, bottom, front, back, left, right, +x, -x, ... |
+| `name` |  |  | name for the feature (default: type + number, e.g. shell1) |
+
 #### `cad.transform`: Transform
 
 Move, rotate and scale an earlier feature's body: scale and rotate (rx, ry, rz degrees) about the pivot cx/cy/cz, then move by x/y/z. Returns the feature name.
@@ -1086,11 +1234,18 @@ Cut the model (or one feature) with the horizontal plane Z = z and report the cr
 | `z` | yes |  | height of the cut, number or expression |
 | `feature` |  |  | measure just this feature's own result (default: the whole model) |
 
-## 12. limits and troubleshooting
+#### `cad.edges`: List Edges
 
-**Not there yet.** Fillets, chamfers and shells (hollowing) aren't available;
-round an outline with `cad.extrude_rect radius=...` or `cad.extrude_slot`, or
-build a rounded profile and `cad.revolve` it. There are no sketch constraints
+List the sharp edges of the model or of one feature (where flat faces meet at angle degrees or more): midpoint, length, direction and outer/inner. Pass a midpoint to cad.fillet or cad.chamfer as near=x,y,z. Returns count and midpoints.
+
+| param | required | default | meaning |
+|---|---|---|---|
+| `feature` |  |  | list just this feature's own result (default: the whole model) |
+| `angle` |  | `30` | smallest angle between the faces, degrees |
+
+## 14. limits and troubleshooting
+
+**Not there yet.** There are no sketch constraints
 (sketches are point lists with expressions), no threads (model the clearance
 hole and use a tap or a heat-set insert), and no drill-point cone at the bottom
 of blind holes.
@@ -1098,10 +1253,24 @@ of blind holes.
 **Solids are meshes.** Booleans are BSP-tree CSG on the triangles; results are
 checked to be closed and watertight, flat faces are re-triangulated cleanly,
 and a cut that comes out open is retried with the cutter nudged by a millionth
-of the part's size. Round features are polygons (section 10). If `cad.info`
+of the part's size. Round features are polygons (section 12). If `cad.info`
 ever reports "not watertight" after a boolean of exactly coincident faces,
 change one value by a hair (0.01 mm) or let the two solids overlap a little
 instead of meeting face to face, as the bracket's rib does.
+
+**Fillets, chamfers and shells.** Edges are found where flat faces meet, so a
+fillet rounds the rim of a cylinder but not the seam along its side. A corner
+becomes a ball only where exactly three rounded outer edges meet; other corners
+are where the rounds cross. "radius is too large for the edge at ..." means the
+round would run off one of the faces; make it smaller or round fewer edges. A
+shell offsets every face, so its walls can't be thicker than the narrowest
+face is wide (shell first, then add small chamfers and fillets).
+
+**STEP.** Import turns curved faces into triangles (within about 0.05% of the
+part's size), so a cylinder comes in as a fine polygon, not a true circle.
+Export writes curved faces as their facets; flat faces stay one face each.
+Parts made of only free surfaces with no edges (some sculpted shapes) may not
+import; save them as STL or 3MF from the other program instead.
 
 **"no open cad document called 'cad1'"**: each `wetwaresuite <command>` run is a
 new process with nothing open. Use a batch script or the MCP server for

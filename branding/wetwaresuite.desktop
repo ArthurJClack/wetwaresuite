@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=wetwaresuite
+GenericName=Creative and maker suite
+Comment=Photo, CAD, audio, 3D, circuits and more in one lightweight suite
+Exec=wetwaresuite-gui
+Icon=wetwaresuite
+Terminal=false
+Categories=Graphics;AudioVideo;Office;Development;Engineering;
+Keywords=photo;paint;cad;3d;audio;video;office;circuit;

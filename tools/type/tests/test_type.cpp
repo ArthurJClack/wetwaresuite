@@ -429,6 +429,15 @@ void testFiles(const fs::path& dir) {
         crlf += c;
     }
     CHECK(fromJson(crlf).glyphs.size() == f.glyphs.size());
+    {
+        auto renamed = [](std::string t, const std::string& from, const std::string& to) {  // undo the rename in a saved file
+            for (auto at = t.find(from); at != std::string::npos; at = t.find(from, at + to.size())) t.replace(at, from.size(), to);
+            return t;
+        };
+        // fonts saved before the rename ("achclwss.typeface") still load
+        CHECK(toJson(f).find("\"wetwaresuite.typeface\"") != std::string::npos);
+        CHECK(fromJson(renamed(crlf, "wetwaresuite.typeface", "achclwss.typeface")).glyphs.size() == f.glyphs.size());
+    }
     // UFO round trip
     saveUfo(f, dir / "Testa.ufo");
     CHECK(fs::exists(dir / "Testa.ufo" / "glyphs" / "A_.glif") && fs::exists(dir / "Testa.ufo" / "fontinfo.plist"));

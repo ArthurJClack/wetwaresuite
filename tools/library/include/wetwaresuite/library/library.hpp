@@ -26,6 +26,11 @@ namespace fs = std::filesystem;
 inline constexpr const char* kCatalogName = ".wetwaresuite-library.json";
 // Thumbnails cache folder, next to the catalog file.
 inline constexpr const char* kThumbDir = ".wetwaresuite-thumbs";
+// The same two from before the rename: an old catalog is still found and read.
+inline constexpr const char* kOldCatalogName = ".achclwss-library.json";
+inline constexpr const char* kOldThumbDir = ".achclwss-thumbs";
+// The catalog in a folder: the default name, or an old-named one if only that exists.
+fs::path catalogIn(const fs::path& dir);
 
 struct Item {
     std::string path;          // absolute, forward slashes

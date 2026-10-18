@@ -1,0 +1,103 @@
+name: downloads
+
+# Ready-to-run builds of every app for windows, macOS and linux, so nobody has to
+# build from source to try the suite. Each run uploads one zip per OS as a run
+# artifact; pushes to main and the downloads branch also refresh the rolling
+# `preview` pre-release, and a `v*` tag makes a real release.
+on:
+  push:
+    branches: [main, downloads]
+    tags: ['v*']
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+
+concurrency:
+  group: downloads-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    # pull requests only build downloads when labelled `full-ci`
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'full-ci')
+    name: build (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-22.04, name: linux-x64 }
+          - { os: windows-latest, name: windows-x64 }
+          - { os: macos-latest, name: macos-arm64 }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: linux window libraries
+        if: runner.os == 'Linux'
+        # headers only: SDL loads X11/Wayland at run time, so the binary still runs without them
+        run: sudo apt-get update && sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev
+      - name: configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWETWARESUITE_BUILD_TESTS=OFF
+      - name: build
+        run: cmake --build build --config Release --parallel 4
+      - name: hub
+        working-directory: hub
+        run: cargo build --release --locked
+      - name: share
+        working-directory: share
+        run: cargo build --release --locked
+      - name: package
+        shell: bash
+        run: |
+          out=wetwaresuite-${{ matrix.name }}
+          mkdir -p $out
+          exe=""; [ "$RUNNER_OS" = Windows ] && exe=.exe
+          # multi-config generators (visual studio) add a Release/ folder
+          for d in build/bin build/bin/Release build/apps/wetwaresuite build/apps/wetwaresuite/Release; do
+            [ -d "$d" ] || continue
+            find "$d" -maxdepth 1 -type f -name "wetwaresuite*$exe" -exec cp {} $out/ \;
+          done
+          cp hub/target/release/hub$exe $out/wetwaresuite-hub$exe
+          cp share/target/release/wetwaresuite-share$exe $out/
+          rm -f $out/*.d $out/*.pdb
+          cp LICENSE $out/
+          cp docs/downloads-readme.txt $out/README.txt
+          ls -la $out
+          # every app must be there, or the zip is broken
+          for a in image draw model game cad electronics sound video office maps files; do
+            [ -f "$out/wetwaresuite-$a$exe" ] || { echo "::error::missing wetwaresuite-$a$exe"; exit 1; }
+          done
+          # a quick smoke test: the all-in-one answers headless
+          "$out/wetwaresuite$exe" --version
+          if [ "$RUNNER_OS" = Windows ]; then 7z a -tzip $out.zip $out >/dev/null; else zip -qr $out.zip $out; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wetwaresuite-${{ matrix.name }}
+          path: wetwaresuite-${{ matrix.name }}.zip
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la dist
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            gh release create "$GITHUB_REF_NAME" dist/*.zip --title "wetwaresuite $GITHUB_REF_NAME" --generate-notes
+          else
+            # one rolling pre-release, always the newest build of main or downloads
+            gh release delete preview --yes --cleanup-tag 2>/dev/null || true
+            gh release create preview dist/*.zip --prerelease --target "$GITHUB_SHA" \
+              --title "wetwaresuite preview (latest build)" \
+              --notes "the newest build from \`${GITHUB_REF_NAME}\` ($GITHUB_SHA). unzip, then double-click an app. see README.txt inside for the first-run warnings on windows and macOS."
+          fi

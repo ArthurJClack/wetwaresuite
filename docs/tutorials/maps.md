@@ -80,7 +80,7 @@ maps.join doc=$m layer=countries csv=trips.csv key=iso_a3 csv_key=code
 maps.style doc=$m layer=countries mode=graduated field=days ramp=blues classes=4 method=natural
 maps.render doc=$m path=trips.png width=1200
 maps.render doc=$m path=trips.pdf crs=wgs84 graticule=true title="Trips 2019-2026"
-maps.save doc=$m path=trips.achmap
+maps.save doc=$m path=trips.wwmap
 ```
 
 ```text
@@ -103,7 +103,7 @@ rendered 1200x804 png to trips.png
 ...
 rendered 1024x494 pdf to trips.pdf
 ...
-saved trips.achmap
+saved trips.wwmap
 ```
 
 `maps.add_countries` adds the built-in country layer, with the fields `name`, `iso_a3`, `continent` and `pop_est`. `maps.join` copies every other CSV column onto the features whose key matches. It reports the CSV rows that matched nothing (Kosovo has no ISO code in Natural Earth), so you can fix typos. Keys match exactly first, then ignoring case and spaces. Numbers match numerically, but codes with leading zeros such as `007` stay text.
@@ -117,12 +117,12 @@ The PNG uses Web Mercator, the projection of web maps. The PDF uses `crs=wgs84` 
 **CLI.** Look at the saved project, render it again, or export only the visited countries:
 
 ```sh
-$ wetwaresuite maps.open path=trips.achmap
-opened trips.achmap as map1: 1 layer, 177 features, "Where I've been", trips.achmap
+$ wetwaresuite maps.open path=trips.wwmap
+opened trips.wwmap as map1: 1 layer, 177 features, "Where I've been", trips.wwmap
 0: countries (177 polygons, graduated by days)
    fields: continent, iso_a3, name, pop_est, days, last_visit
 ...
-$ printf 'maps.open path=trips.achmap -> m\nmaps.render doc=$m path=trips-small.jpg width=600 legend=false\n' | wetwaresuite batch
+$ printf 'maps.open path=trips.wwmap -> m\nmaps.render doc=$m path=trips-small.jpg width=600 legend=false\n' | wetwaresuite batch
 $ printf 'maps.new -> m\nmaps.add_countries doc=$m\nmaps.join doc=$m csv=trips.csv key=iso_a3 csv_key=code\nmaps.export doc=$m path=out/visited.geojson where="days > 0" precision=3\n' | wetwaresuite batch
 ...
 wrote 12 features of countries to out/visited.geojson
@@ -415,7 +415,7 @@ done
 | CSV `.csv` `.tsv` `.txt` | lat/lon columns (auto-detected, DMS and N/S/E/W), a WKT column, projected x/y with `crs=`, any delimiter | lat/lon columns for point layers, a `wkt` column otherwise |
 | Shapefile `.shp` | Point, MultiPoint, PolyLine, Polygon and their Z/M variants, `.dbf` (with `.cpg` or Latin-1), `.prj` (WGS84, Web Mercator, UTM) | `.shp/.shx/.dbf/.prj/.cpg`; mixed layers write `name_points`, `name_lines`, `name_polygons` sets; `crs=` |
 | WKT `.wkt` | one geometry per line, Z ignored | one geometry per line |
-| `.achmap` | the whole map with styles and rasters (`maps.open`) | `maps.save` |
+| `.wwmap` | the whole map with styles and rasters (`maps.open`; older `.achmap` files too) | `maps.save` |
 | GeoTIFF `.tif` | strips or tiles; none/LZW/Deflate/PackBits; predictors; 8/16/32-bit int and float; EPSG 4326, 3857, UTM | `maps.raster_save`: float32 values or RGBA, Deflate, GeoKeys |
 | PNG/JPG + world file | `.pgw` `.jgw` `.pngw` `.jpgw` `.wld` and `.prj`, or `bbox=` | `maps.raster_save` writes the image, `.pgw`/`.jgw` and `.prj` |
 
@@ -669,7 +669,7 @@ Colours are `#rrggbb`, `#rgb`, `#rrggbbaa` or CSS names such as `red`. Layer ord
 
 | command | what it does |
 | --- | --- |
-| `maps.new`, `maps.open`, `maps.save`, `maps.close` | create, open any supported file or `.achmap`, save the project, close |
+| `maps.new`, `maps.open`, `maps.save`, `maps.close` | create, open any supported file or `.wwmap`, save the project, close |
 | `maps.info`, `maps.features` | describe the map; list features with `where=`, `fields=`, `offset=`, `limit=` |
 | `maps.import`, `maps.export` | add a file as layers; write one layer (`crs=`, `precision=`, `where=`) |
 | `maps.add_countries` | the built-in Natural Earth countries (`where=` to pick some) |

@@ -153,8 +153,15 @@ if(_ww_sdl)
             -DNAMESPACE=wetwaresuite::gui -P ${CMAKE_CURRENT_SOURCE_DIR}/embed.cmake
     DEPENDS ${_imgui}/fonts/Roboto-Medium.ttf ${CMAKE_CURRENT_SOURCE_DIR}/embed.cmake
     COMMENT "Embedding the UI font")
+  set(_icon_cpp ${CMAKE_CURRENT_BINARY_DIR}/app_icon.cpp)
+  set(_icon_png ${PROJECT_SOURCE_DIR}/branding/png/icon-128.png)
+  add_custom_command(OUTPUT ${_icon_cpp}
+    COMMAND ${CMAKE_COMMAND} -DINPUT=${_icon_png} -DOUTPUT=${_icon_cpp} -DNAME=kAppIcon
+            -DNAMESPACE=wetwaresuite::gui -P ${CMAKE_CURRENT_SOURCE_DIR}/embed.cmake
+    DEPENDS ${_icon_png} ${CMAKE_CURRENT_SOURCE_DIR}/embed.cmake
+    COMMENT "Embedding the window icon")
 
-  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/canvas.cpp src/retouch.cpp src/handoff_panels.cpp src/colours.cpp src/window.cpp ${_font_cpp})
+  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/canvas.cpp src/retouch.cpp src/handoff_panels.cpp src/colours.cpp src/window.cpp ${_font_cpp} ${_icon_cpp})
   target_compile_options(wetwaresuite_gui PRIVATE ${WETWARESUITE_GUI_WARNINGS})
   target_link_libraries(wetwaresuite_gui PUBLIC wetwaresuite_gui_logic PRIVATE wetwaresuite_imgui wetwaresuite::raster)
   message(STATUS "gui: window enabled (${_ww_sdl})")

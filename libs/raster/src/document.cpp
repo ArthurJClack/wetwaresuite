@@ -8,6 +8,7 @@
 
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/parallel.hpp"
+#include "wetwaresuite/raster/selection.hpp"
 
 namespace wetwaresuite::raster {
 
@@ -116,6 +117,8 @@ void ImageEdit::clear() {
     patches_.clear();
     patches_.shrink_to_fit();
     whole_.reset();
+    masks_.clear();
+    selection_.reset();
     account(0);
 }
 
@@ -172,9 +175,12 @@ Result ImageEdit::apply() {
     beforeWidth_ = doc.image.width;
     beforeHeight_ = doc.image.height;
     meta_.clear();
-    for (const auto& l : doc.image.layers) meta_.push_back({l.name, l.opacity, l.blend, l.visible});
+    for (const auto& l : doc.image.layers) meta_.push_back({l.name, l.opacity, l.blend, l.visible, l.maskEnabled, l.clip});
+    const Mask beforeSelection = doc.selection;
+    doc.ignoreSelection = false;
 
-    if (mode_ == Mode::Declared) {
+    // brushes inside a selection need the whole old picture to put back what's outside it
+    if (mode_ == Mode::Declared && !doc.hasSelection()) {
         const auto shape = layerSizes(doc.image);
         doc.recording_ = this;
         Result r;
@@ -195,32 +201,59 @@ Result ImageEdit::apply() {
     }
 
     LayeredImage before = doc.image;  // short-lived: only the tiles that change are kept
+    auto restore = [&] {
+        doc.image = std::move(before);
+        doc.active = beforeActive_;
+        doc.selection = beforeSelection;
+        doc.ignoreSelection = false;
+    };
     Result r;
     try {
         r = fn_(doc);
     } catch (...) {
-        doc.image = std::move(before);
-        doc.active = beforeActive_;
+        restore();
         throw;
     }
     if (!r.ok) {  // failed edits leave the document untouched
-        doc.image = std::move(before);
-        doc.active = beforeActive_;
+        restore();
         return r;
+    }
+    const bool selectionChanged = doc.selection != beforeSelection;
+    if (selectionChanged) {
+        account(bytes_ + beforeSelection.v.size());
+        selection_ = beforeSelection;
+        doc.markAllChanged();
     }
     if (!sameShape(before, doc.image)) {
         whole_ = std::make_unique<LayeredImage>(std::move(before));
         std::size_t bytes = sizeof(LayeredImage);
-        for (const auto& l : whole_->layers) bytes += l.image.bytes() + sizeof(Layer);
-        account(bytes);
+        for (const auto& l : whole_->layers) bytes += l.image.bytes() + l.mask.v.size() + sizeof(Layer);
+        account(bytes_ + bytes);
         doc.markAllChanged();
+        doc.ignoreSelection = false;
         return r;
     }
+    // pixel edits stay inside the selection
+    if (doc.hasSelection() && !selectionChanged && !doc.ignoreSelection) {
+        for (std::size_t i = 0; i < doc.image.layers.size(); ++i) {
+            keepInside(doc.image.layers[i].image, before.layers[i].image, doc.selection);
+        }
+    }
+    doc.ignoreSelection = false;
     diff(before);
+    for (std::size_t i = 0; i < doc.image.layers.size(); ++i) {
+        if (before.layers[i].mask != doc.image.layers[i].mask) {
+            account(bytes_ + before.layers[i].mask.v.size());
+            masks_.emplace_back(static_cast<int>(i), std::move(before.layers[i].mask));
+            doc.markAllChanged();
+        }
+    }
     for (std::size_t i = 0; i < meta_.size(); ++i) {
         const Layer& l = doc.image.layers[i];
         const LayerMeta& m = meta_[i];
-        if (l.opacity != m.opacity || l.blend != m.blend || l.visible != m.visible) doc.markAllChanged();
+        if (l.opacity != m.opacity || l.blend != m.blend || l.visible != m.visible || l.maskEnabled != m.maskEnabled || l.clip != m.clip) {
+            doc.markAllChanged();
+        }
     }
     return r;
 }
@@ -244,14 +277,27 @@ void ImageEdit::revert() {
         for (std::size_t i = 0; i < meta_.size() && i < doc.image.layers.size(); ++i) {
             Layer& l = doc.image.layers[i];
             const LayerMeta& m = meta_[i];
-            if (l.opacity != m.opacity || l.blend != m.blend || l.visible != m.visible) doc.markAllChanged();
+            if (l.opacity != m.opacity || l.blend != m.blend || l.visible != m.visible || l.maskEnabled != m.maskEnabled ||
+                l.clip != m.clip) {
+                doc.markAllChanged();
+            }
             l.name = m.name;
             l.opacity = m.opacity;
             l.blend = m.blend;
             l.visible = m.visible;
+            l.maskEnabled = m.maskEnabled;
+            l.clip = m.clip;
+        }
+        for (auto& [i, mask] : masks_) {
+            if (i < static_cast<int>(doc.image.layers.size())) doc.image.layers[static_cast<std::size_t>(i)].mask = std::move(mask);
+            doc.markAllChanged();
         }
         doc.image.width = beforeWidth_;
         doc.image.height = beforeHeight_;
+    }
+    if (selection_) {
+        doc.selection = std::move(*selection_);
+        doc.markAllChanged();
     }
     doc.active = beforeActive_;
     clear();

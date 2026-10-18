@@ -410,7 +410,14 @@ void registerCommands(Session& session) {
                 if (idx == 0) return Result::failure("the bottom layer has nothing below it");
                 auto& top = doc.image.layers[static_cast<std::size_t>(idx)];
                 auto& below = doc.image.layers[static_cast<std::size_t>(idx - 1)];
-                if (top.visible) blendOnto(below.image, top.image, 0, 0, top.blend, top.opacity);
+                // masks and clipping are baked in; the merged layer keeps the lower layer's opacity and blend
+                Layer base = below;
+                base.opacity = 1.0;
+                base.blend = Blend::Normal;
+                base.visible = true;
+                base.clip = false;
+                below.image = compositeRegion({base, top}, 0, 0, below.image.width(), below.image.height());
+                below.mask = Mask();
                 doc.image.layers.erase(doc.image.layers.begin() + idx);
                 doc.active = idx - 1;
                 return done("merged into layer " + std::to_string(idx - 1), doc, p);

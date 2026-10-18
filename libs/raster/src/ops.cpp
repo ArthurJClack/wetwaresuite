@@ -469,6 +469,99 @@ Image crop(const Image& img, int x, int y, int width, int height) {
     return out;
 }
 
+Matrix3 multiply(const Matrix3& a, const Matrix3& b) {
+    Matrix3 r{};
+    for (int i = 0; i < 3; ++i) {
+        for (int j = 0; j < 3; ++j) {
+            for (int k = 0; k < 3; ++k) r[i * 3 + j] += a[i * 3 + k] * b[k * 3 + j];
+        }
+    }
+    return r;
+}
+
+bool invert(const Matrix3& m, Matrix3& out) {
+    const double det = m[0] * (m[4] * m[8] - m[5] * m[7]) - m[1] * (m[3] * m[8] - m[5] * m[6]) + m[2] * (m[3] * m[7] - m[4] * m[6]);
+    if (std::fabs(det) < 1e-12) return false;
+    const double k = 1 / det;
+    out = {(m[4] * m[8] - m[5] * m[7]) * k, (m[2] * m[7] - m[1] * m[8]) * k, (m[1] * m[5] - m[2] * m[4]) * k,
+           (m[5] * m[6] - m[3] * m[8]) * k, (m[0] * m[8] - m[2] * m[6]) * k, (m[2] * m[3] - m[0] * m[5]) * k,
+           (m[3] * m[7] - m[4] * m[6]) * k, (m[1] * m[6] - m[0] * m[7]) * k, (m[0] * m[4] - m[1] * m[3]) * k};
+    return true;
+}
+
+bool homography(const std::array<double, 8>& from, const std::array<double, 8>& to, Matrix3& out) {
+    // solve the 8x8 system for h0..h7 (h8 = 1) by Gaussian elimination
+    double a[8][9];
+    for (int i = 0; i < 4; ++i) {
+        const double x = from[i * 2], y = from[i * 2 + 1], u = to[i * 2], v = to[i * 2 + 1];
+        double r1[9] = {x, y, 1, 0, 0, 0, -u * x, -u * y, u};
+        double r2[9] = {0, 0, 0, x, y, 1, -v * x, -v * y, v};
+        std::copy(r1, r1 + 9, a[i * 2]);
+        std::copy(r2, r2 + 9, a[i * 2 + 1]);
+    }
+    for (int c = 0; c < 8; ++c) {
+        int piv = c;
+        for (int r = c + 1; r < 8; ++r) {
+            if (std::fabs(a[r][c]) > std::fabs(a[piv][c])) piv = r;
+        }
+        if (std::fabs(a[piv][c]) < 1e-12) return false;
+        if (piv != c) std::swap(a[piv], a[c]);
+        for (int r = 0; r < 8; ++r) {
+            if (r == c) continue;
+            const double f = a[r][c] / a[c][c];
+            for (int k = c; k < 9; ++k) a[r][k] -= f * a[c][k];
+        }
+    }
+    for (int i = 0; i < 8; ++i) out[static_cast<std::size_t>(i)] = a[i][8] / a[i][i];
+    out[8] = 1;
+    return true;
+}
+
+Image warp(const Image& src, const Matrix3& m, int width, int height, bool smooth) {
+    Image out(width, height);
+    const int sw = src.width(), sh = src.height();
+    if (sw == 0 || sh == 0) return out;
+    parallelRows(height, static_cast<std::size_t>(width) * 16, [&](int b, int e) {
+        for (int y = b; y < e; ++y) {
+            std::uint8_t* d = out.pixel(0, y);
+            for (int x = 0; x < width; ++x, d += 4) {
+                const double px = x + 0.5, py = y + 0.5;
+                const double w = m[6] * px + m[7] * py + m[8];
+                if (std::fabs(w) < 1e-12) continue;
+                const double sx = (m[0] * px + m[1] * py + m[2]) / w, sy = (m[3] * px + m[4] * py + m[5]) / w;
+                if (!smooth) {
+                    const int ix = static_cast<int>(std::floor(sx)), iy = static_cast<int>(std::floor(sy));
+                    if (ix < 0 || iy < 0 || ix >= sw || iy >= sh) continue;
+                    std::memcpy(d, src.pixel(ix, iy), 4);
+                    continue;
+                }
+                const double fx = sx - 0.5, fy = sy - 0.5;
+                const int x0 = static_cast<int>(std::floor(fx)), y0 = static_cast<int>(std::floor(fy));
+                if (x0 < -1 || y0 < -1 || x0 >= sw || y0 >= sh) continue;
+                const double tx = fx - x0, ty = fy - y0;
+                double acc[4] = {0, 0, 0, 0};
+                for (int j = 0; j < 2; ++j) {
+                    const int yy = y0 + j;
+                    if (yy < 0 || yy >= sh) continue;
+                    const double wy = j ? ty : 1 - ty;
+                    for (int i = 0; i < 2; ++i) {
+                        const int xx = x0 + i;
+                        if (xx < 0 || xx >= sw) continue;
+                        const double wgt = wy * (i ? tx : 1 - tx);
+                        const std::uint8_t* p = src.pixel(xx, yy);
+                        const double a = p[3] * wgt;
+                        acc[0] += p[0] * a, acc[1] += p[1] * a, acc[2] += p[2] * a, acc[3] += a;
+                    }
+                }
+                if (acc[3] <= 0) continue;
+                for (int c = 0; c < 3; ++c) d[c] = clamp8(static_cast<float>(acc[c] / acc[3]));
+                d[3] = clamp8(static_cast<float>(acc[3]));
+            }
+        }
+    });
+    return out;
+}
+
 Image rotate90(const Image& img, int turns) {
     turns = ((turns % 4) + 4) % 4;
     if (turns == 0) return img;

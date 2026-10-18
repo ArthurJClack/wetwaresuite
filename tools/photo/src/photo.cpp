@@ -14,6 +14,8 @@
 #include "heal.hpp"
 #include "wetwaresuite/raster/parallel.hpp"
 #include "wetwaresuite/raster/pyramid.hpp"
+#include "wetwaresuite/raster/selection.hpp"
+#include "select.hpp"
 #include "wetwaresuite/raster/simd.hpp"
 
 namespace wetwaresuite::photo {
@@ -57,8 +59,13 @@ ParamSpec allLayersParam() {
 }
 
 // Geometry changes apply to every layer so they stay aligned.
+// Masks and the selection go through the same change.
 void transformAll(ImageDoc& doc, const std::function<Image(const Image&)>& fn) {
-    for (auto& layer : doc.image.layers) layer.image = fn(layer.image);
+    for (auto& layer : doc.image.layers) {
+        layer.image = fn(layer.image);
+        if (!layer.mask.empty()) layer.mask = imageToMask(fn(maskToImage(layer.mask)));
+    }
+    if (doc.hasSelection()) doc.selection = imageToMask(fn(maskToImage(doc.selection)));
     if (!doc.image.layers.empty()) {
         doc.image.width = doc.image.layers[0].image.width();
         doc.image.height = doc.image.layers[0].image.height();
@@ -220,7 +227,14 @@ void registerCommands(Session& session) {
                         const auto& l = doc.image.layers[i];
                         text += "\n  " + std::to_string(i) + ": " + l.name + " (" + toString(l.blend) + ", opacity " +
                                 std::to_string(static_cast<int>(std::lround(l.opacity * 100))) + "%" +
-                                (l.visible ? "" : ", hidden") + (static_cast<int>(i) == doc.active ? ", active" : "") + ")";
+                                (l.visible ? "" : ", hidden") + (l.mask.empty() ? "" : l.maskEnabled ? ", masked" : ", mask off") +
+                                (l.clip ? ", clipped" : "") + (static_cast<int>(i) == doc.active ? ", active" : "") + ")";
+                    }
+                    if (doc.hasSelection()) {
+                        const PixelRect b = bounds(doc.selection);
+                        text += b.empty() ? "\nselection: empty"
+                                          : "\nselection: " + std::to_string(b.x0) + "," + std::to_string(b.y0) + " " +
+                                                std::to_string(b.width()) + "x" + std::to_string(b.height());
                     }
                     Result r = Result::success(text);
                     return r.with("doc", stringParam(p, "doc"))
@@ -364,15 +378,29 @@ void registerCommands(Session& session) {
 
     reg.add({"photo.rotate",
              "Rotate image",
-             "Rotate the whole image clockwise by 90, 180 or 270 degrees.",
-             {docParam(), {"angle", ParamType::Int, "90, 180 or 270 (negative = counter-clockwise)", true}, previewParam()},
+             "Rotate the whole image clockwise by any angle (negative = counter-clockwise). 90, 180 and 270 turn it "
+             "exactly. Other angles: fit=expand grows the canvas so nothing is cut off, keep keeps the size, crop "
+             "(straighten) cuts away the empty corners; new corners get the background colour.",
+             {docParam(), {"angle", ParamType::Number, "degrees clockwise, e.g. 90 or -2.5", true},
+              {"fit", ParamType::String, "for angles that aren't quarter turns", false, {"expand", "keep", "crop"}, std::string("expand")},
+              colorParam("background", "colour for the new corners", false, "transparent"),
+              previewParam()},
              true},
             imageCommand(session, [](ImageDoc& doc, const Params& p) {
-                auto angle = intParam(p, "angle");
-                if (angle % 90 != 0) return Result::failure("angle must be a multiple of 90");
-                int turns = static_cast<int>(angle / 90);
-                transformAll(doc, [&](const Image& img) { return rotate90(img, turns); });
-                return docResult("rotated " + std::to_string(angle) + " degrees", doc, p);
+                const double angle = numberParam(p, "angle");
+                const double turnsExact = angle / 90;
+                if (std::fabs(turnsExact - std::round(turnsExact)) < 1e-9) {
+                    int turns = static_cast<int>(std::lround(turnsExact));
+                    transformAll(doc, [&](const Image& img) { return rotate90(img, turns); });
+                } else {
+                    Color bg;
+                    std::string error;
+                    if (!colorArg(p, "background", "transparent", bg, error)) return Result::failure(error);
+                    rotateFree(doc, angle, stringParam(p, "fit", "expand"), bg);
+                }
+                char buf[48];
+                std::snprintf(buf, sizeof buf, "%g", angle);
+                return docResult(std::string("rotated ") + buf + " degrees", doc, p);
             }));
 
     reg.add({"photo.flip",
@@ -571,6 +599,7 @@ void registerCommands(Session& session) {
             });
 
     registerHealCommands(session);
+    registerSelectCommands(session);
 }
 
 }  // namespace wetwaresuite::photo

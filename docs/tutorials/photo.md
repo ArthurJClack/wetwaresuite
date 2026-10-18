@@ -1,6 +1,6 @@
 # Photo: editing images
 
-`photo` is the suite's image editor: open, adjust, crop, resize, rotate, apply effects, batch-process folders and save. It reads PNG, JPEG, BMP, TGA, GIF, PSD (flattened), HDR, PNM and layered OpenRaster (`.ora`), and saves PNG, JPEG, BMP, TGA, PPM and `.ora`.
+`photo` is the suite's image editor: open, adjust, crop, resize, rotate, apply effects, select parts of the picture, mask layers, bend tones with curves, free-transform, batch-process folders and save. It reads PNG, JPEG, BMP, TGA, GIF, PSD (flattened), HDR, PNM and layered OpenRaster (`.ora`), and saves PNG, JPEG, BMP, TGA, PPM and `.ora`.
 
 Every task below is a command, and the desktop window (see [the window tutorial](gui.md)) runs exactly these commands from its buttons, sliders and search box. Each task is shown three ways:
 
@@ -112,7 +112,7 @@ photo.save doc=$p path=framed.jpg quality=88
 
 Notes:
 
-- `photo.rotate` only does quarter turns (90, 180, 270, or negative for counter-clockwise). Free-angle straightening is not available yet.
+- `photo.rotate` turns by any angle. Quarter turns (90, 180, 270, negative for counter-clockwise) are exact. To straighten a crooked horizon use a small angle with `fit=crop`, which cuts away the empty corners: `photo.rotate doc=$p angle=-2.5 fit=crop`. `fit=expand` (the default) grows the canvas instead and `fit=keep` keeps its size; `background=` colours the new corners.
 - `photo.canvas_size` keeps the pixels where `anchor` says (default `center`; also `top-left`, `bottom`, and so on) and fills the new area with transparency. Formats without transparency, such as JPEG, show it as white; the two `paint.layer_*` lines give it a colour instead. Photo and paint work on the same documents, so mixing them is normal.
 - Crop, resize, rotate, flip and canvas size apply to every layer, so layers stay aligned.
 
@@ -317,6 +317,63 @@ Claude calls `photo_open`, `photo_preview` to find the spot and the wire, `photo
 - All three work on the active layer (or `layer=`), and `preview=true` attaches a picture of the result.
 - Each result says how many pixels changed (`pixels`); the healing brush and seamless clone also report `iterations` and `converged` (whether the blending finished fully; it practically always does).
 
+## Task 8: selections, masks, curves and free transform
+
+A **selection** is the part of the picture your next edits change. While something is selected, adjustments, effects, curves, colour balance, painting and filling only touch the inside; the rest stays as it was. Soft (feathered) edges blend in.
+
+**In the window.** Pick the **Select** tool above the picture, choose **Box**, **Oval**, **Lasso** or **Wand**, and drag (or click, for the wand). Hold **Shift** to add to the selection and **Alt** to take away. The selection shows as a moving dashed outline. **Deselect** (Ctrl+D), **Invert** (Ctrl+Shift+I), **All** (Ctrl+A) and **Delete** are next to the shapes. Then run any action on the left, such as Curves or Adjust colours, and it only changes what's selected.
+
+![a box selection with marching ants in the image app](images/gui-image-select.jpg)
+
+**Batch.** Brighten only the sky, warm the midtones, then put the subject on its own layer and turn it a little:
+
+```text
+photo.open path=beach.jpg -> p
+# the wand takes the blue sky, joined to the pixel at 40,20
+photo.select doc=$p shape=wand x=40 y=20 tolerance=40
+photo.select_modify doc=$p action=feather amount=6
+photo.curves doc=$p preset=brighten
+photo.select doc=$p shape=none
+photo.color_balance doc=$p midtones=12,0,-18
+# lasso around the person, copy them to a new layer, tilt it 5 degrees
+photo.select doc=$p shape=lasso points=420,300,610,280,650,700,400,720
+photo.copy_to_layer doc=$p
+photo.select doc=$p shape=none
+photo.transform doc=$p angle=5 scale=110
+photo.save doc=$p path=beach.ora
+```
+
+**Layer masks** hide part of a layer without erasing it, so you can change your mind later. Select what should stay visible, then `photo.mask action=add` (it takes the selection). `action=invert` flips it, `disable`/`enable` turn it off and on, `apply` bakes it in and `delete` throws it away. A **clipping mask** (`photo.clip`) makes a layer show only where the layer below has pixels, like a texture inside a shape:
+
+```text
+photo.select doc=$p shape=ellipse x=100 y=100 width=400 height=300
+photo.mask doc=$p action=add layer=1
+photo.clip doc=$p layer=2
+```
+
+**Curves** take points as input,output pairs from 0 to 255: `points=0,0,64,48,192,210,255,255` is a gentle S that adds contrast. `channel=red` (or green, blue) bends one colour only. Presets: `contrast`, `strong_contrast`, `brighten`, `darken`, `fade`, `invert`.
+
+**Free transform** (`photo.transform`) rotates by any angle, scales, skews and moves the selected pixels, or the whole layer when nothing is selected. `corners=` gives perspective instead: where the top-left, top-right, bottom-right and bottom-left corners of the selection's box go, and `from=` says where those corners are now. Straighten a poster photographed at an angle by giving its four corners as `from` and a rectangle as `corners`, then crop to it:
+
+```text
+photo.open path=poster.jpg -> p
+# the poster's corners in the photo (read them off photo_preview or the window)
+photo.transform doc=$p from=212,140,1010,96,1060,860,180,790 corners=150,100,1050,100,1050,800,150,800
+photo.crop doc=$p x=150 y=100 width=900 height=700
+```
+
+**Claude.**
+
+> In /home/me/portrait.jpg, make the background behind the person darker and a bit blue, but don't touch the person.
+
+Claude calls `photo_open`, `photo_preview` to see the picture, `photo_select` (lasso or wand around the person, then `invert`), `photo_select_modify` to feather, `photo_curves` with `preset=darken`, `photo_color_balance`, `photo_preview` to check, and `photo_save`.
+
+Notes:
+
+- Selections are part of the undo history: Ctrl+Z (or `undo`) brings back the previous selection.
+- Selections aren't saved in files. Layer masks and clipping are saved in `.ora` (other apps that open the `.ora` show those layers unmasked); flattened formats like PNG and JPEG show the result.
+- Crop, resize, rotate, flip and canvas size move the selection and masks along with the pixels.
+
 ## Saving
 
 The extension of `path` picks the format:
@@ -427,13 +484,15 @@ Change the canvas without scaling; new area is transparent.
 | `preview` | boolean | no | false | attach a preview |
 
 ### photo.rotate
-Rotate clockwise by quarter turns.
+Rotate clockwise by any angle. Quarter turns are exact; other angles are resampled smoothly.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `doc` | string | yes | image id |
-| `angle` | integer | yes | 90, 180 or 270; negative for counter-clockwise; must be a multiple of 90 |
-| `preview` | boolean | no | attach a preview |
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| `angle` | number | yes | | degrees clockwise; negative for counter-clockwise |
+| `fit` | `expand`, `keep`, `crop` | no | `expand` | for angles that aren't quarter turns: grow the canvas, keep its size, or cut away the empty corners (straighten) |
+| `background` | colour | no | `transparent` | colour for the new corners |
+| `preview` | boolean | no | false | attach a preview |
 
 ### photo.flip
 Mirror the whole image.
@@ -523,6 +582,78 @@ Process every image in a folder. Does not use open documents; not undoable.
 | `overwrite` | boolean | no | false | replace results that already exist (sources are never replaced) |
 
 Returns `processed` and `failed` counts. Fails if no images are found.
+
+### photo.select
+Choose the part of the picture that edits change.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| `shape` | `rect`, `ellipse`, `lasso`, `wand`, `color`, `layer`, `all`, `none`, `invert` | yes | | how to select |
+| `x`, `y` | number | for rect, ellipse, wand | | top-left corner, or the pixel the wand (or colour) starts from |
+| `width`, `height` | number | for rect, ellipse | | size of the box |
+| `points` | number list | for lasso | | outline as x,y pairs |
+| `tolerance` | integer | no | 32 | wand/color: how different a pixel may be (0..255 per channel) |
+| `contiguous` | boolean | no | true | wand: only pixels joined to the start |
+| `color` | colour | no | | color: the colour to select (default: the pixel at x,y) |
+| `fuzz` | integer | no | 0 | color: extra range where pixels fade out |
+| `sample` | `image`, `layer` | no | `image` | wand/color look at the whole picture or one layer |
+| `mode` | `replace`, `add`, `subtract`, `intersect` | no | `replace` | how it combines with the current selection |
+| `feather` | number | no | 0 | soften the new shape's edge, px |
+| `antialias` | boolean | no | true | smooth edges on ellipses and lassos |
+| `layer` | integer | no | active | the layer for `shape=layer` and `sample=layer` |
+| `preview` | boolean | no | false | attach a preview |
+
+Returns `selected`, `x`, `y`, `width`, `height` (the box around the selection) and `coverage` (0..1).
+
+### photo.select_modify
+`action` = `grow`, `shrink`, `feather` or `border`, `amount` in px.
+
+### photo.fill_selection
+Fill the selection (or the whole layer) with `color` at `opacity` (0..100) on `layer`.
+
+### photo.delete_selected
+Make the selected pixels of `layer` transparent.
+
+### photo.copy_to_layer
+Copy the selected pixels of `layer` to a new layer above it; `cut=true` moves them, `name=` names the new layer. The new layer becomes active.
+
+### photo.crop_selection
+Crop the image to the box around the selection.
+
+### photo.mask
+Layer masks. `action` = `add` (with `from` = `selection` (default), `reveal_all`, `hide_all` or `transparency`), `invert`, `enable`, `disable`, `apply`, `delete` or `select` (load the mask as the selection). `layer` picks the layer.
+
+### photo.clip
+Clip `layer` to the layer below it (`on=false` unclips).
+
+### photo.curves
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| `points` | number list | one of these | | input,output pairs 0..255, at least two |
+| `preset` | `contrast`, `strong_contrast`, `brighten`, `darken`, `fade`, `invert` | one of these | | a ready-made curve |
+| `channel` | `rgb`, `red`, `green`, `blue` | no | `rgb` | which channel |
+| `layer`, `all_layers`, `preview` | | no | | as for photo.adjust |
+
+### photo.color_balance
+`shadows`, `midtones`, `highlights`: three numbers each, -100..100, for cyan(-)/red(+), magenta(-)/green(+), yellow(-)/blue(+). `preserve_luminosity` (default true) keeps the brightness. Takes `layer`, `all_layers`, `preview`.
+
+### photo.transform
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| `angle` | number | no | 0 | rotate clockwise, degrees |
+| `scale` | number | no | 100 | percent, both ways |
+| `scale_x`, `scale_y` | number | no | | percent, one way (override `scale`) |
+| `skew_x`, `skew_y` | number | no | 0 | slant, degrees |
+| `move_x`, `move_y` | number | no | 0 | px |
+| `pivot_x`, `pivot_y` | number | no | middle of the selection or layer | point to turn and scale around |
+| `corners` | number list | no | | perspective: 8 numbers, where the box's top-left, top-right, bottom-right and bottom-left go |
+| `from` | number list | no | the box's corners | perspective: where those four corners are now |
+| `smooth` | boolean | no | true | bilinear; false = nearest (pixel art) |
+| `layer` | integer | no | active | layer to transform |
+| `preview` | boolean | no | false | attach a preview |
 
 ### Area parameters (photo.heal and photo.remove_object)
 

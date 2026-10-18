@@ -1,6 +1,7 @@
 // The window: SDL3 + SDL_Renderer (GPU when there is one, software when not)
 // with Dear ImGui on top. It waits for input instead of redrawing all the
 // time, so an idle window uses next to no CPU.
+#include <algorithm>
 #include <cstdio>
 #include <cstdlib>
 #include <exception>
@@ -149,7 +150,8 @@ int run(Session& session, const AppInfo& app, const RunOptions& options) {
         while (running) {
             SDL_Event e;
             bool got = false;
-            const int tick = shell.tickMs();
+            int tick = shell.tickMs();
+            if (shell.animating()) tick = tick > 0 ? std::min(tick, 80) : 80;  // the selection outline moves
             if (framesLeft <= 0 && options.screenshot.empty()) got = tick > 0 ? SDL_WaitEventTimeout(&e, tick) : SDL_WaitEvent(&e);
             else got = SDL_PollEvent(&e);
             while (got) {

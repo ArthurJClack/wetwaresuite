@@ -2,6 +2,7 @@
 // image or edits in place; nothing here knows about commands or documents.
 #pragma once
 
+#include <array>
 #include <optional>
 #include <string>
 #include <vector>
@@ -23,6 +24,15 @@ Image crop(const Image& img, int x, int y, int width, int height);  // clipped t
 Image rotate90(const Image& img, int quarterTurnsClockwise);
 Image flipHorizontal(const Image& img);
 Image flipVertical(const Image& img);
+// Free transform: every output pixel (x, y) is looked up at inverse * (x+0.5, y+0.5, 1) in src
+// (a 3x3 matrix, row-major, so affine and perspective both work). Smooth samples bilinearly with
+// premultiplied alpha; otherwise nearest. Outside src is transparent.
+using Matrix3 = std::array<double, 9>;
+Image warp(const Image& src, const Matrix3& inverse, int width, int height, bool smooth = true);
+Matrix3 multiply(const Matrix3& a, const Matrix3& b);
+bool invert(const Matrix3& m, Matrix3& out);
+// The perspective map taking the four `from` corners (x,y pairs) onto the four `to` corners.
+bool homography(const std::array<double, 8>& from, const std::array<double, 8>& to, Matrix3& out);
 // Grows or shrinks the canvas without scaling; new area is transparent. anchorX/Y in 0..1.
 Image resizeCanvas(const Image& img, int width, int height, double anchorX = 0.5, double anchorY = 0.5);
 

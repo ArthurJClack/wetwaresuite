@@ -29,7 +29,8 @@ struct Texture {
     ImTextureID id() const { return static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(tex)); }
 };
 
-enum class CanvasTool { Move, Brush, Eraser, Fill, Heal, Remove };
+enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove };
+enum class SelectShape { Rect, Ellipse, Lasso, Wand };
 
 // A retouch command waiting to run: it runs on the frame after it is queued, so the
 // window first shows "Working..." over the canvas.
@@ -79,6 +80,19 @@ struct Canvas {
     bool orbitDragging = false;
     bool orbitSharpPending = false;
     int orbitW = 0, orbitH = 0;
+
+    // selecting (selection_view.cpp)
+    SelectShape selectShape = SelectShape::Rect;
+    float tolerance = 32;
+    bool contiguous = true;
+    bool selecting = false;
+    ImVec2 selectStart{0, 0};          // picture px
+    std::vector<double> lasso;         // picture px, x,y pairs
+    int version = 0;                   // goes up whenever the picture is refreshed
+    std::string antsDoc;
+    int antsVersion = -1;
+    int antsStep = 1;                  // picture px per mask cell the outline was traced on
+    std::vector<float> ants;           // selection outline, x0,y0,x1,y1 in picture px
 };
 
 // The play bar's view of playback (transport.cpp), read back from <tool>.playhead.
@@ -144,6 +158,7 @@ public:
     }
     bool wantsQuit() const { return quit_; }
     int tickMs() const;  // > 0: wake the window this often (timers, running programs, live graphs)
+    bool animating() const { return animating_; }  // something on screen moves (the selection outline)
 
     static Uint32 wakeEvent;  // pushed from dialog threads to wake the event loop
     static ImFont* monoFont;  // a fixed-width font for code and terminals (null: the UI font)
@@ -208,6 +223,13 @@ private:
     // spreadsheet grid (grid_view.cpp)
     void gridView(const CellGrid& layout);
     bool commitCell(const CellGrid& layout, int sheet, int row, int col, const std::string& input);
+    // selections on the canvas (selection_view.cpp)
+    void selectSettings();
+    void selectPress(ImVec2 screen);
+    void selectDrag(ImVec2 screen);
+    void selectRelease(ImVec2 screen);
+    void drawSelection(ImDrawList* dl, ImVec2 origin, bool hovered);
+    void runSelect(Params params, const char* title);
 
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);
@@ -316,6 +338,7 @@ private:
     float textScale_ = 1.0f;
     float dpi_ = 1.0f;
     bool quit_ = false;
+    bool animating_ = false;
     bool showHome_ = true;
     std::string currentDoc_;
     std::map<std::string, std::string> docTool_;  // doc id -> tool that made it

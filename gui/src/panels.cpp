@@ -144,6 +144,7 @@ bool Shell::accentButton(const char* label, ImVec2 size) {
 }
 
 void Shell::frame() {
+    animating_ = false;  // set again by whatever draws something moving
     drainDialogs();
     backgroundTicks();
     if (paletteStale_ && loadPalette()) applyStyle(dpi_);

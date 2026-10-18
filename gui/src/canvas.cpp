@@ -77,6 +77,7 @@ bool Shell::toolAvailable(CanvasTool tool) const {
         case CanvasTool::Fill: return find("paint.fill") != nullptr;
         case CanvasTool::Heal: return find("photo.heal") != nullptr;
         case CanvasTool::Remove: return find("photo.remove_object") != nullptr;
+        case CanvasTool::Select: return find("photo.select") != nullptr;
         default: return false;
     }
 }
@@ -85,6 +86,7 @@ void Shell::refreshCanvas() {
     if (!canvas_.dirty && canvas_.shownDoc == currentDoc_) return;
     canvas_.dirty = false;
     canvas_.shownDoc = currentDoc_;
+    ++canvas_.version;
     canvas_.summary.clear();
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc) {
@@ -169,7 +171,7 @@ void Shell::canvasToolbar() {
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%d%%", static_cast<int>(std::lround(canvas_.zoom * 100)));
-    const CanvasTool editing[] = {CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal, CanvasTool::Remove};
+    const CanvasTool editing[] = {CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal, CanvasTool::Remove};
     if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
     ImGui::SameLine();
     ImGui::TextUnformatted("  Tool:");
@@ -178,6 +180,9 @@ void Shell::canvasToolbar() {
         CanvasTool tool;
         const char* tip;
     } tools[] = {{"Move", CanvasTool::Move, "Drag to move around, scroll to zoom"},
+                 {"Select", CanvasTool::Select,
+                  "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
+                  "Alt takes away. Edits then only change inside it"},
                  {"Brush", CanvasTool::Brush, "Paint with the mouse or a pen (pressure works)"},
                  {"Eraser", CanvasTool::Eraser, "Rub out paint on the current layer"},
                  {"Fill", CanvasTool::Fill, "Click to fill an area with the colour, like a paint bucket"},
@@ -200,6 +205,10 @@ void Shell::canvasToolbar() {
     if (canvas_.tool == CanvasTool::Move || !toolAvailable(canvas_.tool)) return;
     if (canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove) {
         retouchSettings();
+        return;
+    }
+    if (canvas_.tool == CanvasTool::Select) {
+        selectSettings();
         return;
     }
     // the tool's settings go on their own line so narrow windows still show them
@@ -383,6 +392,11 @@ void Shell::canvasView() {
     }
     if (canvas_.stroking && active) addStrokePoint(io.MousePos, canvas_.usedPen ? penPressure_ : 1.0f);
     if (canvas_.stroking && !active) endStroke();
+    if (painting && canvas_.tool == CanvasTool::Select) {
+        if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) selectPress(io.MousePos);
+        if (canvas_.selecting && active) selectDrag(io.MousePos);
+        if (canvas_.selecting && !active) selectRelease(io.MousePos);
+    }
     if (painting && canvas_.tool == CanvasTool::Fill && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         const ImVec2 img = toImage(io.MousePos);
         if (img.x >= 0 && img.y >= 0 && img.x < w && img.y < h && find("paint.fill")) {
@@ -425,6 +439,7 @@ void Shell::canvasView() {
             seekTo(transport_.length * (io.MousePos.x - p0.x) / (p1.x - p0.x));
         }
     }
+    drawSelection(dl, p0, hovered);
     dl->PopClipRect();
 }
 

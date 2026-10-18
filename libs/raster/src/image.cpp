@@ -260,10 +260,68 @@ Image composite(const std::vector<Layer>& layers, int width, int height) {
     return compositeRegion(layers, 0, 0, width, height);
 }
 
+namespace {
+
+bool usesMask(const Layer& l) { return !l.mask.empty() && l.maskEnabled; }
+
+// The layer's alpha over the region after its own mask, 0..255, one byte per pixel.
+std::vector<std::uint8_t> effectiveAlpha(const Layer& l, int x, int y, int w, int h) {
+    std::vector<std::uint8_t> a(static_cast<std::size_t>(w) * h, 0);
+    for (int row = 0; row < h; ++row) {
+        const int sy = y + row;
+        if (sy < 0 || sy >= l.image.height()) continue;
+        for (int col = 0; col < w; ++col) {
+            const int sx = x + col;
+            if (sx < 0 || sx >= l.image.width()) continue;
+            int v = l.image.pixel(sx, sy)[3];
+            if (usesMask(l)) v = sx < l.mask.width && sy < l.mask.height ? v * l.mask.at(sx, sy) / 255 : 0;
+            a[static_cast<std::size_t>(row) * w + col] = static_cast<std::uint8_t>(v);
+        }
+    }
+    return a;
+}
+
+}  // namespace
+
 Image compositeRegion(const std::vector<Layer>& layers, int x, int y, int width, int height) {
     Image out(width, height);
-    for (const auto& layer : layers) {
-        if (layer.visible) blendOnto(out, layer.image, -x, -y, layer.blend, layer.opacity);
+    int base = -1;  // the layer clipping masks above clip to
+    std::vector<std::uint8_t> baseAlpha;
+    bool baseAlphaReady = false;
+    for (std::size_t i = 0; i < layers.size(); ++i) {
+        const Layer& layer = layers[i];
+        if (!layer.clip || base < 0) {
+            base = static_cast<int>(i);
+            baseAlphaReady = false;
+        }
+        const bool clipped = layer.clip && base != static_cast<int>(i);
+        if (!layer.visible || (clipped && !layers[static_cast<std::size_t>(base)].visible)) continue;
+        if (!usesMask(layer) && !clipped) {
+            blendOnto(out, layer.image, -x, -y, layer.blend, layer.opacity);
+            continue;
+        }
+        // masked or clipped: a copy of the region with its alpha cut down
+        Image part(width, height);
+        std::vector<std::uint8_t> alpha = effectiveAlpha(layer, x, y, width, height);
+        if (clipped && !baseAlphaReady) {
+            baseAlpha = effectiveAlpha(layers[static_cast<std::size_t>(base)], x, y, width, height);
+            baseAlphaReady = true;
+        }
+        for (int row = 0; row < height; ++row) {
+            const int sy = y + row;
+            if (sy < 0 || sy >= layer.image.height()) continue;
+            for (int col = 0; col < width; ++col) {
+                const int sx = x + col;
+                if (sx < 0 || sx >= layer.image.width()) continue;
+                const std::size_t k = static_cast<std::size_t>(row) * width + col;
+                int a = alpha[k];
+                if (clipped) a = a * baseAlpha[k] / 255;
+                std::uint8_t* d = part.pixel(col, row);
+                const std::uint8_t* src = layer.image.pixel(sx, sy);
+                d[0] = src[0], d[1] = src[1], d[2] = src[2], d[3] = static_cast<std::uint8_t>(a);
+            }
+        }
+        blendOnto(out, part, 0, 0, layer.blend, layer.opacity);
     }
     return out;
 }

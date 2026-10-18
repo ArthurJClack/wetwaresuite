@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <functional>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "wetwaresuite/core/command.hpp"
@@ -18,6 +19,13 @@ class ImageDoc : public Document {
 public:
     LayeredImage image;
     int active = 0;  // index of the layer edits go to
+    // The selection: pixel edits only change what's inside it. Empty = nothing selected, so
+    // edits touch the whole layer.
+    Mask selection;
+    bool hasSelection() const { return !selection.empty(); }
+    // An edit that handles the selection itself (moving selected pixels) sets this while it runs,
+    // so its changes outside the selection are kept.
+    bool ignoreSelection = false;
 
     // Edits made with ImageEdit::Mode::Declared call this before writing pixels so undo keeps a copy
     // of exactly that area (clipped to the layer). Outside such an edit it only records the change.
@@ -90,6 +98,9 @@ private:
         double opacity;
         Blend blend;
         bool visible;
+        bool maskEnabled;
+        bool clip;
+        bool operator==(const LayerMeta&) const = default;
     };
     void save(int layer, const Image& from, int x, int y, int w, int h);
     void diff(const LayeredImage& before);
@@ -102,6 +113,8 @@ private:
     std::vector<Patch> patches_;
     std::vector<LayerMeta> meta_;
     std::unique_ptr<LayeredImage> whole_;
+    std::vector<std::pair<int, Mask>> masks_;  // old layer masks that changed
+    std::optional<Mask> selection_;           // the old selection, when it changed
     int beforeActive_ = 0;
     int beforeWidth_ = 0, beforeHeight_ = 0;
     std::size_t bytes_ = 0;

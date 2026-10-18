@@ -898,7 +898,7 @@ void registerOutputCommands(Session& session) {
 
     reg.add({"sculpt.export",
              "Export sculpt",
-             "Save the model. The extension picks the format: stl, obj, ply, glb, gltf (also off, 3mf), or png/jpg "
+             "Save the model. The extension picks the format: stl, obj, ply, glb, gltf, fbx (also off, 3mf), or png/jpg "
              "for a rendered picture from view/yaw/pitch. OBJ keeps quads after sculpt.remesh or sculpt.retopo.",
              {docParam(),
               {"path", ParamType::String, "file to write, e.g. head.stl, head.obj, head.glb, head.png", true},

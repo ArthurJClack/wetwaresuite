@@ -685,7 +685,7 @@ Create an empty parametric part and return its id (e.g. cad1). Then define param
 
 #### `cad.open`: Open Part
 
-Open a .wwcad part (parameters and feature tree), or import a mesh file (stl, obj, ply, off, glb, gltf, 3mf) as a new part with one fixed 'imported' feature. Returns the document id.
+Open a .wwcad part (parameters and feature tree), or import a mesh file (stl, obj, ply, off, glb, gltf, 3mf, fbx) as a new part with one fixed 'imported' feature. Returns the document id.
 
 | param | required | default | meaning |
 |---|---|---|---|
@@ -693,7 +693,7 @@ Open a .wwcad part (parameters and feature tree), or import a mesh file (stl, ob
 
 #### `cad.import`: Import Mesh
 
-Add a mesh file (stl, obj, ply, off, glb, gltf, 3mf) to a part as a fixed 'imported' feature, which booleans, holes and patterns can use like any other.
+Add a mesh file (stl, obj, ply, off, glb, gltf, 3mf, fbx) to a part as a fixed 'imported' feature, which booleans, holes and patterns can use like any other.
 
 | param | required | default | meaning |
 |---|---|---|---|

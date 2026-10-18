@@ -1,6 +1,6 @@
 add_library(wetwaresuite_mesh
   src/math.cpp src/mesh.cpp src/triangulate.cpp src/primitives.cpp src/csg.cpp src/ops.cpp
-  src/io.cpp src/gltf.cpp src/threemf.cpp src/render.cpp src/document.cpp)
+  src/io.cpp src/gltf.cpp src/fbx.cpp src/threemf.cpp src/render.cpp src/document.cpp)
 add_library(wetwaresuite::mesh ALIAS wetwaresuite_mesh)
 target_sources(wetwaresuite_mesh PRIVATE src/topology.cpp)
 target_include_directories(wetwaresuite_mesh PUBLIC include)

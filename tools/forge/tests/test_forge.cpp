@@ -174,7 +174,9 @@ int main() {
     CHECK(s.run("forge.mesh_open", {{"path", (dir / "out" / "tower.glb").string()}}).ok);
     CHECK(s.run("forge.mesh_save", {{"doc", tw}, {"path", (dir / "out" / "tower.png").string()}, {"width", std::int64_t{128}}}).ok);
     CHECK(raster::load(dir / "out" / "tower.png").width() == 128);
-    CHECK(!s.run("forge.mesh_save", {{"doc", tw}, {"path", (dir / "out" / "tower.fbx").string()}}).ok);
+    CHECK(s.run("forge.mesh_save", {{"doc", tw}, {"path", (dir / "out" / "tower.fbx").string()}}).ok);
+    CHECK(mesh::load(dir / "out" / "tower.fbx").triangleCount() > 0);
+    CHECK(!s.run("forge.mesh_save", {{"doc", tw}, {"path", (dir / "out" / "tower.dae").string()}}).ok);
 
     // LOD chain
     Result lods = s.run("forge.mesh_lods", {{"input", (dir / "ball.obj").string()}, {"output", (dir / "lods" / "ball.glb").string()}});

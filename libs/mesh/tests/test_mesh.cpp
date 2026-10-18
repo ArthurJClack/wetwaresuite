@@ -301,8 +301,8 @@ int main() {
         Mesh shape = booleanDifference(box({20, 10, 5}), cylinder(2, 10, 24));
         const double v = volume(shape);
 
-        CHECK(readableExtensions().size() == 7 && writableExtensions().size() == 7);
-        CHECK(canRead("a.STL") && canWrite("x.glb") && !canRead("a.fbx"));
+        CHECK(readableExtensions().size() == 8 && writableExtensions().size() == 8);
+        CHECK(canRead("a.STL") && canWrite("x.glb") && canRead("a.FBX") && !canRead("a.dae"));
         for (const auto& ext : writableExtensions()) {
             const fs::path p = dir / ("shape." + ext);
             save(p, shape);
@@ -311,6 +311,74 @@ int main() {
                             sameBounds(back, shape, 1e-4) && isWatertight(back);
             if (!ok) std::printf("round trip failed for .%s\n", ext.c_str());
             CHECK(ok);
+        }
+        // FBX: an ASCII file as Blender/Maya write them (Y-up, cm, quads, a translated and scaled model)
+        {
+            const std::string ascii = R"fbx(; FBX 7.4.0 project file
+FBXHeaderExtension:  {
+	FBXVersion: 7400
+}
+GlobalSettings:  {
+	Version: 1000
+	Properties70:  {
+		P: "UpAxis", "int", "Integer", "",1
+		P: "UpAxisSign", "int", "Integer", "",1
+		P: "FrontAxis", "int", "Integer", "",2
+		P: "FrontAxisSign", "int", "Integer", "",1
+		P: "CoordAxis", "int", "Integer", "",0
+		P: "CoordAxisSign", "int", "Integer", "",1
+		P: "UnitScaleFactor", "double", "Number", "",1
+	}
+}
+Objects:  {
+	Geometry: 100, "Geometry::Cube", "Mesh" {
+		Vertices: *24 {
+			a: -1,-1,1,1,-1,1,-1,1,1,1,1,1,-1,1,-1,1,1,-1,-1,-1,-1,1,-1,-1
+		}
+		PolygonVertexIndex: *24 {
+			a: 0,1,3,-3,2,3,5,-5,4,5,7,-7,6,7,1,-1,1,7,5,-4,6,0,2,-5
+		}
+		GeometryVersion: 124
+		LayerElementUV: 0 {
+			MappingInformationType: "ByPolygonVertex"
+			ReferenceInformationType: "IndexToDirect"
+			UV: *8 {
+				a: 0,0,1,0,1,1,0,1
+			}
+			UVIndex: *24 {
+				a: 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+			}
+		}
+	}
+	Model: 200, "Model::Cube", "Mesh" {
+		Version: 232
+		Properties70:  {
+			P: "Lcl Translation", "Lcl Translation", "", "A",10,20,30
+			P: "Lcl Scaling", "Lcl Scaling", "", "A",2,2,2
+		}
+	}
+}
+Connections:  {
+	C: "OO",200,0
+	C: "OO",100,200
+}
+)fbx";
+            Mesh cube = readFbx(ascii);
+            CHECK(cube.triangleCount() == 12 && cube.hasUvs() && isWatertight(cube));
+            CHECK(approx(volume(cube), 64, 1e-9));  // 2x2x2 scaled by 2
+            // Y-up (10, 20, 30) lands at (10, -30, 20) Z-up
+            const Bounds cb = bounds(cube);
+            CHECK(approx(cb.center().x, 10, 1e-9) && approx(cb.center().y, -30, 1e-9) && approx(cb.center().z, 20, 1e-9));
+            // binary written by us reads back the same, UVs included
+            Mesh back = readFbx(writeFbx(cube));
+            CHECK(back.triangleCount() == 12 && back.hasUvs() && approx(volume(back), 64, 1e-6) && sameBounds(back, cube, 1e-6));
+            bool threw = false;
+            try {
+                readFbx("Objects: {\n");
+            } catch (const std::runtime_error&) {
+                threw = true;
+            }
+            CHECK(threw);
         }
         // ASCII variants.
         for (const char* ext : {"stl", "ply"}) {

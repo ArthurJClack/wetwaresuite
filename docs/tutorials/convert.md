@@ -16,7 +16,7 @@ wetwaresuite converts images and SVG itself. For everything else it hands the jo
 | --- | --- | --- |
 | PNG, JPEG, BMP, TGA, GIF, PSD, HDR, PNM, ORA to PNG, JPEG, BMP, TGA, PPM, ORA | built-in raster engine | yes |
 | SVG to PNG, JPEG, BMP, TGA, PPM (or a cleaned-up SVG) | the suite's [vector](vector.md) tool | yes |
-| audio, video, and extra image formats (WebP, AVIF, HEIC, TIFF, ICO, JXL, EXR) | [ffmpeg](https://ffmpeg.org) | optional |
+| audio, video, and extra image formats (AVIF, HEIC, ICO, JXL, EXR) | [ffmpeg](https://ffmpeg.org) | optional |
 | Word, Excel, PowerPoint, OpenDocument, RTF and friends | [LibreOffice](https://www.libreoffice.org) (`soffice`) | optional |
 | Markdown, HTML, reStructuredText, LaTeX, Org, EPUB, plain text | [pandoc](https://pandoc.org) | optional |
 
@@ -28,7 +28,7 @@ The helper programs just need to be on your `PATH`. On Debian or Ubuntu: `sudo a
 
 ```sh
 $ wetwaresuite convert.formats
-images (built in, ready): bmp, gif, hdr, jpeg, jpg, ora, pgm, pic, png, pnm, ppm, psd, tga -> bmp, jpeg, jpg, ora, png, ppm, tga
+images (built in, ready): bmp, gif, hdr, jpeg, jpg, ora, pgm, pic, png, pnm, ppm, psd, tga, tif, tiff, webp -> bmp, jpeg, jpg, ora, png, ppm, tga, tif, tiff, webp
 svg (vector tool, ready): svg -> bmp, jpeg, jpg, png, ppm, svg, tga
 audio/video/more images (ffmpeg, ready): aac, ac3, aif, aiff, amr, flac, m4a, mp3, ogg, opus, wav, wma, 3gp, avi, flv, gif, m4v, mkv, mov, mp4, mpeg, mpg, ts, webm, wmv, avif, exr, heic, heif, ico, jxl, tif, tiff, webp
 office documents (LibreOffice, ready): doc, docx, key, numbers, odp, ods, odt, pages, ppt, pptx, rtf, wpd, xls, xlsx -> csv, doc, docx, epub, html, odp, ods, odt, pdf, ppt, pptx, rtf, txt, xls, xlsx
@@ -166,7 +166,7 @@ failed: 0
 - Existing outputs are never replaced unless you pass `overwrite=true`; running the same command twice reports each file as `already exists` and exits with 1.
 - If a folder holds `photo.png` and `photo.jpg`, both map to the same output name; the second one is reported as `already exists`.
 
-Transparency becomes white in JPEG. To WebP, AVIF or TIFF instead, just change `to=` (these use ffmpeg).
+Transparency becomes white in JPEG. To WebP or TIFF instead, just change `to=` (both built in); AVIF uses ffmpeg.
 
 **Batch.** In a script, mix conversions with other steps:
 
@@ -197,7 +197,7 @@ Use `scale` rather than `width` or `height`: for SVG input those are currently i
 - `convert.file` never overwrites unless `overwrite=true`, and refuses to write over its own input.
 - It creates missing output folders for you.
 - The output needs an extension (`output=out` fails with a hint).
-- [photo](photo.md) opens only the built-in image formats; to edit a WebP, TIFF or HEIC, convert it to PNG first.
+- [photo](photo.md) opens only the built-in image formats (WebP and TIFF included); to edit a HEIC or AVIF, convert it to PNG first.
 - `convert` commands do not open documents, so they are not part of undo history.
 
 ## Command reference

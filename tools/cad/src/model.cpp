@@ -980,7 +980,7 @@ std::shared_ptr<CadDoc> openCad(const std::filesystem::path& path) {
         doc->features.push_back(std::move(f));
         doc->regenerate();
     } else {
-        throw std::runtime_error("cad opens .wwcad files and meshes (stl obj ply off glb gltf 3mf), not " + path.string());
+        throw std::runtime_error("cad opens .wwcad files and meshes (stl obj ply off glb gltf 3mf fbx), not " + path.string());
     }
     doc->path = path.string();
     return doc;

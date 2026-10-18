@@ -1,9 +1,10 @@
 // Mesh files. STL (ascii/binary, auto-detected), OBJ (v/vt/vn/f, polygons
 // triangulated, materials ignored), PLY (ascii and binary read, binary
 // little-endian write), OFF, glTF 2.0 (.glb write; .glb/.gltf read with
-// embedded, base64 or .bin buffers) and 3MF (zip of XML).
+// embedded, base64 or .bin buffers), 3MF (zip of XML) and FBX (binary or
+// ASCII read, binary 7.4 write; static meshes only).
 //
-// glTF is Y-up, so it's rotated to and from this library's Z-up on the way
+// glTF and FBX are Y-up, so it's rotated to and from this library's Z-up on the way
 // through; the other formats are taken as they are. Everything else (names,
 // materials, colours) is dropped: these are geometry exchanges.
 #pragma once
@@ -17,8 +18,8 @@
 namespace wetwaresuite::mesh {
 
 // Lowercase extensions without the dot.
-const std::vector<std::string>& readableExtensions();  // stl obj ply off glb gltf 3mf
-const std::vector<std::string>& writableExtensions();  // stl obj ply off glb gltf 3mf
+const std::vector<std::string>& readableExtensions();  // stl obj ply off glb gltf 3mf fbx
+const std::vector<std::string>& writableExtensions();  // stl obj ply off glb gltf 3mf fbx
 
 bool canRead(const std::filesystem::path& path);
 bool canWrite(const std::filesystem::path& path);
@@ -49,5 +50,7 @@ std::string writeGlb(const Mesh& mesh);
 std::string writeGltf(const Mesh& mesh);  // JSON with the buffer embedded as base64
 Mesh read3mf(const std::string& bytes);
 std::string write3mf(const Mesh& mesh);
+Mesh readFbx(const std::string& bytes);  // every mesh model, placed by its node transforms
+std::string writeFbx(const Mesh& mesh);  // binary FBX 7.4, Y-up, millimetres
 
 }  // namespace wetwaresuite::mesh

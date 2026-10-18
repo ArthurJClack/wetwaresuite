@@ -168,6 +168,27 @@ void save(const Image& img, const std::filesystem::path& path, int quality) {
     writeFile(path, bytes);
 }
 
+std::string inflateZlib(const std::string& data) {
+    int len = 0;
+    char* out = stbi_zlib_decode_malloc_guesssize_headerflag(data.data(), static_cast<int>(data.size()),
+                                                            static_cast<int>(std::min<std::size_t>(data.size() * 4 + 64, 1u << 30)), &len, 1);
+    if (!out) out = stbi_zlib_decode_noheader_malloc(data.data(), static_cast<int>(data.size()), &len);
+    if (!out) throw std::runtime_error("corrupt compressed data");
+    std::string s(out, static_cast<std::size_t>(len));
+    STBI_FREE(out);
+    return s;
+}
+
+std::string deflateZlib(const std::string& data, int level) {
+    int len = 0;
+    unsigned char* z = stbi_zlib_compress(reinterpret_cast<unsigned char*>(const_cast<char*>(data.data())), static_cast<int>(data.size()),
+                                          &len, std::clamp(level, 1, 9));
+    if (!z) throw std::runtime_error("compression failed");
+    std::string s(reinterpret_cast<char*>(z), static_cast<std::size_t>(len));
+    STBIW_FREE(z);
+    return s;
+}
+
 std::string previewPng(const Image& img, int maxSize) {
     if (img.width() <= maxSize && img.height() <= maxSize) return encodePng(img);
     double scale = static_cast<double>(maxSize) / std::max(img.width(), img.height());

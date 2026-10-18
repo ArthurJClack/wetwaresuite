@@ -372,7 +372,7 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"cad.import", "Import Mesh",
-             "Add a mesh file (stl, obj, ply, off, glb, gltf, 3mf) to a part as a fixed 'imported' feature, which "
+             "Add a mesh file (stl, obj, ply, off, glb, gltf, 3mf, fbx) to a part as a fixed 'imported' feature, which "
              "booleans, holes and patterns can use like any other.",
              [] {
                  std::vector<ParamSpec> s{docParam(), {"path", ParamType::String, "mesh file", true}};
@@ -432,7 +432,7 @@ void registerCommands(Session& session) {
                     return r;
                 }
                 if (!mesh::canWrite(path)) {
-                    return Result::failure("unknown format '" + ext + "': use .wwcad, stl, obj, ply, off, glb, gltf, 3mf, png or jpg");
+                    return Result::failure("unknown format '" + ext + "': use .wwcad, stl, obj, ply, off, glb, gltf, 3mf, fbx, png or jpg");
                 }
                 mesh::SaveOptions so;
                 so.ascii = boolParam(p, "ascii", false);

@@ -37,6 +37,10 @@ bool webpSupported();
 Image decodeWebp(const std::string& bytes);
 std::string encodeWebp(const Image& image, int quality = 90);
 
+// zlib streams (used by TIFF, FBX, ...). inflateZlib throws std::runtime_error on bad data.
+std::string inflateZlib(const std::string& data);
+std::string deflateZlib(const std::string& data, int level = 6);
+
 // Image scaled to fit in maxSize x maxSize, encoded as PNG: what previews use.
 std::string previewPng(const Image& image, int maxSize = 512);
 

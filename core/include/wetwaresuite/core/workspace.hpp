@@ -27,6 +27,8 @@ struct OrbitView {
     double panX = 0;
     double panY = 0;
     bool antialias = true;  // off while dragging, for speed
+};
+
 // Documents laid out in time (a video timeline, an audio project) describe
 // their tracks and clips so the window can draw a timeline you drag clips on.
 // Every change still goes through a command the document names.
@@ -64,6 +66,24 @@ struct TimelineEdit {
     double at = 0;      // Split: timeline time
 };
 
+// Spreadsheet-like documents let the window show an editable cell grid. Cells
+// are read one at a time (only the visible ones are asked for), and typing into
+// a cell becomes the command the document names.
+struct GridCell {
+    std::string text;   // as shown (formatted value)
+    std::string input;  // what you'd type to recreate it ("=SUM(A1:A3)", "12.5")
+    bool bold = false;
+    bool number = false;  // right-aligned
+    bool error = false;
+};
+
+struct CellGrid {
+    std::string docParam = "doc";
+    std::vector<std::string> sheets;
+    int active = 0;
+    int usedRows = 0, usedCols = 0;  // the used range, from A1
+};
+
 class Document {
 public:
     virtual ~Document() = default;
@@ -79,6 +99,17 @@ public:
     // The command line that makes an edit, e.g. "cut.move_clip clip=c2 start=3.5 track=v1"
     // (the caller adds the document param); empty when the edit can't be done.
     virtual std::string timelineCommand(const TimelineEdit&) const { return {}; }
+    // Grid documents fill in their sheets and return true.
+    virtual bool grid(CellGrid&) const { return false; }
+    // One cell (0-based); false when it's empty.
+    virtual bool gridCell(int /*sheet*/, int /*row*/, int /*col*/, GridCell&) const { return false; }
+    virtual double gridColumnChars(int /*sheet*/, int /*col*/) const { return 10; }
+    // The command and its "key=value" args that type `input` into a cell (empty input clears it;
+    // text with tabs or line breaks is a pasted block starting there); the caller adds the
+    // document param. Empty when it can't be done.
+    virtual std::vector<std::string> gridSetCommand(int /*sheet*/, int /*row*/, int /*col*/, const std::string& /*input*/) const {
+        return {};
+    }
 
     std::string path;  // where it was opened from or last saved to, may be empty
 };

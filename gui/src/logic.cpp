@@ -407,15 +407,22 @@ std::vector<std::string> openCandidates(const std::string& path, const std::vect
     auto slash = path.find_last_of("/\\");
     if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) ext = lower(path.substr(dot + 1));
     std::vector<std::string> first, rest;
+    // <tool>.open, then the tool's other openers (office.sheet_open, audio.project_open...)
+    // that take a path; ones whose description names the extension go first.
     for (const auto& tool : tools) {
-        // a tool's files, then its projects (audio.project_open opens multitrack .json projects)
-        for (const std::string& id : {tool + ".open", tool + ".project_open"}) {
-            auto it = std::find_if(commands.begin(), commands.end(), [&](const CommandInfo& c) { return c.id == id; });
-            if (it == commands.end()) continue;
+        std::vector<const CommandInfo*> openers;
+        for (const auto& c : commands) {
+            if (c.id.rfind(tool + ".", 0) != 0) continue;
+            const bool plain = c.id == tool + ".open";
+            const bool named = c.id.size() > 5 && c.id.compare(c.id.size() - 5, 5, "_open") == 0;
+            const bool takesPath = std::any_of(c.params.begin(), c.params.end(), [](const ParamSpec& p) { return p.name == "path"; });
+            if ((plain || named) && takesPath) openers.insert(plain ? openers.begin() : openers.end(), &c);
+        }
+        for (const CommandInfo* it : openers) {
             const std::string desc = lower(it->description + " " + it->title);
             bool mentions = !ext.empty() && (wholeWord(desc, ext) || (ext == "jpeg" && wholeWord(desc, "jpg")) ||
                                              (ext == "jpg" && wholeWord(desc, "jpeg")));
-            (mentions ? first : rest).push_back(id);
+            (mentions ? first : rest).push_back(it->id);
         }
     }
     first.insert(first.end(), rest.begin(), rest.end());

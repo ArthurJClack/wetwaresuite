@@ -438,6 +438,10 @@ void Shell::documentView() {
     ImGui::TextDisabled("%s", doc->summary().c_str());
     suggestionBannerView();
     transportBar();
+    if (CellGrid layout; doc->grid(layout) && !layout.sheets.empty()) {
+        gridView(layout);
+        return;
+    }
     canvasToolbar();
     TimelineLayout layout;
     if (doc->timeline(layout)) {

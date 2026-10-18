@@ -1068,6 +1068,47 @@ void testMcpAndBatch() {
 
 }  // namespace
 
+// The window's cell grid: cells read one at a time, and typing becomes an undoable command.
+void testGrid() {
+    Session s;
+    registerCommands(s);
+    CHECK(s.run("office.sheet_new", P({{"csv", std::string("Item,Price\nTea,2.5\nCake,4")}})).ok);
+    CHECK(s.run("office.sheet_add", P({{"name", std::string("Notes")}})).ok);
+    auto doc = s.workspace().get("sheet1");
+    CHECK(doc != nullptr);
+    if (!doc) return;
+    CellGrid layout;
+    CHECK(doc->grid(layout) && layout.sheets.size() == 2 && layout.sheets[1] == "Notes");
+    CHECK(s.run("office.sheet_select", P({{"sheet", std::string("1")}})).ok);
+    CHECK(doc->grid(layout) && layout.active == 0 && layout.usedRows == 3 && layout.usedCols == 2);
+    GridCell c;
+    CHECK(doc->gridCell(0, 1, 1, c) && c.text == "2.5" && c.number && !c.error);
+    CHECK(!doc->gridCell(0, 5, 5, c));
+    CHECK(!doc->gridCell(7, 0, 0, c));  // no such sheet
+    auto type = [&](int sheet, int row, int col, const std::string& input) {
+        std::vector<std::string> tokens = doc->gridSetCommand(sheet, row, col, input);
+        if (tokens.empty()) return false;
+        const CommandInfo* info = s.registry().find(tokens.front());
+        if (!info) return false;
+        tokens.erase(tokens.begin());
+        tokens.push_back(layout.docParam + "=sheet1");
+        return s.run(info->id, cli::parseArgs(*info, tokens)).ok;
+    };
+    CHECK(type(0, 3, 1, "=SUM(B2:B3)"));
+    CHECK(doc->gridCell(0, 3, 1, c) && c.text == "6.5" && c.input == "=SUM(B2:B3)");
+    CHECK(type(1, 0, 0, "hello world"));  // another sheet, with a space
+    CHECK(doc->gridCell(1, 0, 0, c) && c.text == "hello world" && !c.number);
+    CHECK(type(0, 3, 1, ""));  // empty clears
+    CHECK(!doc->gridCell(0, 3, 1, c));
+    CHECK(type(0, 5, 0, "x\ty\n1\t2"));  // a pasted block lands from that cell
+    CHECK(doc->gridCell(0, 6, 1, c) && c.text == "2");
+    CHECK(type(0, 0, 3, "=1/0"));
+    CHECK(doc->gridCell(0, 0, 3, c) && c.error);
+    CHECK(s.history().undo() && !doc->gridCell(0, 0, 3, c));
+    CHECK(doc->gridSetCommand(0, -1, 0, "1").empty());
+    CHECK(doc->gridColumnChars(0, 0) > 0);
+}
+
 int main() {
     testA1();
     testInputAndFormats();
@@ -1085,6 +1126,7 @@ int main() {
     testDeck();
     testChart();
     testSheetCommands();
+    testGrid();
     testDocCommands();
     testDeckAndPdfCommands();
     testMcpAndBatch();

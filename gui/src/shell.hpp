@@ -103,6 +103,21 @@ struct TimelineState {
     double grabT = 0, origStart = 0, origLength = 0, headroom = -1, tailroom = -1;
 };
 
+// The cell grid shown for spreadsheet documents (grid_view.cpp).
+struct GridState {
+    std::string doc;
+    int sheet = -1;  // -1: start on the document's active sheet
+    int row = 0, col = 0;
+    bool editing = false;
+    bool focusEdit = false;   // give the cell editor keyboard focus next frame
+    bool caretToEnd = false;  // started by typing: keep the typed text, caret after it
+    bool scrollToSel = false;
+    bool textInput = false;  // we turned SDL text input on
+    std::string buffer;   // the cell editor's text
+    std::string formula;  // the formula bar's text
+    int formulaRow = -1, formulaCol = -1, formulaSheet = -1;
+};
+
 // Where a native file dialog's answer goes.
 struct ToolPanels;  // tool_panels.hpp
 
@@ -190,6 +205,9 @@ private:
     float timelineHeight(const TimelineLayout& layout) const;
     void timelineView(const TimelineLayout& layout);
     void runTimelineEdit(const TimelineLayout& layout, const TimelineEdit& edit);
+    // spreadsheet grid (grid_view.cpp)
+    void gridView(const CellGrid& layout);
+    bool commitCell(const CellGrid& layout, int sheet, int row, int col, const std::string& input);
 
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);
@@ -319,6 +337,7 @@ private:
     Transport transport_;
     float playheadFraction_ = -1;  // where to draw the playhead over a waveform, 0..1
     TimelineState timeline_;
+    GridState grid_;
     float penPressure_ = 1.0f;
     bool penDown_ = false;
     bool penEraser_ = false;

@@ -179,6 +179,14 @@ void testRealCommands() {
     auto cands = openCandidates("/tmp/cat.PNG", {"paint", "photo"}, all);
     CHECK(!cands.empty() && cands[0] == "photo.open");
     CHECK(openCandidates("x.png", {"paint"}, all).empty());
+    // a tool's other openers count too, and the one naming the extension goes first
+    std::vector<CommandInfo> office = {
+        {"office.doc_open", "Open Document", "Open a .docx or .md file", {ParamSpec{"path"}}, false},
+        {"office.sheet_open", "Open Spreadsheet", "Open .xlsx or .csv", {ParamSpec{"path"}}, false},
+        {"office.sheet_close", "Close", "close", {}, false},
+        {"office.reopen", "Reopen", "no path here", {}, false}};
+    cands = openCandidates("/x/budget.csv", {"office"}, office);
+    CHECK(cands.size() == 2 && cands[0] == "office.sheet_open" && cands[1] == "office.doc_open");
 }
 
 void testColoursRecentMessages() {

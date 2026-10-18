@@ -157,6 +157,27 @@ Video edits (the video app) and multitrack audio projects (the sound app) get a 
 
 Every drag is one ordinary command (`cut.move_clip`, `cut.trim_clip`, `audio.clip_set`, `audio.clip_trim`, `audio.clip_split`...), so it shows in the history and **Undo** takes it back, and a script or Claude can do exactly the same.
 
+### Spreadsheets: type into the cells
+
+A spreadsheet (in the office app) opens as a grid of cells instead of a picture, with a tab for each
+sheet above it.
+
+![a budget spreadsheet in the office app's grid](images/gui-office-sheet-grid.jpg)
+
+- **Click** a cell to pick it. Its name (like `B7`) and what's in it show in the **formula bar** at the
+  top; type there and press **Enter** to change it.
+- **Just start typing** to replace the cell, or **double-click** (or press **F2**) to change what's
+  already there. Start with `=` for a formula, like `=SUM(B2:B5)`.
+- **Enter** puts it in and moves down, **Tab** moves right (hold **Shift** to go back), **Esc** cancels.
+  Clicking another cell keeps what you typed.
+- The **arrow keys**, **Page Up/Down** and **Home** move around; **Delete** empties the cell.
+- **Ctrl+C**, **Ctrl+X** and **Ctrl+V** copy, cut and paste a cell. Pasting rows copied from another
+  spreadsheet fills a block of cells from the one you picked.
+
+Every cell you change is one step in the history, the same `office.sheet_set` or `office.sheet_clear`
+command a script would run, so Ctrl+Z takes back exactly one cell. Formulas that depend on it update
+at once, and cells with errors (`#DIV/0!`, `#NAME?`) show in red.
+
 ## 7. Painting
 
 In the image app (or any app with the paint tool), pictures get painting tools above the canvas:

@@ -33,6 +33,8 @@ wetwaresuite office.deck_export file=talk.md path=talk.png
 
 **Previews.** Each kind has a preview command (`office.sheet_preview`, `office.doc_preview`, `office.deck_preview`) that returns a PNG drawn exactly as the PDF export draws it. Most editing commands also take `preview=true`, which attaches a picture of the result. Claude uses these to check its own work.
 
+**In the window.** `wetwaresuite-office` (or `wetwaresuite-gui`) opens spreadsheets as an editable grid: click a cell, type a value or `=formula`, press Enter. Each cell you type is an `office.sheet_set` (or `office.sheet_clear`) step, so it undoes the same way as a script. See [the window tutorial](gui.md#spreadsheets-type-into-the-cells).
+
 **Built in or LibreOffice.** `wetwaresuite office.formats` shows what is built in, and whether LibreOffice and pdftoppm were found:
 
 ```sh

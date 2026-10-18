@@ -1,0 +1,10 @@
+add_library(achclwss_vector src/geometry.cpp src/render.cpp src/svg.cpp src/commands.cpp)
+add_library(achclwss::vector ALIAS achclwss_vector)
+target_include_directories(achclwss_vector PUBLIC include)
+target_link_libraries(achclwss_vector PUBLIC achclwss::core achclwss::raster)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_vector tests/test_vector.cpp)
+  target_link_libraries(test_vector PRIVATE achclwss::vector achclwss::mcp achclwss_check)
+  add_test(NAME vector COMMAND test_vector)
+endif()

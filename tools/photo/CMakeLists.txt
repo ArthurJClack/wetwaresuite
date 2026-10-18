@@ -1,0 +1,10 @@
+add_library(achclwss_photo src/photo.cpp)
+add_library(achclwss::photo ALIAS achclwss_photo)
+target_include_directories(achclwss_photo PUBLIC include)
+target_link_libraries(achclwss_photo PUBLIC achclwss::raster)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_photo tests/test_photo.cpp)
+  target_link_libraries(test_photo PRIVATE achclwss::photo achclwss_check)
+  add_test(NAME photo COMMAND test_photo)
+endif()

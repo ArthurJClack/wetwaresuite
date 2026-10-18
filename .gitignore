@@ -3,3 +3,4 @@ target/
 .cache/
 *.user
 .DS_Store
+.claude/

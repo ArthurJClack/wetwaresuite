@@ -1,0 +1,10 @@
+add_library(achclwss_paint src/paint.cpp)
+add_library(achclwss::paint ALIAS achclwss_paint)
+target_include_directories(achclwss_paint PUBLIC include)
+target_link_libraries(achclwss_paint PUBLIC achclwss::raster)
+
+if(ACHCLWSS_BUILD_TESTS)
+  add_executable(test_paint tests/test_paint.cpp)
+  target_link_libraries(test_paint PRIVATE achclwss::paint achclwss::photo achclwss_check)
+  add_test(NAME paint COMMAND test_paint)
+endif()

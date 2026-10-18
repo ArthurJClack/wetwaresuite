@@ -1,5 +1,7 @@
 #include "achclwss/core/command.hpp"
 
+#include <sstream>
+
 namespace achclwss {
 
 const char* toString(ParamType type) {
@@ -8,6 +10,7 @@ const char* toString(ParamType type) {
         case ParamType::Int: return "integer";
         case ParamType::Number: return "number";
         case ParamType::String: return "string";
+        case ParamType::NumberList: return "array";
     }
     return "string";
 }
@@ -21,6 +24,7 @@ bool matches(ParamType type, const Value& value) {
         case ParamType::Number:
             return std::holds_alternative<double>(value) || std::holds_alternative<std::int64_t>(value);
         case ParamType::String: return std::holds_alternative<std::string>(value);
+        case ParamType::NumberList: return std::holds_alternative<NumberList>(value);
     }
     return false;
 }
@@ -62,6 +66,16 @@ std::unique_ptr<Action> CommandRegistry::create(const std::string& id, const Par
         }
         if (!matches(spec.type, p->second)) {
             throw ParamError("parameter '" + spec.name + "' for " + id + " must be " + toString(spec.type));
+        }
+        if (!spec.choices.empty()) {
+            const auto& v = std::get<std::string>(p->second);
+            bool allowed = false;
+            for (const auto& c : spec.choices) allowed = allowed || c == v;
+            if (!allowed) {
+                std::string list;
+                for (const auto& c : spec.choices) list += (list.empty() ? "" : ", ") + c;
+                throw ParamError("parameter '" + spec.name + "' for " + id + " must be one of: " + list);
+            }
         }
     }
     return it->second.factory(params);
@@ -109,6 +123,62 @@ Result Session::run(const std::string& id, const Params& params) {
     }
     const auto* info = registry_.find(id);
     return history_.execute(std::move(action), info->title, info->undoable);
+}
+
+std::string stringParam(const Params& p, const std::string& key, const std::string& fallback) {
+    auto it = p.find(key);
+    if (it == p.end()) return fallback;
+    if (auto v = std::get_if<std::string>(&it->second)) return *v;
+    return fallback;
+}
+
+std::int64_t intParam(const Params& p, const std::string& key, std::int64_t fallback) {
+    auto it = p.find(key);
+    if (it == p.end()) return fallback;
+    if (auto v = std::get_if<std::int64_t>(&it->second)) return *v;
+    return fallback;
+}
+
+double numberParam(const Params& p, const std::string& key, double fallback) {
+    auto it = p.find(key);
+    if (it == p.end()) return fallback;
+    if (auto v = std::get_if<double>(&it->second)) return *v;
+    if (auto v = std::get_if<std::int64_t>(&it->second)) return static_cast<double>(*v);
+    return fallback;
+}
+
+bool boolParam(const Params& p, const std::string& key, bool fallback) {
+    auto it = p.find(key);
+    if (it == p.end()) return fallback;
+    if (auto v = std::get_if<bool>(&it->second)) return *v;
+    return fallback;
+}
+
+NumberList listParam(const Params& p, const std::string& key) {
+    auto it = p.find(key);
+    if (it == p.end()) return {};
+    if (auto v = std::get_if<NumberList>(&it->second)) return *v;
+    return {};
+}
+
+std::string toText(const Value& value) {
+    if (auto s = std::get_if<std::string>(&value)) return *s;
+    if (auto b = std::get_if<bool>(&value)) return *b ? "true" : "false";
+    if (auto i = std::get_if<std::int64_t>(&value)) return std::to_string(*i);
+    if (auto d = std::get_if<double>(&value)) {
+        std::ostringstream out;
+        out << *d;
+        return out.str();
+    }
+    if (auto l = std::get_if<NumberList>(&value)) {
+        std::string out;
+        for (double d : *l) {
+            if (!out.empty()) out += ",";
+            out += toText(d);
+        }
+        return out;
+    }
+    return {};
 }
 
 }  // namespace achclwss

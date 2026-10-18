@@ -45,4 +45,36 @@ int addStandardFont(Writer& w, Standard font);
 int addTrueTypeFont(Writer& w, const TrueType& font, const std::function<double(int)>& widthOf = nullptr,
                     const std::string& nameSuffix = {});
 
+// A Type0 font (Identity-H: each character is its 2-byte glyph number) embedding the part of
+// `font` that `codepoints` need, with a ToUnicode map so the text copies and searches. Use it
+// for text the WinAnsi fonts can't show (Greek, Cyrillic, ...). `addObject` adds one object body
+// and returns its number, so writers other than Writer can use it too.
+int addUnicodeFont(const std::function<int(std::string)>& addObject, const TrueType& font, const std::set<unsigned>& codepoints,
+                   const std::string& nameSuffix = {});
+int addUnicodeFont(Writer& w, const TrueType& font, const std::set<unsigned>& codepoints, const std::string& nameSuffix = {});
+// <hex> string of the glyph numbers, for text shown with a font from addUnicodeFont.
+std::string glyphText(const TrueType& font, const std::string& utf8);
+
+// Document info text (/Title ...): WinAnsi when it fits, UTF-16 otherwise.
+std::string infoText(const std::string& utf8);
+
+// Lets text set in the standard fonts carry any language: show() writes the operators for one
+// string, switching to the built-in Unicode font (resource /FU) for characters WinAnsi lacks and
+// back to `fontResource` (e.g. "F1") after. Put resource() in the page's /Font dictionary and call
+// finish() once before Writer::finish, which embeds just the characters used.
+class UnicodeFallback {
+public:
+    explicit UnicodeFallback(Writer& w) : w_(w) {}
+    std::string show(const std::string& utf8, const std::string& fontResource, double size);
+    bool used() const { return id_ != 0; }
+    int id() const { return id_; }  // the font's object number, 0 when unused
+    std::string resource() const;  // " /FU n 0 R", or empty when nothing needed it
+    void finish();
+
+private:
+    Writer& w_;
+    int id_ = 0;
+    std::set<unsigned> chars_;
+};
+
 }  // namespace wetwaresuite::pdfdoc

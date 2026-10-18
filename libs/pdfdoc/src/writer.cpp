@@ -1,8 +1,10 @@
 #include "wetwaresuite/pdfdoc/writer.hpp"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <map>
 #include <stdexcept>
 
 #if defined(__GNUC__) || defined(__clang__)
@@ -194,6 +196,158 @@ int addTrueTypeFont(Writer& w, const TrueType& font, const std::function<double(
     }
     return w.add("<< /Type /Font /Subtype /TrueType /BaseFont /" + name + " /FirstChar 32 /LastChar 255 /Widths [" + widths +
                  "] /Encoding /WinAnsiEncoding /FontDescriptor " + std::to_string(desc) + " 0 R >>");
+}
+
+namespace {
+
+// The Type0 font dictionary; the objects it points to are added through `addObject`.
+std::string unicodeFontDict(const std::function<int(std::string)>& addObject, const TrueType& font, const std::set<unsigned>& codepoints,
+                            const std::string& nameSuffix) {
+    if (!font.embeddable()) throw std::runtime_error(font.path().string() + " has no TrueType outlines (only .ttf fonts can be embedded)");
+    std::map<int, unsigned> glyphs;  // glyph -> first code point using it
+    for (unsigned cp : codepoints) {
+        const int g = font.glyphIndex(cp);
+        if (g && !glyphs.count(g)) glyphs[g] = cp;
+    }
+    std::set<int> keep;
+    for (const auto& [g, cp] : glyphs) keep.insert(g);
+    // six letters before the name mark a subset, as the PDF spec asks
+    std::string tag;
+    unsigned h = 2166136261u;
+    for (int g : keep) h = (h ^ static_cast<unsigned>(g)) * 16777619u;
+    for (int i = 0; i < 6; ++i, h /= 26) tag += static_cast<char>('A' + h % 26);
+    const std::string name = tag + "+" + font.postscriptName() + nameSuffix;
+
+    auto stream = [](const std::string& dict, const std::string& data) {
+        const std::string z = deflate(data);
+        return "<< " + dict + (dict.empty() ? "" : " ") + "/Length " + std::to_string(z.size()) + " /Filter /FlateDecode >>\nstream\n" +
+               z + "\nendstream";
+    };
+    const std::string sub = font.subset(keep);
+    const int file = addObject(stream("/Length1 " + std::to_string(sub.size()), sub));
+    const VMetrics m = font.metrics();
+    double box[4];
+    font.bbox(box);
+    const double angle = font.italicAngle();
+    int flags = 4;  // symbolic: glyphs are picked by number
+    if (font.fixedPitch()) flags |= 1;
+    if (angle != 0) flags |= 64;
+    const int desc = addObject("<< /Type /FontDescriptor /FontName /" + name + " /Flags " + std::to_string(flags) + " /FontBBox [" +
+                               num(box[0]) + " " + num(box[1]) + " " + num(box[2]) + " " + num(box[3]) + "] /ItalicAngle " + num(angle) +
+                               " /Ascent " + num(m.ascent) + " /Descent " + num(m.descent) + " /CapHeight " + num(m.capHeight) +
+                               " /StemV 80 /FontFile2 " + std::to_string(file) + " 0 R >>");
+    std::string widths = "[";
+    for (const auto& [g, cp] : glyphs) widths += " " + std::to_string(g) + " [" + num(std::round(font.glyphAdvance(g))) + "]";
+    widths += " ]";
+    const int cid = addObject("<< /Type /Font /Subtype /CIDFontType2 /BaseFont /" + name +
+                              " /CIDSystemInfo << /Registry (Adobe) /Ordering (Identity) /Supplement 0 >> /FontDescriptor " +
+                              std::to_string(desc) + " 0 R /DW " + num(std::round(font.glyphAdvance(0))) + " /W " + widths +
+                              " /CIDToGIDMap /Identity >>");
+
+    auto hex4 = [](unsigned v) {
+        char buf[8];
+        std::snprintf(buf, sizeof buf, "%04X", v & 0xFFFF);
+        return std::string(buf);
+    };
+    auto utf16 = [&](unsigned cp) {
+        if (cp < 0x10000) return hex4(cp);
+        cp -= 0x10000;
+        return hex4(0xD800 + (cp >> 10)) + hex4(0xDC00 + (cp & 0x3FF));
+    };
+    std::string cmap =
+        "/CIDInit /ProcSet findresource begin\n12 dict begin\nbegincmap\n/CIDSystemInfo << /Registry (Adobe) /Ordering (UCS) /Supplement 0 >> def\n"
+        "/CMapName /Adobe-Identity-UCS def\n/CMapType 2 def\n1 begincodespacerange\n<0000> <FFFF>\nendcodespacerange\n";
+    std::vector<std::pair<int, unsigned>> pairs(glyphs.begin(), glyphs.end());
+    for (std::size_t i = 0; i < pairs.size(); i += 100) {
+        const std::size_t n = std::min<std::size_t>(100, pairs.size() - i);
+        cmap += std::to_string(n) + " beginbfchar\n";
+        for (std::size_t k = i; k < i + n; ++k) {
+            cmap += "<" + hex4(static_cast<unsigned>(pairs[k].first)) + "> <" + utf16(pairs[k].second) + ">\n";
+        }
+        cmap += "endbfchar\n";
+    }
+    cmap += "endcmap\nCMapName currentdict /CMap defineresource pop\nend\nend\n";
+    const int toUnicode = addObject(stream("", cmap));
+    return "<< /Type /Font /Subtype /Type0 /BaseFont /" + name + " /Encoding /Identity-H /DescendantFonts [" + std::to_string(cid) +
+           " 0 R] /ToUnicode " + std::to_string(toUnicode) + " 0 R >>";
+}
+
+}  // namespace
+
+int addUnicodeFont(const std::function<int(std::string)>& addObject, const TrueType& font, const std::set<unsigned>& codepoints,
+                   const std::string& nameSuffix) {
+    return addObject(unicodeFontDict(addObject, font, codepoints, nameSuffix));
+}
+
+int addUnicodeFont(Writer& w, const TrueType& font, const std::set<unsigned>& codepoints, const std::string& nameSuffix) {
+    return addUnicodeFont([&w](std::string body) { return w.add(std::move(body)); }, font, codepoints, nameSuffix);
+}
+
+std::string glyphText(const TrueType& font, const std::string& utf8) {
+    std::string out = "<";
+    char buf[8];
+    for (unsigned cp : utf8Decode(utf8)) {
+        if (cp == '\n' || cp == '\r') continue;
+        std::snprintf(buf, sizeof buf, "%04X", static_cast<unsigned>(font.glyphIndex(cp == '\t' ? ' ' : cp)) & 0xFFFF);
+        out += buf;
+    }
+    return out + ">";
+}
+
+bool needsUnicode(unsigned cp) { return cp >= 0x100 && winAnsi(cp) < 0 && builtinSans()->glyphIndex(cp) != 0; }
+
+std::string infoText(const std::string& utf8) {
+    bool fits = true;
+    for (unsigned cp : utf8Decode(utf8)) fits = fits && (cp == '?' || winAnsi(cp) >= 0);
+    if (fits) return text(utf8);
+    std::string out = "<FEFF";
+    char buf[16];
+    for (unsigned cp : utf8Decode(utf8)) {
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            std::snprintf(buf, sizeof buf, "%04X%04X", 0xD800 + (cp >> 10), 0xDC00 + (cp & 0x3FF));
+        } else {
+            std::snprintf(buf, sizeof buf, "%04X", cp);
+        }
+        out += buf;
+    }
+    return out + ">";
+}
+
+std::string UnicodeFallback::show(const std::string& utf8, const std::string& fontResource, double size) {
+    std::string out, plain, wide;
+    auto flushPlain = [&] {
+        if (plain.empty()) return;
+        out += (out.empty() ? "" : " ") + text(plain) + " Tj";
+        plain.clear();
+    };
+    auto flushWide = [&] {
+        if (wide.empty()) return;
+        if (!id_) id_ = w_.reserve();
+        out += (out.empty() ? "" : " ") + std::string("/FU ") + num(size) + " Tf " + glyphText(*builtinSans(), wide) + " Tj /" +
+               fontResource + " " + num(size) + " Tf";
+        wide.clear();
+    };
+    for (unsigned cp : utf8Decode(utf8)) {
+        if (needsUnicode(cp)) {
+            flushPlain();
+            chars_.insert(cp);
+            wide += utf8Encode(cp);
+        } else {
+            flushWide();
+            plain += utf8Encode(cp);
+        }
+    }
+    flushPlain();
+    flushWide();
+    return out.empty() ? "() Tj" : out;
+}
+
+std::string UnicodeFallback::resource() const { return id_ ? " /FU " + std::to_string(id_) + " 0 R" : std::string{}; }
+
+void UnicodeFallback::finish() {
+    if (!id_) return;
+    w_.set(id_, unicodeFontDict([this](std::string body) { return w_.add(std::move(body)); }, *builtinSans(), chars_, {}));
 }
 
 }  // namespace wetwaresuite::pdfdoc

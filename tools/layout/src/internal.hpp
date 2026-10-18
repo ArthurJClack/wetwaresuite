@@ -27,7 +27,7 @@ struct Face {
     std::shared_ptr<pdfdoc::TrueType> ttf;  // the face of a font_add family
     std::string label;                       // "Helvetica-Bold" or "brand bold"
 
-    double advance(unsigned cp) const;  // 1/1000 em; cp must be WinAnsi-encodable
+    double advance(unsigned cp) const;  // 1/1000 em; cp must be encodable() (non-WinAnsi ones use the built-in font)
     pdfdoc::VMetrics metrics() const;
     // Outlines to draw: the TrueType itself, or a system substitute for a standard font. May be null.
     std::shared_ptr<pdfdoc::TrueType> outlines() const;

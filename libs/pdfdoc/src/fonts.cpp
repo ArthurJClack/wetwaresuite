@@ -363,6 +363,143 @@ double TrueType::kern(unsigned left, unsigned right) const {
     return stbtt_GetCodepointKernAdvance(&impl_->info, static_cast<int>(left), static_cast<int>(right)) * impl_->scale;
 }
 
+int TrueType::glyphIndex(unsigned cp) const { return stbtt_FindGlyphIndex(&impl_->info, static_cast<int>(cp)); }
+
+int TrueType::glyphCount() const { return impl_->info.numGlyphs; }
+
+double TrueType::glyphAdvance(int glyph) const {
+    int adv = 0, lsb = 0;
+    stbtt_GetGlyphHMetrics(&impl_->info, glyph, &adv, &lsb);
+    return adv * impl_->scale;
+}
+
+namespace {
+
+std::uint32_t be16(const std::string& b, std::size_t at) {
+    return at + 2 <= b.size() ? (std::uint32_t{static_cast<unsigned char>(b[at])} << 8) | static_cast<unsigned char>(b[at + 1]) : 0;
+}
+std::uint32_t be32(const std::string& b, std::size_t at) { return (be16(b, at) << 16) | be16(b, at + 2); }
+void put16(std::string& b, std::uint32_t v) {
+    b += static_cast<char>((v >> 8) & 0xFF);
+    b += static_cast<char>(v & 0xFF);
+}
+void put32(std::string& b, std::uint32_t v) {
+    put16(b, v >> 16);
+    put16(b, v & 0xFFFF);
+}
+std::uint32_t checksum(const std::string& t) {
+    std::uint32_t sum = 0;
+    for (std::size_t i = 0; i < t.size(); i += 4) {
+        std::uint32_t v = 0;
+        for (std::size_t k = 0; k < 4; ++k) v = (v << 8) | (i + k < t.size() ? static_cast<unsigned char>(t[i + k]) : 0u);
+        sum += v;
+    }
+    return sum;
+}
+
+}  // namespace
+
+std::string TrueType::subset(const std::set<int>& wanted) const {
+    const std::string& b = impl_->bytes;
+    const std::size_t start = static_cast<std::size_t>(impl_->info.fontstart);
+    const int numGlyphs = impl_->info.numGlyphs;
+    const std::size_t glyf = impl_->table("glyf"), loca = impl_->table("loca"), head = impl_->table("head");
+    if (!glyf || !loca || !head || numGlyphs <= 0) return b;
+    const bool longLoca = be16(b, head + 50) != 0;
+    auto offset = [&](int g) -> std::size_t {
+        return longLoca ? be32(b, loca + static_cast<std::size_t>(g) * 4) : be16(b, loca + static_cast<std::size_t>(g) * 2) * 2u;
+    };
+
+    // glyph 0, the wanted glyphs and every component of a composite glyph
+    std::set<int> keep{0};
+    std::vector<int> todo(wanted.begin(), wanted.end());
+    while (!todo.empty()) {
+        const int g = todo.back();
+        todo.pop_back();
+        if (g < 0 || g >= numGlyphs || !keep.insert(g).second) continue;
+        const std::size_t a = glyf + offset(g), e = glyf + offset(g + 1);
+        if (e <= a + 10 || e > b.size()) continue;
+        if (static_cast<std::int16_t>(be16(b, a)) >= 0) continue;  // simple glyph
+        std::size_t p = a + 10;
+        for (;;) {
+            if (p + 4 > e) break;
+            const std::uint32_t flags = be16(b, p);
+            todo.push_back(static_cast<int>(be16(b, p + 2)));
+            p += 4 + ((flags & 1) ? 4 : 2);
+            if (flags & 8) p += 2;
+            else if (flags & 0x40) p += 4;
+            else if (flags & 0x80) p += 8;
+            if (!(flags & 0x20)) break;
+        }
+    }
+    // a composite's component may come before it in numbering: the loop above already
+    // added them all before any is copied, so one pass is enough
+    std::string newGlyf, newLoca;
+    for (int g = 0; g < numGlyphs; ++g) {
+        put32(newLoca, static_cast<std::uint32_t>(newGlyf.size()));
+        if (!keep.count(g)) continue;
+        const std::size_t a = glyf + offset(g), e = glyf + offset(g + 1);
+        if (e > a && e <= b.size()) newGlyf.append(b, a, e - a);
+        while (newGlyf.size() % 4) newGlyf += '\0';
+    }
+    put32(newLoca, static_cast<std::uint32_t>(newGlyf.size()));
+
+    // copy the tables a PDF viewer needs, with the new glyf/loca and long loca offsets
+    const char* tags[] = {"OS/2", "cmap", "cvt ", "fpgm", "glyf", "head", "hhea", "hmtx", "loca", "maxp", "prep"};
+    std::vector<std::pair<std::string, std::string>> tables;
+    for (const char* tag : tags) {
+        std::string data;
+        if (std::strcmp(tag, "glyf") == 0) {
+            data = newGlyf;
+        } else if (std::strcmp(tag, "loca") == 0) {
+            data = newLoca;
+        } else {
+            const std::size_t numTables = be16(b, start + 4);
+            for (std::size_t i = 0; i < numTables; ++i) {
+                const std::size_t rec = start + 12 + i * 16;
+                if (b.compare(rec, 4, tag) != 0) continue;
+                const std::size_t off = be32(b, rec + 8), len = be32(b, rec + 12);
+                if (off + len <= b.size()) data = b.substr(off, len);
+            }
+            if (data.empty()) continue;
+            if (std::strcmp(tag, "head") == 0 && data.size() >= 54) {
+                data[8] = data[9] = data[10] = data[11] = 0;  // checkSumAdjustment, filled in below
+                data[50] = 0;
+                data[51] = 1;  // long loca
+            }
+        }
+        tables.emplace_back(tag, std::move(data));
+    }
+    const std::size_t n = tables.size();
+    int log2 = 0;
+    while ((std::size_t{2} << log2) <= n) ++log2;
+    const std::uint32_t range = (1u << log2) * 16;
+    std::string out;
+    put32(out, 0x00010000);
+    put16(out, static_cast<std::uint32_t>(n));
+    put16(out, range);
+    put16(out, static_cast<std::uint32_t>(log2));
+    put16(out, static_cast<std::uint32_t>(n * 16 - range));
+    std::size_t at = 12 + n * 16;
+    std::size_t headAt = 0;
+    std::string body;
+    for (auto& [tag, data] : tables) {
+        out += tag;
+        put32(out, checksum(data));
+        put32(out, static_cast<std::uint32_t>(at + body.size()));
+        put32(out, static_cast<std::uint32_t>(data.size()));
+        if (tag == "head") headAt = at + body.size();
+        body += data;
+        while (body.size() % 4) body += '\0';
+    }
+    out += body;
+    if (headAt) {
+        const std::uint32_t adjust = 0xB1B0AFBAu - checksum(out);
+        for (int k = 0; k < 4; ++k) out[headAt + 8 + static_cast<std::size_t>(k)] = static_cast<char>((adjust >> (24 - 8 * k)) & 0xFF);
+    }
+    return out;
+}
+
 std::shared_ptr<TrueType> builtinSans() {
     static std::shared_ptr<TrueType> font = [] {
         return TrueType::fromBytes(std::string(reinterpret_cast<const char*>(kBuiltinSans), kBuiltinSansSize), "Roboto Medium (built in)");

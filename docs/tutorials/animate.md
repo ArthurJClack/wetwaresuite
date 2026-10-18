@@ -458,7 +458,7 @@ Other element params (not keyframeable): `name`, `parent`, `visible`, `points`, 
 ## Limitations
 
 - Shapes are filled polygons and outlines are brush strokes, so very thick outlines have soft round joins; there are no gradients, rounded corners or masks yet.
-- Text uses the suite's built-in preview fonts (FreeSans, FreeSerif, FreeMono shapes on Helvetica/Times/Courier metrics), Latin-1 only, left-aligned. Big scale-ups of text are re-rendered at the larger size, but the glyphs come from a fixed-size bitmap, so very large text is slightly soft.
+- Text uses the suite's built-in preview fonts (FreeSans, FreeSerif, FreeMono shapes on Helvetica/Times/Courier metrics), Latin-1 plus Greek and Cyrillic (from the built-in Roboto), left-aligned. Big scale-ups of text are re-rendered at the larger size, but the glyphs come from a fixed-size bitmap, so very large text is slightly soft.
 - Pictures and cels are sampled bilinearly (pictures shrunk more than 2x are pre-scaled); there is no motion blur.
 - Parenting carries position, rotation and scale, not opacity or visibility. 2D and 3D elements can't parent to each other.
 - 3D is a preview-quality renderer: one light setup, flat colours per mesh, outlines on, no textures, shadows or transparency inside a mesh. Meshes are drawn one at a time far to near (by their centres), so meshes that pass through each other can show the wrong one in front. The camera has no roll.

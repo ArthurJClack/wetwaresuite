@@ -110,8 +110,33 @@ double charWidth(Font font, unsigned char b) {
 
 double textWidth(Font font, const std::string& utf8, double size) {
     double em = 0;
-    for (char c : winAnsi(utf8)) em += charWidth(font, static_cast<unsigned char>(c));
+    for (unsigned cp : utf8Decode(utf8)) {
+        if (cp == '\n' || cp == '\r') continue;
+        em += detail::needsUnicode(cp) ? detail::unicodeFont().advance(cp) : charWidth(font, toWinAnsi(cp));
+    }
     return em / 1000.0 * size;
 }
+
+namespace detail {
+
+const pdfdoc::TrueType& unicodeFont() { return *pdfdoc::builtinSans(); }
+
+bool needsUnicode(unsigned cp) {
+    if (cp < 0x100 || toWinAnsi(cp) != '?') return false;
+    return unicodeFont().glyphIndex(cp) != 0;
+}
+
+std::vector<Run> splitRuns(const std::string& utf8) {
+    std::vector<Run> runs;
+    for (unsigned cp : utf8Decode(utf8)) {
+        if (cp == '\n' || cp == '\r') continue;
+        const bool u = needsUnicode(cp);
+        if (runs.empty() || runs.back().unicode != u) runs.push_back({u, {}});
+        runs.back().text += utf8Encode(cp);
+    }
+    return runs;
+}
+
+}  // namespace detail
 
 }  // namespace wetwaresuite::pdf

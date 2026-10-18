@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -74,6 +75,12 @@ public:
     // baseline at (x, y), y down. Empty for a blank glyph like space.
     std::string svgPath(unsigned codepoint, double x, double y, double size) const;
     double kern(unsigned left, unsigned right) const;  // extra advance between the pair, 1/1000 em
+    int glyphIndex(unsigned codepoint) const;  // 0 (the missing-glyph box) when the font has none
+    int glyphCount() const;
+    double glyphAdvance(int glyph) const;      // 1/1000 em
+    // A copy of the font that keeps only these glyphs' outlines (plus glyph 0 and the parts of
+    // composite glyphs); glyph numbers stay the same. Much smaller for embedding.
+    std::string subset(const std::set<int>& glyphs) const;
 
 private:
     TrueType();
@@ -89,5 +96,8 @@ std::shared_ptr<TrueType> systemFont(const std::string& family, bool bold, bool 
 // Roboto Medium (Apache 2.0), built in so text looks the same on every machine. It covers
 // Latin, Greek and Cyrillic.
 std::shared_ptr<TrueType> builtinSans();
+// True when WinAnsi has no byte for the character but the built-in font has a glyph, so PDF
+// writers set it in the built-in font (see UnicodeFallback in writer.hpp).
+bool needsUnicode(unsigned codepoint);
 
 }  // namespace wetwaresuite::pdfdoc

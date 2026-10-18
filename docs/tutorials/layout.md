@@ -1201,9 +1201,11 @@ Render a page to PNG so you can see it, with margins (magenta), column gutters (
 
 **Limitations** (speed and simplicity were chosen over these):
 
-- Text is Latin only: everything is encoded as WinAnsi (Western European,
-  with curly quotes, dashes, the euro sign). Other characters print as `?`.
-  No right-to-left or complex scripts, no kerning pairs, ligatures or
+- Western European text uses the frame's font. Greek and Cyrillic letters
+  are set in wetwaresuite's built-in font (Roboto) and embedded, so they
+  print and copy correctly but don't match a serif or bold face. Chinese,
+  Japanese, Korean, Arabic, Hebrew, Indic scripts and emoji still print as
+  `?`. No right-to-left or complex scripts, no kerning pairs, ligatures or
   OpenType features.
 - No hyphenation; justified lines stretch word spaces only. Very long words
   are broken where they hit the frame edge.

@@ -71,5 +71,29 @@ int main() {
             CHECK(fpdf.find("/Subtype /TrueType") != std::string::npos);
         }
     }
+    // the built-in font: subsets keep only the glyphs asked for, with the same numbers
+    {
+        auto sans = builtinSans();
+        const int zhe = sans->glyphIndex(0x0416), omega = sans->glyphIndex(0x03A9), a = sans->glyphIndex('a');
+        CHECK(zhe > 0 && omega > 0 && a > 0 && sans->glyphIndex(0x4E2D) == 0);
+        const std::string sub = sans->subset({zhe, omega});
+        CHECK(sub.size() < sans->bytes().size() / 4);
+        auto small = TrueType::fromBytes(sub, "subset");
+        CHECK(small->glyphIndex(0x0416) == zhe && !small->outline(0x0416).empty() && small->outline('a').empty());
+        CHECK(small->glyphCount() == sans->glyphCount());
+        CHECK(small->glyphAdvance(zhe) == sans->glyphAdvance(zhe));
+    }
+    {
+        Writer wu;
+        int f = addUnicodeFont(wu, *builtinSans(), {0x0416, 0x03A9, 'A'});
+        CHECK(f > 0);
+        std::string upd = wu.finish(1, 0);
+        CHECK(upd.find("/Subtype /Type0") != std::string::npos && upd.find("/Identity-H") != std::string::npos);
+        CHECK(upd.find("/ToUnicode") != std::string::npos && upd.find("/CIDToGIDMap /Identity") != std::string::npos);
+        CHECK(upd.find("+Roboto") != std::string::npos);
+        CHECK(upd.size() < 30000);
+        const std::string hex = glyphText(*builtinSans(), "\xD0\x96" "A");
+        CHECK(hex.size() == 10 && hex.front() == '<' && hex.back() == '>');
+    }
     return check::summary("pdfdoc");
 }

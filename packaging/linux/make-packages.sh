@@ -57,7 +57,7 @@ Version: $version
 Architecture: amd64
 Maintainer: wetwaresuite <https://github.com/ArthurJClack/wetwaresuite/issues>
 Installed-Size: $size
-Depends: libc6 (>= 2.35)
+Depends: libc6 (>= 2.35), libstdc++6, libgcc-s1
 Section: graphics
 Priority: optional
 Homepage: https://github.com/ArthurJClack/wetwaresuite

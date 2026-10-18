@@ -178,7 +178,25 @@ More than one machine can join the same host; each stays in sync with it (and so
 
 ### How fast is it?
 
-Measured on loopback (the automated test in `share/tests/sync.rs`): a new, edited or deleted file shows up on the other side in **50 to 250 ms**, a 1 MB file in about 110 ms. On a real LAN add your network's round trip. The joining side checks its own folder every 250 ms (stat only; a file is re-hashed only when its size or time changed) and holds a long-poll open to the host, which rescans every 150 ms while someone is connected, so host-side changes are pushed immediately. Only changed files are transferred, whole (there's no delta encoding, so a small edit to a 500 MB file resends it).
+Measured on loopback (the automated test in `share/tests/sync.rs`): a new, edited or deleted file shows up on the other side in **50 to 250 ms**, a 1 MB file in about 110 ms. On a real LAN add your network's round trip. The joining side checks its own folder every 250 ms (stat only; a file is re-hashed only when its size or time changed) and holds a long-poll open to the host, which rescans every 150 ms while someone is connected, so host-side changes are pushed immediately. Only changed files are transferred, and for big files only the changed parts (next section).
+
+### Big files: only the changed parts travel
+
+When you edit a file that is bigger than 64 KB and the other side already has an older copy, sync does not resend the whole thing. It works like `rsync`:
+
+1. The side with the old copy cuts it into blocks (about the square root of the file size: 2 KB for small files, up to 64 KB for huge ones) and sends a short fingerprint of each block.
+2. The side with the new copy slides over its file looking for those fingerprints (a fast rolling checksum first, then SHA-256 to be sure), and sends back "copy block 17, then these 300 new bytes, then copy blocks 18 to 900".
+3. The receiving side rebuilds the file into a hidden temporary file, checks the SHA-256 of the whole result, and only then swaps it in. If anything doesn't match, the temporary file is thrown away and the whole file is sent the normal way. You never end up with a half-patched file.
+
+In the automated test (`share/tests/delta_sync.rs`) a 3 KB insert in the middle of a 5 MB file moves under 100 KB in total (mostly the block fingerprints) instead of 5 MB, and deleting 10 KB plus appending a line moves a similar amount. Inserting, deleting or changing bytes anywhere in the file all work, because the matching doesn't depend on positions.
+
+You don't need to do anything to get this. Some details:
+
+- It works in both directions (host to joiner and joiner to host).
+- Files under 64 KB, and files over 512 MB (the delta is built in memory), are always sent whole.
+- Older versions of `wetwaresuite-share` don't know about deltas. The host says it supports them (`"delta": 1` in `/api/info`), and a joiner only uses them when it sees that, so mixing old and new versions just means whole files, as before.
+- `--no-delta` on the joining side switches it off, if you ever want to rule it out while troubleshooting.
+- The status (`sync_status` in MCP, or the stats a GUI shows) has `delta_files` (files sent as deltas), `delta_fallbacks` (deltas that failed their check and were resent whole), and `bytes_up` / `bytes_down` (file data actually moved).
 
 ### What's synced and what isn't
 
@@ -366,7 +384,7 @@ Claude Desktop: run `hub mcp-config --bin-dir /path/to/bin` (where `wetwaresuite
 | `share_status` | running shares and syncs, with links, codes and traffic counters |
 | `share_peers` | shares announced on the LAN (`seconds`) |
 | `sync_start` | `folder` alone hosts it for sync; with `peer` (a code or link) joins one; `include_heavy` |
-| `sync_status` | each sync's state, file count, uploads, downloads, conflicts, last error and recent changes |
+| `sync_status` | each sync's state, file count, uploads, downloads, conflicts, delta counters and bytes moved, last error and recent changes |
 | `sync_stop` | stop one sync (`id`) or all |
 | `send_file` | `path` alone serves it for download; with `to` (a code or link) uploads it into a writable share |
 | `list_remote` | list a folder of another share (`url` is a link or code, `path`) |
@@ -472,6 +490,7 @@ wetwaresuite-share mcp                      MCP server on stdio, for Claude
 --port N           TCP port (default 8740, or the next free one)
 --max-upload MB    largest upload accepted (default 4096)
 --include-heavy    also sync .git, node_modules, target, build, .venv, __pycache__
+--no-delta         sync: always send whole files (default: big edited files send only changed blocks)
 --code CODE        pairing code for a link without ?k= (sync/receive/send)
 --to DIR           where `receive` saves (default: current folder)
 --keep             `send`/`receive`: keep running after the first transfer
@@ -495,4 +514,4 @@ curl -H "Authorization: Bearer $T" -T notes.txt http://192.168.1.20:8740/f/inbox
 curl -H "Authorization: Bearer $T" -X DELETE http://192.168.1.20:8740/f/inbox/notes.txt     # delete (--write)
 ```
 
-Other endpoints: `GET /api/info`, `GET /api/tree?path=` (every file below a folder), `GET /api/hash?path=` (SHA-256), `POST /api/mkdir?path=`, `POST /api/move?from=&to=`, `POST /api/pair` (body `{"code":"..."}`), and `GET /api/sync/manifest?since=&wait=` (what sync uses).
+Other endpoints: `GET /api/info`, `GET /api/tree?path=` (every file below a folder), `GET /api/hash?path=` (SHA-256), `POST /api/mkdir?path=`, `POST /api/move?from=&to=`, `POST /api/pair` (body `{"code":"..."}`), `GET /api/sync/manifest?since=&wait=` (what sync uses), and the block-delta endpoints sync uses for big files: `GET /api/sync/sig?path=` (block signature of the host's copy; `X-Hash` header is its SHA-256), `POST /api/sync/delta?path=` (body: the joiner's signature; reply: the delta that turns it into the host's copy) and `PUT /api/sync/patch?path=` (body: a delta against the host's copy, with `If-Match`; `422` means "send the whole file").

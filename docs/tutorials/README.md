@@ -12,7 +12,7 @@ Hands-on guides to the suite. Every example was run against the real binaries: t
 - [Connecting an AI (optional)](ai-connect.md): `hub connect` sets up Claude Desktop and Claude Code in one command (with backups, `--dry-run` and `--remove`); `wetwaresuite mcp --http` serves the tools over HTTP to another computer, with a token.
 - [Working offline](offline.md): everything works with no internet and no AI; every feature that could touch a network, and how to keep it offline; building and installing from a USB stick.
 - [Docker (optional)](docker.md): run the suite in a container, one-off commands on a mounted folder, or as an HTTP MCP server.
-- [Photo](photo.md): resize folders for the web, fix dark photos, crop, rotate, frame, effects.
+- [Photo](photo.md): resize folders for the web, fix dark photos, crop, rotate, frame, effects, and retouching (healing brush, seamless clone, remove objects).
 - [Paint](paint.md): brush strokes with tablet pressure, presets, layers, blend modes, fills, saving `.ora`.
 - [Vector](vector.md): drawing shapes and paths, styling, SVG in and out, a full logo.
 - [Blueprint](blueprint.md): floor plans with walls, doors and dimensions printed to scale as PDF, opening and measuring DXF files, part drawings.

@@ -26,6 +26,7 @@ manager (Explorer, Finder, Files), **double-click** the app's program:
 | `wetwaresuite-video` | video editing and screen recording |
 | `wetwaresuite-office` | documents, spreadsheets, slides, print layouts and notes |
 | `wetwaresuite-maps` | maps, GPS tracks and map data |
+| `wetwaresuite-system` | calculator, code editor, file manager, terminal, system monitor and clock |
 | `wetwaresuite-files` | converting, finding and batch-processing files |
 | `wetwaresuite` | every tool in one window |
 

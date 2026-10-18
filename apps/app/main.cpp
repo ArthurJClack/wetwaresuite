@@ -82,6 +82,24 @@
 #if WW_TOOL_MAPS
 #include "wetwaresuite/maps/maps.hpp"
 #endif
+#if WW_TOOL_CALC
+#include "wetwaresuite/calc/calc.hpp"
+#endif
+#if WW_TOOL_CODE
+#include "wetwaresuite/code/code.hpp"
+#endif
+#if WW_TOOL_EXPLORER
+#include "wetwaresuite/explorer/explorer.hpp"
+#endif
+#if WW_TOOL_TERMINAL
+#include "wetwaresuite/terminal/terminal.hpp"
+#endif
+#if WW_TOOL_MONITOR
+#include "wetwaresuite/monitor/monitor.hpp"
+#endif
+#if WW_TOOL_CLOCK
+#include "wetwaresuite/clock/clock.hpp"
+#endif
 #if WW_TOOL_CONVERT
 #include "wetwaresuite/convert/convert.hpp"
 #endif
@@ -180,6 +198,24 @@ void registerTools(Session& session, const std::set<std::string>& requested) {
 #endif
 #if WW_TOOL_MAPS
     if (want("maps")) maps::registerCommands(session);
+#endif
+#if WW_TOOL_CALC
+    if (want("calc")) calc::registerCommands(session);
+#endif
+#if WW_TOOL_CODE
+    if (want("code")) code::registerCommands(session);
+#endif
+#if WW_TOOL_EXPLORER
+    if (want("explorer")) explorer::registerCommands(session);
+#endif
+#if WW_TOOL_TERMINAL
+    if (want("terminal")) terminal::registerCommands(session);
+#endif
+#if WW_TOOL_MONITOR
+    if (want("monitor")) monitor::registerCommands(session);
+#endif
+#if WW_TOOL_CLOCK
+    if (want("clock")) clock::registerCommands(session);
 #endif
 #if WW_TOOL_CONVERT
     if (want("convert")) convert::registerCommands(session);

@@ -1,5 +1,6 @@
 #include "wetwaresuite/core/command.hpp"
 #include "check.hpp"
+#include "wetwaresuite/core/process.hpp"
 
 using namespace wetwaresuite;
 
@@ -63,6 +64,45 @@ int main() {
     int c = 0;
     for (int i = 0; i < 3; ++i) small.execute(std::make_unique<AddAction>(c, 1), "step", true);
     CHECK(small.labels().size() == 2);
+
+    // a program in the background: output as it arrives, input, exit codes, stopping it
+    {
+        ChildProcess child;
+        std::string error;
+#ifdef _WIN32
+        const std::vector<std::string> echo = {"cmd", "/d", "/c", "echo hello& exit 3"};
+        const std::vector<std::string> cat = {"findstr", "x"};
+        const std::vector<std::string> sleeper = {"ping", "-n", "30", "127.0.0.1"};
+#else
+        const std::vector<std::string> echo = {"sh", "-c", "echo hello; exit 3"};
+        const std::vector<std::string> cat = {"cat"};
+        const std::vector<std::string> sleeper = {"sleep", "30"};
+#endif
+        CHECK(child.start(echo, {}, error));
+        std::string out;
+        CHECK(child.wait(20, out));
+        CHECK(out.find("hello") != std::string::npos);
+        CHECK(child.exitCode() == 3);
+        CHECK(!child.running());
+
+        ChildProcess input;
+        CHECK(input.start(cat, {}, error));
+        CHECK(input.write("x marks\n"));
+        input.closeInput();
+        std::string echoed;
+        CHECK(input.wait(20, echoed));
+        CHECK(echoed.find("x marks") != std::string::npos);
+
+        ChildProcess slow;
+        CHECK(slow.start(sleeper, std::filesystem::temp_directory_path(), error));
+        CHECK(slow.running());
+        slow.kill();
+        CHECK(!slow.running());
+
+        ChildProcess missing;
+        CHECK(!missing.start({"no-such-program-wetwaresuite"}, {}, error));
+        CHECK(!error.empty());
+    }
 
     return check::summary("core");
 }

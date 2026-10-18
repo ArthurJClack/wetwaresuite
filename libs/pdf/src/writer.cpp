@@ -71,6 +71,22 @@ std::string inflate(const std::string& data) {
     return s;
 }
 
+std::string deflateRaw(const std::string& data, int level) {
+    std::string z = deflate(data, level);
+    if (z.size() < 6) throw std::runtime_error("deflate failed");
+    return z.substr(2, z.size() - 6);  // drop the 2-byte header and the Adler-32 trailer
+}
+
+std::string inflateRaw(const std::string& data) {
+    if (data.empty()) return {};
+    int outLen = 0;
+    char* out = stbi_zlib_decode_noheader_malloc(data.data(), static_cast<int>(data.size()), &outLen);
+    if (!out) throw std::runtime_error("corrupt compressed data");
+    std::string s(out, static_cast<std::size_t>(outLen));
+    std::free(out);
+    return s;
+}
+
 std::shared_ptr<ImageData> loadImageData(const std::string& bytes) {
     auto img = std::make_shared<ImageData>();
     img->pixels = raster::decode(bytes);

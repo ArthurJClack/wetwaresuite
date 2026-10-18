@@ -85,5 +85,8 @@ double textWidthPx(const std::string& text, Font font, double sizePx);
 // zlib streams (with header), shared by PDF, PNG-like and ZIP code.
 std::string deflate(const std::string& data, int level = 6);
 std::string inflate(const std::string& data);  // throws std::runtime_error on corrupt data
+// raw deflate data without the zlib header and checksum (ZIP and gzip members)
+std::string deflateRaw(const std::string& data, int level = 6);
+std::string inflateRaw(const std::string& data);  // throws std::runtime_error on corrupt data
 
 }  // namespace wetwaresuite::pdf

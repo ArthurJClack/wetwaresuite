@@ -548,6 +548,12 @@ std::string toolBlurb(const std::string& tool) {
         {"board", "A whiteboard for notes, diagrams and ideas."},
         {"notes", "Write and link notes."},
         {"type", "Design your own fonts."},
+        {"calc", "A calculator for everything: exact fractions, units, graphs, statistics and solving."},
+        {"code", "Write, run and build code in many languages, with git built in."},
+        {"explorer", "Browse, copy, zip and tidy your files. Deleted things go to a trash you can undo."},
+        {"terminal", "Type commands into your computer's shell."},
+        {"monitor", "See what your computer is busy with, and end programs that hang."},
+        {"clock", "World clock, timers, stopwatch, alarms and calendars."},
     };
     auto it = blurbs.find(tool);
     return it != blurbs.end() ? it->second : capitalise(tool) + " tools.";
@@ -555,6 +561,9 @@ std::string toolBlurb(const std::string& tool) {
 
 std::string toolTitle(const std::string& tool) {
     if (tool == "forge") return "Asset forge";
+    if (tool == "calc") return "Calculator";
+    if (tool == "explorer") return "Files";
+    if (tool == "monitor") return "System monitor";
     if (tool == "fit") return "Scan fit";
     return capitalise(tool);
 }

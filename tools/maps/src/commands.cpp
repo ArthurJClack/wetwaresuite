@@ -437,7 +437,7 @@ void registerFileCommands(Session& session) {
             });
 
     reg.add({"maps.open", "Open Map",
-             "Open a map: an .achmap project (layers with styles, saved by maps.save), or any data file as a new map with "
+             "Open a map: a .wwmap project (layers with styles, saved by maps.save; older .achmap files too), or any data file as a new map with "
              "it as its layers: .geojson/.json, .kml, .gpx (tracks, routes and waypoints become separate layers), .csv with "
              "lat/lon columns, .shp (with .dbf/.prj), .wkt, a GeoTIFF or an image with a world file.",
              {{"path", ParamType::String, "file to open", true},
@@ -454,7 +454,7 @@ void registerFileCommands(Session& session) {
                         auto doc = std::make_shared<MapDoc>();
                         std::vector<std::string> warnings;
                         const std::string ext = lower(path.extension().string());
-                        if (ext == ".achmap") {
+                        if (ext == ".wwmap" || ext == ".achmap") {  // .achmap: saved before the rename
                             doc->map = fromProject(readFile(path), path.parent_path());
                             doc->path = path.string();
                         } else if (vectorFormatFor(path).empty() || ext == ".tif" || ext == ".tiff") {
@@ -479,12 +479,12 @@ void registerFileCommands(Session& session) {
             });
 
     reg.add({"maps.save", "Save Map",
-             "Save the whole map as an .achmap project (JSON: every layer with its features, style and rasters), to reopen "
+             "Save the whole map as a .wwmap project (JSON: every layer with its features, style and rasters), to reopen "
              "with maps.open. To write one layer in a GIS format use maps.export; for a picture use maps.render.",
-             {docParam(), {"path", ParamType::String, "output .achmap file", true}}, false},
+             {docParam(), {"path", ParamType::String, "output .wwmap file", true}}, false},
             mapCommand(session, [](MapDoc& doc, const Params& p) {
                 fs::path path = stringParam(p, "path");
-                if (path.extension().empty()) path += ".achmap";
+                if (path.extension().empty()) path += ".wwmap";
                 writeFile(path, toProject(doc.map));
                 doc.path = path.string();
                 return edited("saved " + path.string(), p).with("path", path.string());

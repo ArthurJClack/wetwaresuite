@@ -44,7 +44,7 @@ Creating, editing, saving and opening timelines works without ffmpeg (except add
 - **Rendering builds one ffmpeg command** with one filter graph for the whole edit: each track's clips (trimmed, sped up, scaled into their box, coloured, faded, chained through `xfade` for transitions) are laid over a background, titles are drawn with `drawtext`, and all sound is delayed into place and mixed. If the timeline is nothing but back-to-back cuts of the same kind of file at the timeline's size, it is joined by **stream copy** instead: no re-encoding, so it is instant and lossless.
 - **Previews** render one frame. Only the clips on screen at that moment are decoded, so a preview of minute 40 is as quick as one of second 1.
 
-Clip ids and timelines live as long as the process: for the CLI that's one command, so editing a timeline step by step happens in a batch script, over MCP, or by saving it with `cut.save` (an `.achcut` file) and reopening it later with `cut.open`.
+Clip ids and timelines live as long as the process: for the CLI that's one command, so editing a timeline step by step happens in a batch script, over MCP, or by saving it with `cut.save` (a `.wwcut` file) and reopening it later with `cut.open`.
 
 The sample files in the tasks are `interview.mp4` (40 s, 1920x1080, with sound), `broll.mp4` (10 s of cutaway footage), `screen.mp4` (a 20 s screen recording, no sound), `webcam.mp4` (20 s, 640x480, with sound), `music.mp3` (60 s), `logo.png` (400x400) and `interview.srt` (subtitles).
 
@@ -89,7 +89,7 @@ cut.add_audio doc=$short path=music.mp3 volume=0.25 fade_in=1 fade_out=2 duratio
 cut.info doc=$short
 cut.render doc=$short output=short-frame.png at=1.5 width=540
 cut.render doc=$short output=short.mp4
-cut.save doc=$short path=short.achcut
+cut.save doc=$short path=short.wwcut
 ```
 
 ```sh
@@ -127,7 +127,7 @@ duration: 13.5
 width: 1080
 height: 1920
 mode: encode
-saved short.achcut
+saved short.wwcut
 ```
 
 What happened:
@@ -136,13 +136,13 @@ What happened:
 - `fit=fill` scales the landscape picture up until it covers the tall frame and crops the sides. Use `fit=fit` (the default) to see the whole picture with bars above and below, or `crop=` to choose which part to keep.
 - `cut.add_title` without `track` puts titles on a track above everything else (here `v2`). `box=true` draws a half-transparent box behind the text so it reads on any background.
 - The interview's own sound plays at full volume; the music sits at a quarter under it. `cut.render` writing a `.png` renders one frame (`at=1.5`), handy to check the layout before encoding.
-- `short.achcut` is a small JSON file. It points at the media by absolute path; it doesn't copy them.
+- `short.wwcut` is a small JSON file. It points at the media by absolute path; it doesn't copy them. Timelines saved before the rename (`.achcut`) still open with `cut.open`.
 
 **CLI.** A timeline only lives inside one process, so from the shell you pipe the lines into `wetwaresuite batch` (or keep them in a file as above). Re-rendering the saved project in another format is two lines:
 
 ```sh
-$ printf '%s\n' 'cut.open path=short.achcut -> s' 'cut.render doc=$s output=short.webm quality=draft' | wetwaresuite batch
-opened cut1 (1080x1920 30fps, 3 tracks, 4 clips, 13.50s, short.achcut)
+$ printf '%s\n' 'cut.open path=short.wwcut -> s' 'cut.render doc=$s output=short.webm quality=draft' | wetwaresuite batch
+opened cut1 (1080x1920 30fps, 3 tracks, 4 clips, 13.50s, short.wwcut)
 ...
 rendered short.webm
 short.webm
@@ -361,13 +361,13 @@ height: 1080
 **Batch.** Any timeline render can burn subtitles over the finished edit with `subtitles=`. The times in the file are then **timeline** times, not the source's:
 
 ```text
-cut.open path=short.achcut -> s
+cut.open path=short.wwcut -> s
 cut.render doc=$s output=short-captioned.mp4 subtitles=interview.srt
 ```
 
 ```sh
-$ printf '%s\n' 'cut.open path=short.achcut -> s' 'cut.render doc=$s output=short-captioned.mp4 subtitles=interview.srt' | wetwaresuite batch
-opened cut1 (1080x1920 30fps, 3 tracks, 4 clips, 13.50s, short.achcut)
+$ printf '%s\n' 'cut.open path=short.wwcut -> s' 'cut.render doc=$s output=short-captioned.mp4 subtitles=interview.srt' | wetwaresuite batch
+opened cut1 (1080x1920 30fps, 3 tracks, 4 clips, 13.50s, short.wwcut)
 ...
 rendered short-captioned.mp4
 ...
@@ -541,7 +541,7 @@ Reopen the short from task 1 and work on it. Each line is one undo step (batch s
 
 ```text
 # fix.txt
-cut.open path=short.achcut -> s
+cut.open path=short.wwcut -> s
 cut.info doc=$s
 # one frame, attached as a PNG (width=640 by default); render a .png to get it as a file
 cut.preview doc=$s t=12.5
@@ -567,7 +567,7 @@ cut.info doc=$s
 
 ```sh
 $ wetwaresuite batch fix.txt
-opened cut1 (1080x1920 30fps, 3 tracks, 4 clips, 13.50s, short.achcut)
+opened cut1 (1080x1920 30fps, 3 tracks, 4 clips, 13.50s, short.wwcut)
 ...
 frame at 12.5s of cut1
 t: 12.5
@@ -634,8 +634,8 @@ cut.split_clip doc=cut1 clip=c1 at=4                   -> at must be inside the 
 | Command | What it does | Main parameters |
 | --- | --- | --- |
 | `cut.new` | new timeline, returns `cut1` | `width` (1920), `height` (1080), `fps` (30), `background` (black) |
-| `cut.open` | open an `.achcut` | `path` |
-| `cut.save` | save as `.achcut` | `doc`, `path` |
+| `cut.open` | open a `.wwcut` | `path` |
+| `cut.save` | save as `.wwcut` | `doc`, `path` |
 | `cut.close` | close (undo reopens) | `doc` |
 | `cut.info` | describe tracks and clips | `doc` |
 | `cut.settings` | change size, fps, background | `doc`, `width`, `height`, `fps`, `background` |
@@ -707,5 +707,5 @@ All of them take `overwrite=true` to replace an existing output. Run `wetwaresui
 - Sound is mixed at the levels you set; there's no automatic ducking, normalising or noise reduction (the audio tool will do that).
 - No keyframed animation: a clip's box, opacity and colour are the same for its whole length (split it to change them part-way).
 - Stream-copy cuts (`mode=copy`, `cut.trim_file copy=true`, `cut.concat_files` of identical files) start on keyframes, so they can begin a little before the time you asked for.
-- `.achcut` files store absolute paths to the media; moving the media breaks the project (edit the paths in the JSON, or relative paths are read relative to the `.achcut` file).
+- `.wwcut` files store absolute paths to the media; moving the media breaks the project (edit the paths in the JSON, or relative paths are read relative to the `.wwcut` file).
 - Frame rates are constant: variable-frame-rate phone footage is converted to the timeline's rate.

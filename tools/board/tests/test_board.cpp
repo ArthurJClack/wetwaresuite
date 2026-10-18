@@ -467,6 +467,22 @@ void testFiles(const fs::path& dir) {
     CHECK(loadBoard(dir / "x.board.json").elements.size() == b.elements.size());
     CHECK(loadBoard(dir / "x.excalidraw").elements.size() >= 7);
     CHECK(loadBoard(dir / "x.drawio").elements.size() >= 7);
+    {
+        auto renamed = [](std::string t, const std::string& from, const std::string& to) {  // undo the rename in a saved file
+            for (auto at = t.find(from); at != std::string::npos; at = t.find(from, at + to.size())) t.replace(at, from.size(), to);
+            return t;
+        };
+        // boards and Excalidraw extras saved before the rename still load the same
+        const std::string fresh = toJson(b), ex = toExcalidraw(b);
+        CHECK(fresh.find("\"wetwaresuite-board\"") != std::string::npos && ex.find("\"wetwaresuite\"") != std::string::npos);
+        const std::string oldBoard = renamed(fresh, "wetwaresuite-board", "achclwss-board");
+        {
+            std::ofstream out(dir / "old.board.json", std::ios::binary);
+            out << oldBoard;
+        }
+        CHECK(toJson(loadBoard(dir / "old.board.json")) == toJson(fromJson(fresh)));
+        CHECK(toJson(fromExcalidraw(renamed(ex, "\"wetwaresuite\"", "\"achclwss\""))) == toJson(fromExcalidraw(ex)));
+    }
     bool bad = false;
     try {
         fromJson("{\"nope\": 1}");

@@ -97,7 +97,7 @@ bool bannerBegin(const char* id, bool dark) {
 
 void Shell::inboxBannerView() {
     if (!inbox_.show) return;
-    bannerBegin("inbox", dark_);
+    bannerBegin("inbox", darkLook());
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(inbox_.text.c_str());
     ImGui::PopTextWrapPos();
@@ -117,7 +117,7 @@ void Shell::inboxBannerView() {
 
 void Shell::suggestionBannerView() {
     if (!suggestion_.show) return;
-    bannerBegin("suggest", dark_);
+    bannerBegin("suggest", darkLook());
     ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(suggestion_.text.c_str());
     ImGui::PopTextWrapPos();

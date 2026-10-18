@@ -68,7 +68,8 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".tmx", {"game", "levels.open"}}, {".tmj", {"game", "levels.open"}}, {".ldtk", {"game", "levels.open"}},
         // cad
         {".stl", {"cad", "slicer.load"}}, {".3mf", {"cad", "slicer.load"}}, {".dxf", {"cad", "blueprint.open"}},
-        {".gcode", {"cad", ""}}, {".step", {"cad", ""}}, {".stp", {"cad", ""}}, {".achcad", {"cad", "cad.open"}}, {".wwfit", {"cad", "fit.open"}},
+        {".gcode", {"cad", ""}}, {".step", {"cad", ""}}, {".stp", {"cad", ""}}, {".wwcad", {"cad", "cad.open"}}, {".wwfit", {"cad", "fit.open"}},
+        {".achcad", {"cad", "cad.open"}},  // .ach*: files saved before the rename
         // electronics
         {".hex", {"electronics", ""}}, {".elf", {"electronics", ""}}, {".ino", {"electronics", ""}},
         {".gbr", {"electronics", ""}}, {".drl", {"electronics", ""}}, {".kicad_sch", {"electronics", ""}},
@@ -80,17 +81,19 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".mid", {"sound", ""}}, {".midi", {"sound", ""}}, {".beats.json", {"sound", "beats.open"}},
         // video
         {".mp4", {"video", ""}}, {".mov", {"video", ""}}, {".mkv", {"video", ""}}, {".webm", {"video", ""}},
-        {".avi", {"video", ""}}, {".srt", {"video", ""}}, {".achcut", {"video", "cut.open"}},
+        {".avi", {"video", ""}}, {".srt", {"video", ""}}, {".wwcut", {"video", "cut.open"}},
+        {".achcut", {"video", "cut.open"}},
         // office
         {".docx", {"office", "office.doc_open"}}, {".odt", {"office", "office.doc_open"}}, {".md", {"office", "office.doc_open"}},
         {".txt", {"office", "office.doc_open"}}, {".rtf", {"office", "office.doc_open"}}, {".html", {"office", "office.doc_open"}},
         {".xlsx", {"office", "office.sheet_open"}}, {".ods", {"office", "office.sheet_open"}}, {".csv", {"office", "office.sheet_open"}},
         {".pptx", {"office", "office.deck_open"}}, {".odp", {"office", "office.deck_open"}}, {".pdf", {"office", ""}},
-        {".achlay", {"office", "layout.open"}},
+        {".wwlay", {"office", "layout.open"}}, {".achlay", {"office", "layout.open"}},
         // maps
         {".geojson", {"maps", "maps.open"}}, {".kml", {"maps", "maps.open"}}, {".gpx", {"maps", "maps.open"}},
         {".shp", {"maps", "maps.open"}}, {".tif", {"maps", ""}}, {".tiff", {"maps", ""}}, {".pmtiles", {"maps", ""}},
-        {".mbtiles", {"maps", ""}}, {".achmap", {"maps", "maps.open"}},
+        {".mbtiles", {"maps", ""}}, {".wwmap", {"maps", "maps.open"}},
+        {".achmap", {"maps", "maps.open"}},
     };
     return table;
 }

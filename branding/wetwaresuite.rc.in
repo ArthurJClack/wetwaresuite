@@ -1,0 +1,2 @@
+// gives every Windows .exe the wetwaresuite icon (configured by CMakeLists.txt)
+1 ICON "@PROJECT_SOURCE_DIR@/branding/wetwaresuite.ico"

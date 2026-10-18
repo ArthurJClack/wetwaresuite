@@ -1,7 +1,7 @@
 # What every app binary shares: the app table, extension routing, the handoff
 # folder and the app.* commands, the common command line and opening the window.
 # Depends only on core, mcp and gui, never on a tool.
-add_library(wetwaresuite_apps apps.cpp handoff.cpp app_commands.cpp app_main.cpp launch.cpp gui_launch.cpp)
+add_library(wetwaresuite_apps apps.cpp handoff.cpp app_commands.cpp app_main.cpp launch.cpp gui_launch.cpp palette_commands.cpp)
 add_library(wetwaresuite::apps ALIAS wetwaresuite_apps)
 target_include_directories(wetwaresuite_apps PUBLIC .)
 target_link_libraries(wetwaresuite_apps PUBLIC wetwaresuite::core wetwaresuite::mcp wetwaresuite::gui PRIVATE nlohmann_json::nlohmann_json)

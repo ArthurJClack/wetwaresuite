@@ -1,6 +1,8 @@
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -362,7 +364,7 @@ void testUndoRedo() {
 void testFiles() {
     const auto dir = std::filesystem::temp_directory_path() / "wetwaresuite_cad_test";
     std::filesystem::create_directories(dir);
-    const std::string part = (dir / "part.achcad").string(), stl = (dir / "part.stl").string(), png = (dir / "part.png").string();
+    const std::string part = (dir / "part.wwcad").string(), stl = (dir / "part.stl").string(), png = (dir / "part.png").string();
     Session s;
     registerCommands(s);
     run(s, "cad.new units=in");
@@ -380,7 +382,7 @@ void testFiles() {
     CHECK(std::filesystem::file_size(png) > 100);
     CHECK(!run(s, "cad.save doc=cad1 path=part.xyz").ok);
 
-    // .achcad round trip keeps params, features and the model
+    // .wwcad round trip keeps params, features and the model
     Result r = run(s, "cad.open path=\"" + part + "\"");
     CHECK(r.ok && toText(r.value) == "cad2");
     auto doc = s.workspace().getAs<CadDoc>("cad2");
@@ -403,11 +405,37 @@ void testFiles() {
     CHECK(run(s, "cad.boolean doc=cad3 op=union a=imported1 b=copy").ok);
     CHECK(within(volumeOf(s, "cad3"), 2 * v, 1e-3));
     // imported meshes survive a save/open round trip
-    const std::string part3 = (dir / "imported.achcad").string();
+    const std::string part3 = (dir / "imported.wwcad").string();
     CHECK(run(s, "cad.save doc=cad3 path=\"" + part3 + "\"").ok);
     CHECK(run(s, "cad.open path=\"" + part3 + "\"").ok);
     CHECK(within(volumeOf(s, "cad4"), 2 * v, 1e-3));
-    CHECK(!run(s, "cad.open path=\"" + (dir / "missing.achcad").string() + "\"").ok);
+    CHECK(!run(s, "cad.open path=\"" + (dir / "missing.wwcad").string() + "\"").ok);
+
+    // saves carry the new format id; parts saved before the rename (.achcad, "achcad") still open
+    std::string text;
+    {
+        std::ifstream in(part, std::ios::binary);
+        text.assign(std::istreambuf_iterator<char>(in), {});
+    }
+    CHECK(text.find("\"format\": \"wwcad\"") != std::string::npos);
+    std::string old;
+    for (std::size_t i = 0; i < text.size(); ++i) {  // old name, CRLF line ends
+        if (text.compare(i, 7, "\"wwcad\"") == 0) {
+            old += "\"achcad\"";
+            i += 6;
+        } else {
+            if (text[i] == '\n') old += '\r';
+            old += text[i];
+        }
+    }
+    const auto legacy = dir / "legacy.achcad";
+    {
+        std::ofstream out(legacy, std::ios::binary);
+        out << old;
+    }
+    r = run(s, "cad.open path=\"" + legacy.string() + "\"");
+    CHECK(r.ok);
+    if (r.ok) CHECK(within(volumeOf(s, toText(r.value)), v, 1e-9));
     std::filesystem::remove_all(dir);
 }
 

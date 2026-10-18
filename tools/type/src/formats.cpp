@@ -247,7 +247,8 @@ Font fromJson(const std::string& text) {
     } catch (const std::exception& e) {
         throw std::runtime_error(std::string("not valid JSON: ") + e.what());
     }
-    if (!j.is_object() || j.value("format", "") != "wetwaresuite.typeface")
+    const std::string format = j.is_object() ? j.value("format", "") : std::string();
+    if (format != "wetwaresuite.typeface" && format != "achclwss.typeface")  // achclwss.: saved before the rename
         throw std::runtime_error("not a .typeface.json file (no \"format\": \"wetwaresuite.typeface\")");
     Font f;
     f.glyphs.clear();

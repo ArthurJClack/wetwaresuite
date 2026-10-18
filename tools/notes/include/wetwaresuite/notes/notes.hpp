@@ -1,7 +1,7 @@
 // notes: markdown notes and a knowledge base, headless and Obsidian-compatible.
 // A vault is a folder of .md files; the files stay the source of truth. What
 // the tool learns from them (frontmatter, tags, links, headings, tasks, search
-// terms) is cached in a hidden .achnotes folder in the vault, checked against
+// terms) is cached in a hidden .wwnotes folder in the vault, checked against
 // each file's size and modification time, and can be deleted at any time.
 // Everything is a notes.* command; edits are undoable (the files they touched
 // are put back exactly).
@@ -25,7 +25,8 @@ namespace wetwaresuite::notes {
 
 namespace fs = std::filesystem;
 
-inline constexpr const char* kCacheDir = ".achnotes";  // the rebuildable cache
+inline constexpr const char* kCacheDir = ".wwnotes";  // the rebuildable cache
+inline constexpr const char* kOldCacheDir = ".achnotes";  // its name before the rename: still marks a vault, then removed
 inline constexpr const char* kTrashDir = ".trash";     // deleted notes, like Obsidian's own trash
 
 // ---- text helpers --------------------------------------------------------------
@@ -201,7 +202,7 @@ public:
     void open(const fs::path& folder, bool useCache = true);
     // Re-reads whatever changed on disk. Returns true when anything did. Saves the cache.
     bool refresh();
-    void clearCache();  // deletes .achnotes; the next refresh reads every note
+    void clearCache();  // deletes .wwnotes (and an old .achnotes); the next refresh reads every note
     fs::path abs(const std::string& rel) const { return root / toPath(rel); }
     std::string relOf(const fs::path& absolute) const;  // "" when outside the vault
 

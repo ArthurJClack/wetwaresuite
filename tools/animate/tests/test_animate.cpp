@@ -186,6 +186,16 @@ void testCommands() {
     CHECK(r.ok && toText(r.value) == "anim2");
     auto back = s.workspace().getAs<AnimDoc>("anim2");
     CHECK(back->elementCount() == doc->elementCount());
+    {
+        auto renamed = [](std::string t, const std::string& from, const std::string& to) {  // undo the rename in a saved file
+            for (auto at = t.find(from); at != std::string::npos; at = t.find(from, at + to.size())) t.replace(at, from.size(), to);
+            return t;
+        };
+        // animations saved before the rename ("achclwss-animate") still load
+        const std::string fresh = toJson(*doc);
+        CHECK(fresh.find("\"wetwaresuite-animate\"") != std::string::npos);
+        CHECK(fromJson(renamed(fresh, "wetwaresuite-animate", "achclwss-animate"))->elementCount() == doc->elementCount());
+    }
     Image a = renderFrame(*doc, 13), b = renderFrame(*back, 13);
     int diff = 0;
     for (int y = 0; y < a.height(); ++y) {

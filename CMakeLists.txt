@@ -28,6 +28,18 @@ if(WETWARESUITE_BUILD_TESTS)
   enable_testing()
 endif()
 
+# the logo and app icon live in branding/ (see branding/README.md).
+# wetwaresuite_add_icon(target) gives a Windows .exe the icon; elsewhere it does nothing
+if(WIN32)
+  enable_language(RC)
+  configure_file(${PROJECT_SOURCE_DIR}/branding/wetwaresuite.rc.in ${PROJECT_BINARY_DIR}/wetwaresuite.rc @ONLY)
+endif()
+function(wetwaresuite_add_icon target)
+  if(WIN32)
+    target_sources(${target} PRIVATE ${PROJECT_BINARY_DIR}/wetwaresuite.rc)
+  endif()
+endfunction()
+
 add_subdirectory(core)
 add_subdirectory(mcp)
 add_subdirectory(libs/raster)

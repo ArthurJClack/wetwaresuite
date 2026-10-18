@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <map>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -83,9 +84,11 @@ struct Transport {
 };
 
 // Where a native file dialog's answer goes.
+struct ToolPanels;  // tool_panels.hpp
+
 struct DialogTarget {
-    enum Kind { OpenDocument, FormField } kind = OpenDocument;
-    std::string command;  // FormField: the form it belongs to
+    enum Kind { OpenDocument, FormField, PanelFolder } kind = OpenDocument;
+    std::string command;  // FormField: the form it belongs to; PanelFolder: what the folder is for
     std::size_t field = 0;
 };
 
@@ -100,12 +103,15 @@ public:
     void openFile(const std::string& path);
     // a command's form, or "settings" for the Aa menu (text size and colours)
     void showAction(const std::string& commandId) {
-        if (commandId == "settings") openSettings_ = true;
-        else select(commandId);
+        if (commandId == "settings") { openSettings_ = true; return; }
+        select(commandId);
+        openPanelFor(commandId);
     }
     bool wantsQuit() const { return quit_; }
+    int tickMs() const;  // > 0: wake the window this often (timers, running programs, live graphs)
 
     static Uint32 wakeEvent;  // pushed from dialog threads to wake the event loop
+    static ImFont* monoFont;  // a fixed-width font for code and terminals (null: the UI font)
 
 private:
     // panels (panels.cpp)
@@ -172,6 +178,65 @@ private:
     const CommandInfo* find(const std::string& id) const;
     bool accentButton(const char* label, ImVec2 size = {0, 0});
 
+    // tool panels (tool_panels.cpp, panel_*.cpp): the calculator, code editor,
+    // file manager, terminal, system monitor and clock fill the middle
+    bool hasPanel(const std::string& tool) const;
+    std::string panelForDoc(const std::string& id) const;
+    void openPanel(const std::string& tool);
+    void openPanelFor(const std::string& commandId);
+    bool openFolder(const std::string& path);
+    void panelList();
+    void toolPanelView();
+    void backgroundTicks();
+    void beforeHistoryStep();
+    void askFolder(const std::string& purpose);
+    void folderChosen(const std::string& purpose, const std::string& path);
+    Result query(const std::string& id, const Params& params);  // polls: no history, no switching documents
+    void calcPanel();
+    void calcKeypad();
+    void calcSide();
+    void calcEvaluate();
+    void calcGraph();
+    void codePanel();
+    void codeToolbar();
+    void codeSidebar();
+    void codeTree();
+    void codeOutline();
+    void codeSearch();
+    void codeGit();
+    void codeTabs();
+    void codeFindBar();
+    void codeOutput();
+    void codeSync();
+    void codeCommit();
+    void codeOpenAt(const std::string& path, int line);
+    void codeRun(const std::string& what);
+    void codePoll();
+    void codeFind(int step);
+    void explorerPanel();
+    void explorerToolbar();
+    void explorerSide();
+    void explorerList();
+    void explorerPreview();
+    void explorerPopups();
+    void explorerTrash();
+    void explorerArchive();
+    void explorerGo(const std::string& folder, bool remember = true);
+    void explorerOpen(const std::string& path, bool folder);
+    void explorerRefresh();
+    void terminalPanel();
+    void terminalNew(const std::string& folder);
+    void terminalPoll(bool force);
+    void monitorPanel();
+    void monitorSample();
+    void clockPanel();
+    void clockTick();
+    void clockTimers();
+    void clockStopwatch();
+    void clockAlarms();
+    void clockDates();
+    void dueBanner();
+
     // handing work to other apps (handoff_panels.cpp), all through the app.* commands
     void refreshInbox();
     void sendButton();
@@ -236,6 +301,11 @@ private:
     OpenSuggestion suggestion_;
     std::vector<SendChoice> sendChoices_;
     std::string launchOffer_;  // app to offer to start after a send
+
+    std::unique_ptr<ToolPanels> panels_;
+    std::string panel_;          // tool whose panel fills the middle; empty = home or a document
+    std::uint64_t changes_ = 0;  // goes up on every change, so panels know to reload
+    bool hasClock_ = false;
 };
 
 }  // namespace wetwaresuite::gui

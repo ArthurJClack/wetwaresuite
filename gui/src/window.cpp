@@ -2,7 +2,9 @@
 // with Dear ImGui on top. It waits for input instead of redrawing all the
 // time, so an idle window uses next to no CPU.
 #include <cstdio>
+#include <cstdlib>
 #include <exception>
+#include <fstream>
 #include <iostream>
 #include <string>
 
@@ -36,6 +38,37 @@ bool canOpenWindow(std::string& why) {
 int run(Session& session, const AppInfo& app) { return run(session, app, {}); }
 
 namespace {
+
+// A fixed-width font for code and terminals, from the fonts the system already has
+// (nothing is bundled or downloaded). Without one the UI font is used.
+ImFont* loadMonoFont(ImGuiIO& io) {
+    std::vector<std::string> candidates;
+#ifdef _WIN32
+    const char* windir = std::getenv("WINDIR");
+    const std::string fonts = std::string(windir ? windir : "C:\\Windows") + "\\Fonts\\";
+    for (const char* f : {"consola.ttf", "CascadiaMono.ttf", "lucon.ttf", "cour.ttf"}) candidates.push_back(fonts + f);
+#elif defined(__APPLE__)
+    candidates = {"/System/Library/Fonts/SFNSMono.ttf", "/System/Library/Fonts/Menlo.ttc", "/System/Library/Fonts/Monaco.ttf",
+                  "/Library/Fonts/Courier New.ttf"};
+#else
+    for (const char* dir : {"/usr/share/fonts/truetype/dejavu/", "/usr/share/fonts/TTF/", "/usr/share/fonts/dejavu/",
+                            "/usr/share/fonts/dejavu-sans-mono-fonts/", "/usr/local/share/fonts/"}) {
+        candidates.push_back(std::string(dir) + "DejaVuSansMono.ttf");
+    }
+    for (const char* f : {"/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf",
+                          "/usr/share/fonts/liberation-mono/LiberationMono-Regular.ttf",
+                          "/usr/share/fonts/truetype/noto/NotoSansMono-Regular.ttf", "/usr/share/fonts/noto/NotoSansMono-Regular.ttf",
+                          "/usr/share/fonts/truetype/ubuntu/UbuntuMono-R.ttf", "/usr/share/fonts/truetype/freefont/FreeMono.ttf"}) {
+        candidates.push_back(f);
+    }
+#endif
+    for (const auto& path : candidates) {
+        std::ifstream probe(path, std::ios::binary);
+        if (!probe) continue;
+        if (ImFont* f = io.Fonts->AddFontFromFileTTF(path.c_str(), 20.0f)) return f;
+    }
+    return nullptr;
+}
 
 bool saveScreenshot(SDL_Renderer* renderer, const std::string& path) {
     SDL_Surface* shot = SDL_RenderReadPixels(renderer, nullptr);
@@ -99,6 +132,7 @@ int run(Session& session, const AppInfo& app, const RunOptions& options) {
     ImFontConfig fc;
     fc.FontDataOwnedByAtlas = false;
     io.Fonts->AddFontFromMemoryTTF(const_cast<unsigned char*>(kUiFont), static_cast<int>(kUiFontSize), 20.0f, &fc);
+    Shell::monoFont = loadMonoFont(io);
     ImGui_ImplSDL3_InitForSDLRenderer(window, renderer);
     ImGui_ImplSDLRenderer3_Init(renderer);
 
@@ -115,7 +149,8 @@ int run(Session& session, const AppInfo& app, const RunOptions& options) {
         while (running) {
             SDL_Event e;
             bool got = false;
-            if (framesLeft <= 0 && options.screenshot.empty()) got = SDL_WaitEvent(&e);
+            const int tick = shell.tickMs();
+            if (framesLeft <= 0 && options.screenshot.empty()) got = tick > 0 ? SDL_WaitEventTimeout(&e, tick) : SDL_WaitEvent(&e);
             else got = SDL_PollEvent(&e);
             while (got) {
                 shell.onEvent(e);

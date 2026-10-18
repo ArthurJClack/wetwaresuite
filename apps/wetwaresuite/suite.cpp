@@ -6,16 +6,21 @@
 #include "wetwaresuite/board/board.hpp"
 #include "wetwaresuite/automate/automate.hpp"
 #include "wetwaresuite/blueprint/blueprint.hpp"
+#include "wetwaresuite/calc/calc.hpp"
 #include "wetwaresuite/cad/cad.hpp"
 #include "wetwaresuite/capture/capture.hpp"
 #include "wetwaresuite/circuit/circuit.hpp"
+#include "wetwaresuite/clock/clock.hpp"
+#include "wetwaresuite/code/code.hpp"
 #include "wetwaresuite/convert/convert.hpp"
 #include "wetwaresuite/cut/cut.hpp"
+#include "wetwaresuite/explorer/explorer.hpp"
 #include "wetwaresuite/flash/flash.hpp"
 #include "wetwaresuite/forge/forge.hpp"
 #include "wetwaresuite/layout/layout.hpp"
 #include "wetwaresuite/levels/levels.hpp"
 #include "wetwaresuite/maps/maps.hpp"
+#include "wetwaresuite/monitor/monitor.hpp"
 #include "wetwaresuite/library/library.hpp"
 #include "wetwaresuite/notes/notes.hpp"
 #include "wetwaresuite/office/office.hpp"
@@ -25,6 +30,7 @@
 #include "wetwaresuite/fit/fit.hpp"
 #include "wetwaresuite/render/render.hpp"
 #include "wetwaresuite/slicer/slicer.hpp"
+#include "wetwaresuite/terminal/terminal.hpp"
 #include "wetwaresuite/toolkit/detect.hpp"
 #include "wetwaresuite/type/type.hpp"
 #include "wetwaresuite/vector/vector.hpp"
@@ -61,6 +67,12 @@ const std::set<std::string>& toolNames() {
         "notes",
         "maps",
         "type",
+        "calc",
+        "code",
+        "explorer",
+        "terminal",
+        "monitor",
+        "clock",
     };
     return names;
 }
@@ -102,6 +114,12 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("notes")) notes::registerCommands(session);
     if (want("maps")) maps::registerCommands(session);
     if (want("type")) typeface::registerCommands(session);
+    if (want("calc")) calc::registerCommands(session);
+    if (want("code")) code::registerCommands(session);
+    if (want("explorer")) explorer::registerCommands(session);
+    if (want("terminal")) terminal::registerCommands(session);
+    if (want("monitor")) monitor::registerCommands(session);
+    if (want("clock")) clock::registerCommands(session);
 }
 
 }  // namespace wetwaresuite::suite

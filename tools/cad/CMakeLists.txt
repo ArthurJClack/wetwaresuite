@@ -1,4 +1,4 @@
-add_library(wetwaresuite_cad src/expr.cpp src/model.cpp src/commands.cpp src/repair.cpp)
+add_library(wetwaresuite_cad src/expr.cpp src/model.cpp src/commands.cpp src/repair.cpp src/blend.cpp)
 add_library(wetwaresuite::cad ALIAS wetwaresuite_cad)
 target_include_directories(wetwaresuite_cad PUBLIC include)
 target_link_libraries(wetwaresuite_cad PUBLIC wetwaresuite::core wetwaresuite::mesh PRIVATE nlohmann_json::nlohmann_json)

@@ -12,6 +12,7 @@
 #include "wetwaresuite/mesh/ops.hpp"
 #include "wetwaresuite/mesh/render.hpp"
 #include "wetwaresuite/raster/codec.hpp"
+#include "blend.hpp"
 
 namespace wetwaresuite::cad {
 
@@ -343,6 +344,38 @@ void registerFeatureCommand(Session& session, const FeatureType& t) {
 
 }  // namespace
 
+// cad.edges: the sharp edges fillet and chamfer can pick, with points to pass as near=.
+void registerEdgeCommand(Session& session) {
+    session.registry().add(
+        {"cad.edges", "List Edges",
+         "List the sharp edges of the model or of one feature (where flat faces meet at angle degrees or more): "
+         "midpoint, length, direction and outer/inner. Pass a midpoint to cad.fillet or cad.chamfer as near=x,y,z.",
+         {docParam(), optionalFeature(), {"angle", ParamType::Number, "smallest angle between the faces, degrees", false, {}, 30.0}},
+         false, true},
+        cadCommand(session, [](CadDoc& doc, const Params& p) {
+            std::string error;
+            const Mesh* m = target(doc, p, error);
+            if (!m) return Result::failure(error);
+            const auto edges = detail::sharpEdges(*m, numberParam(p, "angle", 30));
+            std::string text;
+            NumberList mids;
+            int outer = 0;
+            for (std::size_t i = 0; i < edges.size(); ++i) {
+                const auto& e = edges[i];
+                const Vec3 mid = (e.a + e.b) * 0.5, d = mesh::normalize(e.b - e.a);
+                const char* along = std::abs(d.z) > 1 - 1e-9 ? "z" : std::abs(d.x) > 1 - 1e-9 ? "x" : std::abs(d.y) > 1 - 1e-9 ? "y" : "slanted";
+                text += "\n  " + std::to_string(i + 1) + ": " + num(mid.x) + "," + num(mid.y) + "," + num(mid.z) + "  length " +
+                        num(mesh::length(e.b - e.a)) + ", along " + along + ", " + (e.convex ? "outer" : "inner") + ", " + num(e.angle) + " deg";
+                mids.insert(mids.end(), {mid.x, mid.y, mid.z});
+                outer += e.convex ? 1 : 0;
+            }
+            Result r = Result::success(std::to_string(edges.size()) + " sharp edges (" + std::to_string(outer) + " outer, " +
+                                       std::to_string(edges.size() - static_cast<std::size_t>(outer)) + " inner)" + text);
+            r.with("count", static_cast<std::int64_t>(edges.size())).with("midpoints", mids);
+            return r;
+        }, false));
+}
+
 void registerCommands(Session& session) {
     auto& reg = session.registry();
 
@@ -586,6 +619,8 @@ void registerCommands(Session& session) {
             })));
 
     // ---- features ----------------------------------------------------------------------
+
+    registerEdgeCommand(session);
 
     for (const auto& t : featureTypes()) {
         if (t.type != "imported") registerFeatureCommand(session, t);

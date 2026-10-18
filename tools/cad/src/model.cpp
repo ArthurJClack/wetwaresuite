@@ -13,6 +13,7 @@
 #include "wetwaresuite/mesh/csg.hpp"
 #include "wetwaresuite/mesh/io.hpp"
 #include "wetwaresuite/mesh/primitives.hpp"
+#include "blend.hpp"
 #include "repair.hpp"
 
 namespace wetwaresuite::cad {
@@ -39,6 +40,9 @@ FieldDef choice(std::string name, std::string help, std::vector<std::string> cho
 }
 FieldDef flag(std::string name, std::string help, bool fallback) {
     return {std::move(name), FieldKind::Bool, std::move(help), fallback ? "true" : "false", false, {}};
+}
+FieldDef words(std::string name, std::string help, std::string fallback) {
+    return {std::move(name), FieldKind::Text, std::move(help), std::move(fallback), false, {}};
 }
 FieldDef points(std::string name, std::string help, bool required) {
     return {std::move(name), FieldKind::Points, std::move(help), {}, required, {}};
@@ -171,6 +175,26 @@ std::vector<FeatureType> buildTypes() {
                   num("z", "move Z", "0"), num("rx", "rotate about X", "0"), num("ry", "rotate about Y", "0"),
                   num("rz", "rotate about Z", "0"), num("scale", "uniform scale", "1"), num("cx", "pivot X", "0"),
                   num("cy", "pivot Y", "0"), num("cz", "pivot Z", "0")}});
+    t.push_back({"fillet", "Fillet",
+                 "Round the sharp edges of a feature with radius: outer edges are cut round, inner edges filled round. "
+                 "Pick edges by kind (edges=top,vertical) or by points near them (near=0,0,5). Where three rounded edges meet "
+                 "the corner is the meeting of the three rounds, not a ball.",
+                 {ref("target", "feature to round"), num("radius", "fillet radius", {}, true), words("edges", "which edges: all, outer, inner, top, bottom, vertical, horizontal, x, y, z (comma-separated, combined)", "all"),
+                  words("near", "instead of edges: points x,y,z,x,y,z,... picking the edge closest to each (cad.edges lists them)", ""),
+                  num("angle", "only edges whose faces meet at this many degrees or more", "30"),
+                  integer("segments", "segments per quarter circle", "8")}});
+    t.push_back({"chamfer", "Chamfer",
+                 "Bevel the sharp edges of a feature: distance is measured along both faces from the edge. Outer edges are cut, "
+                 "inner edges filled. Pick edges like fillet does.",
+                 {ref("target", "feature to bevel"), num("distance", "chamfer size along each face", {}, true), words("edges", "which edges: all, outer, inner, top, bottom, vertical, horizontal, x, y, z (comma-separated, combined)", "all"),
+                  words("near", "instead of edges: points x,y,z,x,y,z,... picking the edge closest to each (cad.edges lists them)", ""),
+                  num("angle", "only edges whose faces meet at this many degrees or more", "30")}});
+    t.push_back({"shell", "Shell",
+                 "Hollow a feature out, leaving walls of thickness. open removes the outermost faces facing those ways "
+                 "(top, bottom, front, back, left, right or +x -x +y -y +z -z; comma-separated), e.g. open=top makes a box "
+                 "into a tray.",
+                 {ref("target", "feature to hollow"), num("thickness", "wall thickness", {}, true),
+                  words("open", "faces to remove: top, bottom, front, back, left, right, +x, -x, ...", "")}});
     return t;
 }
 
@@ -754,6 +778,52 @@ Built buildOperation(const Ctx& c, const std::map<std::string, CadDoc::Cached>& 
                        Mat4::rotate({c.number("rx"), c.number("ry"), c.number("rz")}) * Mat4::scale(s) *
                        Mat4::translate(-pivot);
         return {share(placed(*target.mesh, m)), {}};
+    }
+    if (type == "fillet" || type == "chamfer") {
+        if (!target.mesh) return {};
+        const double angle = c.number("angle");
+        if (!(angle > 0 && angle < 180)) c.fail("angle must be between 0 and 180 degrees");
+        std::vector<Vec3> near;
+        const auto items = splitList(c.text("near"));
+        if (items.size() % 3 != 0) c.fail("near must be x,y,z triples");
+        for (std::size_t i = 0; i < items.size(); i += 3) {
+            try {
+                near.push_back({c.doc.eval(items[i]), c.doc.eval(items[i + 1]), c.doc.eval(items[i + 2])});
+            } catch (const ExprError& e) {
+                c.fail(std::string("near: ") + e.what());
+            }
+        }
+        try {
+            const auto all = detail::sharpEdges(*target.mesh, angle);
+            const auto edges = detail::pickEdges(*target.mesh, all, splitList(c.text("edges")), near);
+            if (edges.empty()) c.fail("no edges matched (cad.edges lists the sharp edges)");
+            const bool chamfer = type == "chamfer";
+            return {share(detail::blendEdges(*target.mesh, edges, c.number(chamfer ? "distance" : "radius"), chamfer,
+                                             chamfer ? 1 : c.whole("segments", 1, 64), csg)),
+                    {}};
+        } catch (const std::invalid_argument& e) {
+            c.fail(e.what());
+        } catch (const std::runtime_error& e) {
+            const std::string what = e.what();
+            if (what.rfind("feature ", 0) == 0) throw;
+            c.fail(what);
+        }
+    }
+    if (type == "shell") {
+        if (!target.mesh) return {};
+        std::vector<Vec3> open;
+        for (const auto& name : splitList(c.text("open"))) {
+            Vec3 d;
+            if (!detail::directionByName(name, d)) c.fail("open: unknown side '" + name + "' (top, bottom, front, back, left, right, +x, -x, ...)");
+            open.push_back(d);
+        }
+        try {
+            return {share(detail::shell(*target.mesh, c.number("thickness"), open, csg)), {}};
+        } catch (const std::runtime_error& e) {
+            const std::string what = e.what();
+            if (what.rfind("feature ", 0) == 0) throw;
+            c.fail(what);
+        }
     }
     c.fail("unknown feature type " + type);
 }

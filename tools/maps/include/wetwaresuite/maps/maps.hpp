@@ -386,7 +386,7 @@ std::string encodeGeoTiff(const Grid& grid);
 std::optional<Affine> parseWorldFile(const std::string& text);
 std::string worldFileText(const Affine& corner);
 
-// Project files (.achmap, JSON): every layer with its style; rasters embedded as PNG/values.
+// Project files (.wwmap, JSON; older .achmap files still open): every layer with its style; rasters embedded as PNG/values.
 std::string toProject(const Map& map);
 Map fromProject(const std::string& text, const std::filesystem::path& dir);
 

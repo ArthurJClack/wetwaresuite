@@ -236,6 +236,7 @@ void Vault::saveCache() const {
     fs::path dir = root / kCacheDir;
     fs::create_directories(dir, ec);
     if (ec) return;  // read-only vault: work without a cache
+    fs::remove_all(root / kOldCacheDir, ec);  // replaced by the new cache folder
     json j = {{"version", kCacheVersion}, {"notes", json::object()}};
     for (const auto& [rel, n] : notes) j["notes"][rel] = noteJson(n);
     {
@@ -255,6 +256,7 @@ void Vault::saveCache() const {
 void Vault::clearCache() {
     std::error_code ec;
     fs::remove_all(root / kCacheDir, ec);
+    fs::remove_all(root / kOldCacheDir, ec);
 }
 
 bool Vault::scan(bool useCache) {

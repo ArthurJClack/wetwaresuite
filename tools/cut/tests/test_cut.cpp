@@ -155,10 +155,13 @@ void testModel() {
     }
     CHECK(threw);
     // relative sources resolve against the project's folder
-    auto rel = fromJson(R"({"format":"achcut","tracks":[{"id":"v1","clips":[{"id":"c1","kind":"video","source":"clip.mp4","in":0,"out":1}]}]})",
+    auto rel = fromJson(R"({"format":"wwcut","tracks":[{"id":"v1","clips":[{"id":"c1","kind":"video","source":"clip.mp4","in":0,"out":1}]}]})",
                         fs::path("/proj"));
     CHECK(fs::path(rel->findClip("c1")->source) == fs::path("/proj") / "clip.mp4");
     CHECK(rel->nextClip == 2);
+    // timelines saved before the rename ("achcut") still load, CRLF line ends too
+    auto old = fromJson("{\r\n\"format\": \"achcut\",\r\n\"tracks\": []\r\n}\r\n");
+    CHECK(old != nullptr);
 
     MediaInfo m = parseProbe(R"({"streams":[{"codec_type":"video","codec_name":"h264","width":1920,"height":1080,"avg_frame_rate":"30000/1001"},
         {"codec_type":"audio","codec_name":"aac","sample_rate":"48000","channels":2}],"format":{"format_name":"mov,mp4","duration":"12.5"}})");
@@ -369,8 +372,9 @@ void testCommands() {
     const fs::path dir = fs::temp_directory_path() / "wetwaresuite_cut_test";
     fs::remove_all(dir);
     fs::create_directories(dir);
-    const std::string path = (dir / "edit.achcut").string();
+    const std::string path = (dir / "edit.wwcut").string();
     CHECK(run(s, "cut.save doc=cut1 path=\"" + path + "\"").ok);
+    CHECK(contains(toJson(*tl), "\"format\": \"wwcut\""));
     CHECK(!run(s, "cut.save doc=cut1 path=\"" + (dir / "x.mp4").string() + "\"").ok);
     r = run(s, "cut.open path=\"" + path + "\"");
     CHECK(r.ok && toText(r.value) == "cut2");
@@ -378,6 +382,10 @@ void testCommands() {
     CHECK(tl2 && toJson(*tl2) == toJson(*tl));
     CHECK(run(s, "cut.close doc=cut2").ok && !s.workspace().get("cut2"));
     CHECK(run(s, "undo").ok && s.workspace().get("cut2"));
+    // an .achcut file from before the rename opens
+    const fs::path legacy = dir / "old.achcut";
+    fs::copy_file(path, legacy, fs::copy_options::overwrite_existing);
+    CHECK(run(s, "cut.open path=\"" + legacy.string() + "\"").ok);
     fs::remove_all(dir);
 }
 

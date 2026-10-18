@@ -268,11 +268,19 @@ void transformEntity(Entity& e, const Xform& xf);
 
 // DXF (AC1015 / R2000 ASCII). `sheet` adds the border and title block on layer BP_SHEET.
 std::string toDxf(const Drawing& doc, bool sheet = false);
-// Reads LINE, LWPOLYLINE, POLYLINE/VERTEX, CIRCLE, ARC, TEXT, MTEXT, POINT, DIMENSION,
-// HATCH and SOLID, layers with colours and line types. `notes`, when given, gets a
-// summary of what was skipped. Throws std::runtime_error when it isn't DXF.
+// Reads LINE, LWPOLYLINE, POLYLINE/VERTEX, CIRCLE, ARC, ELLIPSE, SPLINE, TEXT, MTEXT,
+// ATTRIB, POINT, DIMENSION, HATCH and SOLID, layers with colours and line types, and
+// expands blocks (INSERT, nested, arrays). `notes`, when given, gets a summary of
+// what was skipped. Throws std::runtime_error when it isn't DXF.
 std::shared_ptr<Drawing> fromDxf(const std::string& text, std::string* notes = nullptr, bool* hadSheetInfo = nullptr);
+// Reads a .dxf, or a .dwg through dwgToDxf.
 std::shared_ptr<Drawing> openDxf(const std::filesystem::path& path, std::string* notes = nullptr, bool* hadSheetInfo = nullptr);
+
+// DWG through LibreDWG (dwg2dxf / dxf2dwg) or the ODA File Converter on PATH.
+// Both throw std::runtime_error saying what to install when neither is there.
+bool dwgSupported();
+std::string dwgToDxf(const std::filesystem::path& dwg);
+void dxfToDwg(const std::string& dxf, const std::filesystem::path& dwg);
 
 std::string toSvg(const Drawing& doc);  // whole sheet, real-world mm size
 std::string toPdf(const Drawing& doc);  // one vector page at the paper size, to scale

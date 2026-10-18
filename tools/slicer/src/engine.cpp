@@ -235,6 +235,33 @@ Fit checkFit(const mesh::Mesh& m, const Printer& p) {
     return {};
 }
 
+std::optional<std::vector<Vec2>> arrange(const std::vector<mesh::Bounds>& parts, const Printer& printer, double spacing) {
+    // shelf packing: deepest parts first, left to right, a new row when the bed is full
+    std::vector<std::size_t> order(parts.size());
+    for (std::size_t i = 0; i < order.size(); ++i) order[i] = i;
+    std::stable_sort(order.begin(), order.end(), [&](std::size_t a, std::size_t b) { return parts[a].size().y > parts[b].size().y; });
+    std::vector<Vec2> corner(parts.size());  // front-left corner of each part's box
+    double x = 0, y = 0, rowDepth = 0, width = 0;
+    for (std::size_t i : order) {
+        const double w = parts[i].size().x, d = parts[i].size().y;
+        if (w > printer.bedX + 1e-6 || d > printer.bedY + 1e-6) return std::nullopt;
+        if (x > 0 && x + w > printer.bedX + 1e-6) {
+            y += rowDepth + spacing;
+            x = 0, rowDepth = 0;
+        }
+        corner[i] = {x, y};
+        width = std::max(width, x + w);
+        x += w + spacing;
+        rowDepth = std::max(rowDepth, d);
+    }
+    const double depth = y + rowDepth;
+    if (depth > printer.bedY + 1e-6) return std::nullopt;
+    const Vec2 off{(printer.bedX - width) / 2, (printer.bedY - depth) / 2};
+    std::vector<Vec2> centres(parts.size());
+    for (std::size_t i = 0; i < parts.size(); ++i) centres[i] = corner[i] + off + Vec2{parts[i].size().x / 2, parts[i].size().y / 2};
+    return centres;
+}
+
 // ---------------------------------------------------------------- slicing
 
 const char* toString(PathType t) {
@@ -251,6 +278,10 @@ const char* toString(PathType t) {
 }
 
 namespace {
+
+// Gyroid period per (line width / density): with this the gyroid lays down as
+// much line per area as straight lines at the same density.
+constexpr double kGyroidPeriod = 2.5;
 
 Region outersOnly(const Region& r) {
     Region out;
@@ -349,6 +380,26 @@ public:
         }
     }
 
+    void polylines(std::vector<Polyline> lines, PathType type, std::vector<Path>& out) {
+        std::vector<char> done(lines.size(), 0);
+        for (std::size_t n = 0; n < lines.size(); ++n) {
+            std::size_t best = 0;
+            bool flip = false;
+            double bd = 1e300;
+            for (std::size_t i = 0; i < lines.size(); ++i) {
+                if (done[i]) continue;
+                const double d1 = dist2(lines[i].front(), pos), d2 = dist2(lines[i].back(), pos);
+                if (d1 < bd) bd = d1, best = i, flip = false;
+                if (d2 < bd) bd = d2, best = i, flip = true;
+            }
+            done[best] = 1;
+            Polyline l = std::move(lines[best]);
+            if (flip) std::reverse(l.begin(), l.end());
+            pos = l.back();
+            out.push_back({type, std::move(l), false});
+        }
+    }
+
 private:
     std::size_t seamIndex(const Loop& l) {
         std::size_t best = 0;
@@ -399,6 +450,180 @@ void parallelFor(std::size_t n, const std::function<void(std::size_t)>& fn) {
     }
     for (auto& t : pool) t.join();
     if (error) std::rethrow_exception(error);
+}
+
+// Tree supports. Tips start on a grid under every overhang (two layers below
+// it, like the columns), then each layer down every branch leans towards its
+// nearest neighbour, merges with it when they meet and thickens, and is pushed
+// out of the part. With buildplate, branches that would have to land on the
+// part are dropped; with everywhere they rest on it.
+std::vector<Region> treeSupports(const std::vector<Region>& outline, const std::vector<Region>& steep, const Settings& s, double lw,
+                                 double xyGap) {
+    const std::size_t n = outline.size();
+    std::vector<Region> out(n);
+    const double grid = std::max(2.0, lw * 100.0 / std::clamp(s.supportDensity, 1.0, 100.0) * 0.9);
+    const double maxMove = s.layerHeight * std::tan(40.0 * mesh::kPi / 180.0);
+    const double grow = s.layerHeight * std::tan(4.0 * mesh::kPi / 180.0);
+    const double tipR = lw, maxR = std::max(3.0, lw * 6), mergeRange = grid * 3;
+    const bool buildplate = s.supports == "buildplate";
+
+    struct Node {
+        Vec2 p;
+        double r;
+        std::size_t id;
+        bool fresh = true;  // a new tip may hop clear of a steep wall; a branch may only lean
+    };
+    struct Mark {
+        std::size_t id;
+        Vec2 p;
+        double r;
+    };
+    std::vector<std::vector<Mark>> marks(n);
+    std::vector<std::size_t> next;   // what each branch merged into (itself if none)
+    std::vector<char> grounded;      // reached the bed (or may rest on the part)
+    std::vector<Node> active;
+    auto newNode = [&](Vec2 p, double r) {
+        const std::size_t id = next.size();
+        next.push_back(id);
+        grounded.push_back(0);
+        active.push_back({p, r, id, true});
+    };
+
+    for (std::size_t k = n; k-- > 0;) {
+        // new tips under overhangs two layers up
+        if (k + 2 < n && !steep[k + 2].empty()) {
+            const Region& area = steep[k + 2];
+            for (const auto& sg : fillLines(area, grid, 0.0, grid / 2)) {
+                const double x0 = std::ceil((sg.first.x - grid / 2) / grid) * grid + grid / 2;
+                for (double x = x0; x <= sg.second.x; x += grid) {
+                    const Vec2 p{x, sg.first.y};
+                    bool near = false;
+                    for (const auto& a : active) near = near || dist2(a.p, p) < grid * grid * 0.25;
+                    if (!near) newNode(p, tipR);
+                }
+            }
+            // small overhangs the grid missed (a downward point, a thin ledge) still get a tip
+            for (const auto& island : islands(area)) {
+                if (island.front().empty()) continue;
+                Vec2 c{0, 0};
+                for (const auto& v : island.front()) c = c + v;
+                c = c / static_cast<double>(island.front().size());
+                bool near = false;
+                for (const auto& a : active) near = near || dist2(a.p, c) < grid * grid;
+                if (!near) newNode(c, tipR);
+            }
+        }
+        if (active.empty()) continue;
+
+        // lean towards the nearest neighbour, merge when close
+        std::vector<Vec2> moved(active.size());
+        for (std::size_t i = 0; i < active.size(); ++i) {
+            double bd = mergeRange * mergeRange;
+            std::size_t best = active.size();
+            for (std::size_t j = 0; j < active.size(); ++j) {
+                if (j == i) continue;
+                const double d = dist2(active[i].p, active[j].p);
+                if (d < bd) bd = d, best = j;
+            }
+            moved[i] = active[i].p;
+            if (best < active.size()) {
+                const Vec2 to = active[best].p - active[i].p;
+                const double len = length(to);
+                moved[i] = active[i].p + to * (std::min(maxMove, len / 2) / std::max(len, 1e-12));
+            }
+        }
+        std::vector<Node> merged;
+        std::vector<char> gone(active.size(), 0);
+        for (std::size_t i = 0; i < active.size(); ++i) {
+            if (gone[i]) continue;
+            Node a{moved[i], active[i].r, active[i].id, active[i].fresh};
+            for (std::size_t j = i + 1; j < active.size(); ++j) {
+                if (gone[j] || dist2(moved[j], a.p) > maxMove * maxMove * 4) continue;
+                gone[j] = 1;
+                a.p = (a.p * a.r + moved[j] * active[j].r) / (a.r + active[j].r);
+                a.r = std::min(maxR, std::max(a.r, active[j].r) + grow);
+                next[active[j].id] = a.id;
+            }
+            merged.push_back(a);
+        }
+
+        // keep clear of the part
+        const Region avoid = outline[k].empty() ? Region{} : offset(outline[k], xyGap + tipR);
+        active.clear();
+        for (auto& a : merged) {
+            if (!avoid.empty() && contains(avoid, a.p)) {
+                Vec2 best = a.p;
+                double bd = 1e300;
+                for (const auto& loop : avoid) {
+                    for (std::size_t e = 0; e < loop.size(); ++e) {
+                        const Vec2 u = loop[e], v = loop[(e + 1) % loop.size()], d = v - u;
+                        const double t = std::clamp(dot(a.p - u, d) / std::max(dot(d, d), 1e-18), 0.0, 1.0);
+                        const Vec2 q = u + d * t;
+                        if (dist2(q, a.p) < bd) bd = dist2(q, a.p), best = q;
+                    }
+                }
+                if (std::sqrt(bd) > (a.fresh ? grid : maxMove * 3)) {
+                    // the part is underneath: the branch ends here (resting on it)
+                    grounded[a.id] = buildplate ? 0 : 1;
+                    continue;
+                }
+                const Vec2 away = best - a.p;
+                a.p = best + away * (0.05 / std::max(length(away), 1e-12));
+            }
+            a.r = std::min(maxR, a.r + grow);
+            a.fresh = false;
+            marks[k].push_back({a.id, a.p, a.r});
+            active.push_back(a);
+        }
+    }
+    for (const auto& a : active) grounded[a.id] = 1;
+
+    // a branch is kept when the trunk it merged into reaches the bed
+    auto keep = [&](std::size_t id) {
+        while (next[id] != id && !grounded[id]) id = next[id];
+        return grounded[id] != 0;
+    };
+    std::vector<char> kept(next.size());
+    for (std::size_t id = 0; id < next.size(); ++id) kept[id] = keep(id) ? 1 : 0;
+    parallelFor(n, [&](std::size_t k) {
+        std::vector<const Mark*> live;
+        for (const auto& m : marks[k]) {
+            if (kept[m.id]) live.push_back(&m);
+        }
+        if (live.empty()) return;
+        // only circles that overlap need a boolean; lone ones go in as they are
+        std::vector<std::size_t> group(live.size());
+        for (std::size_t i = 0; i < live.size(); ++i) group[i] = i;
+        std::function<std::size_t(std::size_t)> root = [&](std::size_t i) { return group[i] == i ? i : group[i] = root(group[i]); };
+        for (std::size_t i = 0; i < live.size(); ++i) {
+            for (std::size_t j = i + 1; j < live.size(); ++j) {
+                const double reach2 = (live[i]->r + live[j]->r) * (live[i]->r + live[j]->r);
+                if (dist2(live[i]->p, live[j]->p) < reach2) group[root(i)] = root(j);
+            }
+        }
+        std::map<std::size_t, std::vector<Loop>> byGroup;
+        for (std::size_t i = 0; i < live.size(); ++i) {
+            const int sides = 12;
+            Loop c;
+            for (int q = 0; q < sides; ++q) {
+                const double t = 2 * mesh::kPi * q / sides;
+                c.push_back({live[i]->p.x + live[i]->r * std::cos(t), live[i]->p.y + live[i]->r * std::sin(t)});
+            }
+            byGroup[root(i)].push_back(std::move(c));
+        }
+        Region r;
+        for (auto& [g, loops] : byGroup) {
+            if (loops.size() == 1) {
+                r.push_back(std::move(loops.front()));
+            } else {
+                Region u = normalize(loops);
+                r.insert(r.end(), u.begin(), u.end());
+            }
+        }
+        if (!outline[k].empty()) r = subtract(r, offset(outline[k], xyGap));
+        out[k] = dropSmall(std::move(r), lw * lw);
+    });
+    return out;
 }
 
 bool insideBed(const Path& p, const Printer& pr) {
@@ -509,21 +734,30 @@ SliceResult slice(const mesh::Mesh& input, const Config& c) {
         const double xyGap = std::max(0.6, lw * 1.5);
         std::vector<Region> overhang(n);
         parallelFor(n, [&](std::size_t j) {
-            if (j == 0 || outline[j].empty()) return;
+            if (j == 0 || outline[j].empty() || s.supportStyle == "tree") return;
             // grown back by the reach so the strips of neighbouring layers join up
             Region steep = dropSmall(subtract(outline[j], offset(outline[j - 1], reach)), 0.5);
             if (!steep.empty()) overhang[j] = offset(steep, reach * 1.1 + 0.05);
         });
-        Region acc;
-        for (std::size_t k = n; k-- > 0;) {
-            if (k + 2 < n && !overhang[k + 2].empty()) acc = unite(acc, overhang[k + 2]);
-            if (acc.empty()) continue;
-            if (!outline[k].empty()) acc = subtract(acc, offset(outline[k], xyGap));
-            acc = dropSmall(std::move(acc), 0.5);
-            support[k] = acc;
-        }
-        if (s.supports == "buildplate") {
-            for (std::size_t k = 1; k < n; ++k) support[k] = intersect(support[k], support[k - 1]);
+        if (s.supportStyle == "tree") {
+            std::vector<Region> steep(n);
+            parallelFor(n, [&](std::size_t j) {
+                if (j == 0 || outline[j].empty()) return;
+                steep[j] = dropSmall(subtract(outline[j], offset(outline[j - 1], reach)), lw * lw);
+            });
+            support = treeSupports(outline, steep, s, lw, xyGap);
+        } else {
+            Region acc;
+            for (std::size_t k = n; k-- > 0;) {
+                if (k + 2 < n && !overhang[k + 2].empty()) acc = unite(acc, overhang[k + 2]);
+                if (acc.empty()) continue;
+                if (!outline[k].empty()) acc = subtract(acc, offset(outline[k], xyGap));
+                acc = dropSmall(std::move(acc), 0.5);
+                support[k] = acc;
+            }
+            if (s.supports == "buildplate") {
+                for (std::size_t k = 1; k < n; ++k) support[k] = intersect(support[k], support[k - 1]);
+            }
         }
         if (s.brim > 0 && !support[0].empty()) support[0] = subtract(support[0], offset(outersOnly(outline[0]), s.brim + lw));
     }
@@ -563,18 +797,33 @@ SliceResult slice(const mesh::Mesh& input, const Config& c) {
 
         // infill lines for the whole layer, then handed to their islands
         std::vector<Segment> solidLines, sparseLines;
+        std::vector<Polyline> sparseCurves;
+        Region sparseRings;
         if (!solid[i].empty()) solidLines = fillLines(solid[i], lw, i % 2 ? 135.0 : 45.0);
         if (!sparse[i].empty() && density > 0) {
-            auto add = [&](double spacing, double angle) {
-                auto v = fillLines(sparse[i], spacing, angle);
+            auto add = [&](double spacing, double angle, double shift) {
+                auto v = fillLines(sparse[i], spacing, angle, shift);
                 sparseLines.insert(sparseLines.end(), v.begin(), v.end());
             };
+            const double z = L.z - L.height / 2;
             if (s.infillPattern == "lines") {
-                add(lw / density, i % 2 ? 135.0 : 45.0);
+                add(lw / density, i % 2 ? 135.0 : 45.0, 0);
             } else if (s.infillPattern == "triangles") {
-                for (double a : {0.0, 60.0, 120.0}) add(3 * lw / density, a);
+                for (double a : {0.0, 60.0, 120.0}) add(3 * lw / density, a, 0);
+            } else if (s.infillPattern == "cubic") {
+                // a cube lattice stood on its corner: three line sets that slide with height
+                const double slide = z / std::sqrt(2.0);
+                add(3 * lw / density, 0.0, slide);
+                add(3 * lw / density, 120.0, slide);
+                add(3 * lw / density, 60.0, -slide);
+            } else if (s.infillPattern == "gyroid") {
+                sparseCurves = gyroidLines(sparse[i], kGyroidPeriod * lw / density, z);
+            } else if (s.infillPattern == "concentric") {
+                for (Region r = offset(sparse[i], -lw / 2); !r.empty(); r = offset(r, -lw / density)) {
+                    sparseRings.insert(sparseRings.end(), r.begin(), r.end());
+                }
             } else {
-                for (double a : {45.0, 135.0}) add(2 * lw / density, a);
+                for (double a : {45.0, 135.0}) add(2 * lw / density, a, 0);
             }
         }
         auto tooShort = [&](const Segment& sg) { return length(sg.second - sg.first) < lw; };
@@ -592,6 +841,23 @@ SliceResult slice(const mesh::Mesh& input, const Config& c) {
         };
         assign(solidLines, partSolid);
         assign(sparseLines, partSparse);
+        std::vector<std::vector<Polyline>> partCurves(parts.size());
+        for (auto& pl : sparseCurves) {
+            double len = 0;
+            for (std::size_t k = 1; k < pl.size(); ++k) len += length(pl[k] - pl[k - 1]);
+            if (len < lw || parts.empty()) continue;
+            const Vec2 mid = pl[pl.size() / 2];
+            std::size_t k = 0;
+            while (k + 1 < parts.size() && !contains(parts[k].outline, mid)) ++k;
+            partCurves[k].push_back(std::move(pl));
+        }
+        std::vector<Region> partRings(parts.size());
+        for (auto& l : sparseRings) {
+            if (parts.empty() || l.size() < 3) continue;
+            std::size_t k = 0;
+            while (k + 1 < parts.size() && !contains(parts[k].outline, l.front())) ++k;
+            partRings[k].push_back(std::move(l));
+        }
 
         std::vector<char> done(parts.size(), 0);
         for (std::size_t c2 = 0; c2 < parts.size(); ++c2) {
@@ -608,11 +874,32 @@ SliceResult slice(const mesh::Mesh& input, const Config& c) {
             for (std::size_t w = is.walls.size(); w-- > 0;) ord.loops(is.walls[w], w == 0 ? PathType::OuterWall : PathType::InnerWall, L.paths);
             ord.segments(partSolid[best], PathType::SolidInfill, L.paths);
             ord.segments(partSparse[best], PathType::Infill, L.paths);
+            ord.polylines(std::move(partCurves[best]), PathType::Infill, L.paths);
+            ord.loops(partRings[best], PathType::Infill, L.paths);
         }
         if (!support[i].empty()) {
-            auto lines = fillLines(support[i], lw * 100.0 / std::clamp(s.supportDensity, 1.0, 100.0), 0.0);
-            lines.erase(std::remove_if(lines.begin(), lines.end(), tooShort), lines.end());
-            ord.segments(std::move(lines), PathType::Support, L.paths);
+            const double spacing = lw * 100.0 / std::clamp(s.supportDensity, 1.0, 100.0);
+            if (s.supportStyle == "tree") {
+                // branches get a wall, and lines inside where they are thick
+                // offset branch by branch: one boolean over hundreds of small circles is slow
+                Region walls, inner;
+                for (const auto& branch : islands(support[i])) {
+                    Region w = offset(branch, -lw / 2);
+                    walls.insert(walls.end(), w.begin(), w.end());
+                    if (area(branch) > 9 * lw * lw) {
+                        Region in = offset(branch, -lw);
+                        inner.insert(inner.end(), in.begin(), in.end());
+                    }
+                }
+                ord.loops(walls, PathType::Support, L.paths);
+                auto lines = fillLines(inner, std::min(spacing, lw * 4), i % 2 ? 90.0 : 0.0);
+                lines.erase(std::remove_if(lines.begin(), lines.end(), tooShort), lines.end());
+                ord.segments(std::move(lines), PathType::Support, L.paths);
+            } else {
+                auto lines = fillLines(support[i], spacing, 0.0);
+                lines.erase(std::remove_if(lines.begin(), lines.end(), tooShort), lines.end());
+                ord.segments(std::move(lines), PathType::Support, L.paths);
+            }
         }
         pos = ord.pos;
     }
@@ -707,9 +994,19 @@ public:
     void travel(const Vec2& to) {
         const double d = length(to - pos);
         if (d < 1e-6) return;
-        if (d > s_.retractMinTravel) retract();
+        const bool far = d > s_.retractMinTravel;
+        if (far) retract();
+        const bool hop = far && s_.zHop > 0;
+        if (hop) {
+            line("G0 Z" + num(z + s_.zHop, 3) + " F600");
+            seconds += s_.zHop / 10.0;
+        }
         line("G0 X" + num(to.x, 3) + " Y" + num(to.y, 3) + " F" + num(s_.travelSpeed * 60, 0));
         seconds += d / std::max(1.0, s_.travelSpeed);
+        if (hop) {
+            line("G0 Z" + num(z, 3) + " F600");
+            seconds += s_.zHop / 10.0;
+        }
         pos = to;
     }
 
@@ -823,7 +1120,7 @@ Gcode toGcode(const SliceResult& sliced, const Config& c, const std::string& mod
             num(f.bedTemp, 0) + "C fan " + num(f.fan, 0) + "%\n";
     head += ";SETTINGS: quality " + s.quality + ", line width " + num(lw, 3) + ", perimeters " + std::to_string(s.perimeters) +
             ", top " + std::to_string(s.topLayers) + ", bottom " + std::to_string(s.bottomLayers) + ", infill " + num(s.infill, 1) +
-            "% " + s.infillPattern + ", supports " + s.supports + "\n";
+            "% " + s.infillPattern + ", supports " + s.supports + (s.supports != "none" ? " (" + s.supportStyle + ")" : "") + "\n";
     head += ";MINX:" + num(minx, 3) + "\n;MINY:" + num(miny, 3) + "\n;MINZ:0\n;MAXX:" + num(maxx, 3) + "\n;MAXY:" + num(maxy, 3) +
             "\n;MAXZ:" + num(maxz, 3) + "\n";
     head += fillTemplate(c.printer.startGcode, vars);

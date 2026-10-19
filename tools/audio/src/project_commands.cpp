@@ -3,6 +3,7 @@
 #include <cmath>
 
 #include "common.hpp"
+#include "wetwaresuite/audio/rack.hpp"
 
 namespace wetwaresuite::audio::tool {
 
@@ -51,6 +52,9 @@ std::string listing(const Project& pr) {
         if (anySolo && !t.solo) s += " (silent: another track is solo)";
         if (t.duckUnder >= 0) s += ", ducks " + dbText(t.duckDb) + " under track " + std::to_string(t.duckUnder);
         if (!t.envelope.empty()) s += ", volume envelope with " + std::to_string(t.envelope.size()) + " points";
+        for (std::size_t f = 0; f < t.fx.size(); ++f) s += "\n  fx " + std::to_string(f) + " " + describeEffect(t.fx[f]);
+        for (const auto& l : t.automation)
+            if (!l.points.empty()) s += "\n  automation " + l.target + " (" + std::to_string(l.points.size()) + " points)";
         for (std::size_t c = 0; c < t.clips.size(); ++c) {
             const Clip& cl = t.clips[c];
             s += "\n  clip " + std::to_string(c) + " \"" + cl.name + "\": " + formatTime(cl.at) + " to " + formatTime(cl.end());
@@ -59,6 +63,10 @@ std::string listing(const Project& pr) {
             if (cl.fadeOut > 0) s += ", fade out " + formatTime(cl.fadeOut);
         }
     }
+    for (std::size_t f = 0; f < pr.masterFx.size(); ++f) s += "\nmaster fx " + std::to_string(f) + " " + describeEffect(pr.masterFx[f]);
+    for (const auto& l : pr.masterAutomation)
+        if (!l.points.empty()) s += "\nmaster automation " + l.target + " (" + std::to_string(l.points.size()) + " points)";
+    for (const auto& m : pr.markers) s += "\nmarker \"" + m.name + "\" " + (m.region() ? formatTime(m.start) + " to " + formatTime(m.end) : "at " + formatTime(m.start));
     return s;
 }
 
@@ -66,6 +74,8 @@ std::vector<ParamSpec> clipSettings() {
     return {{"gain", ParamType::Number, "clip gain in dB", false},
             {"fade_in", ParamType::Number, "clip fade-in, seconds", false},
             {"fade_out", ParamType::Number, "clip fade-out, seconds", false},
+            {"fade_in_curve", ParamType::String, "fade-in shape (default s_curve)", false, fadeCurveNames()},
+            {"fade_out_curve", ParamType::String, "fade-out shape (default s_curve)", false, fadeCurveNames()},
             {"name", ParamType::String, "clip name", false}};
 }
 
@@ -74,6 +84,8 @@ void applyClipSettings(Clip& c, const Params& p) {
     if (p.count("fade_in")) c.fadeIn = std::max(0.0, numberParam(p, "fade_in"));
     if (p.count("fade_out")) c.fadeOut = std::max(0.0, numberParam(p, "fade_out"));
     if (p.count("name")) c.name = stringParam(p, "name");
+    if (p.count("fade_in_curve")) parseFadeCurve(stringParam(p, "fade_in_curve"), c.fadeInCurve);
+    if (p.count("fade_out_curve")) parseFadeCurve(stringParam(p, "fade_out_curve"), c.fadeOutCurve);
 }
 
 // Mixdown, optionally normalized.
@@ -435,7 +447,8 @@ void registerProjectCommands(Session& session) {
              "normalized: normalize=loudness target=-16 for a podcast.",
              concat({projectParam(), {"path", ParamType::String, "file to write, e.g. episode.mp3", true},
                      {"bits", ParamType::String, "WAV/FLAC sample format", false, {"8", "16", "24", "32", "32f"}, std::string("16")},
-                     {"bitrate", ParamType::Int, "kbit/s for lossy formats (0 = default)", false, {}, std::int64_t{0}}},
+                     {"bitrate", ParamType::Int, "kbit/s for lossy formats (0 = default)", false, {}, std::int64_t{0}},
+                     {"rate", ParamType::Int, "write at this sample rate (default: the project's)", false}},
                     normalizeParams()),
              false},
             projectCommand(
@@ -447,6 +460,9 @@ void registerProjectCommands(Session& session) {
                     Buffer mix;
                     std::string note, error;
                     if (!saveOptionsArg(p, o, error) || !renderMix(d, p, mix, note, error)) return failed(error);
+                    const auto rate = intParam(p, "rate", 0);
+                    if (p.count("rate") && (rate < 1000 || rate > 768000)) return failed("rate must be 1000..768000 Hz");
+                    if (rate > 0 && rate != mix.rate) mix = resample(mix, static_cast<int>(rate));
                     save(mix, path, o);
                     const Levels lv = measure(mix, all(mix), false);
                     std::error_code ec;

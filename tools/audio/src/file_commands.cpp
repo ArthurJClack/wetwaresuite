@@ -203,7 +203,8 @@ void registerFileCommands(Session& session, const std::shared_ptr<State>&) {
              "Write the audio to a file; the extension picks the format. wav is built in (bits=16, 24, 32 or 32f); flac, "
              "mp3, ogg, opus, m4a, aac and aiff go through ffmpeg. start/end save just that part.",
              {docParam(), {"path", ParamType::String, "file to write, e.g. take.wav or episode.mp3", true}, bitsParam(), bitrateParam(),
-              {"dither", ParamType::Bool, "add TPDF dither when saving 8/16-bit", false, {}, true}, startParam(), endParam()},
+              {"dither", ParamType::Bool, "add TPDF dither when saving 8/16-bit", false, {}, true}, startParam(), endParam(),
+              {"rate", ParamType::Int, "write at this sample rate (the document keeps its own)", false}},
              false},
             audioCommand(
                 session,
@@ -221,7 +222,10 @@ void registerFileCommands(Session& session, const std::shared_ptr<State>&) {
                     Range r;
                     if (!saveOptionsArg(p, o, error) || !rangeArg(doc.audio, p, r, error)) return failed(error);
                     const bool part = r.begin > 0 || r.end < doc.audio.frames();
-                    save(part ? slice(doc.audio, r) : doc.audio, path, o);
+                    const auto rate = intParam(p, "rate", 0);
+                    if (p.count("rate") && (rate < 1000 || rate > 768000)) return failed("rate must be 1000..768000 Hz");
+                    if (rate > 0 && rate != doc.audio.rate) save(resample(part ? slice(doc.audio, r) : doc.audio, static_cast<int>(rate)), path, o);
+                    else save(part ? slice(doc.audio, r) : doc.audio, path, o);
                     if (!part) doc.path = path.string();
                     std::error_code ec;
                     return Result::success("saved " + path.string() + " (" + formatTime(static_cast<double>(r.size()) / doc.audio.rate) + ")")

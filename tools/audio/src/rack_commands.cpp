@@ -1,0 +1,288 @@
+// The effects rack of each project track and the master (audio.fx_*), and
+// automation lanes that move the volume, pan or any effect setting over time.
+#include <algorithm>
+#include <cmath>
+
+#include "common.hpp"
+#include "wetwaresuite/audio/rack.hpp"
+
+namespace wetwaresuite::audio::tool {
+
+namespace {
+
+struct RackRef {
+    Rack* rack = nullptr;
+    std::vector<Automation>* lanes = nullptr;
+    Track* track = nullptr;  // null for the master
+    std::string name;        // "track 1 \"Voice\"" or "the master"
+};
+
+std::vector<ParamSpec> ownerParams() {
+    return {projectParam(), {"track", ParamType::Int, "track number, from 0 (or master=true)", false},
+            {"master", ParamType::Bool, "the master (everything mixed) instead of a track", false, {}, false}};
+}
+
+ParamSpec fxParam() { return {"fx", ParamType::Int, "effect number in the rack, from 0", true}; }
+
+bool rackArg(ProjectDoc& d, const Params& p, RackRef& out, std::string& error) {
+    if (boolParam(p, "master", false)) {
+        out = {&d.project.masterFx, &d.project.masterAutomation, nullptr, "the master"};
+        return true;
+    }
+    if (!p.count("track")) {
+        error = "give track=<number> or master=true";
+        return false;
+    }
+    const auto t = intParam(p, "track", -1);
+    if (t < 0 || t >= static_cast<std::int64_t>(d.project.tracks.size())) {
+        error = "no track " + std::to_string(t) + " (the project has " + std::to_string(d.project.tracks.size()) + ", numbered from 0)";
+        return false;
+    }
+    Track& tr = d.project.tracks[static_cast<std::size_t>(t)];
+    out = {&tr.fx, &tr.automation, &tr, "track " + std::to_string(t) + (tr.name.empty() ? "" : " \"" + tr.name + "\"")};
+    return true;
+}
+
+bool fxArg(const RackRef& r, const Params& p, std::size_t& out, std::string& error) {
+    const auto i = intParam(p, "fx", -1);
+    if (i < 0 || i >= static_cast<std::int64_t>(r.rack->size())) {
+        error = "no effect " + std::to_string(i) + " on " + r.name + " (it has " + std::to_string(r.rack->size()) + ", numbered from 0)";
+        return false;
+    }
+    out = static_cast<std::size_t>(i);
+    return true;
+}
+
+std::string rackText(const RackRef& r) {
+    if (r.rack->empty()) return "\n  (no effects)";
+    std::string s;
+    for (std::size_t i = 0; i < r.rack->size(); ++i) s += "\n  " + std::to_string(i) + " " + describeEffect((*r.rack)[i]);
+    return s;
+}
+
+// owner, fx, type, bypass, setting, value, min, max, unit, choices
+std::string rackRows(const std::string& owner, const Rack& rack) {
+    std::string rows;
+    for (std::size_t i = 0; i < rack.size(); ++i) {
+        const EffectType* t = findEffectType(rack[i].type);
+        if (!t) continue;
+        for (const auto& prm : t->params) {
+            std::string choices;
+            for (const auto& c : prm.choices) choices += (choices.empty() ? "" : "|") + c;
+            rows += owner + "\t" + std::to_string(i) + "\t" + t->name + "\t" + (rack[i].bypass ? "1" : "0") + "\t" + prm.name + "\t" +
+                    num(rack[i].get(prm.name), 8) + "\t" + num(prm.min, 8) + "\t" + num(prm.max, 8) + "\t" + prm.unit + "\t" + choices + "\n";
+        }
+    }
+    return rows;
+}
+
+std::vector<Automation> lanesOf(const RackRef& r) { return r.track ? trackLanes(*r.track) : *r.lanes; }
+
+std::string lanesText(const std::vector<Automation>& lanes) {
+    if (lanes.empty()) return "\n  (no automation)";
+    std::string s;
+    for (const auto& l : lanes) {
+        s += "\n  " + l.target + ":";
+        for (std::size_t i = 0; i < l.points.size() && i < 12; ++i) s += " " + num(l.points[i].time) + "s=" + num(l.points[i].value);
+        if (l.points.size() > 12) s += " ... (" + std::to_string(l.points.size()) + " points)";
+    }
+    return s;
+}
+
+Result rackResult(const std::string& message, const ProjectDoc& d, const Params& p) {
+    Result r = Result::success(message);
+    r.with("project", stringParam(p, "project")).with("seconds", d.project.seconds());
+    return maybePreview(r, d, p);
+}
+
+}  // namespace
+
+void registerRackCommands(Session& session) {
+    auto& reg = session.registry();
+
+    reg.add({"audio.fx_add",
+             "Add effect",
+             "Add an effect to a track's rack (track=0) or the master's (master=true): eq, graphic_eq, filter, compressor, "
+             "limiter, gate, expander, deesser, reverb, delay, chorus, flanger, phaser, tremolo, distortion or utility, "
+             "with settings as text (values=\"threshold=-20 ratio=4\"; the EQ also takes values=\"bands=highpass 80, "
+             "peaking 3000 -3 2\"). Effects run in order before the track's volume and pan; the sound changes only when "
+             "it's played or mixed, so it can be changed or removed any time. Returns the effect's number.",
+             concat(ownerParams(), {{"type", ParamType::String, "effect", true, effectTypeNames()},
+                                    {"values", ParamType::String, "settings as name=value pairs (audio.fx_types lists them)", false},
+                                    {"at", ParamType::Int, "position in the rack (default: the end)", false}, previewParam()}),
+             true},
+            projectCommand(session, [](ProjectDoc& d, const Params& p) {
+                RackRef r;
+                Effect e;
+                std::string error;
+                if (!rackArg(d, p, r, error) || !makeEffect(stringParam(p, "type"), stringParam(p, "values"), e, error)) return failed(error);
+                if (r.rack->size() >= 32) return failed("a rack holds up to 32 effects");
+                auto at = static_cast<std::size_t>(std::clamp<std::int64_t>(intParam(p, "at", static_cast<std::int64_t>(r.rack->size())), 0,
+                                                                            static_cast<std::int64_t>(r.rack->size())));
+                r.rack->insert(r.rack->begin() + static_cast<std::ptrdiff_t>(at), e);
+                if (at + 1 < r.rack->size()) renumberLanes(*r.lanes, -1, static_cast<int>(at));
+                return rackResult("added effect " + std::to_string(at) + " to " + r.name + ": " + describeEffect(e), d, p)
+                    .with("fx", static_cast<std::int64_t>(at));
+            }));
+
+    reg.add({"audio.fx_set",
+             "Effect settings",
+             "Change settings of an effect in a rack (values=\"ratio=6 attack=3\"), or bypass it (bypass=true: kept but not heard).",
+             concat(ownerParams(), {fxParam(), {"values", ParamType::String, "settings to change, name=value pairs", false},
+                                    {"bypass", ParamType::Bool, "switch the effect off without removing it", false}, previewParam()}),
+             true},
+            projectCommand(session, [](ProjectDoc& d, const Params& p) {
+                RackRef r;
+                std::size_t i = 0;
+                std::string error;
+                if (!rackArg(d, p, r, error) || !fxArg(r, p, i, error)) return failed(error);
+                Effect& e = (*r.rack)[i];
+                if (!p.count("values") && !p.count("bypass")) return failed("give values= and/or bypass=");
+                std::map<std::string, double> changed;
+                if (!parseEffectValues(e.type, stringParam(p, "values"), changed, error)) return failed(error);
+                for (const auto& [k, v] : changed) e.params[k] = v;
+                if (p.count("bypass")) e.bypass = boolParam(p, "bypass");
+                return rackResult(r.name + " effect " + std::to_string(i) + " now " + describeEffect(e), d, p);
+            }));
+
+    reg.add({"audio.fx_remove",
+             "Remove effect",
+             "Take an effect out of a rack (later effects move up one number; their automation follows).",
+             concat(ownerParams(), {fxParam()}),
+             true},
+            projectCommand(session, [](ProjectDoc& d, const Params& p) {
+                RackRef r;
+                std::size_t i = 0;
+                std::string error;
+                if (!rackArg(d, p, r, error) || !fxArg(r, p, i, error)) return failed(error);
+                const std::string what = (*r.rack)[i].type;
+                r.rack->erase(r.rack->begin() + static_cast<std::ptrdiff_t>(i));
+                renumberLanes(*r.lanes, static_cast<int>(i), -1);
+                return rackResult("removed " + what + " from " + r.name, d, p);
+            }));
+
+    reg.add({"audio.fx_move",
+             "Move effect",
+             "Change the order of a rack: move effect fx to position `to` (order matters: EQ before or after the compressor sounds different).",
+             concat(ownerParams(), {fxParam(), {"to", ParamType::Int, "new position, from 0", true}}),
+             true},
+            projectCommand(session, [](ProjectDoc& d, const Params& p) {
+                RackRef r;
+                std::size_t i = 0;
+                std::string error;
+                if (!rackArg(d, p, r, error) || !fxArg(r, p, i, error)) return failed(error);
+                const auto to = intParam(p, "to");
+                if (to < 0 || to >= static_cast<std::int64_t>(r.rack->size())) return failed("to must be 0.." + std::to_string(r.rack->size() - 1));
+                Effect e = (*r.rack)[i];
+                r.rack->erase(r.rack->begin() + static_cast<std::ptrdiff_t>(i));
+                r.rack->insert(r.rack->begin() + to, e);
+                renumberLanes(*r.lanes, -1, -1, static_cast<int>(i), static_cast<int>(to));
+                return rackResult(r.name + " rack:" + rackText(r), d, p);
+            }));
+
+    reg.add({"audio.fx_list",
+             "List effects",
+             "Show the effects racks: one track's, the master's, or (with neither) every rack in the project. rows has one "
+             "line per setting: owner (track number or master), fx, type, bypassed (0/1), setting, value, min, max, unit, choices.",
+             ownerParams(),
+             false, true},
+            projectCommand(
+                session,
+                [](ProjectDoc& d, const Params& p) {
+                    std::string text, rows;
+                    auto one = [&](const RackRef& r, const std::string& owner) {
+                        text += "\n" + r.name + ":" + rackText(r);
+                        rows += rackRows(owner, *r.rack);
+                    };
+                    if (p.count("track") || boolParam(p, "master", false)) {
+                        RackRef r;
+                        std::string error;
+                        if (!rackArg(d, p, r, error)) return failed(error);
+                        one(r, r.track ? std::to_string(intParam(p, "track")) : "master");
+                    } else {
+                        for (std::size_t t = 0; t < d.project.tracks.size(); ++t) {
+                            Track& tr = d.project.tracks[t];
+                            one({&tr.fx, &tr.automation, &tr, "track " + std::to_string(t) + (tr.name.empty() ? "" : " \"" + tr.name + "\"")}, std::to_string(t));
+                        }
+                        one({&d.project.masterFx, &d.project.masterAutomation, nullptr, "the master"}, "master");
+                    }
+                    return Result::success("effects" + text).with("rows", rows);
+                },
+                false));
+
+    reg.add({"audio.automate",
+             "Automate",
+             "Draw automation: target=volume (dB), pan (-1..1) or an effect setting fx<number>.<setting> (fx0.cutoff, "
+             "fx1.wet), as time,value pairs in seconds: points=0,200,4,8000 sweeps from 200 to 8000 over 4 s. The value "
+             "moves in straight lines between points and holds before the first and after the last. mode=add merges "
+             "points into the lane (replacing any at the same time), mode=clear removes the lane.",
+             concat(ownerParams(), {{"target", ParamType::String, "volume, pan or fx<i>.<setting>", true},
+                                    {"points", ParamType::NumberList, "time,value pairs", false},
+                                    {"mode", ParamType::String, "what to do with the lane", false, {"replace", "add", "clear"}, std::string("replace")},
+                                    previewParam()}),
+             true},
+            projectCommand(session, [](ProjectDoc& d, const Params& p) {
+                RackRef r;
+                std::string error;
+                if (!rackArg(d, p, r, error)) return failed(error);
+                const std::string target = stringParam(p, "target"), mode = stringParam(p, "mode", "replace");
+                if (!validTarget(target, *r.rack, error)) return failed(error);
+                std::vector<AutomationPoint> pts;
+                if (mode != "clear") {
+                    const NumberList v = listParam(p, "points");
+                    if (v.empty() || v.size() % 2) return failed("points takes time,value pairs, e.g. points=0,0,2,-12");
+                    double lo = 0, hi = 0;
+                    targetRange(target, *r.rack, lo, hi);
+                    for (std::size_t i = 0; i + 1 < v.size(); i += 2) {
+                        if (v[i] < 0) return failed("automation times can't be negative");
+                        if (v[i + 1] < lo - 1e-9 || v[i + 1] > hi + 1e-9) return failed(target + " values must be " + num(lo) + ".." + num(hi));
+                        pts.push_back({v[i], v[i + 1]});
+                    }
+                    if (mode == "add") {
+                        const auto lanes = lanesOf(r);
+                        if (const Automation* old = findLane(lanes, target)) {
+                            for (const auto& o : old->points) {
+                                const bool replaced = std::any_of(pts.begin(), pts.end(), [&](const AutomationPoint& n) { return std::fabs(n.time - o.time) < 1e-6; });
+                                if (!replaced) pts.push_back(o);
+                            }
+                        }
+                    }
+                }
+                if (r.track) setTrackLane(*r.track, target, pts);
+                else setLane(*r.lanes, target, pts);
+                return rackResult(r.name + " automation:" + lanesText(lanesOf(r)), d, p).with("points", static_cast<std::int64_t>(pts.size()));
+            }));
+
+    reg.add({"audio.automation",
+             "List automation",
+             "Show the automation lanes of a track or the master (or of everything). rows: owner, target, time, value.",
+             ownerParams(),
+             false, true},
+            projectCommand(
+                session,
+                [](ProjectDoc& d, const Params& p) {
+                    std::string text, rows;
+                    auto one = [&](const RackRef& r, const std::string& owner) {
+                        const auto lanes = lanesOf(r);
+                        text += "\n" + r.name + ":" + lanesText(lanes);
+                        for (const auto& l : lanes)
+                            for (const auto& pt : l.points) rows += owner + "\t" + l.target + "\t" + num(pt.time, 8) + "\t" + num(pt.value, 8) + "\n";
+                    };
+                    if (p.count("track") || boolParam(p, "master", false)) {
+                        RackRef r;
+                        std::string error;
+                        if (!rackArg(d, p, r, error)) return failed(error);
+                        one(r, r.track ? std::to_string(intParam(p, "track")) : "master");
+                    } else {
+                        for (std::size_t t = 0; t < d.project.tracks.size(); ++t) {
+                            Track& tr = d.project.tracks[t];
+                            one({&tr.fx, &tr.automation, &tr, "track " + std::to_string(t)}, std::to_string(t));
+                        }
+                        one({&d.project.masterFx, &d.project.masterAutomation, nullptr, "the master"}, "master");
+                    }
+                    return Result::success("automation" + text).with("rows", rows);
+                },
+                false));
+}
+
+}  // namespace wetwaresuite::audio::tool

@@ -212,6 +212,7 @@ void registerConvertCommands(Session& session);
 
 // Shared by convert and the per-kind open/save commands.
 Workbook loadWorkbook(const std::string& path, char delimiter = 0);  // throws
+Workbook loadWorkbook(const std::string& path, const CsvOptions& csv);  // CSV import options; throws
 void saveWorkbook(const Workbook& wb, const std::string& path, int sheet);  // throws
 TextDocument loadTextDocument(const std::string& path);  // throws
 void saveTextDocument(const TextDocument& doc, const std::string& path);  // throws

@@ -437,13 +437,18 @@ std::string sheetHtml(const Workbook& wb, int only) {
 }  // namespace
 
 Workbook loadWorkbook(const std::string& path, char delimiter) {
+    CsvOptions o;
+    o.delimiter = delimiter;
+    return loadWorkbook(path, o);
+}
+
+Workbook loadWorkbook(const std::string& path, const CsvOptions& csv) {
     const std::string ext = extOf(path);
     Workbook wb;
     if (ext == "csv" || ext == "tsv" || ext == "tab" || ext == "txt") {
-        std::string text = readBytes(path);
-        if (text.size() >= 3 && text.compare(0, 3, "\xEF\xBB\xBF") == 0) text = text.substr(3);
-        char d = delimiter ? delimiter : (ext == "tsv" || ext == "tab") ? '\t' : sniffDelimiter(text);
-        wb = readCsv(text, d);
+        CsvOptions o = csv;
+        if (!o.delimiter && (ext == "tsv" || ext == "tab")) o.delimiter = '\t';
+        wb = readCsv(readBytes(path), o);
         if (!wb.sheets.empty()) {
             std::string stem = pathFromUtf8(path).stem().string();
             if (!stem.empty()) wb.sheets[0].name = stem.substr(0, 31);

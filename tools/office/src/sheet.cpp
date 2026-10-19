@@ -923,4 +923,65 @@ void Workbook::deleteSheet(int sheet) {
     if (active < 0) active = 0;
 }
 
+void Workbook::moveRange(const Range& from, int toSheet, int toRow, int toCol) {
+    if (from.sheet < 0 || from.sheet >= static_cast<int>(sheets.size()) || toSheet < 0 || toSheet >= static_cast<int>(sheets.size())) return;
+    const int dr = toRow - from.r1, dc = toCol - from.c1;
+    if (dr == 0 && dc == 0 && toSheet == from.sheet) return;
+    const std::string srcName = sheets[static_cast<std::size_t>(from.sheet)].name;
+    const std::string dstName = sheets[static_cast<std::size_t>(toSheet)].name;
+    auto inside = [&](const FormulaRef& r) {
+        if (r.kind == FormulaRef::CellRef) return from.contains(r.r1, r.c1);
+        if (r.kind == FormulaRef::RangeRef) return from.contains(r.r1, r.c1) && from.contains(r.r2, r.c2);
+        return false;
+    };
+    Sheet& src = sheets[static_cast<std::size_t>(from.sheet)];
+    // moved formulas keep pointing at the cells they read on the old sheet
+    if (toSheet != from.sheet) {
+        for (auto& [k, c] : src.cells) {
+            if (!c.hasFormula() || !from.contains(Sheet::rowOf(k), Sheet::colOf(k))) continue;
+            c.formula = rewriteFormula(c.formula, [&](FormulaRef& r) {
+                if (r.sheet.empty() && !inside(r)) r.sheet = srcName;
+                return true;
+            });
+            c.ast.reset();
+        }
+    }
+    // every reference into the block follows it
+    rewriteAll(*this, from.sheet, [&](FormulaRef& r) {
+        if (!inside(r)) return true;
+        r.r1 += dr, r.r2 += dr, r.c1 += dc, r.c2 += dc;
+        if (toSheet != from.sheet) r.sheet = dstName;
+        return true;
+    });
+    // lift the cells out, then put them down
+    std::vector<std::pair<std::int64_t, Cell>> moved;
+    for (auto it = src.cells.lower_bound(Sheet::key(from.r1, 0)); it != src.cells.end() && Sheet::rowOf(it->first) <= from.r2;) {
+        const int r = Sheet::rowOf(it->first), c = Sheet::colOf(it->first);
+        if (from.contains(r, c)) {
+            moved.push_back({Sheet::key(r + dr, c + dc), std::move(it->second)});
+            it = src.cells.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    Sheet& dst = sheets[static_cast<std::size_t>(toSheet)];
+    const Range target{toSheet, from.r1 + dr, from.c1 + dc, from.r2 + dr, from.c2 + dc};
+    for (auto it = dst.cells.lower_bound(Sheet::key(target.r1, 0)); it != dst.cells.end() && Sheet::rowOf(it->first) <= target.r2;) {
+        if (target.contains(Sheet::rowOf(it->first), Sheet::colOf(it->first))) it = dst.cells.erase(it);
+        else ++it;
+    }
+    for (auto& [k, c] : moved) {
+        c.spilled = false;
+        dst.cells[k] = std::move(c);
+    }
+    // merged areas inside the block go along
+    std::vector<Range> keep, carry;
+    for (const Range& m : src.merges) (from.contains(m.r1, m.c1) && from.contains(m.r2, m.c2) ? carry : keep).push_back(m);
+    src.merges = keep;
+    for (Range m : carry) {
+        m.r1 += dr, m.r2 += dr, m.c1 += dc, m.c2 += dc;
+        dst.merges.push_back(m);
+    }
+}
+
 }  // namespace wetwaresuite::office

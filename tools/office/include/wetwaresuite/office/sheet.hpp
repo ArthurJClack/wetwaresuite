@@ -184,6 +184,9 @@ struct Workbook {
     void deleteCols(int sheet, int at, int count);
     void renameSheet(int sheet, const std::string& name);
     void deleteSheet(int sheet);
+    // Cut and paste: the cells of `from` (values, formulas, formats, merges) move so the top-left lands on
+    // (toSheet, toRow, toCol); references anywhere that pointed into the block follow it.
+    void moveRange(const Range& from, int toSheet, int toRow, int toCol);
 };
 
 // ---- A1 notation -------------------------------------------------------------

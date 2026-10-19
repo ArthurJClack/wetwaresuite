@@ -159,7 +159,18 @@ Workbook readCsv(const std::string& textIn, const CsvOptions& o) {
         (o.encoding.empty() && !validUtf8(text))) {
         text = latin1ToUtf8(text);
     }
-    const char delim = o.delimiter ? o.delimiter : sniffDelimiter(text);
+    char delim = o.delimiter;
+    if (!delim) {
+        // sniff below the skipped title lines; with a decimal comma the comma can't be the delimiter
+        std::size_t from = 0;
+        for (int k = 0; k < o.skipRows && from < text.size(); ++k) {
+            const std::size_t nl = text.find('\n', from);
+            from = nl == std::string::npos ? text.size() : nl + 1;
+        }
+        const std::string body = text.substr(from);
+        delim = sniffDelimiter(body);
+        if (delim == ',' && o.decimalComma && body.find(';') != std::string::npos) delim = ';';
+    }
     Workbook wb;
     wb.sheets.emplace_back();
     wb.sheets[0].name = "Sheet1";

@@ -7,14 +7,13 @@
 #include "wetwaresuite/office/chart.hpp"
 #include "wetwaresuite/raster/codec.hpp"
 #include "commands.hpp"
+#include "sheet_cmd.hpp"
 #include "sheet_internal.hpp"
 #include "text.hpp"
 
 namespace wetwaresuite::office {
 
-namespace {
-
-using Edit = std::function<Result(SheetDoc&, const Params&, const std::string&)>;
+namespace sheetcmd {
 
 ActionFactory edit(Session& s, Edit fn) { return docCommand<SheetDoc>(s, std::move(fn), true); }
 ActionFactory read(Session& s, Edit fn) { return docCommand<SheetDoc>(s, std::move(fn), false); }
@@ -42,7 +41,7 @@ std::string typeName(const CellValue& v) {
     }
 }
 
-bool sheetArg(const Workbook& wb, const Params& p, int& out, std::string& error, const char* key = "sheet") {
+bool sheetArg(const Workbook& wb, const Params& p, int& out, std::string& error, const char* key) {
     if (!has(p, key)) {
         out = std::clamp(wb.active, 0, static_cast<int>(wb.sheets.size()) - 1);
         return true;
@@ -76,7 +75,7 @@ Range usedRange(const Workbook& wb, int sheet) {
 }
 
 // range=... (with an optional sheet= default); missing means the used range. clip trims whole rows/columns to the used area.
-bool rangeArg(const Workbook& wb, const Params& p, Range& r, std::string& error, bool clip, const char* key = "range") {
+bool rangeArg(const Workbook& wb, const Params& p, Range& r, std::string& error, bool clip, const char* key) {
     int sheet;
     if (!sheetArg(wb, p, sheet, error)) return false;
     if (!has(p, key)) {
@@ -278,9 +277,49 @@ Result withPreview(Result r, const SheetDoc& d, const Params& p) {
     return r;
 }
 
-}  // namespace
+std::string freshSheetName(const Workbook& wb, const std::string& base) {
+    std::string name = base.substr(0, 31);
+    for (int n = 2; wb.sheetIndex(name) >= 0; ++n) name = base.substr(0, 28) + " " + std::to_string(n);
+    return name;
+}
+
+bool checkValidation(const Workbook& wb, int sheet, const Range& r, std::string& error, std::string& notes) {
+    const Sheet& sh = wb.sheets[static_cast<std::size_t>(sheet)];
+    if (sh.validations.empty()) return true;
+    int warned = 0;
+    for (int row = r.r1; row <= r.r2; ++row) {
+        for (int col = r.c1; col <= r.c2; ++col) {
+            std::string message;
+            bool reject = false;
+            if (validateCell(wb, sheet, row, col, message, reject)) continue;
+            if (reject) {
+                error = message;
+                return false;
+            }
+            if (warned++ < 3) notes += "; warning: " + message;
+        }
+    }
+    return true;
+}
+
+}  // namespace sheetcmd
 
 void registerSheetCommands(Session& session) {
+    using namespace sheetcmd;
+    registerSheetFileCommands(session);
+    registerSheetReadCommands(session);
+    registerSheetEditCommands(session);
+    registerSheetTableCommands(session);
+    registerSheetStyleCommands(session);
+    registerSheetLayoutCommands(session);
+    registerSheetRuleCommands(session);
+    registerSheetObjectCommands(session);
+    registerSheetDataCommands(session);
+}
+
+namespace sheetcmd {
+
+void registerSheetFileCommands(Session& session) {
     auto& reg = session.registry();
 
     // ---- documents -------------------------------------------------------------------
@@ -311,19 +350,24 @@ void registerSheetCommands(Session& session) {
             });
 
     reg.add({"office.sheet_open", "Open Spreadsheet",
-             "Open a spreadsheet: .xlsx/.xlsm (values, formulas, number formats, bold, column widths, all sheets), .csv/.tsv "
-             "(delimiter detected), .ods; .xls and other formats through LibreOffice. Formulas are recalculated on open.",
-             {str("path", "file to open", true),
-              str("delimiter", "CSV delimiter", false, std::string("auto"), {"auto", "comma", "semicolon", "tab", "pipe"})},
+             "Open a spreadsheet: .xlsx/.xlsm and .ods natively with everything (formulas, styles, merges, frozen panes, "
+             "conditional formats, validation, named ranges, charts), .csv/.tsv (delimiter and encoding detected, import options "
+             "below); .xls and other formats through LibreOffice. Formulas are recalculated on open.",
+             [] {
+                 std::vector<ParamSpec> v{str("path", "file to open", true)};
+                 for (auto& s : csvSpecs()) v.push_back(s);
+                 return v;
+             }(),
              false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p]() -> Result {
                     try {
                         const std::string path = stringParam(p, "path");
-                        const std::string dl = stringParam(p, "delimiter", "auto");
-                        char delim = dl == "comma" ? ',' : dl == "semicolon" ? ';' : dl == "tab" ? '\t' : dl == "pipe" ? '|' : 0;
+                        CsvOptions opts;
+                        std::string error;
+                        if (!csvOptions(p, opts, error)) return Result::failure(error);
                         auto d = std::make_shared<SheetDoc>();
-                        d->data = loadWorkbook(path, delim);
+                        d->data = loadWorkbook(path, opts);
                         d->path = path;
                         auto st = d->data.recalc();
                         std::string extra;
@@ -404,6 +448,10 @@ void registerSheetCommands(Session& session) {
                     .with("errors", static_cast<std::int64_t>(totalErrors))
                     .with("path", d.path);
             }));
+}
+
+void registerSheetReadCommands(Session& session) {
+    auto& reg = session.registry();
 
     // ---- reading cells -----------------------------------------------------------------
 
@@ -427,7 +475,18 @@ void registerSheetCommands(Session& session) {
                     if (!c) return Result::success(name + " is empty", std::string()).with("cell", name).with("type", std::string("empty"));
                     std::string t = name + " = " + display(c);
                     if (c->hasFormula()) t += "  (formula =" + c->formula + ")";
-                    t += "\ntype " + typeName(c->value) + (c->format.empty() ? "" : ", format " + c->format) + (c->style.bold ? ", bold" : "");
+                    t += "\ntype " + typeName(c->value) + (c->format.empty() ? "" : ", format " + c->format);
+                    const std::string look = describeStyle(c->style);
+                    if (look != "plain") t += "\nstyle " + look;
+                    for (const auto& m : sh.merges) {
+                        if (r.r1 >= m.r1 && r.r1 <= m.r2 && r.c1 >= m.c1 && r.c1 <= m.c2) t += "\nmerged " + rangeName(m);
+                    }
+                    if (const Validation* v = validationAt(d.data, r.sheet, r.r1, r.c1)) {
+                        std::string msg;
+                        bool reject = false;
+                        t += "\nvalidation " + v->type + (v->type == "list" ? "" : " " + v->op) + (v->value1.empty() ? "" : " " + v->value1);
+                        if (!validateCell(d.data, r.sheet, r.r1, r.c1, msg, reject)) t += " (current value is invalid)";
+                    }
                     if (c->hasFormula()) {
                         std::string refs;
                         for (const auto& ref : formulaReferences(d.data, c->formula, r.sheet)) refs += (refs.empty() ? "" : ", ") + where(d.data, ref);
@@ -627,13 +686,18 @@ void registerSheetCommands(Session& session) {
                 res.attach(png(img, "chart.png"));
                 return res;
             }));
+}
+
+void registerSheetEditCommands(Session& session) {
+    auto& reg = session.registry();
 
     // ---- editing --------------------------------------------------------------------------
 
     reg.add({"office.sheet_set", "Set Cells",
              "Write cells. value= goes into every cell of range: a number, text, TRUE/FALSE, 15%, $1,200, a 2026-03-01 date or "
              "a =formula (copied down/across a range with relative references moving, like Excel's fill). csv= pastes a block of "
-             "comma- or tab-separated rows starting at the range's top-left cell. Everything is recalculated.",
+             "comma- or tab-separated rows starting at the range's top-left cell. Everything is recalculated. Data validation "
+             "rules (office.sheet_validate) are enforced: a stop rule rejects the value, warning rules add a note.",
              {doc(), str("range", "target cell or range, e.g. B2 or D2:D13 or Sheet2!A1", true), str("value", "value or =formula"),
               str("csv", "rows of CSV/TSV text to paste at range's top-left"), str("csv_file", "read the CSV/TSV text from this file instead"), sheetSpec(), previewSpec()},
              true},
@@ -670,6 +734,9 @@ void registerSheetCommands(Session& session) {
                     }
                 }
                 std::string note = recalcNote(d.data);
+                std::string warn;
+                if (!checkValidation(d.data, r.sheet, written, error, warn)) return Result::failure(error);
+                note += warn;
                 const Cell* first = sh.get(written.r1, written.c1);
                 std::string msg = "set " + where(d.data, written) + (written.rows() * written.cols() > 1 ? " (" + std::to_string(written.rows() * written.cols()) + " cells)" : "");
                 msg += "; " + cellName(written.r1, written.c1) + " = " + (first ? display(first) : std::string("(empty)")) + note;
@@ -831,6 +898,10 @@ void registerSheetCommands(Session& session) {
                                                    (header ? " (header kept)" : "") + note),
                                    d, p);
             }));
+}
+
+void registerSheetTableCommands(Session& session) {
+    auto& reg = session.registry();
 
     reg.add({"office.sheet_filter", "Filter Rows",
              "Keep the rows where a column matches a condition. criteria works like COUNTIF: \">100\", \"<=0\", \"North\", "
@@ -894,12 +965,17 @@ void registerSheetCommands(Session& session) {
             }));
 
     reg.add({"office.sheet_fill", "Fill",
-             "Fill a range from its first cell (or first row/column): formulas are copied with relative references moving, values "
-             "are repeated. With step= the first cell's number (or date) grows by step each cell: a series 1, 2, 3... or dates a "
-             "week apart (step=7).",
+             "Fill a range from its first cell(s), like dragging the fill handle. source= says how many leading cells per "
+             "column/row are the pattern (default 1). Formulas are copied with relative references moving. series=auto continues "
+             "what the source shows: two numbers or dates continue their trend (1, 3 -> 5, 7), one date counts up a day, dates "
+             "a month apart keep stepping by months, Item 1 -> Item 2, Jan -> Feb, Mon -> Tue; anything else repeats. step= "
+             "sets the increment (unit=weekday/month/year for dates), series=growth multiplies, series=copy just repeats.",
              {doc(), str("range", "range whose first cell/row is the source, e.g. D2:D13", true),
               str("direction", "fill down or right (default: down when the range is taller than wide)", false, {}, {"down", "right"}),
-              number("step", "make a series that grows by this much per cell"), sheetSpec(), previewSpec()},
+              integer("source", "cells at the start of each column/row that make the pattern (default 1)"),
+              str("series", "how to continue", false, std::string("auto"), {"auto", "copy", "linear", "growth"}),
+              number("step", "increment per cell (growth: the ratio)"),
+              str("unit", "date step unit", false, std::string("day"), {"day", "weekday", "month", "year"}), sheetSpec(), previewSpec()},
              true},
             edit(session, [](SheetDoc& d, const Params& p, const std::string&) -> Result {
                 Range r;
@@ -910,30 +986,49 @@ void registerSheetCommands(Session& session) {
                 const bool down = has(p, "direction") ? stringParam(p, "direction") == "down" : r.rows() >= r.cols();
                 const int lines = down ? r.cols() : r.rows();
                 const int len = down ? r.rows() : r.cols();
-                if (len < 2) return Result::failure("the range needs at least two cells in the fill direction");
+                const int nsrc = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "source", 1), 1, 1000000));
+                if (len <= nsrc) return Result::failure("the range needs more cells in the fill direction than source=" + std::to_string(nsrc));
+                FillSpec spec;
+                spec.series = stringParam(p, "series", "auto");
+                spec.unit = stringParam(p, "unit", "day");
+                spec.hasStep = has(p, "step");
+                if (spec.hasStep) spec.step = numberParam(p, "step");
                 int filled = 0;
+                std::string kind;
                 for (int l = 0; l < lines; ++l) {
                     const int sr = down ? r.r1 : r.r1 + l, sc = down ? r.c1 + l : r.c1;
-                    const Cell* srcp = sh.get(sr, sc);
-                    if (!srcp) continue;
-                    const Cell src = *srcp;
-                    for (int k = 1; k < len; ++k) {
-                        const int row = down ? sr + k : sr, col = down ? sc : sc + k;
-                        Cell& c = sh.at(row, col);
-                        c = src;
-                        c.ast.reset();
-                        if (has(p, "step")) {
-                            if (src.value.type != CellValue::Number || src.hasFormula()) return Result::failure("step needs a number or date in " + cellName(sr, sc));
-                            c.value = CellValue::num(src.value.number + numberParam(p, "step") * k);
-                        } else if (src.hasFormula()) {
-                            c.formula = offsetFormula(src.formula, row - sr, col - sc);
+                    std::vector<Cell> src;
+                    for (int k = 0; k < nsrc; ++k) {
+                        const Cell* c = sh.get(down ? sr + k : sr, down ? sc : sc + k);
+                        if (c) src.push_back(*c);
+                        else if (k == 0) break;
+                        else src.push_back(Cell{});
+                    }
+                    if (src.empty()) continue;
+                    std::vector<Cell> out;
+                    std::vector<int> from;
+                    if (!fillSeries(src, len - nsrc, spec, out, from, error)) return Result::failure(cellName(sr, sc) + ": " + error);
+                    for (int k = 0; k < len - nsrc; ++k) {
+                        const int at = nsrc + k;
+                        const int row = down ? sr + at : sr, col = down ? sc : sc + at;
+                        const Cell& v = out[static_cast<std::size_t>(k)];
+                        const int f = from[static_cast<std::size_t>(k)];
+                        if (v.blank()) {
+                            sh.erase(row, col);
+                            continue;
                         }
+                        Cell& c = sh.at(row, col);
+                        c = v;
+                        c.ast.reset();
+                        c.spilled = false;
+                        if (f >= 0 && c.hasFormula()) c.formula = offsetFormula(v.formula, down ? at - f : 0, down ? 0 : at - f);
                         ++filled;
                     }
+                    if (kind.empty()) kind = from.empty() || from[0] >= 0 ? "copied" : "series";
                 }
                 if (!filled) return Result::failure("nothing to fill from: the first cell" + std::string(lines > 1 ? "s are" : " is") + " empty");
                 std::string note = recalcNote(d.data);
-                return withPreview(Result::success("filled " + std::to_string(filled) + " cells of " + where(d.data, r) + (down ? " down" : " right") + note), d, p);
+                return withPreview(Result::success(kind + " " + std::to_string(filled) + " cells of " + where(d.data, r) + (down ? " down" : " right") + note), d, p);
             }));
 
     std::string presetList;
@@ -1119,5 +1214,7 @@ void registerSheetCommands(Session& session) {
                 return Result::success("active sheet is " + d.data.sheets[static_cast<std::size_t>(s)].name);
             }));
 }
+
+}  // namespace sheetcmd
 
 }  // namespace wetwaresuite::office

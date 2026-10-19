@@ -59,6 +59,7 @@ ParamSpec specFor(const FieldDef& f) {
         case FieldKind::Integer: s.description += " (whole number or expression)"; break;
         case FieldKind::Points: s.description += " (comma-separated numbers or expressions)"; break;
         case FieldKind::Ref: s.description += " (name of an earlier feature)"; break;
+        case FieldKind::Refs: s.description += " (names of earlier features, comma-separated)"; break;
         case FieldKind::Choice: s.choices = f.choices; break;
         case FieldKind::Bool: s.type = ParamType::Bool; break;
         case FieldKind::Text: break;
@@ -195,7 +196,12 @@ std::vector<std::string> featureUsers(const CadDoc& doc, const std::string& name
         if (!t) continue;
         for (const auto& field : t->fields) {
             auto it = f.values.find(field.name);
-            if (field.kind == FieldKind::Ref && it != f.values.end() && it->second == name) {
+            if (it == f.values.end()) continue;
+            bool uses = field.kind == FieldKind::Ref && it->second == name;
+            if (field.kind == FieldKind::Refs) {
+                for (const auto& item : splitList(it->second)) uses = uses || item == name;
+            }
+            if (uses) {
                 users.push_back(f.name);
                 break;
             }
@@ -337,6 +343,13 @@ void registerFeatureCommand(Session& session, const FeatureType& t) {
                 if (!setField(f, field.name, fieldText(it->second), error)) return Result::failure(error);
             }
             const std::string name = f.name;
+            // join / cut / intersect without a target works on the last body, like SolidWorks' merge result
+            if (ft->field("operation") && ft->field("target") && !f.values.count("target")) {
+                const std::string op = f.values.count("operation") ? f.values["operation"] : ft->field("operation")->fallback;
+                if (op != "new" && !doc.bodies.empty()) f.values["target"] = doc.bodies.back().feature;
+                else if (op == "join") f.values["operation"] = "new";
+                else if (op != "new") return Result::failure(op + " needs a body to work on: add one first or give target=");
+            }
             doc.features.push_back(std::move(f));
             return edited("added " + type + " " + name, p, name);
         })));
@@ -376,8 +389,17 @@ void registerEdgeCommand(Session& session) {
         }, false));
 }
 
+void registerSketchCommands(Session& session);
+void registerSketchConstraintCommands(Session& session);
+void registerAssemblyCommands(Session& session);
+void registerDrawingCommands(Session& session);
+
 void registerCommands(Session& session) {
     auto& reg = session.registry();
+    registerSketchCommands(session);
+    registerSketchConstraintCommands(session);
+    registerAssemblyCommands(session);
+    registerDrawingCommands(session);
 
     // ---- documents ----------------------------------------------------------------
 
@@ -739,7 +761,13 @@ void registerCommands(Session& session) {
                     const FeatureType* t = featureType(other.type);
                     for (const auto& field : t->fields) {
                         auto it = other.values.find(field.name);
-                        if (field.kind == FieldKind::Ref && it != other.values.end() && it->second == from) it->second = to;
+                        if (it == other.values.end()) continue;
+                        if (field.kind == FieldKind::Ref && it->second == from) it->second = to;
+                        if (field.kind == FieldKind::Refs) {
+                            std::string list;
+                            for (const auto& item : splitList(it->second)) list += (list.empty() ? "" : ",") + (item == from ? to : item);
+                            it->second = list;
+                        }
                     }
                 }
                 if (auto it = doc.results.find(from); it != doc.results.end()) {

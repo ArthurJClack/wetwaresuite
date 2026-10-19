@@ -117,6 +117,7 @@ set(_ww_tool_deps_automate photo vector convert)  # its tests drive them
 set(_ww_tool_deps_explorer toolkit)
 set(_ww_tool_deps_paint photo)                    # its tests open through photo
 set(_ww_tool_deps_fit sculpt)                     # smoothing, simplifying and picking
+set(_ww_tool_deps_cad blueprint)                  # drawings from the model
 foreach(t IN LISTS _ww_tools)
   list(APPEND _ww_tools ${_ww_tool_deps_${t}})
 endforeach()

@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include "wetwaresuite/office/color.hpp"
+
 namespace wetwaresuite::office {
 
 struct CellValue {
@@ -31,13 +33,6 @@ struct CellValue {
 
 struct FormulaNode;  // parsed formula, cached on the cell
 
-// Colours are 0xRRGGBB with kColorSet added, so black is a colour too; 0 means automatic / none.
-constexpr std::uint32_t kColorSet = 0x1000000;
-inline bool hasColor(std::uint32_t c) { return (c & kColorSet) != 0; }
-inline std::uint32_t rgbOf(std::uint32_t c) { return c & 0xFFFFFF; }
-// "#ff0000", "ff0000", "red", "none" -> colour (0 for none); false when it isn't one.
-bool parseColor(const std::string& text, std::uint32_t& out);
-std::string colorName(std::uint32_t c);  // "#rrggbb" or "none"
 
 // Borders per side: 0 none, 1 thin, 2 medium, 3 thick, 4 double, 5 dashed, 6 dotted.
 enum BorderSide { BorderLeft, BorderRight, BorderTop, BorderBottom };

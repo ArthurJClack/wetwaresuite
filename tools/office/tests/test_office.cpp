@@ -463,7 +463,7 @@ void testMarkdown() {
 void testHtml() {
     TextDocument d = sampleDoc();
     std::string html = writeHtml(d);
-    CHECK(html.find("<h1>Results</h1>") != std::string::npos && html.find("<strong>12%</strong>") != std::string::npos);
+    CHECK(html.find(">Results</h1>") != std::string::npos && html.find("<strong>12%</strong>") != std::string::npos);
     CHECK(html.find("<a href=\"https://example.com\">the site</a>") != std::string::npos);
     TextDocument back = readHtml(html);
     CHECK(back.title == "Quarterly report");
@@ -1008,6 +1008,8 @@ void testDeckAndPdfCommands() {
     r = s.run("office.convert", P({{"input", merged}, {"output", tmp("conv.txt").string()}}));
     CHECK(r.ok && readFile(tmp("conv.txt")).find("Three") != std::string::npos);
     r = s.run("office.convert", P({{"input", tmp("cmd_doc.md").string()}, {"output", tmp("conv.odt").string()}, {"backend", std::string("builtin")}}));
+    CHECK(r.ok && readOdt(readFile(tmp("conv.odt"))).blocks.size() > 2);
+    r = s.run("office.convert", P({{"input", tmp("cmd_doc.md").string()}, {"output", tmp("conv.rtf").string()}, {"backend", std::string("builtin")}}));
     CHECK(!r.ok && r.message.find("LibreOffice") != std::string::npos);
     r = s.run("office.formats", {});
     CHECK(r.ok && r.message.find("pptx") != std::string::npos);

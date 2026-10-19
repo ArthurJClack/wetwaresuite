@@ -16,6 +16,9 @@ add_library(wetwaresuite_office
   src/ods.cpp
   src/doc.cpp
   src/docx.cpp
+  src/docx_write.cpp
+  src/docmodel.cpp
+  src/odt.cpp
   src/doclayout.cpp
   src/deck.cpp
   src/chart.cpp

@@ -308,6 +308,12 @@ bool blockArg(const TextDocument& d, const Params& p, const char* key, std::size
     return true;
 }
 
+std::string marginsText(const PageSetup& pg) {
+    auto mm = [](double v) { return textNumber(std::round(v * 25.4 / 72 * 10) / 10); };
+    if (pg.top == pg.bottom && pg.top == pg.left && pg.top == pg.right) return mm(pg.top) + " mm";
+    return mm(pg.top) + "/" + mm(pg.right) + "/" + mm(pg.bottom) + "/" + mm(pg.left) + " mm (top/right/bottom/left)";
+}
+
 bool applySetup(TextDocument& d, const Params& p, std::string& error) {
     if (has(p, "page")) {
         const std::string name = lower(stringParam(p, "page"));
@@ -329,14 +335,17 @@ bool applySetup(TextDocument& d, const Params& p, std::string& error) {
         d.page.width = boolParam(p, "landscape") ? b : a;
         d.page.height = boolParam(p, "landscape") ? a : b;
     }
-    if (has(p, "margin")) {
-        const double mm = numberParam(p, "margin");
-        if (!(mm >= 0 && mm * 72 / 25.4 * 2 < std::min(d.page.width, d.page.height) - 72)) {
-            error = "margin is out of range for this page";
-            return false;
-        }
-        d.page.margin = mm * 72 / 25.4;
+    PageSetup pg = d.page;
+    if (has(p, "margin")) pg.top = pg.bottom = pg.left = pg.right = numberParam(p, "margin") * 72 / 25.4;
+    const std::pair<const char*, double*> sides[] = {{"margin_top", &pg.top}, {"margin_bottom", &pg.bottom}, {"margin_left", &pg.left}, {"margin_right", &pg.right}};
+    for (const auto& [key, v] : sides) {
+        if (has(p, key)) *v = numberParam(p, key) * 72 / 25.4;
     }
+    if (!(pg.top >= 0 && pg.bottom >= 0 && pg.left >= 0 && pg.right >= 0 && pg.left + pg.right < pg.width - 72 && pg.top + pg.bottom < pg.height - 72)) {
+        error = "margins are out of range for this page (at least 1 inch must be left for text)";
+        return false;
+    }
+    d.page.top = pg.top, d.page.bottom = pg.bottom, d.page.left = pg.left, d.page.right = pg.right;
     if (has(p, "font") && !parseFamily(stringParam(p, "font"), d.page.font)) {
         error = "font must be sans, serif or mono";
         return false;
@@ -357,7 +366,8 @@ bool applySetup(TextDocument& d, const Params& p, std::string& error) {
 
 std::vector<ParamSpec> setupSpecs() {
     return {str("page", "paper size", false, {}, paperNames()), flag("landscape", "landscape orientation"),
-            number("margin", "page margin in mm (all sides, default 25.4)"), str("font", "body font", false, {}, {"sans", "serif", "mono"}),
+            number("margin", "page margin in mm (all sides, default 25.4)"), number("margin_top", "top margin in mm"),
+            number("margin_bottom", "bottom margin in mm"), number("margin_left", "left margin in mm"), number("margin_right", "right margin in mm"), str("font", "body font", false, {}, {"sans", "serif", "mono"}),
             number("font_size", "body text size in pt (default 11)"), flag("page_numbers", "\"n / N\" page numbers in the footer"),
             str("title", "document title (file metadata)"), str("author", "author (file metadata)")};
 }
@@ -415,8 +425,8 @@ void registerDocCommands(Session& session) {
             });
 
     reg.add({"office.doc_open", "Open Document",
-             "Open a document: .docx (headings, bold/italic/underline, links, lists, tables, images, page breaks), .md, .html, "
-             ".odt, .txt; .doc, .rtf and others through LibreOffice.",
+             "Open a document: .docx and .odt (styles, run and paragraph formats, lists, tables with merged cells, images, headers "
+             "and footers, footnotes, comments, tracked changes, table of contents), .md, .html, .txt; .doc, .rtf and others through LibreOffice.",
              {str("path", "file to open", true)}, false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p]() -> Result {
@@ -433,7 +443,8 @@ void registerDocCommands(Session& session) {
 
     reg.add({"office.doc_save", "Save Document",
              "Save the document; the extension picks the format: .docx (Word), .md (images go to <name>_media/), .html (one "
-             "self-contained file), .txt, .pdf; .odt, .rtf, .doc through LibreOffice. Without path it saves back to its own file.",
+             "self-contained file), .odt (OpenDocument; tracked changes are saved accepted), .txt, .pdf; .rtf, .doc through LibreOffice. "
+             "Without path it saves back to its own file.",
              {doc(), str("path", "output file (default: the document's own path)")}, false, false},
             read(session, [](TextDoc& d, const Params& p, const std::string& id) -> Result {
                 const std::string path = has(p, "path") ? stringParam(p, "path") : d.path;
@@ -446,8 +457,8 @@ void registerDocCommands(Session& session) {
 
     reg.add({"office.doc_export", "Export Document",
              "Export to another file without changing which file the document is saved to: .pdf (laid out here: fonts, word wrap, "
-             "lists, tables, images, page numbers), .docx, .md, .html, .txt, .png/.jpg (one page, page= and dpi=); .odt/.rtf/.doc "
-             "through LibreOffice.",
+             "lists, tables, images, headers, footers, footnotes, table of contents), .docx, .odt, .md, .html, .txt, .png/.jpg (one page, "
+             "page= and dpi=); .rtf/.doc through LibreOffice.",
              {doc(), fileSpec("document"), str("path", "output file; the extension picks the format", true), integer("page", "png/jpg: which page", false, std::int64_t{1}),
               number("dpi", "png/jpg resolution", false, 110.0)},
              false, false},
@@ -475,8 +486,7 @@ void registerDocCommands(Session& session) {
                 }
                 std::string t = id + ": " + (d.data.title.empty() ? std::string("(no title)") : "\"" + d.data.title + "\"") +
                                 (d.data.author.empty() ? "" : " by " + d.data.author) + (d.path.empty() || d.path == id ? "" : ", " + d.path);
-                t += "\n" + paper + (d.data.page.width > d.data.page.height ? " landscape" : "") + ", margins " + textNumber(std::round(d.data.page.margin * 25.4 / 72 * 10) / 10) +
-                     " mm, " + familyName(d.data.page.font) + " " + textNumber(d.data.page.fontSize) + " pt; " + std::to_string(pages.size()) + " page(s), " +
+                t += "\n" + paper + (d.data.page.width > d.data.page.height ? " landscape" : "") + ", margins " + marginsText(d.data.page) + ", " + familyName(d.data.page.font) + " " + textNumber(d.data.page.fontSize) + " pt; " + std::to_string(pages.size()) + " page(s), " +
                      std::to_string(c.words) + " words, " + std::to_string(d.data.blocks.size()) + " blocks:";
                 const auto maxBlocks = static_cast<std::size_t>(std::max<std::int64_t>(1, intParam(p, "max_blocks", 200)));
                 for (std::size_t i = 0; i < d.data.blocks.size() && i < maxBlocks; ++i) t += "\n  " + describe(d.data.blocks[i], i);
@@ -726,7 +736,7 @@ void registerDocCommands(Session& session) {
                 std::string error;
                 if (!applySetup(d.data, p, error)) return Result::failure(error);
                 Result r = Result::success("page setup: " + textNumber(std::round(d.data.page.width)) + " x " + textNumber(std::round(d.data.page.height)) +
-                                           " pt, margins " + textNumber(std::round(d.data.page.margin * 25.4 / 72 * 10) / 10) + " mm, " +
+                                           " pt, margins " + marginsText(d.data.page) + ", " +
                                            familyName(d.data.page.font) + " " + textNumber(d.data.page.fontSize) + " pt; " +
                                            std::to_string(layoutDocument(d.data).size()) + " page(s)");
                 maybePreview(r, d, p);

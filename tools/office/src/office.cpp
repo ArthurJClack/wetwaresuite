@@ -398,8 +398,8 @@ const std::set<std::string> kSheetLoOut = {"xls", "fods"};
 
 const std::set<std::string> kDocNative = {"docx", "md", "markdown", "txt", "html", "htm", "odt"};
 const std::set<std::string> kDocLoIn = {"doc", "rtf", "docm", "dotx", "dot", "wpd", "fodt", "wps", "sxw", "pages", "lwp"};
-const std::set<std::string> kDocOut = {"docx", "md", "markdown", "html", "htm", "txt", "pdf"};
-const std::set<std::string> kDocLoOut = {"odt", "rtf", "doc", "fodt", "epub"};
+const std::set<std::string> kDocOut = {"docx", "odt", "md", "markdown", "html", "htm", "txt", "pdf"};
+const std::set<std::string> kDocLoOut = {"rtf", "doc", "fodt", "epub"};
 
 const std::set<std::string> kDeckNative = {"pptx", "md", "markdown"};
 const std::set<std::string> kDeckLoIn = {"ppt", "odp", "pps", "ppsx", "pptm", "potx", "fodp", "key", "sxi"};
@@ -558,6 +558,8 @@ void saveTextDocument(const TextDocument& doc, const std::string& path) {
     const std::string ext = extOf(path);
     if (ext == "docx") {
         writeBytes(path, writeDocx(doc));
+    } else if (ext == "odt") {
+        writeBytes(path, writeOdt(doc));
     } else if (ext == "md" || ext == "markdown") {
         std::vector<MediaFile> media;
         std::string text = writeMarkdown(doc, mediaPrefixFor(path), media);
@@ -573,7 +575,7 @@ void saveTextDocument(const TextDocument& doc, const std::string& path) {
         std::string error;
         if (!libreOfficeWrite(writeDocx(doc), "docx", path, error)) throw std::runtime_error(error);
     } else {
-        throw std::runtime_error("can't save a document as ." + ext + " (docx, md, html, txt, pdf; odt, rtf and doc through LibreOffice)");
+        throw std::runtime_error("can't save a document as ." + ext + " (docx, odt, md, html, txt, pdf; rtf and doc through LibreOffice)");
     }
 }
 
@@ -653,9 +655,9 @@ void registerConvertCommands(Session& session) {
     (void)session;
     reg.add({"office.convert", "Convert Office File",
              "Convert an office file in one step; the output's extension picks the format. Built in (no LibreOffice): "
-             "spreadsheets csv/tsv/xlsx/ods -> xlsx/csv/tsv/pdf/html; documents docx/md/html/odt/txt -> docx/md/html/txt/pdf; "
+             "spreadsheets csv/tsv/xlsx/ods -> xlsx/csv/tsv/pdf/html; documents docx/md/html/odt/txt -> docx/odt/md/html/txt/pdf; "
              "decks pptx or a Markdown outline -> pptx/pdf/md; pdf -> txt (text extraction). Everything else (doc, xls, ppt, rtf, "
-             "odt/ods/odp output, ...) goes through LibreOffice when it is installed. backend=libreoffice forces LibreOffice.",
+             "ods/odp output, ...) goes through LibreOffice when it is installed. backend=libreoffice forces LibreOffice.",
              {str("input", "file to convert", true), str("output", "file to write; its extension sets the format", true),
               str("backend", "auto uses the built-in engines when they handle the pair", false, std::string("auto"), {"auto", "builtin", "libreoffice"}),
               integer("sheet", "spreadsheet to csv/tsv: which sheet (1-based; default the active one)"),

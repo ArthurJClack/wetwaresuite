@@ -109,7 +109,7 @@ set(_ww_tool_deps_automate photo vector convert)  # its tests drive them
 set(_ww_tool_deps_explorer toolkit)
 set(_ww_tool_deps_paint photo)                    # its tests open through photo
 set(_ww_tool_deps_fit sculpt)                     # smoothing, simplifying and picking
-set(_ww_tool_deps_model sculpt render)            # decimate modifier, renders
+set(_ww_tool_deps_model sculpt render animate)    # decimate modifier, renders, GIFs
 foreach(t IN LISTS _ww_tools)
   list(APPEND _ww_tools ${_ww_tool_deps_${t}})
 endforeach()

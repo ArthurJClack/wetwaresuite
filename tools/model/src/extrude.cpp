@@ -185,9 +185,39 @@ std::size_t extrude(PolyMesh& m, ExtrudeMode mode, double offset, const std::opt
         dup.emplace(v, nv);
         return nv;
     };
+    // Edges without a face get a direction from the chain they're in, so the
+    // new strip of faces winds one way (a profile extruded or spun stays
+    // consistent); they're walked from each chain's first edge.
+    std::unordered_map<EdgeKey, bool> flipped;  // faceless edge -> walk keyB->keyA
+    {
+        std::unordered_map<std::uint32_t, std::vector<EdgeKey>> at;
+        for (auto k : edges)
+            if (t.edgeFaces[t.index.at(k)].empty()) {
+                at[keyA(k)].push_back(k);
+                at[keyB(k)].push_back(k);
+            }
+        for (auto k0 : edges) {
+            if (!t.edgeFaces[t.index.at(k0)].empty() || flipped.count(k0)) continue;
+            flipped[k0] = false;
+            std::vector<EdgeKey> stack{k0};
+            while (!stack.empty()) {
+                const EdgeKey k = stack.back();
+                stack.pop_back();
+                const std::uint32_t tail = flipped[k] ? keyB(k) : keyA(k), head = flipped[k] ? keyA(k) : keyB(k);
+                for (std::uint32_t v : {tail, head})
+                    for (auto n : at[v]) {
+                        if (flipped.count(n)) continue;
+                        // continue the walk: a neighbour at the head starts there, one at the tail ends there
+                        flipped[n] = v == head ? keyA(n) != head : keyB(n) != tail;
+                        stack.push_back(n);
+                    }
+            }
+        }
+    }
     std::size_t made = 0;
     for (auto k : edges) {
         std::uint32_t a = keyA(k), b = keyB(k);
+        if (auto it = flipped.find(k); it != flipped.end() && it->second) std::swap(a, b);
         // wind the new face against the face already on this edge
         const auto& ef = t.edgeFaces[t.index.at(k)];
         int mat = 0;

@@ -7,6 +7,7 @@
 #include <thread>
 
 #include "wetwaresuite/capture/capture.hpp"
+#include "wetwaresuite/capture/scene.hpp"
 #include "wetwaresuite/core/process.hpp"
 #include "wetwaresuite/raster/codec.hpp"
 
@@ -439,6 +440,7 @@ void registerCommands(Session& session) {
                     return r.with("cameras", static_cast<std::int64_t>(d.video.size())).with("audio_inputs", static_cast<std::int64_t>(d.audio.size()));
                 });
             });
+    registerSceneCommands(session);
 }
 
 }  // namespace wetwaresuite::capture

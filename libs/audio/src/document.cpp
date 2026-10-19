@@ -86,6 +86,7 @@ std::string ProjectDoc::timelineCommand(const TimelineEdit& e) const {
         case TimelineEditKind::TrimEnd: return "audio.clip_trim" + which + " length=" + t4(std::max(0.001, e.length));
         case TimelineEditKind::Split: return "audio.clip_split" + which + " at=" + t4(e.at);
         case TimelineEditKind::Delete: return "audio.clip_remove" + which;
+        default: break;
     }
     return {};
 }

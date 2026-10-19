@@ -143,26 +143,4 @@ std::string findFont() {
     return cached;
 }
 
-std::unique_ptr<Attachment> Timeline::preview() const {
-    if (duration() <= 0 || !ffmpegPath()) return nullptr;
-    try {
-        TempDir tmp;
-        RenderRequest rq;
-        rq.output = (tmp.path() / "preview.png").string();
-        rq.at = 0;
-        rq.stillWidth = std::min(settings.width, 480);
-        rq.fontFile = findFont();
-        RenderPlan plan = planRender(*this, rq);
-        if (!runFfmpeg(plan.args).empty()) return nullptr;
-        auto a = std::make_unique<Attachment>();
-        a->mime = "image/png";
-        a->bytes = readFile(rq.output);
-        a->name = "timeline.png";
-        if (a->bytes.empty()) return nullptr;
-        return a;
-    } catch (const std::exception&) {
-        return nullptr;
-    }
-}
-
 }  // namespace wetwaresuite::cut

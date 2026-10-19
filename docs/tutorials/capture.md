@@ -1,12 +1,12 @@
 # Capture: screenshots and screen recordings
 
-`capture` takes screenshots (the whole desktop, one monitor or a region, optionally after a delay), records the screen to MP4, WebM or GIF with or without a microphone, and takes webcam pictures. It also lets Claude look at your screen: a screenshot without an output file comes back as an image Claude can see.
+`capture` takes screenshots (the whole desktop, one monitor or a region, optionally after a delay), records the screen to MP4, WebM or GIF with or without a microphone, and takes webcam pictures. Like OBS, it builds **scenes**: the screen, a window or a region, a webcam (with a green-screen key), images, text and colour boxes stacked on one canvas, recorded for a set time or started and stopped like OBS's Start Recording button. It also lets Claude look at your screen: a screenshot without an output file comes back as an image Claude can see.
 
 ```sh
 wetwaresuite capture.screenshot output=region.png x=100 y=50 width=400 height=300
 ```
 
-There is no GUI yet; the GUI that comes later will call these same commands. Each task below shows the CLI way, the batch-script way and the "ask Claude" way. Every CLI and batch example here was run against the real binary, on Linux with a virtual 800x600 screen (that's why the sizes below are small; your desktop gives your screen's size).
+In the video app (`wetwaresuite-video`) the capture actions are on the left and a scene opens as a picture of its layout. Each task below shows the CLI way, the batch-script way and the "ask Claude" way. Every CLI and batch example here was run against the real binary, on Linux with a virtual 800x600 screen (that's why the sizes below are small; your desktop gives your screen's size).
 
 ## What you need
 
@@ -266,6 +266,107 @@ capture.webcam output=after.jpg warmup=1 width=1280 height=720
 
 Claude calls `capture_webcam` with `preview=true` and looks at the picture.
 
+## Task 5: a scene, like OBS
+
+A tutorial layout: the desktop, the webcam in a corner with its green screen keyed out, a logo and a title.
+
+**Batch.**
+
+```text
+# stream.txt: a tutorial layout: the screen, a webcam corner, a logo and a caption
+capture.scene_new name=Tutorial width=1280 height=720 fps=30 -> sc
+capture.add_source doc=$sc kind=screen name=Desktop cursor=true
+capture.add_source doc=$sc kind=webcam name=Camera x=940 y=470 width=320 height=240 key_color=#00ff00
+capture.add_source doc=$sc kind=image path=logo.png x=20 y=20 width=80 opacity=0.8
+capture.add_source doc=$sc kind=text text="Episode 4: timelines" x=120 y=36 font_size=32 color=white box=true
+capture.scene_info doc=$sc
+capture.preview_scene doc=$sc width=640
+# the webcam isn't plugged in today: hide it, put the logo on top
+capture.set_source doc=$sc source=s2 visible=false
+capture.set_source doc=$sc source=s3 order=top
+capture.scene_save doc=$sc path=tutorial.wwscene
+capture.record_scene doc=$sc output=take1.mp4 duration=3 quality=draft
+```
+
+```sh
+$ wetwaresuite batch stream.txt
+created scene1 (Tutorial: 1280x720 30fps, 0 sources)
+...
+added s1 screen "Desktop" (all screens) at 0,0
+...
+added s2 webcam "Camera" default camera keyed #00ff00 at 940,470 320x240
+...
+added s3 image logo.png at 20,20 80x0 opacity 0.8
+...
+added s4 text "Episode 4: timelines" 32px white at 120,36
+...
+scene1: Tutorial: 1280x720 30fps, 4 sources, background black
+  s1 screen "Desktop" (all screens) at 0,0
+  s2 webcam "Camera" default camera keyed #00ff00 at 940,470 320x240
+  s3 image logo.png at 20,20 80x0 opacity 0.8
+  s4 text "Episode 4: timelines" 32px white at 120,36
+...
+scene scene1
+attachment: scene1.png (23590 bytes)
+changed s2 webcam "Camera" default camera keyed #00ff00 at 940,470 320x240 (hidden)
+...
+saved tutorial.wwscene
+...
+recorded 3s of Tutorial to take1.mp4
+take1.mp4
+output: take1.mp4
+...
+duration: 3
+backend: x11grab
+```
+
+- Sources stack bottom to top in the order they're added; `order=up|down|top|bottom` restacks one. `x`, `y`, `width`, `height` place it on the canvas (`width=0` fills it; an image keeps its own size and `height=0` keeps its shape), `opacity` fades it, `visible=false` leaves it out of the recording.
+- Kinds: `screen` (all screens, `monitor=N`, or `capture_region=x,y,w,h` for part of it; `cursor=true` shows the pointer), `window` (a window by its title, `window="Untitled - Notepad"`; Windows only), `webcam` (`device`, `capture_size=1280,720`, and `key_color`/`key_similarity` for a green screen), `image` (`path`), `text` (`text`, `font`, `font_size`, `color`, `outline`, `box`) and `color` (a box of `color`).
+- `capture.preview_scene` draws the layout as a PNG without touching the screen or camera: live sources show as labelled boxes. `live=true` grabs a real screenshot and webcam frame for them.
+- `capture.record_scene` records every visible source composited in its place, for `duration` seconds, in one ffmpeg run (`audio=true` adds the microphone). Images and text are drawn once by the cut compositor; the screen and camera are grabbed live.
+- `.wwscene` files are small JSON; `capture.scene_open` opens one (the video app opens them from **Open...**, too).
+
+**Claude.**
+
+> Set up a recording layout: my screen, the webcam bottom right at 320x240 with the green screen keyed out, and "Episode 4" at the top left. Show me the layout first.
+
+Claude calls `capture_scene_new`, `capture_add_source` for each source, `capture_preview_scene` (it sees the layout), and adjusts with `capture_set_source` before you record.
+
+**The window.** **New Scene**, then **Add Source** for each source; the scene shows as its layout picture in the middle and updates after every change. **Record Scene** records it.
+
+## Task 6: start and stop recording
+
+`capture.record_scene` and `capture.record` block for a fixed `duration`. To record until you're done, like OBS's **Start Recording**, start it in the background and stop it later:
+
+```text
+capture.scene_open path=tutorial.wwscene -> sc
+capture.start_recording doc=$sc output=take2.mkv quality=draft
+capture.recordings
+# ... show what you want to show ...
+capture.stop_recording recording=rec1
+```
+
+```sh
+recording Tutorial to take2.mkv as rec1 (capture.stop_recording recording=rec1 ends it)
+rec1
+recording: rec1
+output: take2.mkv
+backend: x11grab
+rec1: Tutorial -> take2.mkv, 0s
+count: 1
+...
+```
+
+- Without `doc` it records the whole screen (`monitor`, `fps`).
+- `capture.recordings` lists what's running and for how long; `capture.stop_recording` without `recording` stops them all. Stopping finishes the file properly (ffmpeg is asked to quit, so `.mp4` files are playable).
+- A recording still running when the program ends (the last line of a batch script, a closed MCP session) is stopped and finished the same way, so nothing is lost; over MCP, or in the window, it keeps going between commands until you stop it.
+
+**Claude.**
+
+> Start recording my screen with the microphone. ... OK, stop.
+
+Claude calls `capture_start_recording` with `audio=true`, and `capture_stop_recording` when you say stop; it reports the file and its length.
+
 ## Headless machines and containers
 
 On a server, in a container or over SSH there's no screen. Capture commands fail straight away with an explanation instead of hanging:
@@ -333,16 +434,33 @@ Over SSH to a desktop machine, `display=:0` captures the screen of the person lo
 | `warmup` | 0.5 | seconds to let the camera adjust first |
 | `preview`, `max_size` | false, 1280 | attach the picture |
 
+### Scenes
+
+| Command | What it does | Main parameters |
+| --- | --- | --- |
+| `capture.scene_new` | new scene, returns `scene1` | `name`, `width` (1920), `height` (1080), `fps` (30), `background` (black) |
+| `capture.scene_open`, `capture.scene_save` | `.wwscene` files | `path`, `doc` |
+| `capture.add_source` | add a source on top | `doc`, `kind` (screen, window, webcam, image, text, color), `name`, `x`, `y`, `width`, `height`, `opacity`, `visible`, and the kind's own (`monitor`, `capture_region`, `cursor`, `window`, `device`, `capture_size`, `key_color`, `key_similarity`, `path`, `text`, `font`, `font_size`, `color`, `outline`, `outline_color`, `box`) |
+| `capture.set_source` | change, hide or restack one | `doc`, `source`, `order` (up, down, top, bottom), any of the above |
+| `capture.remove_source` | take one off | `doc`, `source` |
+| `capture.scene_info` | list the sources | `doc` |
+| `capture.preview_scene` | the layout as a PNG | `doc`, `live`, `width` (960) |
+| `capture.record_scene` | record for a set time | `doc`, `output`, `duration` (10), `quality`, `audio`, `audio_device`, `display`, `overwrite` |
+| `capture.start_recording` | record until stopped | `doc` (or the screen: `monitor`, `fps`), `output`, `quality`, `audio`, `audio_device`, `display` |
+| `capture.stop_recording` | stop and finish the file | `recording` (all if left out) |
+| `capture.recordings` | what's recording | |
+
 ### capture.list_displays, capture.list_devices
 
 No parameters (`list_displays` takes `display`). They change nothing and are safe to call any time.
 
 ## Limitations
 
-- Recording blocks until it's done; there's no start/stop recording of unknown length yet (pick a `duration`, then trim with `cut.trim_file`).
+- One scene per document and no scene switching while recording: record each scene to its own file and join them with `cut`.
+- Scene sources can't be animated or faded in during a recording; set them up before you start.
 - Wayland: screenshots need `grim` (wlroots compositors such as Sway; GNOME and KDE don't support it) or XWayland, which only sees X11 windows. Recording on pure Wayland isn't supported; use the desktop's own recorder or `wf-recorder`.
 - Recording sound captures one input (a microphone or a monitor source). Recording what the computer plays at the same time as the microphone needs a mixed source set up in PulseAudio/PipeWire (or a loopback device on Windows and macOS).
 - On X11 the monitor layout needs `xrandr`; without it only the whole screen is known.
-- Window capture by name isn't supported; use a region.
+- Window capture by title (scene `window` sources) works on Windows only; elsewhere use a screen source with `capture_region`.
 - `ddagrab` (Windows) needs ffmpeg 6.0 or newer and captures one monitor.
 - High-DPI screens are captured in real pixels: on a Retina Mac or a 200 % Windows display, regions are in physical pixels, not the "points" apps use.

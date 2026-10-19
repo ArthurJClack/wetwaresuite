@@ -5,6 +5,19 @@
 
 _the all-in-one lightweight software suite_
 
+## ⬇️ download
+
+| your computer | download | then |
+| --- | --- | --- |
+| **windows** 10/11 | [**wetwaresuite-windows-x64-setup.exe**](https://github.com/ArthurJClack/wetwaresuite/releases/latest/download/wetwaresuite-windows-x64-setup.exe) | double-click it, click through, done. every app lands in the start menu |
+| **macOS** (apple silicon) | [**wetwaresuite-macos-arm64.dmg**](https://github.com/ArthurJClack/wetwaresuite/releases/latest/download/wetwaresuite-macos-arm64.dmg) | open it, drag wetwaresuite into Applications |
+| **linux** (any distro) | [**wetwaresuite-linux-x86_64.AppImage**](https://github.com/ArthurJClack/wetwaresuite/releases/latest/download/wetwaresuite-linux-x86_64.AppImage) | right-click > properties > allow executing (or `chmod +x`), then double-click |
+| **ubuntu / debian / mint** | [**wetwaresuite-linux-amd64.deb**](https://github.com/ArthurJClack/wetwaresuite/releases/latest/download/wetwaresuite-linux-amd64.deb) | double-click, or `sudo apt install ./wetwaresuite-linux-amd64.deb` |
+
+free forever, no account, works offline. rather not install anything? every [release](https://github.com/ArthurJClack/wetwaresuite/releases/latest) also has a zip per OS that runs straight from the folder.
+
+first run: the builds aren't code-signed yet. on windows click "More info" then "Run anyway"; on macOS right-click the app, choose Open, then Open again.
+
 a lightweight, high-compatibility software suite: cad, blueprints, photo, paint, audio, video, game assets, office and a universal file toolkit, all on one shared core. it comes as small standalone apps, so you install only what you need, and they hand work to each other (a texture from image onto a model, a model into a game). everything works offline with no AI connected; claude can drive every app over MCP if you want.
 
 - plan: https://claude.ai/code/artifact/5ec50df4-666c-485e-bf88-a79fefd12930

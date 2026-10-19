@@ -1,9 +1,12 @@
 name: downloads
 
 # Ready-to-run builds of every app for windows, macOS and linux, so nobody has to
-# build from source to try the suite. Each run uploads one zip per OS as a run
-# artifact; pushes to main and the downloads branch also refresh the rolling
-# `preview` pre-release, and a `v*` tag makes a real release.
+# build from source to try the suite. Each run uploads, per OS, a zip plus an
+# installer (windows setup .exe, macOS .dmg, linux AppImage and .deb; see
+# packaging/) as run artifacts; pushes to main and the downloads branch also refresh the rolling
+# `preview` pre-release, and a `v*` tag makes a real release. A manual run
+# (Actions > downloads > Run workflow) with a version such as v0.2.0 tags the
+# chosen branch and makes that release too.
 on:
   push:
     branches: [main, downloads]
@@ -11,6 +14,11 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'release version to tag, such as v0.2.0 (empty: just build)'
+        required: false
+        default: ''
 
 concurrency:
   group: downloads-${{ github.ref }}
@@ -69,19 +77,73 @@ jobs:
           # a quick smoke test: the all-in-one answers headless
           "$out/wetwaresuite$exe" --version
           if [ "$RUNNER_OS" = Windows ]; then 7z a -tzip $out.zip $out >/dev/null; else zip -qr $out.zip $out; fi
+      - name: installer version
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          v="$VERSION"
+          [ -z "$v" ] && [[ "$GITHUB_REF" == refs/tags/v* ]] && v="$GITHUB_REF_NAME"
+          [ -z "$v" ] && v=$(sed -n 's/^project(wetwaresuite VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
+          echo "WW_VERSION=${v#v}" >> "$GITHUB_ENV"
+          # the windows start menu lists every app by hand; it must match packaging/apps.tsv
+          for a in $(grep -v '^#' packaging/apps.tsv | cut -f1); do
+            grep -q "wetwaresuite-$a.exe" packaging/windows/wetwaresuite.iss || { echo "::error::packaging/windows/wetwaresuite.iss has no start-menu entry for $a"; exit 1; }
+          done
+      - name: installer (windows setup.exe)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup --no-progress -y; if ($LASTEXITCODE) { exit 1 } }
+          & $iscc /Q "/DAppVersion=$env:WW_VERSION" "/DStageDir=$pwd\wetwaresuite-${{ matrix.name }}" "/DOutputDir=$pwd" packaging\windows\wetwaresuite.iss
+          if ($LASTEXITCODE) { exit 1 }
+          Get-Item wetwaresuite-windows-x64-setup.exe
+          # silent install, check it landed, uninstall again
+          $dir = "$env:RUNNER_TEMP\ww-install"
+          Start-Process -Wait .\wetwaresuite-windows-x64-setup.exe -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/CURRENTUSER', "/DIR=$dir"
+          & "$dir\wetwaresuite.exe" --version
+          if ($LASTEXITCODE) { exit 1 }
+          Start-Process -Wait "$dir\unins000.exe" -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES'
+      - name: installer (macOS dmg)
+        if: runner.os == 'macOS'
+        run: |
+          packaging/macos/make-dmg.sh wetwaresuite-${{ matrix.name }} "$WW_VERSION" wetwaresuite-macos-arm64.dmg
+          # mount it and check the app inside runs
+          mnt=$(mktemp -d)
+          hdiutil attach -nobrowse -mountpoint "$mnt" wetwaresuite-macos-arm64.dmg
+          "$mnt/wetwaresuite.app/Contents/MacOS/wetwaresuite" --version
+          codesign --verify --deep "$mnt/wetwaresuite.app"
+          hdiutil detach "$mnt"
+      - name: installer (linux AppImage and deb)
+        if: runner.os == 'Linux'
+        run: |
+          packaging/linux/make-packages.sh wetwaresuite-${{ matrix.name }} "$WW_VERSION" .
+          dpkg-deb --info wetwaresuite-linux-amd64.deb
+          chmod +x wetwaresuite-linux-x86_64.AppImage
+          APPIMAGE_EXTRACT_AND_RUN=1 ./wetwaresuite-linux-x86_64.AppImage --run wetwaresuite --version
+          APPIMAGE_EXTRACT_AND_RUN=1 ./wetwaresuite-linux-x86_64.AppImage --help
       - uses: actions/upload-artifact@v4
         with:
           name: wetwaresuite-${{ matrix.name }}
-          path: wetwaresuite-${{ matrix.name }}.zip
+          path: |
+            wetwaresuite-${{ matrix.name }}.zip
+            wetwaresuite-windows-x64-setup.exe
+            wetwaresuite-macos-arm64.dmg
+            wetwaresuite-linux-x86_64.AppImage
+            wetwaresuite-linux-amd64.deb
           if-no-files-found: error
 
   publish:
     needs: build
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || inputs.version != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: packaging
       - uses: actions/download-artifact@v4
         with:
           path: dist
@@ -90,14 +152,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          VERSION: ${{ inputs.version }}
         run: |
           ls -la dist
-          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
-            gh release create "$GITHUB_REF_NAME" dist/*.zip --title "wetwaresuite $GITHUB_REF_NAME" --generate-notes
+          if [[ -n "$VERSION" ]]; then
+            gh release create "$VERSION" dist/* --target "$GITHUB_SHA" --title "wetwaresuite $VERSION" --notes-file packaging/release-notes.md --generate-notes
+          elif [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            gh release create "$GITHUB_REF_NAME" dist/* --title "wetwaresuite $GITHUB_REF_NAME" --notes-file packaging/release-notes.md --generate-notes
           else
             # one rolling pre-release, always the newest build of main or downloads
             gh release delete preview --yes --cleanup-tag 2>/dev/null || true
-            gh release create preview dist/*.zip --prerelease --target "$GITHUB_SHA" \
+            gh release create preview dist/* --prerelease --target "$GITHUB_SHA" \
               --title "wetwaresuite preview (latest build)" \
-              --notes "the newest build from \`${GITHUB_REF_NAME}\` ($GITHUB_SHA). unzip, then double-click an app. see README.txt inside for the first-run warnings on windows and macOS."
+              --notes "the newest build from \`${GITHUB_REF_NAME}\` ($GITHUB_SHA). grab the installer for your OS (setup.exe, .dmg, .AppImage or .deb), or a zip to run without installing. see README.txt inside a zip for the first-run warnings on windows and macOS."
           fi

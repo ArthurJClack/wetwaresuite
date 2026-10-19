@@ -76,7 +76,7 @@ ActionFactory sceneCommand(Session& session, SceneFn fn, bool undoable = true) {
         const std::string id = stringParam(p, "doc");
         auto doc = session.workspace().getAs<Scene>(id);
         if (!doc) {
-            return std::make_unique<FunctionAction>([id] { return Result::failure("no open scene called '" + id + "' (capture.new_scene makes one)"); });
+            return std::make_unique<FunctionAction>([id] { return Result::failure("no open scene called '" + id + "' (capture.scene_new makes one)"); });
         }
         if (!undoable) {
             return std::make_unique<FunctionAction>([doc, fn, p] {
@@ -438,7 +438,7 @@ void registerSourceCommands(Session& session) {
 
 void registerSceneCommands(Session& session) {
     auto& reg = session.registry();
-    reg.add({"capture.new_scene", "New Scene",
+    reg.add({"capture.scene_new", "New Scene",
              "Make a scene, like in OBS: a canvas to stack sources on (capture.add_source: the screen, a window, a "
              "webcam, images, text, colour boxes), then record it with capture.record_scene or "
              "capture.start_recording. Returns its id, e.g. scene1.",
@@ -466,7 +466,7 @@ void registerSceneCommands(Session& session) {
                     return r.with("doc", id);
                 });
             });
-    reg.add({"capture.open_scene", "Open Scene", "Open a .wwscene file saved by capture.save_scene.",
+    reg.add({"capture.scene_open", "Open Scene", "Open a .wwscene file saved by capture.scene_save.",
              {{"path", ParamType::String, ".wwscene file", true}}, false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
@@ -484,7 +484,7 @@ void registerSceneCommands(Session& session) {
                     }
                 });
             });
-    reg.add({"capture.save_scene", "Save Scene", "Save a scene as a .wwscene file (JSON) to open again later.",
+    reg.add({"capture.scene_save", "Save Scene", "Save a scene as a .wwscene file (JSON) to open again later.",
              {docParam(), {"path", ParamType::String, "where to save, e.g. stream.wwscene", true}}, false},
             sceneCommand(session, [](Scene& sc, const Params& p) {
                 const fs::path path = stringParam(p, "path");

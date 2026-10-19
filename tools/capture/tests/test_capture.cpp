@@ -337,7 +337,7 @@ void testXvfb() {
         CHECK(r.ok && num(r, "bytes") > 0);
         if (!r.ok) std::printf("  %s\n", r.message.c_str());
         // a scene: the screen with a colour box and text over it
-        CHECK(batch.runLine("capture.new_scene width=320 height=240 fps=10").ok);
+        CHECK(batch.runLine("capture.scene_new width=320 height=240 fps=10").ok);
         CHECK(batch.runLine("capture.add_source doc=scene1 kind=screen").ok);
         CHECK(batch.runLine("capture.add_source doc=scene1 kind=color color=red x=0 y=0 width=40 height=40").ok);
         CHECK(batch.runLine("capture.add_source doc=scene1 kind=text text=REC font_size=24 x=200 y=10").ok);
@@ -473,7 +473,7 @@ void testScenes() {
     Session s;
     registerCommands(s);
     cli::Batch batch(s);
-    Result r = batch.runLine("capture.new_scene width=160 height=90 fps=10 background=#0000ff");
+    Result r = batch.runLine("capture.scene_new width=160 height=90 fps=10 background=#0000ff");
     CHECK(r.ok && toText(r.value) == "scene1");
     auto scene = s.workspace().getAs<Scene>("scene1");
     CHECK(batch.runLine("capture.add_source doc=scene1 kind=screen").ok);
@@ -509,8 +509,8 @@ void testScenes() {
     r = batch.runLine("capture.scene_info doc=scene1");
     CHECK(r.ok && num(r, "sources") == 3 && contains(r.message, "Hello"));
     const std::string file = (dir / "show.wwscene").string();
-    CHECK(batch.runLine("capture.save_scene doc=scene1 path=\"" + file + "\"").ok);
-    r = batch.runLine("capture.open_scene path=\"" + file + "\"");
+    CHECK(batch.runLine("capture.scene_save doc=scene1 path=\"" + file + "\"").ok);
+    r = batch.runLine("capture.scene_open path=\"" + file + "\"");
     CHECK(r.ok && toText(r.value) == "scene2" && toJson(*s.workspace().getAs<Scene>("scene2")) == toJson(*scene));
     CHECK(!batch.runLine("capture.stop_recording").ok);  // nothing running
     CHECK(batch.runLine("capture.recordings").ok);

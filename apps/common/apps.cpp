@@ -83,7 +83,7 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".mid", {"sound", ""}}, {".midi", {"sound", ""}}, {".beats.json", {"sound", "beats.open"}},
         // video
         {".mp4", {"video", ""}}, {".mov", {"video", ""}}, {".mkv", {"video", ""}}, {".webm", {"video", ""}},
-        {".avi", {"video", ""}}, {".srt", {"video", ""}}, {".wwcut", {"video", "cut.open"}}, {".wwscene", {"video", "capture.open_scene"}},
+        {".avi", {"video", ""}}, {".srt", {"video", ""}}, {".wwcut", {"video", "cut.open"}}, {".wwscene", {"video", "capture.scene_open"}},
         {".achcut", {"video", "cut.open"}},
         // office
         {".docx", {"office", "office.doc_open"}}, {".odt", {"office", "office.doc_open"}}, {".md", {"office", "office.doc_open"}},

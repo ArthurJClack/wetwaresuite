@@ -456,7 +456,10 @@ void Shell::documentView() {
         const float avail = ImGui::GetContentRegionAvail().y;
         const float tl = std::min(want, avail * 0.6f);
         ImGui::BeginChild("preview", {0, std::max(64.0f, avail - tl - ImGui::GetStyle().ItemSpacing.y)});
-        canvasView();
+        if (doc->kind() == "song" && find("beats.notes"))
+            pianoRollView();  // songs: the pattern's notes over the arrangement (sound_view.cpp)
+        else
+            canvasView();
         ImGui::EndChild();
         ImGui::BeginChild("timeline", {0, 0});
         timelineView(layout);
@@ -489,6 +492,7 @@ void Shell::rightPanel() {
         if (!result_->attachments.empty()) wrappedMuted(std::to_string(result_->attachments.size()) + " file(s) made in memory.");
     }
     layersPanel();  // image documents only (layers_view.cpp)
+    soundPanel();   // audio projects and songs (sound_view.cpp)
     ImGui::Spacing();
     ImGui::Separator();
     if (ImGui::CollapsingHeader("History", ImGuiTreeNodeFlags_DefaultOpen)) historyPanel();

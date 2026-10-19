@@ -29,7 +29,7 @@ struct Texture {
     ImTextureID id() const { return static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(tex)); }
 };
 
-enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove };
+enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur };
 enum class SelectShape { Rect, Ellipse, Lasso, Wand };
 
 // A retouch command waiting to run: it runs on the frame after it is queued, so the
@@ -71,6 +71,11 @@ struct Canvas {
     std::string removeMarkDoc;
     bool autoRemove = false;  // remove as soon as the stroke ends
     std::optional<PendingRetouch> pending;
+    // retouch brushes (brush_tools.cpp): clone, dodge/burn/sponge, smudge, blur/sharpen
+    HealSource cloneSource;   // Alt+click spot the clone stamp copies from
+    float strength = 50;      // exposure / strength 0..100
+    std::string toneRange = "midtones";
+    bool sharpen = false;     // the Blur tool sharpens instead
 
     // the 3D view (orbit.cpp), for documents that can draw themselves from any angle
     bool is3d = false;
@@ -208,6 +213,13 @@ private:
     void queueRetouch(const std::string& command, const std::string& title, Params params);
     void runPendingRetouch();
     bool pictureSize(int& width, int& height) const;
+    // the retouch brushes (brush_tools.cpp) and the layers panel (layers_view.cpp)
+    static bool brushTool(CanvasTool tool);
+    void brushToolSettings();
+    bool brushToolPress(ImVec2 screen);  // true when the click picked a clone source
+    void runBrushTool();
+    void drawBrushTool(ImDrawList* dl, ImVec2 origin, bool hovered);
+    void layersPanel();
 
     // the play bar over sound documents (transport.cpp)
     bool playTarget(std::string& tool, Params& target) const;

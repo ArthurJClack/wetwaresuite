@@ -694,4 +694,52 @@ bool removeStrokeParams(const std::string& doc, const std::vector<double>& point
     return strokeArea(doc, points, brushSize, width, height, out, box, error);
 }
 
+bool brushToolParams(const std::string& tool, const std::string& doc, const std::vector<double>& points,
+                     const std::vector<double>& pressures, const BrushToolSettings& settings, const double* cloneOffset,
+                     std::string& command, Params& out, std::string& error) {
+    out.clear();
+    if (points.size() < 2 || points.size() % 2) {
+        error = "Paint a stroke on the picture first.";
+        return false;
+    }
+    out["doc"] = doc;
+    out["points"] = NumberList(points.begin(), points.end());
+    if (!pressures.empty() && pressures.size() == points.size() / 2) out["pressures"] = NumberList(pressures.begin(), pressures.end());
+    out["brush"] = settings.brush;
+    out["size"] = std::max(1.0, settings.size);
+    out["opacity"] = std::clamp(settings.opacity, 0.0, 100.0);
+    const double strength = std::clamp(settings.strength, 0.0, 100.0);
+    if (tool == "clone") {
+        if (!cloneOffset) {
+            error = "Alt+click (Option+click on a Mac) the spot to copy from first, or press Pick source.";
+            return false;
+        }
+        command = "paint.clone";
+        out["source_x"] = points[0] + std::round(cloneOffset[0]);
+        out["source_y"] = points[1] + std::round(cloneOffset[1]);
+        return true;
+    }
+    if (tool == "dodge" || tool == "burn" || tool == "sponge") {
+        command = "paint.dodge";
+        out["tool"] = tool;
+        out["exposure"] = strength;
+        if (tool == "sponge") out["sponge_mode"] = std::string("desaturate");
+        else out["range"] = settings.range;
+        return true;
+    }
+    if (tool == "smudge") {
+        command = "paint.smudge";
+        out["strength"] = strength;
+        return true;
+    }
+    if (tool == "blur" || tool == "sharpen") {
+        command = "paint.blur_brush";
+        out["mode"] = tool;
+        out["strength"] = strength;
+        return true;
+    }
+    error = "'" + tool + "' isn't a brush tool.";
+    return false;
+}
+
 }  // namespace wetwaresuite::gui

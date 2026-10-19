@@ -161,7 +161,7 @@ if(_ww_sdl)
     DEPENDS ${_icon_png} ${CMAKE_CURRENT_SOURCE_DIR}/embed.cmake
     COMMENT "Embedding the window icon")
 
-  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/canvas.cpp src/retouch.cpp src/handoff_panels.cpp src/colours.cpp src/transport.cpp src/orbit.cpp src/timeline_view.cpp src/grid_view.cpp src/selection_view.cpp src/window.cpp ${_font_cpp} ${_icon_cpp}
+  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/canvas.cpp src/retouch.cpp src/handoff_panels.cpp src/colours.cpp src/transport.cpp src/orbit.cpp src/timeline_view.cpp src/grid_view.cpp src/selection_view.cpp src/brush_tools.cpp src/layers_view.cpp src/window.cpp ${_font_cpp} ${_icon_cpp}
     # the system tools' panels: calculator, code editor, files, terminal, monitor, clock
     src/tool_panels.cpp src/code_editor.cpp src/panel_calc.cpp src/panel_code.cpp src/panel_explorer.cpp
     src/panel_terminal.cpp src/panel_monitor.cpp src/panel_clock.cpp src/pdf_view.cpp)

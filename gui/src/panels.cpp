@@ -487,6 +487,7 @@ void Shell::rightPanel() {
         }
         if (!result_->attachments.empty()) wrappedMuted(std::to_string(result_->attachments.size()) + " file(s) made in memory.");
     }
+    layersPanel();  // image documents only (layers_view.cpp)
     ImGui::Spacing();
     ImGui::Separator();
     if (ImGui::CollapsingHeader("History", ImGuiTreeNodeFlags_DefaultOpen)) historyPanel();

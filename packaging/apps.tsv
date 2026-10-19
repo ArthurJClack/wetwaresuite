@@ -1,0 +1,13 @@
+# id	name	what it is for (one line, used for start-menu entries)
+image	wetwaresuite image	photos, painting and textures
+draw	wetwaresuite draw	vector art, fonts and whiteboards
+model	wetwaresuite model	3D modeling, renders and animation
+game	wetwaresuite game	game assets and levels
+cad	wetwaresuite cad	engineering, drafting and 3D printing
+electronics	wetwaresuite electronics	circuits and microcontrollers
+sound	wetwaresuite sound	audio editing and music
+video	wetwaresuite video	video editing and screen capture
+office	wetwaresuite office	documents, sheets, slides and PDFs
+maps	wetwaresuite maps	offline maps and GIS
+system	wetwaresuite system	calculator, code editor, files, terminal, monitor, clock
+files	wetwaresuite files	open, convert and find any file

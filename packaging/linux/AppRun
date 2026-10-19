@@ -1,0 +1,28 @@
+#!/bin/sh
+# wetwaresuite AppImage entry point.
+#   ./wetwaresuite-linux-x86_64.AppImage              the launcher window, every tool
+#   ./wetwaresuite-linux-x86_64.AppImage --run image  one app (or hub, share, wetwaresuite ...)
+#   ln -s wetwaresuite-linux-x86_64.AppImage wetwaresuite-image   a symlink named after a program runs it
+here=$(dirname "$(readlink -f "$0")")
+bin="$here/usr/bin"
+export PATH="$bin:$PATH"
+
+name=$(basename "${ARGV0:-$0}")
+case "$name" in
+  wetwaresuite|wetwaresuite-*)
+    [ -x "$bin/$name" ] && exec "$bin/$name" "$@" ;;
+esac
+
+if [ "$1" = "--run" ] && [ -n "$2" ]; then
+  prog=$2
+  shift 2
+  case "$prog" in
+    */*) echo "--run takes a program name, like image" >&2; exit 2 ;;
+    wetwaresuite|wetwaresuite-*) ;;
+    *) prog="wetwaresuite-$prog" ;;
+  esac
+  [ -x "$bin/$prog" ] || { echo "no program $prog; try: $(ls "$bin" | tr '\n' ' ')" >&2; exit 2; }
+  exec "$bin/$prog" "$@"
+fi
+
+exec "$bin/wetwaresuite-gui" "$@"

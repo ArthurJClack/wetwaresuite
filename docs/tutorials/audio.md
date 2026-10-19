@@ -2,11 +2,11 @@
 
 `audio` is the suite's audio editor. It opens WAV, MP3, FLAC and Ogg Vorbis files without any other software (and Opus, M4A/AAC, AIFF, WMA and the sound from video files when ffmpeg is installed), and does what you would otherwise need a separate audio app for:
 
-- **Clean-up**: noise reduction from a noise sample, EQ (high-pass, low-pass, shelves, bells, notches), compressor, limiter, noise gate, DC offset removal.
-- **Levels**: gain, peak normalizing, loudness normalizing to LUFS (ITU-R BS.1770, the standard podcasts and streaming services use), measuring peak, true peak, RMS, loudness, loudness range and clipping.
+- **Clean-up and repair**: noise reduction from a noise sample, click and crackle removal, hum removal (50/60 Hz and harmonics), spectral editing (turn a frequency box down), EQ (parametric up to 8 bands, graphic, high-pass, low-pass, shelves, bells, notches), compressor, limiter, noise gate, expander, de-esser, DC offset removal.
+- **Levels**: gain, peak normalizing, loudness normalizing to LUFS (ITU-R BS.1770, the standard podcasts and streaming services use), measuring peak, true peak, RMS, loudness, loudness range and clipping, and a loudness meter with integrated, short-term and momentary readings that checks a target.
 - **Editing**: trim, cut, copy, paste (insert, overwrite or mix), insert silence, reverse, fades with five curve shapes, pan, channel conversion, resampling.
-- **Effects**: reverb, echo/delay, tempo change without pitch change, pitch shift without tempo change, tape-style speed change.
-- **Multitrack**: projects with tracks of clips at time offsets, per-track gain, pan, mute and solo, volume envelopes, automatic ducking (music drops under a voice), mixdown and export.
+- **Effects**: reverb, delay/echo (ping-pong), chorus, flanger, phaser, tremolo/auto-pan, distortion (soft, hard, fuzz, foldback, bit crusher), resonant filter, stereo utility, tempo change without pitch change, pitch shift without tempo change, tape-style speed change.
+- **Multitrack**: projects with tracks of clips at time offsets, per-track gain, pan, mute and solo, an effects rack on every track and on the master, automation of volume, pan and any effect setting, clip fades with five curve shapes and crossfades, automatic ducking (music drops under a voice), markers and regions, mixdown, export, stems and one file per region.
 - **Folders**: batch convert, normalize, trim, filter, de-noise or re-tempo a whole folder; find silences and split a long recording into numbered files.
 - **Pictures**: waveforms and spectrograms as PNG, so you (and Claude) can see what you're working on.
 
@@ -448,6 +448,188 @@ Claude calls `audio_open`, `audio_stretch` with `from_bpm=120 to_bpm=100`, `audi
 
 Stretching works best within about half to double speed; beyond that, drums smear and voices get a metallic edge. Pitch shifts of a few semitones sound natural on instruments; voices shifted far sound like chipmunks or giants because their formants move too.
 
+## Task 6: repair an old recording: crackle, hum and a whistle
+
+`old_tape.wav` is a 6-second transfer from tape: a voice with 40 clicks and pops on it, 50 Hz mains hum with its harmonics, and a 3 kHz whistle from 2 to 4 seconds. Each problem has its own tool, like the repair panel in Audition or iZotope RX:
+
+- `audio.declick` finds clicks by predicting every sample from the ones before it (linear prediction): a click is a sample the prediction misses by far more than the sound around it, and that also changes the sound audibly when rebuilt. Each one is rebuilt from both sides. Lower `sensitivity` (default 6) finds more.
+- `audio.dehum` notches out the hum and its harmonics. `frequency=0` (the default) measures whether it's 50 Hz (Europe, Asia, Africa) or 60 Hz (the Americas).
+- `audio.spectral` is the spectrogram's "select a box and turn it down": a frequency range (`low` to `high` Hz) between `start` and `end`, by `gain` dB.
+- `audio.param_eq` is an 8-band parametric EQ in one step, and `audio.loudness` is a loudness meter that checks a target.
+
+**Batch** (`repair.txt`):
+
+```text
+# repair an old tape transfer: crackle, mains hum and a whistle
+audio.open path=old_tape.wav -> tape
+audio.loudness doc=$tape
+audio.declick doc=$tape
+audio.dehum doc=$tape
+audio.spectral doc=$tape low=2900 high=3100 gain=-40 start=2 end=4
+audio.param_eq doc=$tape bands="highpass 70, peaking 2500 2 1.5, highshelf 9000 -2"
+audio.loudness doc=$tape target=-16 true_peak=-1
+audio.normalize doc=$tape mode=loudness target=-16 ceiling=-1.5
+audio.loudness doc=$tape target=-16 true_peak=-1
+audio.save doc=$tape path=old_tape_fixed.wav bits=24 rate=48000
+```
+
+```sh
+$ wetwaresuite batch repair.txt
+opened old_tape.wav as aud1: 1 ch, 44100 Hz, 0:06.000
+...
+integrated -21.3 LUFS, short-term max -20.2, momentary max -16.1, range 1.17 LU, true peak -1.1 dB
+lufs: -21.2682
+short_term_max_lufs: -20.1743
+momentary_max_lufs: -16.0608
+loudness_range: 1.16613
+true_peak_db: -1.14753
+step: 1
+short_term: -19.9747,-20.6114,-21.0511,-20.3482,-20.8589,-21.2344
+repaired 43 clicks
+...
+removed 50 Hz hum and 7 harmonics
+...
+frequency: 50
+attenuated 2900-3100 Hz by 40.0 dB from 0:02.000 to 0:04.000
+...
+eq: band 1 highpass 70 Hz Q 0.7071, band 2 peaking 2500 Hz 2 dB Q 1.5, band 3 highshelf 9000 Hz -2 dB Q 0.7071
+...
+integrated -22 LUFS, short-term max -22.7, momentary max -17.6, range 1.6 LU, true peak -6.0 dB; doesn't meet -16 LUFS: 6 LU too quiet (audio.normalize mode=loudness target=-16 ceiling=-1.5 fixes it)
+...
+meets_target: false
+gain_to_target: 5.99255
+loudness -22 -> -16.3 LUFS (gain 6.0 dB), peak -1.5 dB
+...
+integrated -16.3 LUFS, short-term max -16.9, momentary max -12, range 1.65 LU, true peak -1.5 dB; meets -16 LUFS
+...
+meets_target: true
+...
+saved old_tape_fixed.wav (0:06.000)
+```
+
+Some clicks are found as two (a pop and its ring), so the count can be a little higher than the number you hear. `short_term` is the loudness meter's 3-second reading once a second (the first two values cover less than 3 seconds); `step=` changes the spacing. `true_peak` with `target=` sets the highest true peak that still passes. The suggested `ceiling` is half a dB under it, because the limiter in `audio.normalize` watches samples and the true peak between samples can be a little higher. `audio.save rate=48000` resamples while saving, here for video.
+
+Tips:
+
+- **Find the box first.** `audio.preview doc=$tape spectrogram=true` (or the spectrogram in the window) shows a whistle as a thin bright line; read its height off the frequency scale. A narrow box (200 Hz) at -30 to -40 dB removes it with little damage around it.
+- **Hum that buzzes** has many harmonics: raise `harmonics=` (default 8). Lower `q=` makes the notches wider, which removes more hum but also more of the sound.
+- **Clicks on drums or plucked strings** look like clicks to the detector. Use `start=`/`end=` to repair only the stretches that need it, or raise `sensitivity`.
+- **More effects on a document:** every effect of the rack below also works on its own, on a whole document or a range: `audio.chorus`, `audio.flanger`, `audio.phaser`, `audio.tremolo`, `audio.distort`, `audio.deess`, `audio.expand`, `audio.graphic_eq` (10 octave bands, `g31` to `g16k` in dB), `audio.filter` (a resonant low/high/band-pass or notch), and `audio.effect type=... values="..."` for any of them by name. `audio.fx_types` lists every effect with its settings, ranges and defaults.
+
+**Claude.** Ask:
+
+> old_tape.wav crackles, hums and has a whistle in the middle. Clean it up, get it to -16 LUFS and save a 24-bit 48 kHz copy.
+
+Claude calls `audio_open`, `audio_loudness`, `audio_preview` with `spectrogram=true` (it sees the hum lines at the bottom and the whistle as a short bright line near 3 kHz), `audio_declick`, `audio_dehum`, `audio_spectral` with the box it read off the picture, `audio_normalize` and `audio_loudness target=-16` to confirm, then `audio_save` with `bits=24 rate=48000`.
+
+## Task 7: effects racks, automation, markers and stems
+
+A project can carry an effects rack on every track and on the master, like the inserts of a mixing desk, and automation lanes that move volume, pan or any effect setting over time. Nothing is applied to the clips: the rack runs when the project plays, mixes or exports, so every setting can be changed or removed later.
+
+**Batch** (`rack.txt`):
+
+```text
+# a project with effects racks, automation, a crossfade, markers, stems and regions
+audio.new kind=tone waveform=saw frequency=110 seconds=8 level=-14 -> bass
+audio.new kind=noise color=pink seconds=8 level=-24 -> air
+audio.project_new rate=44100 channels=2 -> song
+audio.track_add project=$song name=bass
+audio.track_add project=$song name=air
+audio.clip_add project=$song track=0 doc=$bass at=0
+audio.clip_add project=$song track=1 doc=$air at=0 end=4.5
+audio.clip_add project=$song track=1 doc=$air at=4 start=4
+# blend the two noise clips over their half-second overlap
+audio.crossfade project=$song track=1 clip=0
+# a filter sweep and ping-pong echoes on the bass
+audio.fx_add project=$song track=0 type=filter values="cutoff=200 resonance=4"
+audio.fx_add project=$song track=0 type=delay values="time=375 feedback=0.4 mix=0.25 pingpong=on"
+audio.automate project=$song track=0 target=fx0.cutoff points=0,200,6,4000
+# the air moves from left to right, and a master bus compressor and limiter
+audio.automate project=$song track=1 target=pan points=0,-1,8,1
+audio.fx_add project=$song master=true type=compressor values="threshold=-24 ratio=3"
+audio.fx_add project=$song master=true type=limiter values="ceiling=-1"
+audio.fx_list project=$song master=true
+audio.automation project=$song
+# two named regions, each exported to its own file, plus one stem per track
+audio.marker_add doc=$song name=intro at=0 end=4
+audio.marker_add doc=$song name=drop at=4 end=8
+audio.export_regions doc=$song folder=parts bits=24
+audio.export_stems project=$song folder=stems mix=true bits=24
+audio.mixdown project=$song -> mix
+audio.loudness doc=$mix target=-14
+audio.project_save project=$song path=sweep.json
+```
+
+```sh
+$ wetwaresuite batch rack.txt
+...
+crossfaded clip 0 into clip 1 over 0.500 s (equal_power)
+...
+added effect 0 to track 0 "bass": filter: mode lowpass, cutoff 200 Hz, resonance 4, slope 1
+...
+added effect 1 to track 0 "bass": delay: time 375 ms, feedback 0.4, mix 0.25, pingpong on, tone 8000 Hz
+...
+track 0 "bass" automation:
+  fx0.cutoff: 0s=200 6s=4000
+...
+effects
+the master:
+  0 compressor: threshold -24 dB, ratio 3, attack 10 ms, release 120 ms, knee 6 dB, makeup 0 dB, auto_makeup off
+  1 limiter: ceiling -1 dB, release 60 ms, gain 0 dB
+rows: master	0	compressor	0	threshold	-24	-60	0	dB
+...
+automation
+track 0:
+  fx0.cutoff: 0s=200 6s=4000
+track 1:
+  pan: 0s=-1 8s=1
+the master:
+  (no automation)
+...
+wrote 2 files to parts
+  parts/01_intro.wav (0:04.000)
+  parts/02_drop.wav (0:04.000)
+...
+wrote 3 stems to stems
+  stems/01_bass.wav (0:11.202)
+  stems/02_air.wav (0:11.202)
+  stems/mix.wav (0:11.202)
+...
+mixed proj1 into aud3: 2 ch, 44100 Hz, 0:11.202, peak -11.1 dB
+...
+integrated -21.6 LUFS, short-term max -21.3, momentary max -20.3, range 6.77 LU, true peak -11.0 dB; doesn't meet -14 LUFS: 7.6 LU too quiet (audio.normalize mode=loudness target=-14 ceiling=-1.5 fixes it)
+...
+saved sweep.json (clips in sweep_clips)
+```
+
+The mix is 3.2 seconds longer than the clips: a project rings out until its echoes and reverbs have died away, then the silent end is trimmed.
+
+How it works:
+
+- **The rack.** `audio.fx_add` puts an effect at the end of a rack (`at=` puts it earlier) and returns its number; `audio.fx_set fx=1 values="feedback=0.6"` changes settings and `bypass=true` switches it off without losing them; `audio.fx_move fx=1 to=0` reorders; `audio.fx_remove` takes it out. `audio.fx_list` lists every setting with its range (`rows` has one line per setting). The effects are the ones `audio.fx_types` lists: eq (8 bands, `values="bands=highpass 80, peaking 3000 -3 2"`), graphic_eq, filter, compressor, limiter, gate, expander, deesser, reverb, delay, chorus, flanger, phaser, tremolo, distortion (soft, hard, fuzz, foldback, bitcrush) and utility (gain, balance, width, phase).
+- **The signal path.** Clips (with their gain and fades) are summed on their track, then the rack, then the track's volume and volume automation, then ducking, then pan. All tracks are mixed, then the master gain, the master rack and the master automation. The limiter's look-ahead is compensated, so a limited track stays in time with the others.
+- **Automation.** `audio.automate target=... points=time,value,...` replaces a lane; `mode=add` merges points in; `mode=clear` removes it. Targets are `volume` (dB), `pan` (-1..1, replaces the track's fixed pan while it's there) and `fx<number>.<setting>` for any number setting of the rack. Values move in straight lines between points and hold before the first and after the last. Removing or moving an effect renumbers its lanes with it. A track's `envelope=` from Task 2 is the same thing as its `volume` lane.
+- **Fades and crossfades.** `audio.clip_set ... fade_in_curve=` and `fade_out_curve=` pick a shape for each clip's fades (linear, exponential, logarithmic, s_curve, equal_power; s_curve is the default). `audio.crossfade` blends a clip into the next one on its track over their overlap; `seconds=` slides the next clip left to make an overlap that long first. Equal power (the default) keeps the level steady across different material, linear suits two takes of the same sound.
+- **Markers and regions.** `audio.marker_add` marks a point (`at=`) or a region (`at=` to `end=`) on a project or an audio document (`doc=aud1`); `audio.markers` lists them and `audio.marker_remove marker=1` deletes one. `audio.export_regions` writes each region (or, when there are only point markers, each stretch from one marker to the next) to a numbered file named after it, with `to=`, `bits=`, `bitrate=` and `rate=`. Markers are saved in the project file.
+- **Stems.** `audio.export_stems` writes each track as it sounds in the mix (rack, volume, automation and pan included; mute and solo ignored), all the same length so they line up in another editor. `mix=true` adds the mix. `audio.export rate=48000` and `audio.save rate=` resample on the way out.
+
+**Claude.** Ask:
+
+> On the bass track, sweep a resonant low-pass from 200 Hz to 4 kHz over six seconds and add dotted-eighth ping-pong echoes. Put a compressor and a -1 dB limiter on the master, mark the intro and the drop, and give me each part and the stems as 24-bit WAVs.
+
+Claude calls `audio_fx_add` twice and `audio_automate` for the track, `audio_fx_add` twice with `master: true`, `audio_marker_add` twice, then `audio_export_regions` and `audio_export_stems` with `bits: "24"`. It reads `audio_fx_list` and `audio_automation` to check what's there before changing anything.
+
+### In the window
+
+Open a project (or a song) in the sound app and the right panel gets an **Effects** section under the action form:
+
+1. Pick **Master** or a track in the list at the top.
+2. Each effect shows its number and name, a tick box (untick to bypass), arrows to move it up or down and **x** to remove it. Open it to see a slider for every setting (Hz and ms settings slide on a log scale; choices such as a filter's mode are lists). A setting changes when you let go of the slider, as one `audio.fx_set` you can undo.
+3. Pick an effect in the list at the bottom and press **Add**.
+4. Under **Envelope**, pick what to automate: volume, pan, or any setting of the rack (lanes that have points are marked with `*`). Click the graph to add a point, drag a point to move it, right-click a point to delete it; **Clear** removes the lane. Each change is one `audio.automate`, so undo steps back through them.
+
+The timeline below the waveform still moves, trims and splits clips by dragging (see [the window](gui.md#the-timeline)).
+
 ## More editing
 
 Everyday edits in one script (`edit.txt`):
@@ -522,10 +704,11 @@ Common parameters: `doc` (an open document), `start`/`end` (seconds; default the
 | --- | --- | --- |
 | `audio.open` | open a file as a document | `path` |
 | `audio.new` | silence, tone, sweep or noise | `kind`, `seconds`, `rate` (44100), `channels` (2), `frequency` (440), `to_frequency`, `waveform` (sine, square, saw, triangle), `color` (white, pink, brown), `level` (-6 dBFS) |
-| `audio.save` | write a file; extension picks the format | `path`, `bits` (16), `bitrate`, `dither` (true), `start`/`end` to save a part |
+| `audio.save` | write a file; extension picks the format | `path`, `bits` (16), `bitrate`, `rate` (resample), `dither` (true), `start`/`end` to save a part |
 | `audio.close` | close a document or project | `doc` |
 | `audio.info` | length, rate, channels | `doc` |
 | `audio.measure` | peak, true peak, RMS, LUFS, loudness range, DC, clipping | `doc` or `input`, `start`/`end`, `true_peak` (true) |
+| `audio.loudness` | loudness meter: integrated, short-term and momentary LUFS, range, true peak, a short-term curve, and a pass/fail against a target | `step` (1 s), `target`, `tolerance` (1 LU), `true_peak` (-1 dBTP) |
 | `audio.preview` | attach a waveform or spectrogram PNG (read-only) | `doc` or `input`, `spectrogram`, `width` (1200), `height`, `log_frequency` (true), `max_frequency`, `fft` (2048), `floor` (-100), `channel`, `decibels` |
 | `audio.render` | the same picture, or a project's lanes, written to a PNG | as preview, plus `output`, `project` |
 | `audio.detect_silence` | list silent stretches | `doc` or `input`, `threshold` (-40 dBFS), `min_silence` (0.5 s) |
@@ -565,6 +748,19 @@ Common parameters: `doc` (an open document), `start`/`end` (seconds; default the
 | `audio.stretch` | change length, keep pitch | `factor`, `tempo`, `seconds`, or `from_bpm` + `to_bpm` |
 | `audio.pitch` | change pitch, keep length | `semitones`, `cents` |
 | `audio.speed` | tape-style speed | `factor` |
+| `audio.param_eq` | up to 8 EQ bands in one step | `bands` ("type freq [gain] [q], ..."), `output` |
+| `audio.graphic_eq` | 10 octave bands | `g31`, `g63`, `g125`, `g250`, `g500`, `g1k`, `g2k`, `g4k`, `g8k`, `g16k` (dB), `output` |
+| `audio.filter` | resonant filter | `mode` (lowpass, highpass, bandpass, notch), `cutoff`, `resonance`, `slope` (1..4 x 12 dB/oct) |
+| `audio.expand` | downward expander | `threshold`, `ratio`, `attack`, `release`, `range` |
+| `audio.deess` | tame s sounds | `frequency` (6000), `threshold`, `reduction` |
+| `audio.chorus` / `audio.flanger` / `audio.phaser` | modulation effects | `rate`, `depth`, `mix`, ... (`audio.fx_types` lists them) |
+| `audio.tremolo` | volume wobble or auto-pan | `rate`, `depth`, `shape`, `spread` (180 = auto-pan) |
+| `audio.distort` | saturation | `drive`, `mode` (soft, hard, fuzz, foldback, bitcrush), `bits`, `tone`, `mix`, `output` |
+| `audio.effect` | any rack effect by name | `type`, `values` ("name=value ...") |
+| `audio.fx_types` | every effect and its settings (read-only) | `type` |
+| `audio.declick` | remove clicks and crackle | `sensitivity` (6; lower finds more), `max_ms` (2.5) |
+| `audio.dehum` | remove mains hum | `frequency` (0 = detect 50/60), `harmonics` (8), `q` (30) |
+| `audio.spectral` | turn a frequency box up or down | `low`, `high` (Hz), `gain` (-30 dB), `start`/`end` |
 
 ### Projects
 
@@ -577,12 +773,21 @@ Common parameters: `doc` (an open document), `start`/`end` (seconds; default the
 | `audio.track_set` | track settings | `name`, `gain`, `pan`, `mute`, `solo`, `duck_under` (-1 off), `duck_db` (12), `duck_threshold` (-40), `duck_attack` (0.15 s), `duck_release` (0.6 s), `envelope` (time,dB pairs) |
 | `audio.track_remove` | delete a track | `track` |
 | `audio.clip_add` | place a document or file on a track | `track`, `doc` or `input`, `at`, `start`/`end` of the source, `gain`, `fade_in`, `fade_out`, `name` |
-| `audio.clip_set` | move or change a clip | `track`, `clip`, `at`, `to_track`, `gain`, `fade_in`, `fade_out`, `name` |
+| `audio.clip_set` | move or change a clip | `track`, `clip`, `at`, `to_track`, `gain`, `fade_in`, `fade_out`, `fade_in_curve`, `fade_out_curve`, `name` |
+| `audio.crossfade` | blend a clip into the next one on its track | `track`, `clip`, `seconds` (slides the next clip to overlap), `curve` (equal_power) |
 | `audio.clip_trim` | change which part of a clip plays (non-destructive: trimmed audio can be brought back) | `track`, `clip`, `start` (new start, end stays), `length` (new length, start stays) |
 | `audio.clip_split` | cut a clip in two at a timeline time | `track`, `clip`, `at` |
 | `audio.clip_remove` | delete a clip | `track`, `clip` |
 | `audio.mixdown` | mix into a new document | `normalize`, `target`, `ceiling` |
-| `audio.export` | mix straight to a file | `path`, `bits`, `bitrate`, `normalize`, `target`, `ceiling` |
+| `audio.export` | mix straight to a file | `path`, `bits`, `bitrate`, `rate`, `normalize`, `target`, `ceiling` |
+| `audio.export_stems` | one file per track, all the same length | `folder`, `mix`, `to`, `bits`, `bitrate`, `rate`, `overwrite` |
+| `audio.fx_add` | add an effect to a track's or the master's rack | `track` or `master=true`, `type`, `values`, `at` |
+| `audio.fx_set` / `audio.fx_remove` / `audio.fx_move` | change, bypass, remove or reorder an effect | `track` or `master`, `fx`, `values`, `bypass`, `to` |
+| `audio.fx_list` | the racks with every setting (read-only) | `track` or `master` (default: all) |
+| `audio.automate` | draw a lane | `track` or `master`, `target` (volume, pan, fx<i>.<setting>), `points` (time,value pairs), `mode` (replace, add, clear) |
+| `audio.automation` | the lanes (read-only) | `track` or `master` |
+| `audio.marker_add` / `audio.marker_remove` / `audio.markers` | markers and regions on a document or project | `doc` (aud1 or proj1), `name`, `at`, `end`, `marker` |
+| `audio.export_regions` | each region (or marker to marker) to its own file | `doc`, `folder`, `prefix`, `to`, `bits`, `bitrate`, `rate`, `overwrite` |
 
 ### Playback
 
@@ -602,9 +807,9 @@ See [playback](playback.md) for the details.
 - **No recording yet.** Playback is live (`audio.play`, see [playback](playback.md)), but it plays a copy taken when it starts, so edits are heard on the next play.
 - **Undo keeps a full copy** of the document for every step, so very long files (an hour of stereo is about 1.3 GB as float) use a lot of memory over many edits. Close documents you've saved, or work on parts.
 - **Effects on a range** only process that range: a reverb or echo tail stops at `end` (blended over 5 ms). Use `tail=` on whole-file edits, or leave room after the range.
-- **Noise reduction** is spectral gating, good on steady noise (hiss, hum, fans, room tone). It doesn't remove clicks, crackle, wind, reverb or a TV in the background, and pushed hard it sounds watery.
+- **Noise reduction** is spectral gating, good on steady noise (hiss, hum, fans, room tone). It doesn't remove wind, reverb or a TV in the background, and pushed hard it sounds watery. Clicks have `audio.declick` and hum `audio.dehum`. The click repair rebuilds up to a few milliseconds from the sound on both sides, which is clean on speech and sustained music. Sharp attacks (drums, plucks) can be taken for clicks, so limit it to a range there, and long scratches are left alone.
 - **Time stretching and pitch shifting** are WSOLA-based: clean on speech and steady material within about 0.5x-2x and a few semitones; extreme settings smear transients, and pitch shifting moves formants (no formant preservation).
 - **Loudness** follows ITU-R BS.1770-4 (K-weighting, 400 ms gated blocks); true peak is 4x oversampled near the loudest samples. Surround channel weights assume the L R C LFE Ls Rs order.
-- **Multitrack**: clips are copies made when added (later edits to the document don't reach the project); no per-clip effects, crossfades are done with overlapping clip fades, and ducking listens to one track. In the sound app the project gets a timeline you drag clips around on (see [the window](gui.md#the-timeline)).
-- **Formats**: without ffmpeg only WAV, MP3, FLAC and Ogg Vorbis open and only WAV saves. WAV files are limited to 4 GB (no RF64); AIFF is written through ffmpeg as 16- or 24-bit. Metadata (tags, cover art, markers) isn't kept.
+- **Multitrack**: clips are copies made when added (later edits to the document don't reach the project). Effects are per track and on the master, not per clip, and there are no sends or buses. Ducking listens to one track. Automation points are joined by straight lines (no curves). In the sound app the project gets a timeline you drag clips around on (see [the window](gui.md#the-timeline)), and an effects rack and envelope editor in the right panel.
+- **Formats**: without ffmpeg only WAV, MP3, FLAC and Ogg Vorbis open and only WAV saves. WAV files are limited to 4 GB (no RF64); AIFF is written through ffmpeg as 16- or 24-bit. Metadata (tags, cover art) isn't kept, and markers live in project files only (they aren't written into WAV cue chunks).
 - **Batch and split** write files and can't be undone; they never change their input folder.

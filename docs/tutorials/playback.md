@@ -144,6 +144,15 @@ playing house at 0.000 s of 0:04.060 (no sound device, playing silently)
 
 `beats.play` mixes the song the same way `beats.render` does (all its `start_bar`, `bars`, `track`, `tail` and `limit` options work), then plays it. `track=bass` plays just the bass, ignoring mute and solo.
 
+**The metronome.** `beats.metronome song=$s on=true level=-12` adds a click on every beat (higher on the first beat of each bar; in 6/8 on every eighth note) to every play and render of the song. `click=false` on one `beats.play` or `beats.render` leaves it out of that one, and `click=true` adds it without turning it on for the song:
+
+```text
+beats.open path=house.beats.json -> s
+beats.play song=$s bars=2 loop=true click=true
+```
+
+Effects racks, automation and the master rack (see [beats](beats.md#task-8-edit-and-mix-like-a-daw) and [audio](audio.md#task-7-effects-racks-automation-markers-and-stems)) are part of the mix, so you hear them on every play. In the window, change a setting in the **Effects** panel and press Play again.
+
 For video, `cut.play` mixes the timeline's sound with ffmpeg the way `cut.render` would (transitions, fades, clip volume), then plays it:
 
 ```text
@@ -176,7 +185,8 @@ The play commands:
 | command | what it does | key parameters |
 | --- | --- | --- |
 | `audio.play` | play a clip, a project's mix or a file | `doc`, `project` or `path`, plus the play params |
-| `beats.play` | play a song | `song` or `input`, `start_bar`, `bars`, `track`, `tail`, `limit`, plus the play params |
+| `beats.play` | play a song | `song` or `input`, `start_bar`, `bars`, `track`, `tail`, `limit`, `click`, plus the play params |
+| `beats.metronome` | a click on every beat for plays and renders | `on`, `level` (dB, -60..0) |
 | `cut.play` | play a timeline's sound (needs ffmpeg) | `doc`, plus the play params |
 
 The play params: `start` (0), `end` (-1 = the end), `loop` (false), `wait` (false, max 600 s), `volume` (dB).
@@ -201,7 +211,7 @@ The transport, under each of `audio.`, `beats.` and `cut.` (they all control the
 
 - **Plays a copy.** A play command copies the sound when it starts, so an edit made while it plays is heard on the next play, not mid-play. Long files take a moment to copy before they start.
 - **Songs and timelines are mixed first.** `beats.play` renders the song and `cut.play` runs ffmpeg before the first note, so long arrangements take a moment to start; use `bars=` or `start`/`end` to play part of them. Editing a song doesn't change a loop that's already playing until you play again.
-- **No recording or MIDI input yet,** and no live effects: you hear exactly what `render`/`export` would write.
+- **No recording or MIDI input yet,** and effects aren't live: you hear exactly what `render`/`export` would write, mixed when play starts, so a setting changed mid-play is heard on the next play.
 - **Claude can't hear.** It starts and stops playback for you and judges the sound from measurements and pictures.
 - **Up to 8 channels** go to the speakers; a mono sound plays on both sides. The device's own sample rate is used and miniaudio converts to it.
 - **One sound at a time.** Starting a new play stops the old one; there's no mixing of separate plays (use an audio project for that).

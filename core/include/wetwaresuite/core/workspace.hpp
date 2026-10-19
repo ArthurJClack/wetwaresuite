@@ -40,6 +40,26 @@ struct TimelineClip {
     bool trimStart = true;  // its start can be dragged (false for clips with no source to reveal)
     double headroom = -1;   // seconds that can still be revealed before the start (-1 = no limit)
     double tailroom = -1;   // ... and after the end
+    // editors with more to show (video timelines) fill these in
+    std::vector<double> keyframes;  // timeline seconds of the clip's keyframes, drawn as diamonds
+    double transitionIn = 0;        // seconds at its start that blend with the clip before
+    std::string link;               // clips with the same non-empty link are selected together
+};
+
+// A switch at the head of a track (lock, mute, solo, hide). Clicking it runs the document's
+// TimelineEditKind::Toggle command with `name`.
+struct TimelineToggle {
+    std::string name;     // e.g. "locked"
+    std::string label;    // one or two letters on the button
+    std::string tooltip;
+    bool on = false;
+};
+
+struct TimelineMarker {
+    std::string id;
+    double t = 0;
+    std::string name;
+    std::string color;  // a name or #rrggbb
 };
 
 struct TimelineTrack {
@@ -47,14 +67,21 @@ struct TimelineTrack {
     std::string name;  // shown at the left
     std::string kind;  // clips only move between tracks of the same kind
     std::vector<TimelineClip> clips;
+    std::vector<TimelineToggle> toggles;
 };
 
 struct TimelineLayout {
     std::string docParam = "doc";  // the param edit commands take the document id in
     std::vector<TimelineTrack> tracks;
+    // editing tools beyond move/trim/split/delete: razor, ripple delete, markers, in/out, the
+    // document's own playhead. Documents that set `tools` answer those edit kinds.
+    bool tools = false;
+    double cursor = -1;  // the document's playhead (-1: the window keeps its own)
+    double inPoint = -1, outPoint = -1;
+    std::vector<TimelineMarker> markers;
 };
 
-enum class TimelineEditKind { Move, TrimStart, TrimEnd, Split, Delete };
+enum class TimelineEditKind { Move, TrimStart, TrimEnd, Split, Delete, Cursor, Razor, RippleDelete, Toggle, Marker, InPoint, OutPoint, Transition };
 
 struct TimelineEdit {
     TimelineEditKind kind = TimelineEditKind::Move;
@@ -63,7 +90,8 @@ struct TimelineEdit {
     std::string toTrack;  // Move: the track it lands on (may be the same)
     double start = 0;   // Move/TrimStart: new start; TrimStart keeps the end
     double length = 0;  // TrimEnd: new length
-    double at = 0;      // Split: timeline time
+    double at = 0;      // Split, Cursor, Razor, Marker, InPoint, OutPoint: timeline time
+    std::string name;   // Toggle: which switch; Transition: its type
 };
 
 // Spreadsheet-like documents let the window show an editable cell grid. Cells

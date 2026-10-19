@@ -67,7 +67,7 @@ void registerObjectCommands2(Session& session) {
                     o.selected = o.name == an;
                 }
                 purgeMeshes(d);
-                return done("joined " + std::to_string(names.size()) + " objects into " + an, d, p);
+                return done("joined " + many(names.size(), "object") + " into " + an, d, p);
             }));
 
     reg.add({"model.separate",
@@ -140,7 +140,7 @@ void registerObjectCommands2(Session& session) {
                     ++n;
                 }
                 if (!n) return Result::failure("no mesh objects to change");
-                return done("set the origin of " + std::to_string(n) + " objects", d, p);
+                return done("set the origin of " + many(n, "object"), d, p);
             }));
 
     reg.add({"model.apply_transform",
@@ -171,7 +171,7 @@ void registerObjectCommands2(Session& session) {
                     ++n;
                 }
                 if (!n) return Result::failure("no mesh objects to change");
-                return done("applied the transform of " + std::to_string(n) + " objects", d, p);
+                return done("applied the transform of " + many(n, "object"), d, p);
             }));
 
     reg.add({"model.collection",
@@ -209,7 +209,7 @@ void registerObjectCommands2(Session& session) {
                 if (action == "move") {
                     auto objs = targets(d, p);
                     for (Object* o : objs) o->collection = name;
-                    return done("moved " + std::to_string(objs.size()) + " objects to " + name, d, p);
+                    return done("moved " + many(objs.size(), "object") + " to " + name, d, p);
                 }
                 return done("made collection " + name, d, p);
             }));

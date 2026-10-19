@@ -42,8 +42,10 @@ std::string objectLine(const ModelDoc& doc, const Object& o) {
     std::string s = o.name + " (" + o.type;
     if (const PolyMesh* m = doc.meshOf(o)) {
         s += " " + o.data + ": " + std::to_string(m->verts.size()) + " verts, " + std::to_string(m->faces.size()) + " faces";
-        const Evaluated& ev = doc.evaluated(o.name);
-        if (!o.modifiers.empty()) s += ", " + std::to_string(ev.faces) + " after modifiers";
+        if (!o.modifiers.empty()) {
+            const std::size_t faces = doc.shown(o) ? doc.evaluated(o.name).faces : evaluate(doc, o).faces.size();
+            s += ", " + std::to_string(faces) + " after modifiers";
+        }
     }
     if (o.type == "light") s += " " + o.lightType + " " + num(o.power);
     s += ") at " + num(o.location.x) + "," + num(o.location.y) + "," + num(o.location.z);

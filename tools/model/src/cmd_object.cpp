@@ -220,7 +220,7 @@ void registerObjectCommands(Session& session) {
                 d.scene.editMode = false;
                 std::size_t n = 0;
                 for (const auto& o : d.scene.objects) n += o.selected ? 1 : 0;
-                return done(std::to_string(n) + " objects selected", d, p);
+                return done(many(n, "object") + " selected", d, p);
             }));
 
     reg.add({"model.duplicate_object",
@@ -309,7 +309,7 @@ void registerObjectCommands(Session& session) {
                     o.parent = parent;
                     if (boolParam(p, "keep", true)) setWorld(d, o, w);
                 }
-                return done((parent.empty() ? "cleared the parent of " : "parented to " + parent + ": ") + std::to_string(kids.size()) + " objects", d, p);
+                return done((parent.empty() ? "cleared the parent of " : "parented to " + parent + ": ") + many(kids.size(), "object"), d, p);
             }));
 
     reg.add({"model.mode",

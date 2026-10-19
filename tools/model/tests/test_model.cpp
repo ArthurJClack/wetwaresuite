@@ -300,6 +300,7 @@ int main() {
             const double v = volumeOf(m);
             CHECK(closedMesh(m) && v < 8 - 1.4 && v > 8 - 2 * 3.1416 * 0.25 - 0.05);
             CHECK(stats(m).euler == 0);  // a hole through it
+            CHECK(m.faces.size() < 80);   // flat parts joined back into n-gons
             CHECK(d->evaluated("Cube").errors.empty());
         }
         // moving the cutter re-evaluates

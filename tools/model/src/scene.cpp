@@ -508,7 +508,7 @@ bool ModelDoc::renderView(const OrbitView& view, int width, int height, std::vec
                 canvas.set(static_cast<int>(i % width), static_cast<int>(i / width), kSelect, 0.28);
         for (EdgeKey k : allEdges(*cm)) {
             const bool sel = cm->esel.count(k) > 0;
-            drawEdge(canvas, b, pts[keyA(k)], pts[keyB(k)], sel ? kSelect : kWire, thick);
+            drawEdge(canvas, b, pts[keyA(k)], pts[keyB(k)], sel ? kSelect : kWire, sel ? thick + 1 : thick);
         }
         if (scene.selectMode == SelectMode::Vertex) {
             const int r = thick + 1;

@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <optional>
 
 #include "cmd.hpp"
 #include "wetwaresuite/animate/animate.hpp"
@@ -48,14 +49,39 @@ render::RenderOptions optionsFrom(const Params& p, const RenderSetup& s, const s
     return o;
 }
 
-raster::Image renderAt(const ModelDoc& d, int frame, bool useFrame, const Params& p, const std::string& mode, int samples,
-                       render::RenderStats* stats) {
-    const RenderSetup setup = setupFrom(p);
-    if (!useFrame) return render::renderScene(toRenderScene(d, setup), optionsFrom(p, setup, mode, samples), stats);
+render::Scene sceneAt(const ModelDoc& d, int frame, bool useFrame, const RenderSetup& setup) {
+    if (!useFrame) return toRenderScene(d, setup);
     ModelDoc copy = d;
     applyFrame(copy, frame);
     copy.refresh();
-    return render::renderScene(toRenderScene(copy, setup), optionsFrom(p, setup, mode, samples), stats);
+    return toRenderScene(copy, setup);
+}
+
+raster::Image renderAt(const ModelDoc& d, int frame, bool useFrame, const Params& p, const std::string& mode, int samples,
+                       render::RenderStats* stats, const std::optional<render::Camera>& camera = std::nullopt) {
+    const RenderSetup setup = setupFrom(p);
+    render::RenderOptions o = optionsFrom(p, setup, mode, samples);
+    o.camera = camera;
+    return render::renderScene(sceneAt(d, frame, useFrame, setup), o, stats);
+}
+
+// Without a camera object the view is fitted to the scene; for an animation
+// it's fitted once around every frame, so the motion shows.
+std::optional<render::Camera> animationCamera(const ModelDoc& d, const Params& p, int start, int end, int step) {
+    const RenderSetup setup = setupFrom(p);
+    bool hasCamera = false;
+    for (const auto& o : d.scene.objects) hasCamera = hasCamera || o.type == "camera";
+    if (setup.camera != "view" && (hasCamera || !setup.camera.empty())) return std::nullopt;
+    RenderSetup noGround = setup;
+    noGround.ground = false;
+    render::Scene all = sceneAt(d, start, true, noGround);
+    for (int f = start + step; f <= end; f += step) {
+        render::Scene s = sceneAt(d, f, true, noGround);
+        all.objects.insert(all.objects.end(), s.objects.begin(), s.objects.end());
+    }
+    render::Camera cam = all.camera;
+    render::fitCamera(all, cam);
+    return cam;
 }
 
 std::vector<std::string> channelsFrom(const std::string& spec) {
@@ -236,8 +262,10 @@ void registerRenderCommands(Session& session) {
                 const bool gif = path.extension() == ".gif" || path.extension() == ".GIF";
                 std::vector<raster::Image> frames;
                 std::size_t written = 0;
+                d.refresh();
+                const auto camera = animationCamera(d, p, start, end, step);
                 for (int f = start; f <= end; f += step) {
-                    raster::Image img = renderAt(d, f, true, p, "preview", 4, nullptr);
+                    raster::Image img = renderAt(d, f, true, p, "preview", 4, nullptr, camera);
                     if (gif) {
                         frames.push_back(std::move(img));
                     } else {

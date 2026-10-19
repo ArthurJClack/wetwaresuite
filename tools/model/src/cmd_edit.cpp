@@ -9,7 +9,10 @@ namespace wetwaresuite::model::cmd {
 
 namespace {
 
-std::string count(std::size_t n, const std::string& what) { return std::to_string(n) + " " + what + (n == 1 ? "" : "s"); }
+std::string count(std::size_t n, const std::string& what) {
+    if (n == 1) return "1 " + what;
+    return std::to_string(n) + " " + (what == "vertex" ? std::string("vertices") : what + "s");
+}
 
 double worldScale(const Mat4& w) {
     const double sx = mesh::length(w.direction({1, 0, 0})), sy = mesh::length(w.direction({0, 1, 0})), sz = mesh::length(w.direction({0, 0, 1}));

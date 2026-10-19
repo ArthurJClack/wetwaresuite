@@ -43,6 +43,7 @@ bool has(const Params& p, const std::string& key);
 Vec3 color(const Params& p, const std::string& key, const Vec3& fallback);  // "#rrggbb" or names -> sRGB 0..1
 std::vector<std::string> splitList(const std::string& s);
 std::string num(double v);
+std::string many(std::size_t n, const std::string& word);  // "1 object", "3 objects"
 std::string hex(const Vec3& c);
 void selectionFields(Result& r, const PolyMesh& m);
 

@@ -483,7 +483,54 @@ std::size_t limitedDissolve(PolyMesh& m, double degrees, bool selectedOnly) {
         if (a.material != b.material || m.seams.count(t.edges[e]) || m.sharp.count(t.edges[e])) continue;
         if (mesh::dot(faceNormal(m, a), faceNormal(m, b)) >= c) flat.insert(t.edges[e]);
     }
-    return dissolveEdgeSet(m, flat, true, degrees);
+    // Grow regions across flat edges (longest first), but only while each
+    // region stays a disk: two disks join into a disk when they meet along one
+    // run of edges (shared vertices = shared edges + 1). A flat area with holes
+    // (a wall with windows) ends up as a few n-gons instead of not at all.
+    std::vector<EdgeKey> order(flat.begin(), flat.end());
+    auto len = [&](EdgeKey k) { return mesh::length(m.verts[keyA(k)].p - m.verts[keyB(k)].p); };
+    std::stable_sort(order.begin(), order.end(), [&](EdgeKey x, EdgeKey y) { return len(x) > len(y); });
+    std::vector<std::uint32_t> region(m.faces.size());
+    std::iota(region.begin(), region.end(), 0u);
+    std::vector<std::vector<std::uint32_t>> members(m.faces.size());
+    std::vector<std::set<std::uint32_t>> verts(m.faces.size());
+    for (std::uint32_t f = 0; f < m.faces.size(); ++f) {
+        members[f] = {f};
+        verts[f].insert(m.faces[f].v.begin(), m.faces[f].v.end());
+    }
+    std::set<EdgeKey> joined;
+    for (auto k : order) {
+        const auto& ef = t.edgeFaces[t.index.at(k)];
+        std::uint32_t r1 = region[ef[0].face], r2 = region[ef[1].face];
+        if (r1 == r2) {
+            joined.insert(k);
+            continue;
+        }
+        if (members[r1].size() > members[r2].size()) std::swap(r1, r2);
+        std::size_t sharedEdges = 0;
+        for (auto f : members[r1]) {
+            const auto& fv = m.faces[f].v;
+            for (std::size_t i = 0; i < fv.size(); ++i) {
+                const auto& hf = t.edgeFaces[t.index.at(edgeKey(fv[i], fv[(i + 1) % fv.size()]))];
+                for (const auto& h : hf)
+                    if (region[h.face] == r2) ++sharedEdges;
+            }
+        }
+        std::size_t sharedVerts = 0;
+        for (auto v : verts[r1]) sharedVerts += verts[r2].count(v);
+        if (sharedVerts != sharedEdges + 1) continue;
+        for (auto f : members[r1]) region[f] = r2;
+        members[r2].insert(members[r2].end(), members[r1].begin(), members[r1].end());
+        members[r1].clear();
+        verts[r2].insert(verts[r1].begin(), verts[r1].end());
+        verts[r1].clear();
+        joined.insert(k);
+    }
+    for (auto k : order) {
+        const auto& ef = t.edgeFaces[t.index.at(k)];
+        if (region[ef[0].face] == region[ef[1].face]) joined.insert(k);
+    }
+    return dissolveEdgeSet(m, joined, true, degrees);
 }
 
 std::size_t remove(PolyMesh& m, DeleteMode mode) {

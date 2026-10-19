@@ -209,6 +209,8 @@ std::string num(double v) {
     return buf;
 }
 
+std::string many(std::size_t n, const std::string& word) { return std::to_string(n) + " " + word + (n == 1 ? "" : "s"); }
+
 std::string hex(const Vec3& c) {
     char buf[16];
     auto b = [](double v) { return static_cast<int>(std::clamp(v, 0.0, 1.0) * 255 + 0.5); };

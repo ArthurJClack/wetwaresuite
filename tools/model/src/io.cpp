@@ -459,7 +459,7 @@ std::string exportFile(const ModelDoc& doc, const fs::path& path, const ExportOp
     if (ext == "obj") {
         std::size_t faces = 0;
         writeFile(path, exportObj(doc, path, objs, opt, faces));
-        return "wrote " + path.string() + ": " + std::to_string(objs.size()) + " objects, " + std::to_string(faces) + " polygons";
+        return "wrote " + path.string() + ": " + std::to_string(objs.size()) + (objs.size() == 1 ? " object, " : " objects, ") + std::to_string(faces) + " polygons";
     }
     if (!mesh::canWrite(path)) {
         std::string list = "wwmodel";
@@ -475,7 +475,7 @@ std::string exportFile(const ModelDoc& doc, const fs::path& path, const ExportOp
     mesh::SaveOptions so;
     so.ascii = opt.ascii;
     mesh::save(path, all, so);
-    return "wrote " + path.string() + ": " + std::to_string(objs.size()) + " objects, " + std::to_string(all.triangleCount()) + " triangles";
+    return "wrote " + path.string() + ": " + std::to_string(objs.size()) + (objs.size() == 1 ? " object, " : " objects, ") + std::to_string(all.triangleCount()) + " triangles";
 }
 
 // ---- import ----

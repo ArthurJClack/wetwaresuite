@@ -31,7 +31,7 @@ void registerEditCommands2(Session& session) {
              true},
             edit(session, meshEdit([](ModelDoc& d, Object&, PolyMesh& m, const Params& p) {
                 const std::size_t n = bridge(m, static_cast<int>(intParam(p, "twist", 0)));
-                return done("bridged with " + std::to_string(n) + " faces", d, p);
+                return done("bridged with " + many(n, "face"), d, p);
             })));
 
     reg.add({"model.fill",
@@ -140,7 +140,7 @@ void registerEditCommands2(Session& session) {
                 const bool sel = anyFaces(m);
                 const std::size_t n = stringParam(p, "action", "recalc") == "flip" ? flipNormals(m, sel)
                                                                                     : recalcNormals(m, boolParam(p, "inside", false), sel);
-                return done("flipped " + std::to_string(n) + " faces", d, p);
+                return done("flipped " + many(n, "face"), d, p);
             })));
 
     reg.add({"model.triangulate",

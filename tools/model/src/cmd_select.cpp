@@ -193,8 +193,8 @@ void registerSelectCommands(Session& session) {
                 if (type == "index" || type == "box" || type == "rect" || type == "random" || type == "all") flushSelection(m, mode);
                 combine(m, old, how(p), mode);
                 const auto c = countSelection(m);
-                return done("selected " + std::to_string(c.verts) + " vertices, " + std::to_string(c.edges) + " edges, " +
-                                std::to_string(c.faces) + " faces",
+                return done("selected " + (c.verts == 1 ? std::string("1 vertex") : std::to_string(c.verts) + " vertices") + ", " +
+                                many(c.edges, "edge") + ", " + many(c.faces, "face"),
                             d, p);
             })));
 

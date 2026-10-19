@@ -277,8 +277,9 @@ std::string ModelDoc::summary() const {
             faces += m->faces.size();
         }
     }
-    std::string s = std::to_string(scene.objects.size()) + " objects (" + std::to_string(meshObjects) + " meshes): " +
-                    std::to_string(verts) + " vertices, " + std::to_string(faces) + " faces";
+    const auto pl = [](std::size_t n, const char* one, const char* more) { return std::to_string(n) + (n == 1 ? one : more); };
+    std::string s = pl(scene.objects.size(), " object (", " objects (") + pl(meshObjects, " mesh): ", " meshes): ") +
+                    pl(verts, " vertex, ", " vertices, ") + pl(faces, " face", " faces");
     if (!scene.active.empty()) s += "; active " + scene.active;
     if (scene.editMode) {
         s += "; edit mode (" + std::string(toString(scene.selectMode)) + ")";

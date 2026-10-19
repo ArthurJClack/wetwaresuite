@@ -54,7 +54,7 @@ ParamSpec opParam() {
 
 // The picture the wand and colour range look at.
 Image samplePicture(const ImageDoc& doc, const Params& p, int layer) {
-    if (stringParam(p, "sample", "image") == "layer") return doc.image.layers[static_cast<std::size_t>(layer)].image;
+    if (stringParam(p, "sample", "image") == "layer" && !doc.image.layers[static_cast<std::size_t>(layer)].image.empty()) return doc.image.layers[static_cast<std::size_t>(layer)].image;
     return doc.flatten();
 }
 
@@ -79,13 +79,7 @@ Matrix3 translate(double x, double y) { return {1, 0, x, 0, 1, y, 0, 0, 1}; }
 
 // Runs every layer, mask and the selection through the same warp onto a new canvas size.
 void warpAll(ImageDoc& doc, const Matrix3& inverse, int width, int height) {
-    for (auto& layer : doc.image.layers) {
-        layer.image = warp(layer.image, inverse, width, height);
-        if (!layer.mask.empty()) layer.mask = imageToMask(warp(maskToImage(layer.mask), inverse, width, height));
-    }
-    if (doc.hasSelection()) doc.selection = imageToMask(warp(maskToImage(doc.selection), inverse, width, height));
-    doc.image.width = width;
-    doc.image.height = height;
+    transformDocument(doc, [&](const Image& img) { return warp(img, inverse, width, height); });
 }
 
 // The biggest axis-aligned rectangle inside a w x h rectangle turned by `a` radians.
@@ -127,12 +121,14 @@ bool shiftArg(const Params& p, const std::string& key, ColorShift& out, std::str
 
 template <typename Fn>
 Result onLayersSel(ImageDoc& doc, const Params& p, Fn fn) {
+    std::string error;
     if (boolParam(p, "all_layers", false)) {
-        for (auto& layer : doc.image.layers) fn(layer.image);
+        for (std::size_t i = 0; i < doc.image.layers.size(); ++i) {
+            if (doc.image.layers[i].hasPixels() && pixelLayer(doc, static_cast<int>(i), error)) fn(doc.image.layers[i].image);
+        }
         return Result::success("");
     }
-    std::string error;
-    const int idx = layerIndex(doc, p, error);
+    const int idx = pixelLayerIndex(doc, p, error);
     if (idx < 0) return Result::failure(error);
     fn(doc.image.layers[static_cast<std::size_t>(idx)].image);
     return Result::success("");
@@ -272,7 +268,7 @@ void registerSelection(Session& session) {
                 Color c;
                 std::string error;
                 if (!colorArg(p, "color", "", c, error)) return Result::failure(error);
-                const int layer = layerIndex(doc, p, error);
+                const int layer = pixelLayerIndex(doc, p, error);
                 if (layer < 0) return Result::failure(error);
                 Image& img = doc.image.layers[static_cast<std::size_t>(layer)].image;
                 Image fill(img.width(), img.height(), c);
@@ -290,7 +286,7 @@ void registerSelection(Session& session) {
             imageCommand(session, [](ImageDoc& doc, const Params& p) {
                 if (!doc.hasSelection()) return Result::failure("nothing is selected; use photo.select first (or paint.clear for the whole layer)");
                 std::string error;
-                const int layer = layerIndex(doc, p, error);
+                const int layer = pixelLayerIndex(doc, p, error);
                 if (layer < 0) return Result::failure(error);
                 Image& img = doc.image.layers[static_cast<std::size_t>(layer)].image;
                 img.fill({0, 0, 0, 0});  // the selection keeps what's outside it
@@ -308,7 +304,7 @@ void registerSelection(Session& session) {
              true},
             imageCommand(session, [](ImageDoc& doc, const Params& p) {
                 std::string error;
-                const int layer = layerIndex(doc, p, error);
+                const int layer = pixelLayerIndex(doc, p, error);
                 if (layer < 0) return Result::failure(error);
                 const Mask sel = selectedOrAll(doc);
                 Layer& src = doc.image.layers[static_cast<std::size_t>(layer)];
@@ -368,7 +364,7 @@ void registerMasks(Session& session) {
                 if (idx < 0) return Result::failure(error);
                 Layer& l = doc.image.layers[static_cast<std::size_t>(idx)];
                 const std::string action = stringParam(p, "action");
-                const int W = l.image.width(), H = l.image.height();
+                const int W = doc.image.width, H = doc.image.height;
                 std::string msg;
                 if (action == "add") {
                     const std::string from = stringParam(p, "from", "selection");
@@ -519,7 +515,7 @@ void registerTransform(Session& session) {
              true},
             imageCommand(session, [](ImageDoc& doc, const Params& p) {
                 std::string error;
-                const int idx = layerIndex(doc, p, error);
+                const int idx = pixelLayerIndex(doc, p, error);
                 if (idx < 0) return Result::failure(error);
                 Layer& layer = doc.image.layers[static_cast<std::size_t>(idx)];
                 const PixelRect box = sourceBox(doc, layer);
@@ -598,7 +594,7 @@ void rotateFree(ImageDoc& doc, double degrees, const std::string& mode, Color fi
     const Matrix3 rot = {c, s, 0, -s, c, 0, 0, 0, 1};  // inverse of a clockwise turn (y down)
     const Matrix3 inverse = multiply(translate(W / 2, H / 2), multiply(rot, translate(-outW / 2.0, -outH / 2.0)));
     warpAll(doc, inverse, outW, outH);
-    if (fill.a > 0 && !doc.image.layers.empty()) {
+    if (fill.a > 0 && !doc.image.layers.empty() && doc.image.layers.front().hasPixels()) {
         Image& bottom = doc.image.layers.front().image;
         Image under(bottom.width(), bottom.height(), fill);
         blendOnto(under, bottom, 0, 0, Blend::Normal, 1.0);

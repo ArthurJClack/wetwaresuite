@@ -287,6 +287,40 @@ void testRetouchParams() {
 }
 
 // The params the canvas sends really run, change the picture and undo in one step.
+void testBrushTools() {
+    Session session;
+    photo::registerCommands(session);
+    paint::registerCommands(session);
+    CHECK(session.run("photo.new", {{"width", std::int64_t{60}}, {"height", std::int64_t{40}}, {"background", std::string("#808080")}}).ok);
+    auto doc = session.workspace().getAs<raster::ImageDoc>("img1");
+    CHECK(doc != nullptr);
+    if (!doc) return;
+    BrushToolSettings set;
+    set.size = 8;
+    std::string command, error;
+    Params p;
+    // clone without a source says what to do
+    CHECK(!brushToolParams("clone", "img1", {10, 10, 20, 10}, {}, set, nullptr, command, p, error) && error.find("Alt+click") != std::string::npos);
+    CHECK(!brushToolParams("dodge", "img1", {10}, {}, set, nullptr, command, p, error));
+    // every tool's params run as they are
+    HealSource src;
+    src.pick(40, 30);
+    double off[2];
+    CHECK(src.offsetFor(10, 10, off[0], off[1]));
+    for (const char* tool : {"clone", "dodge", "burn", "sponge", "smudge", "blur", "sharpen"}) {
+        CHECK(brushToolParams(tool, "img1", {10, 10, 20, 10}, {1, 0.5}, set, off, command, p, error));
+        Result r = session.run(command, p);
+        CHECK(r.ok);
+    }
+    // dodge brightens, burn darkens where they paint
+    set.strength = 80;
+    CHECK(brushToolParams("dodge", "img1", {5, 30, 15, 30}, {}, set, nullptr, command, p, error) && session.run(command, p).ok);
+    CHECK(doc->image.layers[0].image.at(10, 30).r > 0x80);
+    CHECK(brushToolParams("burn", "img1", {45, 30, 55, 30}, {}, set, nullptr, command, p, error) && session.run(command, p).ok);
+    CHECK(doc->image.layers[0].image.at(50, 30).r < 0x80);
+    CHECK(std::get<std::string>(p.at("range")) == "midtones" && command == "paint.dodge");
+}
+
 void testRetouchCommands() {
     Session session;
     photo::registerCommands(session);
@@ -350,5 +384,6 @@ int main() {
     testHealSource();
     testRetouchParams();
     testRetouchCommands();
+    testBrushTools();
     return check::summary("gui_logic");
 }

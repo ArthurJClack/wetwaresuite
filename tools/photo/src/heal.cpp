@@ -538,7 +538,7 @@ bool buildMask(const Params& p, int w, int h, Mask& mask, std::string& error) {
 }
 
 Image* targetLayer(ImageDoc& doc, const Params& p, std::string& error) {
-    int idx = layerIndex(doc, p, error);
+    int idx = pixelLayerIndex(doc, p, error);
     if (idx < 0) return nullptr;
     return &doc.image.layers[static_cast<std::size_t>(idx)].image;
 }

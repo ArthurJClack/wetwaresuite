@@ -16,6 +16,7 @@
 #include "wetwaresuite/raster/pyramid.hpp"
 #include "wetwaresuite/raster/selection.hpp"
 #include "select.hpp"
+#include "commands.hpp"
 #include "wetwaresuite/raster/simd.hpp"
 
 namespace wetwaresuite::photo {
@@ -43,12 +44,14 @@ Result docResult(const std::string& message, const ImageDoc& doc, const Params& 
 // Applies fn to the chosen layer, or every layer when all_layers is set.
 template <typename Fn>
 Result onLayers(ImageDoc& doc, const Params& p, Fn fn) {
+    std::string error;
     if (boolParam(p, "all_layers", false)) {
-        for (auto& layer : doc.image.layers) fn(layer.image);
+        for (std::size_t i = 0; i < doc.image.layers.size(); ++i) {
+            if (doc.image.layers[i].hasPixels() && pixelLayer(doc, static_cast<int>(i), error)) fn(doc.image.layers[i].image);
+        }
         return Result::success("");
     }
-    std::string error;
-    int idx = layerIndex(doc, p, error);
+    int idx = pixelLayerIndex(doc, p, error);
     if (idx < 0) return Result::failure(error);
     fn(doc.image.layers[static_cast<std::size_t>(idx)].image);
     return Result::success("");
@@ -60,17 +63,7 @@ ParamSpec allLayersParam() {
 
 // Geometry changes apply to every layer so they stay aligned.
 // Masks and the selection go through the same change.
-void transformAll(ImageDoc& doc, const std::function<Image(const Image&)>& fn) {
-    for (auto& layer : doc.image.layers) {
-        layer.image = fn(layer.image);
-        if (!layer.mask.empty()) layer.mask = imageToMask(fn(maskToImage(layer.mask)));
-    }
-    if (doc.hasSelection()) doc.selection = imageToMask(fn(maskToImage(doc.selection)));
-    if (!doc.image.layers.empty()) {
-        doc.image.width = doc.image.layers[0].image.width();
-        doc.image.height = doc.image.layers[0].image.height();
-    }
-}
+void transformAll(ImageDoc& doc, const std::function<Image(const Image&)>& fn) { transformDocument(doc, fn); }
 
 std::string lowerExt(const fs::path& p) {
     std::string e = p.extension().string();
@@ -173,8 +166,9 @@ void registerCommands(Session& session) {
 
     reg.add({"photo.open",
              "Open image",
-             "Open an image file as a new document. Reads PNG, JPEG, BMP, TGA, GIF, PSD (flattened), HDR, PNM and "
-             "layered OpenRaster (.ora). Returns the document id to use with other commands.",
+             "Open an image file as a new document. Reads PNG, JPEG, BMP, TGA, GIF, HDR, PNM, layered OpenRaster (.ora, "
+             "everything kept) and Photoshop .psd (layers, groups, masks, blend modes; flattened when it can't read the layers). "
+             "Returns the document id to use with other commands.",
              {{"path", ParamType::String, "path to the image file", true}},
              false, true},
             [s](const Params& p) {
@@ -216,7 +210,8 @@ void registerCommands(Session& session) {
 
     reg.add({"photo.info",
              "Image info",
-             "Describe an open image: size, layers (index, name, opacity, blend, visibility) and the active layer.",
+             "Describe an open image: size, layers top first (index, name, kind, opacity, blend, visibility, groups, masks, "
+             "clipping, locks, styles, adjustment settings) and the active layer.",
              {docParam()},
              false, true},
             imageCommand(
@@ -225,10 +220,24 @@ void registerCommands(Session& session) {
                     std::string text = doc.summary();
                     for (std::size_t i = doc.image.layers.size(); i-- > 0;) {
                         const auto& l = doc.image.layers[i];
-                        text += "\n  " + std::to_string(i) + ": " + l.name + " (" + toString(l.blend) + ", opacity " +
-                                std::to_string(static_cast<int>(std::lround(l.opacity * 100))) + "%" +
+                        std::string kind;
+                        if (l.kind == LayerKind::Group) kind = l.passThrough ? "group, " : "group (isolated), ";
+                        else if (l.kind == LayerKind::Adjustment) kind = (l.settings.count("type") ? l.settings.at("type") : "") + " adjustment, ";
+                        else if (l.kind != LayerKind::Pixel) kind = toString(l.kind) + ", ";
+                        std::string extra;
+                        if (l.kind == LayerKind::Adjustment || l.kind == LayerKind::Text || l.kind == LayerKind::Shape) {
+                            for (const auto& [k, v] : l.settings) {
+                                if (k != "type") extra += (extra.empty() ? "" : " ") + k + "=" + v;
+                            }
+                            if (!extra.empty()) extra = " [" + extra + "]";
+                        }
+                        const std::string style = styleToText(l.style);
+                        text += "\n  " + std::string(static_cast<std::size_t>(l.depth) * 2, ' ') + std::to_string(i) + ": " + l.name + " (" + kind +
+                                toString(l.blend) + ", opacity " + std::to_string(static_cast<int>(std::lround(l.opacity * 100))) + "%" +
+                                (l.fill < 1 ? ", fill " + std::to_string(static_cast<int>(std::lround(l.fill * 100))) + "%" : "") +
                                 (l.visible ? "" : ", hidden") + (l.mask.empty() ? "" : l.maskEnabled ? ", masked" : ", mask off") +
-                                (l.clip ? ", clipped" : "") + (static_cast<int>(i) == doc.active ? ", active" : "") + ")";
+                                (l.clip ? ", clipped" : "") + (l.lockAlpha ? ", alpha locked" : "") + (l.collapsed ? ", folded" : "") +
+                                (static_cast<int>(i) == doc.active ? ", active" : "") + ")" + extra + (style.empty() ? "" : " style: " + style);
                     }
                     if (doc.hasSelection()) {
                         const PixelRect b = bounds(doc.selection);
@@ -262,8 +271,9 @@ void registerCommands(Session& session) {
 
     reg.add({"photo.save",
              "Save image",
-             "Save the image. The extension picks the format: .ora keeps layers; .png, .jpg, .bmp, .tga and .ppm "
-             "save the flattened image.",
+             "Save the image. The extension picks the format: .ora keeps everything (layers, groups, adjustment, text and "
+             "shape layers, styles); .psd keeps layers, groups, masks and blend modes for Photoshop, GIMP and Krita (the "
+             "result says what it had to flatten); .png, .jpg, .bmp, .tga, .tif, .webp and .ppm save the flattened image.",
              {docParam(),
               {"path", ParamType::String, "file to write, e.g. out.png", true},
               {"quality", ParamType::Int, "JPEG quality 1..100", false, {}, std::int64_t{90}}},
@@ -277,17 +287,20 @@ void registerCommands(Session& session) {
                         fs::create_directories(parent, dirEc);
                     }
                     if (!canSaveImage(path)) {
-                        return Result::failure("can't save ." + lowerExt(path) + "; use one of: ora, " + joinList(writableExtensions()));
+                        return Result::failure("can't save ." + lowerExt(path) + "; use one of: ora, psd, " + joinList(writableExtensions()));
                     }
+                    std::vector<std::string> notes;
                     try {
-                        saveImage(doc, path, static_cast<int>(intParam(p, "quality", 90)));
+                        saveImage(doc, path, static_cast<int>(intParam(p, "quality", 90)), &notes);
                     } catch (const std::exception& e) {
                         return Result::failure(e.what());
                     }
                     doc.path = path;
                     std::error_code ec;
                     auto bytes = static_cast<std::int64_t>(fs::file_size(path, ec));
-                    return Result::success("saved " + path).with("path", path).with("bytes", bytes);
+                    std::string msg = "saved " + path;
+                    for (const auto& n : notes) msg += "\n  note: " + n;
+                    return Result::success(msg).with("path", path).with("bytes", bytes).with("notes", static_cast<std::int64_t>(notes.size()));
                 },
                 false));
 
@@ -600,6 +613,10 @@ void registerCommands(Session& session) {
 
     registerHealCommands(session);
     registerSelectCommands(session);
+    registerAdjustmentCommands(session);
+    registerFilterCommands(session);
+    registerDistortCommands(session);
+    registerSubjectCommands(session);
 }
 
 }  // namespace wetwaresuite::photo

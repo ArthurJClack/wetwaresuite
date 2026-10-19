@@ -8,6 +8,7 @@
 
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/parallel.hpp"
+#include "wetwaresuite/raster/psd.hpp"
 #include "wetwaresuite/raster/selection.hpp"
 
 namespace wetwaresuite::raster {
@@ -44,13 +45,22 @@ std::shared_ptr<ImageDoc> newImage(int width, int height, Color background) {
 }
 
 bool canOpenImage(const std::filesystem::path& path) { return ext(path) == "ora" || canRead(path); }
-bool canSaveImage(const std::filesystem::path& path) { return ext(path) == "ora" || canWrite(path); }
+bool canSaveImage(const std::filesystem::path& path) { return ext(path) == "ora" || ext(path) == "psd" || canWrite(path); }
 
 std::shared_ptr<ImageDoc> openImage(const std::filesystem::path& path) {
     auto doc = std::make_shared<ImageDoc>();
+    bool layered = false;
     if (ext(path) == "ora") {
         doc->image = loadOra(path);
-    } else {
+        layered = true;
+    } else if (ext(path) == "psd") {
+        try {
+            doc->image = loadPsd(path);  // layer by layer when it can, else flattened below
+            layered = true;
+        } catch (const std::exception&) {
+        }
+    }
+    if (!layered) {
         Image img = load(path);
         doc->image.width = img.width();
         doc->image.height = img.height();
@@ -61,9 +71,16 @@ std::shared_ptr<ImageDoc> openImage(const std::filesystem::path& path) {
     return doc;
 }
 
-void saveImage(const ImageDoc& doc, const std::filesystem::path& path, int quality) {
-    if (ext(path) == "ora") saveOra(doc.image, path);
-    else save(doc.flatten(), path, quality);
+void saveImage(const ImageDoc& doc, const std::filesystem::path& path, int quality, std::vector<std::string>* notes) {
+    if (notes) notes->clear();
+    if (ext(path) == "ora") {
+        saveOra(doc.image, path);
+    } else if (ext(path) == "psd") {
+        auto n = savePsd(doc.image, path);
+        if (notes) *notes = std::move(n);
+    } else {
+        save(doc.flatten(), path, quality);
+    }
 }
 
 void ImageDoc::touch(int layer, int x, int y, int width, int height) {
@@ -78,12 +95,43 @@ void ImageDoc::touch(int layer, int x, int y, int width, int height) {
 ImageDoc::Changes ImageDoc::takeChanges() {
     Changes c = changes_;
     changes_ = {};
+    // a layer style draws past the pixels that changed (a shadow moves with them)
+    int reach = 0;
+    for (const auto& l : image.layers) {
+        if (l.style.any()) reach = std::max(reach, styleReach(l.style));
+    }
+    if (reach > 0 && !c.rect.empty()) {
+        c.rect = {std::max(0, c.rect.x0 - reach), std::max(0, c.rect.y0 - reach), std::min(image.width, c.rect.x1 + reach),
+                  std::min(image.height, c.rect.y1 + reach)};
+    }
     return c;
 }
 
 namespace {
 
 std::atomic<std::size_t> gUndoBytes{0};
+
+// Whether two layers look the same on the canvas (the name and folding don't show).
+bool looksSame(const LayerInfo& a, const LayerInfo& b) {
+    LayerInfo c = a;
+    c.name = b.name;
+    c.collapsed = b.collapsed;
+    return c == b;
+}
+
+// Locked transparency: the edit keeps its colours but not its alpha changes. Pixels it erased
+// come back as they were (painting can't make a hole in an alpha-locked layer).
+void keepAlpha(Image& now, const Image& before) {
+    if (now.width() != before.width() || now.height() != before.height()) return;
+    const std::size_t n = static_cast<std::size_t>(now.width()) * now.height();
+    std::uint8_t* d = now.data();
+    const std::uint8_t* b = before.data();
+    for (std::size_t i = 0; i < n * 4; i += 4) {
+        if (d[i + 3] == b[i + 3]) continue;
+        if (d[i + 3] == 0) std::copy_n(b + i, 4, d + i);
+        else d[i + 3] = b[i + 3];
+    }
+}
 
 bool sameShape(const LayeredImage& a, const LayeredImage& b) {
     if (a.width != b.width || a.height != b.height || a.layers.size() != b.layers.size()) return false;
@@ -175,12 +223,17 @@ Result ImageEdit::apply() {
     beforeWidth_ = doc.image.width;
     beforeHeight_ = doc.image.height;
     meta_.clear();
-    for (const auto& l : doc.image.layers) meta_.push_back({l.name, l.opacity, l.blend, l.visible, l.maskEnabled, l.clip});
+    bool lockedAlpha = false;
+    for (const auto& l : doc.image.layers) {
+        meta_.push_back(static_cast<const LayerInfo&>(l));
+        lockedAlpha = lockedAlpha || (l.lockAlpha && l.hasPixels());
+    }
     const Mask beforeSelection = doc.selection;
     doc.ignoreSelection = false;
 
     // brushes inside a selection need the whole old picture to put back what's outside it
-    if (mode_ == Mode::Declared && !doc.hasSelection()) {
+    // (and so do brushes on a layer with locked transparency, to put its alpha back)
+    if (mode_ == Mode::Declared && !doc.hasSelection() && !lockedAlpha) {
         const auto shape = layerSizes(doc.image);
         doc.recording_ = this;
         Result r;
@@ -240,6 +293,9 @@ Result ImageEdit::apply() {
         }
     }
     doc.ignoreSelection = false;
+    for (std::size_t i = 0; i < doc.image.layers.size(); ++i) {
+        if (meta_[i].lockAlpha && doc.image.layers[i].lockAlpha) keepAlpha(doc.image.layers[i].image, before.layers[i].image);
+    }
     diff(before);
     for (std::size_t i = 0; i < doc.image.layers.size(); ++i) {
         if (before.layers[i].mask != doc.image.layers[i].mask) {
@@ -249,11 +305,7 @@ Result ImageEdit::apply() {
         }
     }
     for (std::size_t i = 0; i < meta_.size(); ++i) {
-        const Layer& l = doc.image.layers[i];
-        const LayerMeta& m = meta_[i];
-        if (l.opacity != m.opacity || l.blend != m.blend || l.visible != m.visible || l.maskEnabled != m.maskEnabled || l.clip != m.clip) {
-            doc.markAllChanged();
-        }
+        if (!looksSame(doc.image.layers[i], meta_[i])) doc.markAllChanged();
     }
     return r;
 }
@@ -275,18 +327,9 @@ void ImageEdit::revert() {
             doc.markChanged({it->x, it->y, it->x + it->w, it->y + it->h});
         }
         for (std::size_t i = 0; i < meta_.size() && i < doc.image.layers.size(); ++i) {
-            Layer& l = doc.image.layers[i];
-            const LayerMeta& m = meta_[i];
-            if (l.opacity != m.opacity || l.blend != m.blend || l.visible != m.visible || l.maskEnabled != m.maskEnabled ||
-                l.clip != m.clip) {
-                doc.markAllChanged();
-            }
-            l.name = m.name;
-            l.opacity = m.opacity;
-            l.blend = m.blend;
-            l.visible = m.visible;
-            l.maskEnabled = m.maskEnabled;
-            l.clip = m.clip;
+            LayerInfo& l = doc.image.layers[i];
+            if (!looksSame(l, meta_[i])) doc.markAllChanged();
+            l = meta_[i];
         }
         for (auto& [i, mask] : masks_) {
             if (i < static_cast<int>(doc.image.layers.size())) doc.image.layers[static_cast<std::size_t>(i)].mask = std::move(mask);
@@ -330,6 +373,72 @@ ActionFactory imageCommand(Session& session, std::function<Result(ImageDoc&, con
         if (!undoable) return std::make_unique<FunctionAction>([doc, edit, p] { return edit(*doc, p); });
         return std::make_unique<ImageEdit>(doc, [edit, p](ImageDoc& d) { return edit(d, p); }, mode);
     };
+}
+
+bool pixelLayer(ImageDoc& doc, int index, std::string& error) {
+    if (index < 0 || index >= static_cast<int>(doc.image.layers.size())) {
+        error = "layer " + std::to_string(index) + " doesn't exist";
+        return false;
+    }
+    Layer& l = doc.image.layers[static_cast<std::size_t>(index)];
+    if (l.kind == LayerKind::Group || l.kind == LayerKind::Adjustment) {
+        error = "layer " + std::to_string(index) + " \"" + l.name + "\" is " + (l.kind == LayerKind::Group ? "a group" : "an adjustment layer") +
+                " and has no pixels; pick a pixel layer with layer=N (photo.info lists them)";
+        return false;
+    }
+    if (l.kind != LayerKind::Pixel) {
+        l.kind = LayerKind::Pixel;
+        l.settings.clear();
+    }
+    return true;
+}
+
+int pixelLayerIndex(ImageDoc& doc, const Params& p, std::string& error) {
+    const int idx = layerIndex(doc, p, error);
+    if (idx < 0 || !pixelLayer(doc, idx, error)) return -1;
+    return idx;
+}
+
+int insertLayer(ImageDoc& doc, Layer layer) {
+    auto& layers = doc.image.layers;
+    if (layers.empty()) {
+        layer.depth = 0;
+        layers.push_back(std::move(layer));
+        doc.active = 0;
+        return 0;
+    }
+    const int a = std::clamp(doc.active, 0, static_cast<int>(layers.size()) - 1);
+    const Layer& at = layers[static_cast<std::size_t>(a)];
+    const bool intoGroup = at.kind == LayerKind::Group;
+    layer.depth = intoGroup ? at.depth + 1 : at.depth;
+    const int pos = intoGroup ? a : a + 1;
+    layers.insert(layers.begin() + pos, std::move(layer));
+    doc.active = pos;
+    return pos;
+}
+
+void transformDocument(ImageDoc& doc, const std::function<Image(const Image&)>& fn) {
+    int width = -1, height = -1;
+    for (auto& layer : doc.image.layers) {
+        if (layer.hasPixels()) {
+            layer.image = fn(layer.image);
+            width = layer.image.width();
+            height = layer.image.height();
+            if (layer.kind != LayerKind::Pixel) {
+                layer.kind = LayerKind::Pixel;
+                layer.settings.clear();
+            }
+        }
+        if (!layer.mask.empty()) layer.mask = imageToMask(fn(maskToImage(layer.mask)));
+    }
+    if (doc.hasSelection()) doc.selection = imageToMask(fn(maskToImage(doc.selection)));
+    if (width < 0) {  // no pixel layers at all: find the new size from a blank canvas
+        const Image size = fn(Image(doc.image.width, doc.image.height));
+        width = size.width();
+        height = size.height();
+    }
+    doc.image.width = width;
+    doc.image.height = height;
 }
 
 int layerIndex(const ImageDoc& doc, const Params& p, std::string& error) {

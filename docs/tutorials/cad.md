@@ -2020,7 +2020,7 @@ Add a rib (gusset) to a body from an open line in a sketch: the line is thickene
 
 #### `cad.thread`: Thread
 
-Cut a modeled thread into a body along an axis: external (on a shaft: cuts the grooves) or internal (in a hole: the hole should be the minor diameter). Metric 60 degree profile. Also kept as a cosmetic callout (M8x1.25) for drawings. Returns the feature name.
+Cut a modeled thread into a body along an axis: external (on a shaft: cuts the grooves) or internal (in a hole: the hole should be the minor diameter). Metric 60 degree profile. Drawings show it as a callout (M8x1.25); cosmetic=true only adds the callout and axis and leaves the solid plain (fast, and what most printed and machined parts want). Returns the feature name.
 
 | param | required | default | meaning |
 |---|---|---|---|
@@ -2034,6 +2034,7 @@ Cut a modeled thread into a body along an axis: external (on a shaft: cuts the g
 | `axis` |  | `z` | direction the thread runs from the start point [z\|-z\|x\|-x\|y\|-y] |
 | `internal` |  | `false` | an internal thread (in a hole) |
 | `left` |  | `false` | left-handed |
+| `cosmetic` |  | `false` | callout only: don't cut the thread into the solid |
 | `segments` |  | `32` | segments per turn (whole number or expression) |
 | `name` |  |  | name for the feature (default: type + number, e.g. thread1) |
 

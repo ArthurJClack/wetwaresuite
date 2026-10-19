@@ -105,6 +105,7 @@ std::shared_ptr<AudioDoc> openAudio(const std::filesystem::path& path) {
 Result AudioEdit::apply() {
     before_ = doc_->audio;
     beforeNoise_ = doc_->noise;
+    beforeMarkers_ = doc_->markers;
     Result r;
     try {
         r = fn_(*doc_);
@@ -118,6 +119,7 @@ Result AudioEdit::apply() {
 void AudioEdit::revert() {
     doc_->audio = before_;
     doc_->noise = beforeNoise_;
+    doc_->markers = beforeMarkers_;
 }
 
 Result ProjectEdit::apply() {

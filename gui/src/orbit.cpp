@@ -47,7 +47,7 @@ void Shell::orbitToolbar() {
     }
     ImGui::SetItemTooltip("Show the whole model (or double-click it)");
     ImGui::SameLine();
-    ImGui::TextDisabled("drag to turn, right-drag to move, scroll to zoom");
+    ImGui::TextDisabled("drag to turn, right-drag to move, scroll to zoom, click to select (models)");
 }
 
 void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bool active) {
@@ -78,6 +78,19 @@ void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bo
         o.zoom = 1;
         o.panX = o.panY = 0;
         canvas_.orbitDirty = true;
+    }
+    // a click (no drag) in a model selects what's under it: objects, or
+    // vertices/edges/faces in edit mode (ctrl adds to the selection)
+    if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] < 16 &&
+        !io.KeyShift && size.x >= 8 && size.y >= 8) {
+        auto doc = session_.workspace().get(currentDoc_);
+        if (doc && doc->kind() == "model") {
+            const double u = (io.MousePos.x - v0.x) / size.x, v = (io.MousePos.y - v0.y) / size.y;
+            run("model.pick", {{"doc", currentDoc_}, {"u", u}, {"v", v}, {"yaw", o.yaw}, {"pitch", o.pitch}, {"zoom", o.zoom},
+                               {"pan_x", o.panX}, {"pan_y", o.panY}, {"width", static_cast<std::int64_t>(size.x)},
+                               {"height", static_cast<std::int64_t>(size.y)}, {"extend", io.KeyCtrl}});
+            canvas_.orbitDirty = true;
+        }
     }
     if (canvas_.orbitDragging && !active) {
         canvas_.orbitDragging = false;

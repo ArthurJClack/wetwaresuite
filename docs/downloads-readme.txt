@@ -7,7 +7,7 @@ open an app by double-clicking it:
 
   wetwaresuite-image        photos and painting (photo, paint)
   wetwaresuite-draw         vector, fonts, whiteboard (vector, type, board)
-  wetwaresuite-model        3D sculpt, render, animate
+  wetwaresuite-model        3D model, sculpt, render, animate
   wetwaresuite-game         game assets and levels (forge, levels)
   wetwaresuite-cad          CAD, blueprints, 3D print slicer
   wetwaresuite-electronics  circuits, PCBs, firmware flashing

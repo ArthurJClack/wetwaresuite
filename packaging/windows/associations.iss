@@ -92,6 +92,11 @@ Root: HKA; Subkey: "Software\Classes\.glb\OpenWithProgids"; ValueType: string; V
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-model.exe\SupportedTypes"; ValueType: string; ValueName: ".glb"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.gltf\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.model"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-model.exe\SupportedTypes"; ValueType: string; ValueName: ".gltf"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.fbx\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.model"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-model.exe\SupportedTypes"; ValueType: string; ValueName: ".fbx"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.wwmodel\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.model"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-model.exe\SupportedTypes"; ValueType: string; ValueName: ".wwmodel"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.wwmodel"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite.model"; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.tmx\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.game"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-game.exe\SupportedTypes"; ValueType: string; ValueName: ".tmx"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.tmj\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.game"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes

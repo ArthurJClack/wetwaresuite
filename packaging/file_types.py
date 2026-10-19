@@ -27,6 +27,7 @@ MIME = {
     ".svg": "image/svg+xml", ".ttf": "font/ttf", ".otf": "font/otf", ".woff": "font/woff", ".ufo": "font/x-ufo",
     ".excalidraw": "application/vnd.excalidraw+json", ".drawio": "application/vnd.jgraph.mxfile",
     ".obj": "model/obj", ".ply": "model/x-ply", ".off": "model/x-off", ".glb": "model/gltf-binary", ".gltf": "model/gltf+json",
+    ".fbx": "application/x-fbx",
     ".tmx": "application/x-tiled-tmx", ".tmj": "application/x-tiled-tmj", ".ldtk": "application/x-ldtk",
     ".stl": "model/stl", ".3mf": "model/3mf", ".dxf": "image/vnd.dxf", ".step": "model/step", ".stp": "model/step",
     ".wav": "audio/x-wav", ".mp3": "audio/mpeg", ".flac": "audio/flac", ".ogg": "audio/ogg", ".opus": "audio/opus",

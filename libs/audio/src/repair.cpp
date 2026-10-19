@@ -105,19 +105,48 @@ int declickChannel(std::vector<float>& x, int rate, const ClickSettings& st) {
         const double rms = std::sqrt(energy / static_cast<double>(res.size()));
         const double sigma = 1.4826 * median(absRes);
         const double thr = std::max(st.sensitivity * sigma, 0.004 * rms + 1e-4);
+        // the residual's local size (about 3 ms either side, leaving out the sample's own
+        // neighbourhood): loud passages predict worse than quiet ones, so a click has to
+        // stand out from what's around it, not just from the block as a whole
+        std::vector<double> prefix(absRes.size() + 1, 0.0);
+        for (std::size_t j = 0; j < absRes.size(); ++j) prefix[j + 1] = prefix[j] + absRes[j];
+        auto localSigma = [&](std::size_t j) {
+            constexpr std::size_t kSpan = 128, kGap = 6;
+            const std::size_t lo = j > kSpan ? j - kSpan : 0, hi = std::min(absRes.size(), j + kSpan + 1);
+            const std::size_t glo = j > kGap ? j - kGap : 0, ghi = std::min(absRes.size(), j + kGap + 1);
+            const double sum = (prefix[hi] - prefix[lo]) - (prefix[ghi] - prefix[glo]);
+            const double count = static_cast<double>((hi - lo) - (ghi - glo));
+            return count > 0 ? 1.2533 * sum / count : 0.0;
+        };
         // runs of samples over the threshold, widened a little and merged when close
         std::vector<std::pair<std::size_t, std::size_t>> runs;
         for (std::size_t j = 0; j < res.size(); ++j) {
-            if (std::fabs(res[j]) <= thr) continue;
+            if (std::fabs(res[j]) <= thr || std::fabs(res[j]) <= st.sensitivity * localSigma(j)) continue;
             const std::size_t at = start + j;
             const std::size_t s = at > 2 ? at - 2 : 0, e = std::min(n, at + 3);
             if (!runs.empty() && s <= runs.back().second + 8) runs.back().second = std::max(runs.back().second, e);
             else runs.emplace_back(s, e);
         }
-        for (const auto& [s, e] : runs) {
+        // a click rings on after its jump (the predictor only sees the jump), so rebuild at
+        // least the first 0.75 ms after it
+        const auto ring = std::min(maxLen, static_cast<std::size_t>(0.00075 * rate) + 1);
+        for (auto [s, e] : runs) {
             if (e - s > maxLen + 8) continue;  // too long for a click
-            if (s < static_cast<std::size_t>(kOrder) || e + kOrder > n) continue;
+            const std::size_t ringEnd = std::min(n, std::max(e, s + ring));
+            if (s < static_cast<std::size_t>(kOrder) || ringEnd + kOrder > n) continue;
+            // a click is a jump you can hear: if rebuilding the jump hardly changes it compared
+            // with the sound around it, it was only the predictor stumbling, so leave it
+            const std::vector<float> before(x.begin() + static_cast<std::ptrdiff_t>(s), x.begin() + static_cast<std::ptrdiff_t>(ringEnd));
             repairRun(x, s, e, a);
+            double change = 0, around = 0;
+            for (std::size_t i = s; i < e; ++i) change = std::max(change, static_cast<double>(std::fabs(x[i] - before[i - s])));
+            std::copy(before.begin(), before.end(), x.begin() + static_cast<std::ptrdiff_t>(s));
+            const std::size_t a0 = s > 256 ? s - 256 : 0, a1 = std::min(n, e + 256);
+            for (std::size_t i = a0; i < a1; ++i)
+                if (i < s || i >= e) around += static_cast<double>(x[i]) * x[i];
+            around = std::sqrt(around / static_cast<double>(std::max<std::size_t>(1, (a1 - a0) - (e - s))));
+            if (change < std::max(0.3 * around, 2e-3)) continue;
+            repairRun(x, s, ringEnd, a);
             ++repaired;
         }
     }

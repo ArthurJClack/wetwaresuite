@@ -229,8 +229,10 @@ void registerEffectCommands(Session& session) {
                         const bool loudOk = std::fabs(lv.lufs - target) <= tol, peakOk = lv.truePeakDb <= tp + 1e-9;
                         msg += loudOk && peakOk ? "; meets " + num(target, 3) + " LUFS" : "; doesn't meet " + num(target, 3) + " LUFS:";
                         if (!loudOk) msg += " " + num(std::fabs(lv.lufs - target), 2) + " LU too " + (lv.lufs > target ? "loud" : "quiet");
-                        if (!peakOk) msg += std::string(loudOk ? " " : ",") + " true peak over " + dbText(tp);
-                        if (!(loudOk && peakOk)) msg += " (audio.normalize mode=loudness target=" + num(target, 3) + " ceiling=" + num(tp, 3) + " fixes both)";
+                        if (!peakOk) msg += std::string(loudOk ? "" : ",") + " true peak " + num(lv.truePeakDb, 3) + " dBTP is over " + num(tp, 3);
+                        // the limiter in normalize watches samples, so leave half a dB for the peaks between them
+                        if (!(loudOk && peakOk))
+                            msg += " (audio.normalize mode=loudness target=" + num(target, 3) + " ceiling=" + num(tp - 0.5, 3) + (loudOk || peakOk ? " fixes it)" : " fixes both)");
                         res.with("meets_target", loudOk && peakOk).with("gain_to_target", target - lv.lufs);
                     }
                     res.message = msg;

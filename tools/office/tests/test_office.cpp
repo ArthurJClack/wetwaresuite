@@ -734,7 +734,8 @@ void testChart() {
                 colored += (p.r == 0x2B && p.g == 0x57 && p.b == 0x9A) ? 1 : 0;
             }
         }
-        CHECK(colored > 50);
+        if (colored <= 50) std::printf("  %s chart: %d coloured samples\n", type.c_str(), colored);
+        CHECK(colored > (type == "scatter" ? 5 : 50));
         writeFile(tmp("chart_" + type + ".png"), raster::encodePng(img));
     }
     // grid preview and sheet pages

@@ -357,7 +357,7 @@ namespace {
 const std::set<std::string> kSheetNative = {"csv", "tsv", "tab", "xlsx", "xlsm", "ods"};
 const std::set<std::string> kSheetLoIn = {"xls", "xlsb", "fods", "numbers", "dbf", "sxc", "xlt", "xltx"};
 const std::set<std::string> kSheetOut = {"xlsx", "csv", "tsv", "pdf", "html"};
-const std::set<std::string> kSheetLoOut = {"ods", "xls", "fods"};
+const std::set<std::string> kSheetLoOut = {"xls", "fods"};
 
 const std::set<std::string> kDocNative = {"docx", "md", "markdown", "txt", "html", "htm", "odt"};
 const std::set<std::string> kDocLoIn = {"doc", "rtf", "docm", "dotx", "dot", "wpd", "fodt", "wps", "sxw", "pages", "lwp"};
@@ -467,6 +467,8 @@ void saveWorkbook(const Workbook& wb, const std::string& path, int sheet) {
     const int active = std::clamp(sheet >= 0 ? sheet : wb.active, 0, std::max(0, static_cast<int>(wb.sheets.size()) - 1));
     if (ext == "xlsx" || ext == "xlsm") {
         writeBytes(path, writeXlsx(wb));
+    } else if (ext == "ods") {
+        writeBytes(path, writeOds(wb));
     } else if (ext == "csv" || ext == "tsv" || ext == "tab" || ext == "txt") {
         if (wb.sheets.empty()) throw std::runtime_error("the workbook has no sheets");
         writeBytes(path, writeCsv(wb.sheets[static_cast<std::size_t>(active)], ext == "csv" ? ',' : '\t'));
@@ -484,7 +486,7 @@ void saveWorkbook(const Workbook& wb, const std::string& path, int sheet) {
         std::string error;
         if (!libreOfficeWrite(writeXlsx(wb), "xlsx", path, error)) throw std::runtime_error(error);
     } else {
-        throw std::runtime_error("can't save a spreadsheet as ." + ext + " (xlsx, csv, tsv, pdf, html; ods and xls through LibreOffice)");
+        throw std::runtime_error("can't save a spreadsheet as ." + ext + " (xlsx, ods, csv, tsv, pdf, html; xls and fods through LibreOffice)");
     }
 }
 

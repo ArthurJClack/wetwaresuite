@@ -9,6 +9,10 @@ add_library(wetwaresuite_office
   src/sheetfmt.cpp
   src/sheet.cpp
   src/sheetio.cpp
+  src/xlsx_common.cpp
+  src/xlsx_read.cpp
+  src/xlsx_write.cpp
+  src/ods.cpp
   src/doc.cpp
   src/docx.cpp
   src/doclayout.cpp
@@ -32,4 +36,8 @@ if(WETWARESUITE_BUILD_TESTS)
   target_include_directories(test_office_calc PRIVATE src)
   target_link_libraries(test_office_calc PRIVATE wetwaresuite::office wetwaresuite_check)
   add_test(NAME office_calc COMMAND test_office_calc)
+  add_executable(test_office_files tests/test_office_files.cpp)
+  target_include_directories(test_office_files PRIVATE src)
+  target_link_libraries(test_office_files PRIVATE wetwaresuite::office wetwaresuite_check)
+  add_test(NAME office_files COMMAND test_office_files)
 endif()

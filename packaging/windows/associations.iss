@@ -146,6 +146,9 @@ Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-sound.exe\Support
 Root: HKA; Subkey: "Software\Classes\.wwcut\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.video"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-video.exe\SupportedTypes"; ValueType: string; ValueName: ".wwcut"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.wwcut"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite.video"; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.wwscene\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.video"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-video.exe\SupportedTypes"; ValueType: string; ValueName: ".wwscene"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.wwscene"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite.video"; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.achcut\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.video"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-video.exe\SupportedTypes"; ValueType: string; ValueName: ".achcut"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.achcut"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite.video"; Flags: uninsdeletevalue; Tasks: filetypes

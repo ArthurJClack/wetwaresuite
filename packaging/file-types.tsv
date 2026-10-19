@@ -44,6 +44,7 @@
 .aiff	sound	audio/x-aiff	no
 .aif	sound	audio/x-aiff	no
 .wwcut	video	application/x-wetwaresuite-wwcut	yes
+.wwscene	video	application/x-wetwaresuite-wwscene	yes
 .achcut	video	application/x-wetwaresuite-achcut	yes
 .docx	office	application/vnd.openxmlformats-officedocument.wordprocessingml.document	no
 .odt	office	application/vnd.oasis.opendocument.text	no

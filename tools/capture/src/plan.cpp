@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <regex>
 
+#include "plan_internal.hpp"
 #include "wetwaresuite/capture/capture.hpp"
 
 namespace wetwaresuite::capture {
@@ -70,6 +71,8 @@ bool resolve(const Environment& env, int monitor, const Region& region, bool rel
     }
     return true;
 }
+
+}  // namespace
 
 std::string pickBackend(const Environment& env, const std::string& asked, bool still, std::string& error) {
     if (asked != "auto" && !asked.empty()) {
@@ -167,6 +170,8 @@ bool screenInput(const Environment& env, const std::string& backend, int monitor
     }
     return true;
 }
+
+namespace {
 
 std::string joined(const std::vector<std::string>& f) {
     std::string s;

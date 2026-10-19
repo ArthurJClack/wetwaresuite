@@ -1,7 +1,7 @@
-add_library(wetwaresuite_capture src/plan.cpp src/commands.cpp)
+add_library(wetwaresuite_capture src/plan.cpp src/commands.cpp src/scene.cpp src/scene_commands.cpp)
 add_library(wetwaresuite::capture ALIAS wetwaresuite_capture)
 target_include_directories(wetwaresuite_capture PUBLIC include)
-target_link_libraries(wetwaresuite_capture PUBLIC wetwaresuite::core PRIVATE wetwaresuite::raster)
+target_link_libraries(wetwaresuite_capture PUBLIC wetwaresuite::core PRIVATE wetwaresuite::raster wetwaresuite::cut nlohmann_json::nlohmann_json)
 
 if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_capture tests/test_capture.cpp)

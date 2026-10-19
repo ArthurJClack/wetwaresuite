@@ -53,7 +53,7 @@ people install apps, not tools. an app is a few related tools in one binary:
 | --- | --- |
 | image | photo, paint |
 | draw | vector, type, board |
-| model | sculpt, render, animate |
+| model | model, sculpt, render, animate |
 | game | forge, levels |
 | cad | cad, blueprint, slicer, fit |
 | electronics | circuit, flash |

@@ -180,6 +180,17 @@ Video edits (the video app) and multitrack audio projects (the sound app) get a 
 - **Click the ruler** or an empty part of a track to put the **cursor** there. **Split** (or **S**) cuts the selected clip at the cursor; **Delete** (or the Delete key) removes it.
 - **Scroll** to move along the timeline, **Ctrl+scroll** to zoom, **Fit** to see all of it.
 
+Video edits add an editor's tools:
+
+![a video edit's timeline: track switches, markers, in/out, a transition and keyframes](images/gui-video-timeline.jpg)
+
+- Each track has switches at its head: **L** locks it (edits leave it alone), **H** hides its picture, **M** mutes its sound, **S** solos it. A lit switch is on; muted, hidden and locked tracks are drawn dimmer.
+- The **cursor is the edit's playhead** (`cut.set_cursor`): the razor, markers, in/out, inserts and freeze frames all work at it, and the preview shows its frame.
+- **Razor** (**Ctrl+K**) cuts every unlocked track at the cursor. **Ripple delete** (**Shift+Delete**) removes the selected clip and closes the gap.
+- **Marker** (**M**) drops a marker at the cursor: a flag on the ruler (hover it for its name). **In** (**I**) and **Out** (**O**) mark a range, shaded on the ruler, for `cut.extract`, `cut.lift` and `cut.render range=in_out`.
+- **Transition** (**T**) crossfades the selected clip with the one before it; a transition shows as a wedge over the start of the later clip.
+- Small yellow diamonds along a clip are its **keyframes**. Clicking a clip outlines the clips linked to it (its sound) too, and they move and trim together.
+
 Every drag is one ordinary command (`cut.move_clip`, `cut.trim_clip`, `audio.clip_set`, `audio.clip_trim`, `audio.clip_split`...), so it shows in the history and **Undo** takes it back, and a script or Claude can do exactly the same.
 
 ### Spreadsheets: type into the cells

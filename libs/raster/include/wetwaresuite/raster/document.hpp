@@ -58,8 +58,9 @@ private:
 std::shared_ptr<ImageDoc> newImage(int width, int height, Color background);
 // .ora keeps layers; anything else stb reads opens as one "Background" layer.
 std::shared_ptr<ImageDoc> openImage(const std::filesystem::path& path);
-// .ora keeps layers; other formats are flattened.
-void saveImage(const ImageDoc& doc, const std::filesystem::path& path, int quality = 90);
+// .ora keeps everything; .psd keeps the layers (`notes` says what it couldn't keep: adjustment
+// layers, editable text...); other formats are flattened. .psd opens layer by layer when it can.
+void saveImage(const ImageDoc& doc, const std::filesystem::path& path, int quality = 90, std::vector<std::string>* notes = nullptr);
 bool canOpenImage(const std::filesystem::path& path);
 bool canSaveImage(const std::filesystem::path& path);
 
@@ -93,15 +94,7 @@ private:
         int layer, x, y, w, h;
         std::vector<std::uint8_t> px;  // the old pixels, row by row
     };
-    struct LayerMeta {
-        std::string name;
-        double opacity;
-        Blend blend;
-        bool visible;
-        bool maskEnabled;
-        bool clip;
-        bool operator==(const LayerMeta&) const = default;
-    };
+    using LayerMeta = LayerInfo;  // everything but the pixels and mask
     void save(int layer, const Image& from, int x, int y, int w, int h);
     void diff(const LayeredImage& before);
     void clear();
@@ -136,6 +129,12 @@ ActionFactory imageCommand(Session& session, std::function<Result(ImageDoc&, con
 
 // Resolves the "layer" param; returns -1 and sets error when out of range.
 int layerIndex(const ImageDoc& doc, const Params& p, std::string& error);
+// For commands that change pixels: false (with a readable error) for groups and adjustment layers,
+// which have none. Text and shape layers become plain pixel layers (their settings are dropped),
+// like rasterizing them in other editors.
+bool pixelLayer(ImageDoc& doc, int index, std::string& error);
+// layerIndex + pixelLayer: the layer a pixel edit goes to, or -1 with an error.
+int pixelLayerIndex(ImageDoc& doc, const Params& p, std::string& error);
 
 // Adds a preview attachment when the "preview" param is true.
 Result& maybePreview(Result& r, const ImageDoc& doc, const Params& p);

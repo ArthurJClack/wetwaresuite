@@ -41,6 +41,9 @@ std::vector<ParamSpec> styleSpecs();
 bool applyStyleParams(const Params& p, CellStyle& s, std::vector<std::string>& done, std::string& error);
 std::string describeStyle(const CellStyle& s);  // "bold, fill #ffeb9c, ..." ("plain" when nothing is set)
 
+// Sets column widths to fit their contents (growOnly: never narrower than now, for results written into a sheet).
+void autofitColumns(Sheet& sh, int c1, int c2, bool growOnly);
+
 // Checks cells against the data validation rules covering them. Returns false with the message when a
 // stop rule rejects one; warnings (warning/information rules) are added to `notes`.
 bool checkValidation(const Workbook& wb, int sheet, const Range& r, std::string& error, std::string& notes);

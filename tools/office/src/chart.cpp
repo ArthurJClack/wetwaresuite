@@ -690,7 +690,12 @@ void drawGrid(pdf::Page& page, const Workbook& wb, int sheet, int r1, int c1, in
             double x, y, w, h;
             areaOf(r, c, x, y, w, h);
             if (hasColor(st.fill)) page.rect(x + 0.25, y + 0.25, w - 0.5, h - 0.5, pdfColor(st.fill));
-            if (bar >= 0) page.rect(x + 1, y + 2, std::max(0.5, (w - 2) * bar), h - 4, pdfColor(barColor));
+            if (bar >= 0) {
+                // a lighter shade of the bar colour, so the number on it stays readable
+                const std::uint32_t c = barColor & 0xFFFFFF;
+                const std::uint32_t light = ((((c >> 16) & 255) + 255) / 2 << 16) | ((((c >> 8) & 255) + 255) / 2 << 8) | (((c & 255) + 255) / 2);
+                page.rect(x + 1, y + 2, std::max(0.5, (w - 2) * bar), h - 4, pdfColor(light | kColorSet));
+            }
             if (cell && !cell->value.empty()) {
                 double spill = 0;
                 if (!st.wrap && !m) {

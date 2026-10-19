@@ -2,7 +2,7 @@
 
 `office` covers the everyday office work: budgets and lists in spreadsheets, letters and reports, slide decks, and PDF chores. It has four parts:
 
-- **Spreadsheets** (`office.sheet_*`): a formula engine with the common Excel functions (SUM, IF, VLOOKUP, XLOOKUP, SUMIFS, TEXT, dates and more), number formats, sorting, filtering and fill, charts as PNG. It reads and writes `.xlsx` and `.csv`, reads `.ods`, and prints to PDF.
+- **Spreadsheets** (`office.sheet_*`): an Excel-style formula engine with about 300 functions and dynamic arrays (XLOOKUP, SUMIFS, FILTER, SORT, UNIQUE, LET, finance and statistics), named ranges, number formats, cell styles (fonts, colours, borders, alignment), merged cells, frozen panes, conditional formatting with colour scales and data bars, data validation with dropdowns, sorting, filtering and autofilter, fill series, paste special, pivot tables, and charts placed in the sheet. It reads and writes `.xlsx`, `.ods` and `.csv` with all of that kept, and prints to PDF.
 - **Documents** (`office.doc_*`): headings, styled paragraphs, lists, tables, images, quotes, code and page breaks. It reads and writes `.docx`, Markdown and HTML, reads `.odt`, and exports PDF through its own layout engine.
 - **Slide decks** (`office.deck_*`): build slides from a Markdown outline or one by one, pick from eight colour themes, add speaker notes, and save `.pptx` (PowerPoint, Keynote, Google Slides and LibreOffice open it), PDF and PNG.
 - **PDF tools** (`office.pdf_*`): info, text extraction, merge, split, extract, delete or rotate pages, and images to PDF. Any PDF can also be rendered to PNG (this needs `pdftoppm` from poppler-utils). To view, mark up, edit, redact, fill in or sign a PDF, use the [PDF editor](pdf.md) that ships in the same app.
@@ -33,7 +33,7 @@ wetwaresuite office.deck_export file=talk.md path=talk.png
 
 **Previews.** Each kind has a preview command (`office.sheet_preview`, `office.doc_preview`, `office.deck_preview`) that returns a PNG drawn exactly as the PDF export draws it. Most editing commands also take `preview=true`, which attaches a picture of the result. Claude uses these to check its own work.
 
-**In the window.** `wetwaresuite-office` (or `wetwaresuite-gui`) opens spreadsheets as an editable grid: click a cell, type a value or `=formula`, press Enter. Each cell you type is an `office.sheet_set` (or `office.sheet_clear`) step, so it undoes the same way as a script. See [the window tutorial](gui.md#spreadsheets-type-into-the-cells).
+**In the window.** `wetwaresuite-office` (or `wetwaresuite-gui`) opens spreadsheets as an editable grid: click a cell, type a value or `=formula`, press Enter. Each cell you type is an `office.sheet_set` (or `office.sheet_clear`) step, so it undoes the same way as a script. The grid shows cell colours, bold, underline, alignment, merged cells, conditional formats and data bars. Every other command in this page is in the window too: press **Ctrl+K**, type what you want (`style`, `merge`, `pivot`, ...) and fill in its form. See [the window tutorial](gui.md#spreadsheets-type-into-the-cells).
 
 **Built in or LibreOffice.** `wetwaresuite office.formats` shows what is built in, and whether LibreOffice and pdftoppm were found:
 
@@ -907,24 +907,190 @@ office_convert          {"input": ".../talk.pptx", "output": ".../talk.odp"}
 - **Undo works.** "Undo that sort" calls `undo`, and `history` lists the steps. Saves and PDF commands write files, so they can't be undone; the file on disk stays.
 - **`documents` lists what's open**, with ids, so a long conversation can go back to `sheet2` or `deck1`.
 
+## Task 7: a sales tracker the Excel way
+
+You have a CSV export of sales with day-first dates. You want it to look like a real workbook: a merged title, a styled header, frozen headings, currency, an id column filled in as a series, a named range, highlighted big sales with data bars, a dropdown that only allows the four regions, and a pivot table of sales by region and product with a chart. The result goes out as `.xlsx` for Excel, `.ods` for LibreOffice and a PDF.
+
+`sales.csv`:
+
+```text
+Date,Rep,Region,Product,Amount
+03/01/2026,Ann,North,Pens,1200
+05/01/2026,Bob,South,Ink,340
+09/01/2026,Cid,North,Ink,560
+14/02/2026,Ann,East,Pens,980
+20/02/2026,Dee,South,Pens,1500
+02/03/2026,Bob,East,Ink,210
+11/03/2026,Cid,North,Pens,760
+28/03/2026,Dee,South,Ink,1130
+```
+
+**CLI.** Every step is one command. Two on their own are handy from a shell:
+
+```sh
+# what's in an .xlsx someone sent you: rules, validation, names, charts
+wetwaresuite office.sheet_cond_formats file=tracker.xlsx sheet=Sales
+wetwaresuite office.sheet_validations file=tracker.xlsx sheet=Sales
+wetwaresuite office.sheet_names file=tracker.xlsx
+wetwaresuite office.sheet_charts file=tracker.xlsx sheet=Pivot chart=1
+```
+
+**Batch.**
+
+```text
+# tracker.txt - a sales tracker with styles, rules, validation, a chart and a pivot
+office.sheet_open path=sales.csv date_order=dmy
+office.sheet_rename sheet=sales name=Sales
+office.sheet_format range=A:A format=date
+office.sheet_get range=A1:E4
+
+# a series down column F: one id per row
+office.sheet_set range=F1 value=Ref
+office.sheet_set range=F2 value=INV-001
+office.sheet_fill range=F2:F9
+
+# a title row, merged across the table
+office.sheet_insert_rows at=1
+office.sheet_set range=A1 value="Q1 sales"
+office.sheet_merge range=A1:F1
+office.sheet_style range=A1 bold=true font_size=14 fill=navy color=white
+office.sheet_style range=A2:F2 bold=true fill=lightgray border=bottom border_style=medium
+office.sheet_format range=E3:E10 format=currency
+office.sheet_format range=A:F autofit=true
+office.sheet_freeze at=A3
+
+# named ranges, conditional formats and validation
+office.sheet_name name=Amounts refers_to=Sales!$E$3:$E$10
+office.sheet_set range=H2 value="Total"
+office.sheet_set range=H3 value="=SUM(Amounts)"
+office.sheet_cond_format range=E3:E10 op=">=" value=1000 fill=lightgreen bold=true
+office.sheet_cond_format range=E3:E10 type=data_bar
+office.sheet_validate range=C3:C100 type=list value="North,South,East,West"
+office.sheet_set range=C5 value=Middle
+office.sheet_validations
+
+# a live pivot, a chart and the file
+office.sheet_pivot rows=Region columns=Product values=Amount range=A2:E10
+office.sheet_chart_add range=A1:C4 sheet=Pivot type=bar title="Sales by region"
+office.sheet_get sheet=Pivot
+office.sheet_save path=tracker.xlsx
+office.sheet_save path=tracker.ods
+office.sheet_save path=tracker.pdf
+```
+
+```sh
+$ wetwaresuite batch tracker.txt --keep-going
+opened sheet1: 1 sheet: sales A1:E9 - sales.csv
+...
+A1:E4 (4 rows x 5 cols)
+	A	B	C	D	E
+1	Date	Rep	Region	Product	Amount
+2	2026-01-03	Ann	North	Pens	1200
+3	2026-01-05	Bob	South	Ink	340
+4	2026-01-09	Cid	North	Ink	560
+...
+series 7 cells of F2:F9 down
+inserted row 1 in Sales; formulas adjusted
+...
+merged A1:F1
+styled A1: bold, colour #ffffff, fill #1f3864, size 14pt
+styled A2:F2 (6 cells): borders bottom medium, bold, fill #d9d9d9
+formatted E3:E10: format $#,##0.00
+formatted A:F: autofit widths
+froze rows 1-2 of Sales
+defined Amounts = Sales!$E$3:$E$10 (8x1 cells)
+...
+set H3; H3 = 6680
+...
+rule 1 on E3:E10: value >= 1000 -> bold, fill #c6efce; 3 cell(s) match now
+...
+rule 2 on E3:E10: data bars #638ec6
+...
+validation on C3:C100: list of North,South,East,West
+line 29: C5 must be one of: North, South, East, West
+Sales: 1 rule(s)
+  1. C3:C100: list of North,South,East,West
+...
+Sum of Amount by Region and Product: 3 row(s) x 2 column(s) in the new sheet Pivot (A1:D5)
+chart 1: bar chart of A1:C4 "Sales by region" at E1, 480x288px
+...
+Pivot!A1:D5 (5 rows x 4 cols)
+	A	B	C	D
+1	Region / Product	Ink	Pens	Total
+2	East	$210.00	$980.00	$1,190.00
+3	North	$560.00	$1,960.00	$2,520.00
+4	South	$1,470.00	$1,500.00	$2,970.00
+5	Total	$2,240.00	$4,440.00	$6,680.00
+saved tracker.xlsx
+...
+saved tracker.ods
+...
+saved tracker.pdf
+```
+
+(Shortened. `--keep-going` lets the script carry on after the line that validation rejected on purpose.) Some things to notice:
+
+- **Fill continues series** the way Excel's fill handle does: `INV-001` becomes `INV-002`, `INV-003`... Two numbers (`source=2`) continue their step, `Jan` becomes `Feb`, `Mon` becomes `Tue`, and dates a month apart keep going by months. `step=` sets the step, `unit=weekday` skips weekends, `series=growth` multiplies and `series=copy` just repeats.
+- **Inserting a row moves everything with it**: the merge, the rules, the validation and the named range all point at the right cells afterwards.
+- **Validation is enforced.** A `stop` rule (the default) rejects a bad value, and the cell keeps what it had. With `error_style=warning` the value goes in and the answer carries a warning. `office.sheet_validations` lists the cells that already break a rule, and `office.sheet_get` on one cell says which rule covers it.
+- **Conditional formats and data bars** are saved as real Excel and LibreOffice rules, so they keep working when the numbers change there. Later rules win where two set the same thing.
+- **The pivot is made of formulas** (`SUMIFS`, `COUNTIFS`, ...), so it updates when the sales change. Use `static=true` for plain numbers, `function=count|average|min|max` for other summaries, and `to=H1` to put it next to the data.
+- **`.xlsx` and `.ods` keep all of it**: styles, the merge, frozen panes, number formats, rules, validation dropdowns, the named range and the chart, which is a real chart Excel and LibreOffice can edit. The PDF draws the same styles, rules and chart.
+
+More things the same commands do:
+
+```text
+office.sheet_select sheet=Sales
+office.sheet_copy from=A2:F10 to=Pivot!A10 what=values         # paste values only
+office.sheet_copy from=A2:F2 to=L2 transpose=true              # rows become columns
+office.sheet_move from=H2:H3 to=J2                             # cut and paste; =SUM(Amounts) keeps working
+office.sheet_autofilter range=A2:F10 column=Region criteria=North   # hide the other rows
+office.sheet_autofilter clear=true
+office.sheet_hide cols=F
+office.sheet_style range=E3:E10 like=E3                        # format painter
+office.sheet_cond_format range=B3:B10 type=duplicate fill=#ffc7ce
+office.sheet_cond_format range=E3:E10 type=color_scale min_color=white max_color=green
+office.sheet_import path=more-sales.csv at=Sales!A11 date_order=dmy
+```
+
+```sh
+$ wetwaresuite office.sheet_cond_formats file=tracker.xlsx sheet=Sales
+Sales: 2 rule(s)
+  1. E3:E10: value >= 1000 -> bold, fill #c6efce (3 match)
+  2. E3:E10: data bars #638ec6
+```
+
+**Claude.**
+
+> Open ~/sales/sales.csv (the dates are day first). Give it a merged navy title "Q1 sales", a grey bold header, currency amounts and frozen headings. Highlight sales of 1000 or more in green, add data bars, and make Region a dropdown of North/South/East/West. Then a pivot of amount by region and product with a bar chart, saved as tracker.xlsx.
+
+Claude calls `office_sheet_open` with `date_order=dmy`, then `office_sheet_insert_rows`, `office_sheet_merge`, `office_sheet_style`, `office_sheet_format`, `office_sheet_freeze`, two `office_sheet_cond_format`, `office_sheet_validate`, `office_sheet_pivot`, `office_sheet_chart_add` and `office_sheet_save`. It checks the result with `office_sheet_preview`, which draws the styles, rules and chart.
+
+**In the window.** Open `tracker.xlsx` in `wetwaresuite-office`. The grid shows the fills, font colours, bold, underline, alignment, merged cells, and the conditional formats and data bars, and they update as you type. Press **Ctrl+K** and type `style`, `merge`, `freeze`, `conditional`, `validate`, `pivot` or `chart` to get each command's form. It works on the open sheet, and Ctrl+Z undoes it like a typed cell.
+
 ## Formulas
 
-Formulas start with `=` (optional in `office.sheet_calc`). They are recalculated whenever a cell changes, in dependency order, and circular references give `#CYCLE!`.
+Formulas start with `=` (optional in `office.sheet_calc`). They are recalculated whenever a cell changes, in dependency order, and circular references give `#CYCLE!`. The engine works like Excel 365: a formula that returns several values **spills** into the cells below and to the right (`=SORT(A2:A20)`, `=UNIQUE(B:B)`, `=SEQUENCE(5)`), `A2#` refers to the whole spill, and a spill that would overwrite something gives `#SPILL!`. Spills are saved as dynamic arrays in `.xlsx`, so Excel shows them the same way.
 
 | | |
 | --- | --- |
-| References | `B2`, `$B$2`, `B2:D13`, whole columns `C:C`, whole rows `2:5`, other sheets `Sheet2!A1` and `'My sheet'!A1:B5` |
-| Operators | `+ - * / ^`, `&` (join text), `= <> < > <= >=`, `%` (`50%` is 0.5), unary minus |
+| References | `B2`, `$B$2`, `B2:D13`, whole columns `C:C`, whole rows `2:5`, other sheets `Sheet2!A1` and `'My sheet'!A1:B5`, spills `E2#`, named ranges (`office.sheet_name`) |
+| Operators | `+ - * / ^`, `&` (join text), `= <> < > <= >=`, `%` (`50%` is 0.5), unary minus, `:` ranges; arrays such as `{1,2;3,4}` |
 | Values | numbers, `"text"`, `TRUE`/`FALSE`; dates are day numbers like Excel's (`2026-03-01` typed into a cell becomes a date) |
-| Errors | `#DIV/0!`, `#N/A`, `#NAME?` (unknown function), `#REF!` (deleted cells), `#VALUE!`, `#NUM!`, `#CYCLE!` |
-| Math | `SUM`, `PRODUCT`, `AVERAGE`, `MIN`, `MAX`, `MEDIAN`, `COUNT`, `COUNTA`, `COUNTBLANK`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `INT`, `MOD`, `ABS`, `SQRT`, `POWER`, `PI` |
-| Conditions | `SUMIF`, `COUNTIF`, `AVERAGEIF`, `SUMIFS`, `COUNTIFS`, `AVERAGEIFS`, `MAXIFS`, `MINIFS` (criteria such as `">100"`, `"<>done"`, `"a*"`, `""`) |
-| Logic | `IF`, `IFS`, `SWITCH`, `IFERROR`, `AND`, `OR`, `NOT`, `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISERROR` |
-| Lookup | `VLOOKUP`, `HLOOKUP`, `XLOOKUP`, `INDEX`, `MATCH`, `ROW`, `COLUMN` |
-| Text | `LEFT`, `RIGHT`, `MID`, `LEN`, `UPPER`, `LOWER`, `TRIM`, `SUBSTITUTE`, `CONCAT`, `CONCATENATE`, `TEXTJOIN`, `TEXT`, `VALUE` |
-| Dates | `DATE`, `YEAR`, `MONTH`, `DAY`, `TODAY`, `NOW` |
+| Errors | `#DIV/0!`, `#N/A`, `#NAME?` (unknown function or name), `#REF!` (deleted cells), `#VALUE!`, `#NUM!`, `#NULL!`, `#SPILL!`, `#CALC!`, `#CYCLE!` |
+| Math | `SUM`, `SUMPRODUCT`, `SUMSQ`, `PRODUCT`, `SUBTOTAL`, `AGGREGATE`, `ROUND`, `ROUNDUP`, `ROUNDDOWN`, `MROUND`, `CEILING`, `CEILING.MATH`, `FLOOR`, `FLOOR.MATH`, `INT`, `TRUNC`, `MOD`, `QUOTIENT`, `ABS`, `SIGN`, `SQRT`, `POWER`, `EXP`, `LN`, `LOG`, `LOG10`, `PI`, `RAND`, `RANDBETWEEN`, `GCD`, `LCM`, `FACT`, `COMBIN`, `PERMUT`, `EVEN`, `ODD`, trigonometry (`SIN`, `COS`, `TAN`, `ASIN`, `ACOS`, `ATAN`, `ATAN2`, `SINH`, `COSH`, `TANH`, `DEGREES`, `RADIANS`), `ROMAN`, `ARABIC`, `BASE`, `DECIMAL`, `DEC2BIN`, `DEC2HEX`, `HEX2DEC`, ... |
+| Statistics | `AVERAGE`, `AVERAGEA`, `MEDIAN`, `MODE`, `MIN`, `MAX`, `COUNT`, `COUNTA`, `COUNTBLANK`, `LARGE`, `SMALL`, `RANK`, `RANK.EQ`, `RANK.AVG`, `PERCENTILE`, `QUARTILE`, `PERCENTRANK`, `STDEV`, `STDEV.S`, `STDEV.P`, `VAR`, `VAR.S`, `VAR.P`, `CORREL`, `COVARIANCE.S`, `SLOPE`, `INTERCEPT`, `RSQ`, `FORECAST`, `TREND`, `FREQUENCY`, `GEOMEAN`, `HARMEAN`, `TRIMMEAN`, `NORM.DIST`, `NORM.INV`, `STANDARDIZE`, ... |
+| Conditions | `SUMIF`, `SUMIFS`, `COUNTIF`, `COUNTIFS`, `AVERAGEIF`, `AVERAGEIFS`, `MAXIFS`, `MINIFS` (criteria such as `">100"`, `"<>done"`, `"a*"`, `""`) |
+| Logic | `IF`, `IFS`, `SWITCH`, `IFERROR`, `IFNA`, `AND`, `OR`, `XOR`, `NOT`, `LET`, `ISBLANK`, `ISNUMBER`, `ISTEXT`, `ISERROR`, `ISNA`, `ISEVEN`, `ISODD`, `ISFORMULA`, `TYPE`, `N`, `NA` |
+| Lookup | `XLOOKUP`, `XMATCH`, `VLOOKUP`, `HLOOKUP`, `LOOKUP`, `INDEX`, `MATCH`, `CHOOSE`, `OFFSET`, `INDIRECT`, `ADDRESS`, `ROW`, `ROWS`, `COLUMN`, `COLUMNS`, `TRANSPOSE`, `MMULT` |
+| Dynamic arrays | `FILTER`, `SORT`, `SORTBY`, `UNIQUE`, `SEQUENCE`, `RANDARRAY`, `TAKE`, `DROP`, `CHOOSEROWS`, `CHOOSECOLS`, `HSTACK`, `VSTACK`, `TOCOL`, `TOROW`, `WRAPROWS`, `WRAPCOLS`, `EXPAND`, `TEXTSPLIT` |
+| Text | `LEFT`, `RIGHT`, `MID`, `LEN`, `UPPER`, `LOWER`, `PROPER`, `TRIM`, `CLEAN`, `SUBSTITUTE`, `REPLACE`, `REPT`, `FIND`, `SEARCH`, `EXACT`, `CONCAT`, `CONCATENATE`, `TEXTJOIN`, `TEXTBEFORE`, `TEXTAFTER`, `TEXT`, `FIXED`, `DOLLAR`, `VALUE`, `NUMBERVALUE`, `CHAR`, `CODE`, `UNICHAR`, `UNICODE`, `HYPERLINK` |
+| Dates | `DATE`, `TIME`, `TODAY`, `NOW`, `YEAR`, `MONTH`, `DAY`, `HOUR`, `MINUTE`, `SECOND`, `WEEKDAY`, `WEEKNUM`, `ISOWEEKNUM`, `EDATE`, `EOMONTH`, `DATEDIF`, `DAYS`, `DAYS360`, `NETWORKDAYS`, `WORKDAY` (and their `.INTL` forms), `YEARFRAC`, `DATEVALUE`, `TIMEVALUE` |
+| Finance | `PMT`, `IPMT`, `PPMT`, `CUMIPMT`, `CUMPRINC`, `PV`, `FV`, `NPV`, `XNPV`, `IRR`, `XIRR`, `MIRR`, `RATE`, `NPER`, `EFFECT`, `NOMINAL`, `RRI`, `PDURATION`, `SLN`, `SYD`, `DB`, `DDB` |
 
-Number formats (`office.sheet_format format=`) accept presets or Excel codes. The presets are `general`, `number` (`#,##0.00`), `integer`, `currency` (`$#,##0.00`), `euro`, `pound`, `accounting`, `percent`, `percent2`, `date` (`yyyy-mm-dd`), `datetime`, `time`, `scientific` and `text`. Codes look like `#,##0.00`, `0.0%`, `"0 kg"` or `dd/mm/yyyy`.
+About 300 functions in all. `wetwaresuite office.sheet_calc formula="=ISNUMBER(1)"` is a quick way to check whether one is there: an unknown function gives `#NAME?`. Files from Excel keep functions the engine lacks, and those cells show `#NAME?` here until the cell is rewritten.
+
+Number formats (`office.sheet_format format=`) accept presets or Excel codes. The presets are `general`, `number` (`#,##0.00`), `integer`, `currency` (`$#,##0.00`), `euro`, `pound`, `accounting`, `percent`, `percent2`, `date` (`yyyy-mm-dd`), `datetime`, `time`, `scientific` and `text`. Codes look like `#,##0.00`, `0.0%`, `"0 kg"`, `dd/mm/yyyy` or `#,##0;[Red]-#,##0` (negative numbers in red).
 
 ## Command reference
 
@@ -948,15 +1114,21 @@ Create an empty workbook and return its id (sheet1, sheet2, ...). Optionally fil
 | `csv_file` | string |  | read the CSV/TSV text from this file instead |
 
 #### office.sheet_open
-Open a spreadsheet: .xlsx/.xlsm (values, formulas, number formats, bold, column widths, all sheets), .csv/.tsv (delimiter detected), .ods; .xls and other formats through LibreOffice. Formulas are recalculated on open. Read-only.
+Open a spreadsheet: .xlsx/.xlsm and .ods natively with everything (formulas, styles, merges, frozen panes, conditional formats, validation, named ranges, charts), .csv/.tsv (delimiter and encoding detected, import options below); .xls and other formats through LibreOffice. Formulas are recalculated on open. Read-only.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `path` | string | yes | file to open |
-| `delimiter` | string |  | CSV delimiter [auto\|comma\|semicolon\|tab\|pipe] (default auto) |
+| `delimiter` | string |  | CSV delimiter [auto\|comma\|semicolon\|tab\|pipe\|space] (default auto) |
+| `skip_rows` | integer |  | lines to skip at the top (titles above the table) |
+| `decimal_comma` | boolean |  | numbers use a decimal comma: 1.234,5 = 1234.5 |
+| `date_order` | string |  | how 03/04/2026 reads [auto\|dmy\|mdy] (default auto) |
+| `text_columns` | string |  | columns kept as text (ids with leading zeros), e.g. A,C |
+| `detect_types` | boolean |  | turn numbers, dates and TRUE/FALSE into values (false keeps every field as text) |
+| `encoding` | string |  | text encoding [auto\|utf-8\|latin1] (default auto) |
 
 #### office.sheet_save
-Save the workbook. The extension picks the format: .xlsx (all sheets, formulas with cached values, formats, bold, widths), .csv/.tsv (one sheet's computed values, no formulas), .pdf (printable grid), .html (tables); .ods/.xls through LibreOffice. Without path it saves back to where it was opened or last saved. Not undoable.
+Save the workbook. The extension picks the format: .xlsx and .ods (everything: all sheets, formulas with cached values, number formats, cell styles, merges, frozen panes, hidden rows, conditional formats, validation, named ranges, charts), .csv/.tsv (one sheet's computed values, no formulas), .pdf (printable pages with styles and charts), .html (tables); .xls and .fods through LibreOffice. Without path it saves back to where it was opened or last saved. Not undoable.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -986,7 +1158,7 @@ Read cells. One cell gives its value, type, formula, format and what it reads fr
 | `max_rows` | integer |  | stop after this many rows (default 200) |
 
 #### office.sheet_set
-Write cells. value= goes into every cell of range: a number, text, TRUE/FALSE, 15%, $1,200, a 2026-03-01 date or a =formula (copied down/across a range with relative references moving, like Excel's fill). csv= pastes a block of comma- or tab-separated rows starting at the range's top-left cell. Everything is recalculated. Undoable.
+Write cells. value= goes into every cell of range: a number, text, TRUE/FALSE, 15%, $1,200, a 2026-03-01 date or a =formula (copied down/across a range with relative references moving, like Excel's fill). csv= pastes a block of comma- or tab-separated rows starting at the range's top-left cell. Everything is recalculated. Data validation rules (office.sheet_validate) are enforced: a stop rule rejects the value, warning rules add a note. Undoable.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -997,7 +1169,7 @@ Write cells. value= goes into every cell of range: a number, text, TRUE/FALSE, 1
 | `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
 
 #### office.sheet_clear
-Clear a range: everything, only the contents, or only the formatting (number format and bold). Undoable.
+Clear a range: everything, only the contents, or only the formatting (number format and cell style). Undoable.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1006,17 +1178,20 @@ Clear a range: everything, only the contents, or only the formatting (number for
 | `what` | string |  | what to clear [all\|contents\|formats] (default all) |
 
 #### office.sheet_fill
-Fill a range from its first cell (or first row/column): formulas are copied with relative references moving, values are repeated. With step= the first cell's number (or date) grows by step each cell: a series 1, 2, 3... or dates a week apart (step=7). Undoable.
+Fill a range from its first cell(s), like dragging the fill handle. source= says how many leading cells per column/row are the pattern (default 1). Formulas are copied with relative references moving. series=auto continues what the source shows: two numbers or dates continue their trend (1, 3 -> 5, 7), one date counts up a day, dates a month apart keep stepping by months, Item 1 -> Item 2, Jan -> Feb, Mon -> Tue; anything else repeats. step= sets the increment (unit=weekday/month/year for dates), series=growth multiplies, series=copy just repeats. Undoable.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `range` | string | yes | range whose first cell/row is the source, e.g. D2:D13 |
 | `direction` | string |  | fill down or right (default: down when the range is taller than wide) [down\|right] |
-| `step` | number |  | make a series that grows by this much per cell |
+| `source` | integer |  | cells at the start of each column/row that make the pattern (default 1) |
+| `series` | string |  | how to continue [auto\|copy\|linear\|growth] (default auto) |
+| `step` | number |  | increment per cell (growth: the ratio) |
+| `unit` | string |  | date step unit [day\|weekday\|month\|year] (default day) |
 | `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
 
 #### office.sheet_format
-Format a range: a number format (a preset - accounting, currency, date, datetime, euro, general, integer, number, percent, percent2, pound, scientific, text, time - or a code like #,##0.00, 0.0%, $#,##0, yyyy-mm-dd, "0 kg"), bold on/off, column width in characters, or autofit widths to the contents. Undoable.
+Format a range: a number format (a preset - accounting, currency, date, datetime, euro, general, integer, number, percent, percent2, pound, scientific, text, time - or a code like #,##0.00, 0.0%, $#,##0, yyyy-mm-dd, "0 kg"), bold on/off, column width in characters, or autofit widths to the contents. Colours, fonts, borders and alignment are office.sheet_style. Undoable.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -1121,6 +1296,280 @@ Render cells as a PNG grid with column letters and row numbers, the way a spread
 | `range` | string |  | cells to show, e.g. A1:H30 |
 | `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
 | `scale` | number |  | pixels per point (default 1.5) |
+
+#### office.sheet_style
+Change how cells look: bold/italic/underline/strike, font colour and size, fill colour, horizontal and vertical alignment, wrap, indent and borders (all, outline, inside, single sides). like=A1 copies another cell's look (format painter); clear=true starts from plain. Number formats are office.sheet_format. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `range` | string | yes | cells to style, e.g. A1:E1 or B:B |
+| `bold` | boolean |  | bold text |
+| `italic` | boolean |  | italic text |
+| `underline` | boolean |  | underlined text |
+| `strike` | boolean |  | struck-through text |
+| `color` | string |  | font colour: #rrggbb, a name (red, darkgreen, navy, ...) or none |
+| `fill` | string |  | background colour: #rrggbb, a name (lightyellow, lightgreen, ...) or none |
+| `font_size` | number |  | font size in points (0 = the default 11) |
+| `align` | string |  | horizontal alignment [general\|left\|center\|right] |
+| `valign` | string |  | vertical alignment [bottom\|middle\|top] |
+| `wrap` | boolean |  | wrap text onto several lines inside the cell |
+| `indent` | integer |  | indent level (0-15) |
+| `border` | string |  | borders to draw: all, outline, inside, top, bottom, left, right, horizontal, vertical or none (comma-separated) |
+| `border_style` | string |  | line style for border= [thin\|medium\|thick\|double\|dashed\|dotted] (default thin) |
+| `border_color` | string |  | border colour (default black) |
+| `like` | string |  | copy the style and number format of this cell first (format painter), e.g. A1 |
+| `clear` | boolean |  | reset the cells to the plain style before applying the rest (default false) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_merge
+Merge a range into one cell (the top-left value stays; other values in the range are cleared) or unmerge it. center=true (default) also centres the text, like Merge & Center; across=true merges each row on its own. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `range` | string | yes | cells to merge, e.g. A1:E1 |
+| `unmerge` | boolean |  | split merged cells in the range back up (default false) |
+| `center` | boolean |  | centre the merged text (default true) |
+| `across` | boolean |  | merge each row of the range separately (default false) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_freeze
+Keep rows at the top and/or columns at the left in view while scrolling. at=B2 freezes everything above and left of B2 (row 1 and column A); rows=1 freezes the header row; at=A1 or none=true unfreezes. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `at` | string |  | first cell that scrolls, e.g. B2 (A2 = freeze row 1) |
+| `rows` | integer |  | rows to freeze at the top |
+| `cols` | integer |  | columns to freeze at the left |
+| `none` | boolean |  | unfreeze (default false) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_hide
+Hide (or with hidden=false show again) whole rows or columns. Hidden rows are skipped by SUBTOTAL/AGGREGATE and in printouts. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `rows` | string |  | rows, e.g. 4 or 4:9 |
+| `cols` | string |  | columns, e.g. C or C:E |
+| `hidden` | boolean |  | hide (false shows them) (default true) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_row_height
+Set the height of rows in points (the default is 15), or autofit=true to fit wrapped and multi-line text. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `rows` | string | yes | rows, e.g. 1 or 2:20 |
+| `height` | number |  | height in points |
+| `autofit` | boolean |  | fit the contents (default false) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_name
+Give a range or value a name to use in formulas: name=TaxRate refers_to=B1 makes =A2*TaxRate work; refers_to may be a range (Sales!C2:C100), a constant (0.2) or any formula. Plain cell references are made absolute on the given sheet. delete=true removes the name (formulas using it then give #NAME?). Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `name` | string | yes | the name, e.g. TaxRate (letters, digits, _ and .; not a cell reference) |
+| `refers_to` | string |  | range, constant or formula |
+| `comment` | string |  | a note about the name |
+| `delete` | boolean |  | remove the name (default false) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_names
+List the workbook's defined names (named ranges and constants) with what they refer to and their current value. Read-only.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `file` | string |  | instead of an open spreadsheet: read this file (for one-shot use) |
+
+#### office.sheet_cond_format
+Highlight cells by rule, like Excel's conditional formatting: type=cell op=">" value=100 fill=lightgreen; type=text value=late color=red; type=top value=5; above_average, below_average, duplicate, unique, blank, not_blank, errors; type=formula value="$C2>$D2" (relative refs move per cell); color_scale (2 or 3 colours) and data_bar shade by value. Later rules win where they overlap. Saved in .xlsx. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `range` | string | yes | cells the rule covers, e.g. B2:B100 |
+| `type` | string |  | kind of rule [cell\|formula\|text\|begins\|ends\|top\|bottom\|above_average\|below_average\|duplicate\|unique\|blank\|not_blank\|errors\|color_scale\|data_bar] (default cell) |
+| `op` | string |  | type=cell: comparison [>\|<\|>=\|<=\|=\|<>\|between\|not_between] (default >) |
+| `value` | string |  | type=cell: the bound (number, date, text or formula like $B$1); type=formula: a formula that is TRUE for cells to format, written for the range's top-left cell (e.g. $C2>$D2); text/begins/ends: the text; top/bottom: how many (default 10) |
+| `value2` | string |  | upper bound for between / not_between |
+| `percent` | boolean |  | top/bottom: value is a percentage (default false) |
+| `bold` | boolean |  | bold text |
+| `italic` | boolean |  | italic text |
+| `underline` | boolean |  | underlined text |
+| `strike` | boolean |  | struck-through text |
+| `color` | string |  | font colour: #rrggbb, a name (red, darkgreen, navy, ...) or none |
+| `fill` | string |  | background colour: #rrggbb, a name (lightyellow, lightgreen, ...) or none |
+| `font_size` | number |  | font size in points (0 = the default 11) |
+| `align` | string |  | horizontal alignment [general\|left\|center\|right] |
+| `valign` | string |  | vertical alignment [bottom\|middle\|top] |
+| `wrap` | boolean |  | wrap text onto several lines inside the cell |
+| `indent` | integer |  | indent level (0-15) |
+| `border` | string |  | draw a border around matching cells: thin, medium, thick or none |
+| `min_color` | string |  | color_scale: colour of the lowest value (default red #f8696b) |
+| `mid_color` | string |  | color_scale: colour of the middle value (optional, makes a 3-colour scale) |
+| `max_color` | string |  | color_scale: colour of the highest value (default green #63be7b); data_bar: the bar colour |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_cond_formats
+List a sheet's conditional formatting rules in order (later ones win), with how many cells each highlights now. Read-only.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `file` | string |  | instead of an open spreadsheet: read this file (for one-shot use) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_cond_clear
+Remove conditional formatting rules: rule=N (from office.sheet_cond_formats), every rule touching range=, or all of the sheet's. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `rule` | integer |  | rule number |
+| `range` | string |  | remove the rules that overlap these cells |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_validate
+Limit what may be typed into cells: type=list (value="North,South" or a range like $F$1:$F$9; shows a dropdown), whole or decimal numbers (op=between value=0 value2=100, or op=">=" value=0), date, time, length (of the text) or custom (value=a formula TRUE for good input, e.g. COUNTIF($A:$A,A2)=1). error_style=stop rejects bad input in office.sheet_set; warning/information accept it with a note. Saved in .xlsx. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `range` | string | yes | cells the rule covers, e.g. B2:B100 |
+| `type` | string |  | what is allowed [list\|whole\|decimal\|date\|time\|length\|custom] (default list) |
+| `op` | string |  | comparison for numbers, dates, times and lengths [>\|<\|>=\|<=\|=\|<>\|between\|not_between] (default between) |
+| `value` | string | yes | list items, a list range, the (lower) bound or the custom formula |
+| `value2` | string |  | upper bound for between |
+| `allow_blank` | boolean |  | empty cells are fine (default true) |
+| `dropdown` | boolean |  | type=list: show the in-cell dropdown (default true) |
+| `error_style` | string |  | what happens to bad input [stop\|warning\|information] (default stop) |
+| `error_title` | string |  | title of the error message |
+| `error` | string |  | error message (default: says what is allowed) |
+| `prompt_title` | string |  | title of the input hint |
+| `prompt` | string |  | input hint shown when the cell is selected |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_validations
+List a sheet's data validation rules and the cells that currently break them (like Excel's Circle Invalid Data). Read-only.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `file` | string |  | instead of an open spreadsheet: read this file (for one-shot use) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_validation_clear
+Remove data validation from range= (rules overlapping it) or from the whole sheet. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `range` | string |  | cells to free (default: every rule on the sheet) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_chart_add
+Put a chart on the sheet over the cells (it follows the data, is drawn in previews and PDFs and is saved as a real chart in .xlsx). The data range is read like office.sheet_chart: a header row of series names and a first column of categories. Types: bar, hbar, line, area, pie, scatter (first column = x values). Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `range` | string | yes | data including headers, e.g. A1:C13 |
+| `type` | string |  | chart type [bar\|hbar\|line\|area\|pie\|scatter] (default bar) |
+| `title` | string |  | chart title |
+| `by_rows` | boolean |  | series are rows, not columns (default false) |
+| `at` | string |  | top-left cell the chart sits on (default: two columns right of the data) |
+| `width` | integer |  | pixels (default 480) |
+| `height` | integer |  | pixels (default 288) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_chart_edit
+Change a chart on the sheet: its type, title, data range, position or size. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `chart` | integer |  | chart number (default: the last one) |
+| `type` | string |  | chart type [bar\|hbar\|line\|area\|pie\|scatter] |
+| `title` | string |  | chart title |
+| `range` | string |  | data range |
+| `by_rows` | boolean |  | series are rows |
+| `at` | string |  | top-left cell |
+| `width` | integer |  | pixels |
+| `height` | integer |  | pixels |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_chart_delete
+Remove a chart from the sheet. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `chart` | integer |  | chart number (default: the last one) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_charts
+List the charts placed on a sheet. chart=N attaches that chart as a PNG. Read-only.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `file` | string |  | instead of an open spreadsheet: read this file (for one-shot use) |
+| `chart` | integer |  | attach this chart's picture |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_pivot
+Summarise a table by category, like a pivot table: rows=Region values=Sales sums Sales per region; add columns=Quarter for a cross-tab; function=count|average|min|max. The cells are live SUMIFS/COUNTIFS/AVERAGEIFS formulas, so the summary updates when the data changes (static=true writes plain values). Totals are added. Goes to a new sheet unless to= names a cell. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `range` | string |  | the table including its header row (default: the used area) |
+| `rows` | string | yes | field for the row labels (header name or column letter) |
+| `columns` | string |  | field for the column labels (optional) |
+| `values` | string |  | field to summarise (count needs none) |
+| `function` | string |  | how to summarise [sum\|count\|average\|min\|max] (default sum) |
+| `to` | string |  | top-left cell for the result, e.g. H1 or Summary!A1 (default: a new sheet) |
+| `static` | boolean |  | write values instead of formulas (default false) |
+| `totals` | boolean |  | add grand totals (default true) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_copy
+Copy a range to another place (same or another sheet) like copy and paste: relative references in formulas move with the cells, absolute ($A$1) ones stay. what=values pastes the computed values only, formulas pastes without formats, formats pastes only the look (format painter for a block). transpose=true turns rows into columns; skip_blanks=true leaves cells under empty source cells alone. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `from` | string | yes | cells to copy, e.g. A1:D10 |
+| `to` | string | yes | top-left cell of the destination, e.g. F1 or Sheet2!A1 |
+| `what` | string |  | what to paste [all\|values\|formulas\|formats] (default all) |
+| `transpose` | boolean |  | swap rows and columns (default false) |
+| `skip_blanks` | boolean |  | don't overwrite with empty cells (default false) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_move
+Cut and paste a range: the cells (with formats and merges) move to `to`, and every formula that referred to them follows, as in Excel. Whatever was at the destination is replaced. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `from` | string | yes | cells to move, e.g. A1:D10 |
+| `to` | string | yes | new top-left cell, e.g. F1 or Sheet2!A1 |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_autofilter
+Filter a table in place, like Excel's AutoFilter: rows whose column doesn't match the criteria are hidden (the data stays; SUBTOTAL and AGGREGATE skip hidden rows). Each call adds a condition on one column; clear=true shows every row again and removes the filter. Criteria work like COUNTIF: ">100", "North", "<>done", "a*". Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `range` | string |  | the table including its header row (default: the used area, or the current filter) |
+| `column` | string |  | column letter or header name |
+| `criteria` | string |  | condition the kept rows meet |
+| `clear` | boolean |  | show all rows and remove the filter (default false) |
+| `sheet` | string |  | sheet name or 1-based number (default: the active sheet) |
+
+#### office.sheet_import
+Import a CSV/TSV file (or text) into the open workbook with import options, like Excel's text import: delimiter, rows to skip, decimal comma, day-first or month-first dates, columns kept as text, encoding. Goes to a new sheet unless at= names a cell. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `path` | string |  | CSV/TSV/text file to import |
+| `csv` | string |  | or the CSV text itself |
+| `name` | string |  | import into a new sheet with this name (default: the file name) |
+| `at` | string |  | or paste into an existing sheet starting at this cell, e.g. Sheet1!A20 |
+| `delimiter` | string |  | CSV delimiter [auto\|comma\|semicolon\|tab\|pipe\|space] (default auto) |
+| `skip_rows` | integer |  | lines to skip at the top (titles above the table) |
+| `decimal_comma` | boolean |  | numbers use a decimal comma: 1.234,5 = 1234.5 |
+| `date_order` | string |  | how 03/04/2026 reads [auto\|dmy\|mdy] (default auto) |
+| `text_columns` | string |  | columns kept as text (ids with leading zeros), e.g. A,C |
+| `detect_types` | boolean |  | turn numbers, dates and TRUE/FALSE into values (false keeps every field as text) |
+| `encoding` | string |  | text encoding [auto\|utf-8\|latin1] (default auto) |
 
 #### Sheets in a workbook
 
@@ -1387,8 +1836,11 @@ List the file formats the office tool reads and writes, which are built in and w
 
 - **Scripts in PDFs.** Western European text uses the standard PDF fonts. Greek and Cyrillic are set in the built-in font (Roboto, embedded with only the letters used, so the file stays small) and copy and search correctly. Chinese, Japanese, Korean, Arabic, Hebrew, Indic scripts and emoji still come out as `?` in PDFs and previews. `.docx`, `.xlsx`, `.pptx`, `.md` and `.html` keep every character, so export those through LibreOffice when you need those scripts in a PDF (`office.convert input=report.docx output=report.pdf backend=libreoffice`).
 - **Spreadsheets:**
-  - Cell styles are limited to number formats, bold and column widths. Colours, borders, merged cells, conditional formatting, data validation, pivot tables and charts inside the `.xlsx` are not read or written; charts are PNG files.
-  - `.xlsx` files from Excel open with their values and formulas. Functions the engine doesn't know show `#NAME?` until the cell is rewritten.
+  - Fonts are one sans family in a size of your choice; themes, cell comments, sparklines, slicers, macros and pivot caches are not read or written. A pivot table from Excel opens as its values; `office.sheet_pivot` makes a formula-based one.
+  - Charts are column, bar, line, area, pie and scatter. Other kinds in an `.xlsx` from Excel open as the closest of those (a doughnut as a pie, a radar as a line), with their data and title but not their own colours and fonts.
+  - `.xlsx` files from Excel open with their values and formulas. Functions the engine doesn't know (LAMBDA and its helpers, cube and database functions, among others) show `#NAME?` until the cell is rewritten.
+  - LibreOffice 24.2 and older don't know `SORT`, `SORTBY`, `UNIQUE`, `FILTER` and the other dynamic-array functions, so those cells show `#NAME?` there. Excel and newer LibreOffice show them.
+  - In the window, italic text is drawn upright and frozen panes scroll with the rest; both are kept in the file and in PDFs.
   - CSV saves hold one sheet's computed values.
   - Sorting moves formulas with their rows but doesn't rewrite references to those rows from elsewhere.
 - **Documents:**

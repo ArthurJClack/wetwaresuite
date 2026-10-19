@@ -298,7 +298,7 @@ void registerPivot(Session& session) {
                     }
                 }
                 if (dest != r.sheet || !newSheet.empty()) d.data.active = dest;
-                out.colWidths[left] = std::max(out.colWidths.count(left) ? out.colWidths[left] : 8.43, 14.0);
+                autofitColumns(out, area.c1, area.c2, true);
                 std::string msg = what + " by " + rowHeader + (colField >= 0 ? " and " + colHeader : "") + ": " + std::to_string(rowLabels.size()) + " row(s)" +
                                   (colField >= 0 ? " x " + std::to_string(colLabels.size()) + " column(s)" : "") + " in " +
                                   (newSheet.empty() ? where(d.data, area) : "the new sheet " + newSheet + " (" + rangeName(area) + ")") + note;

@@ -283,6 +283,31 @@ std::string freshSheetName(const Workbook& wb, const std::string& base) {
     return name;
 }
 
+void autofitColumns(Sheet& sh, int c1, int c2, bool growOnly) {
+    int r1, cc1, r2, cc2;
+    if (!sh.bounds(r1, cc1, r2, cc2)) return;
+    std::vector<double> best(static_cast<std::size_t>(c2 - c1 + 1), 0.0);
+    for (const auto& [k, c] : sh.cells) {
+        const int col = Sheet::colOf(k);
+        if (col < c1 || col > c2 || !c.hasContent()) continue;
+        bool merged = false;
+        for (const auto& m : sh.merges) merged = merged || (m.c2 > m.c1 && Sheet::rowOf(k) >= m.r1 && Sheet::rowOf(k) <= m.r2 && col >= m.c1 && col <= m.c2);
+        if (merged) continue;  // a title merged across columns doesn't widen the first one
+        const pdf::Font f{pdf::Family::Sans, c.style.bold, false};
+        const double size = c.style.size > 0 ? c.style.size : 11;
+        double& b = best[static_cast<std::size_t>(col - c1)];
+        b = std::max(b, pdf::textWidth(f, display(&c), size) / 6.0);
+    }
+    for (int col = c1; col <= c2; ++col) {
+        const double b = best[static_cast<std::size_t>(col - c1)];
+        if (b <= 0 && growOnly) continue;
+        const double w = std::clamp(std::ceil(b + 1.5), 4.0, 80.0);
+        auto it = sh.colWidths.find(col);
+        const double now = it == sh.colWidths.end() ? 8.43 : it->second;
+        if (!growOnly || w > now) sh.colWidths[col] = w;
+    }
+}
+
 bool checkValidation(const Workbook& wb, int sheet, const Range& r, std::string& error, std::string& notes) {
     const Sheet& sh = wb.sheets[static_cast<std::size_t>(sheet)];
     if (sh.validations.empty()) return true;
@@ -381,9 +406,10 @@ void registerSheetFileCommands(Session& session) {
             });
 
     reg.add({"office.sheet_save", "Save Spreadsheet",
-             "Save the workbook. The extension picks the format: .xlsx (all sheets, formulas with cached values, formats, bold, "
-             "widths), .csv/.tsv (one sheet's computed values, no formulas), .pdf (printable grid), .html (tables); .ods/.xls through "
-             "LibreOffice. Without path it saves back to where it was opened or last saved.",
+             "Save the workbook. The extension picks the format: .xlsx and .ods (everything: all sheets, formulas with cached "
+             "values, number formats, cell styles, merges, frozen panes, hidden rows, conditional formats, validation, named "
+             "ranges, charts), .csv/.tsv (one sheet's computed values, no formulas), .pdf (printable pages with styles and charts), "
+             ".html (tables); .xls and .fods through LibreOffice. Without path it saves back to where it was opened or last saved.",
              {doc(), str("path", "output file (default: the document's own path)"), sheetSpec()}, false, false},
             read(session, [](SheetDoc& d, const Params& p, const std::string& id) -> Result {
                 std::string path = has(p, "path") ? stringParam(p, "path") : d.path;
@@ -746,7 +772,7 @@ void registerSheetEditCommands(Session& session) {
                 return withPreview(res, d, p);
             }));
 
-    reg.add({"office.sheet_clear", "Clear Cells", "Clear a range: everything, only the contents, or only the formatting (number format and bold).",
+    reg.add({"office.sheet_clear", "Clear Cells", "Clear a range: everything, only the contents, or only the formatting (number format and cell style).",
              {doc(), str("range", "cells to clear, e.g. B2:D10", true), sheetSpec(),
               str("what", "what to clear", false, std::string("all"), {"all", "contents", "formats"}), previewSpec()},
              true},
@@ -1035,7 +1061,8 @@ void registerSheetTableCommands(Session& session) {
     for (const auto& [k, v] : formatPresets()) presetList += (presetList.empty() ? "" : ", ") + k;
     reg.add({"office.sheet_format", "Format Cells",
              "Format a range: a number format (a preset - " + presetList + " - or a code like #,##0.00, 0.0%, $#,##0, yyyy-mm-dd, "
-             "\"0 kg\"), bold on/off, column width in characters, or autofit widths to the contents.",
+             "\"0 kg\"), bold on/off, column width in characters, or autofit widths to the contents. Colours, fonts, borders and "
+             "alignment are office.sheet_style.",
              {doc(), str("range", "cells to format, e.g. B2:D13 or C:C", true), str("format", "number format preset or code"),
               flag("bold", "bold text"), number("width", "column width in characters (Excel units, default columns are 8.43)"),
               flag("autofit", "set column widths to fit their contents", false), sheetSpec(), previewSpec()},
@@ -1082,16 +1109,7 @@ void registerSheetTableCommands(Session& session) {
                     done.push_back("width " + textNumber(w));
                 }
                 if (boolParam(p, "autofit", false)) {
-                    for (int col = r.c1; col <= std::min(c2, r.c1 + 1000); ++col) {
-                        double best = 0;
-                        for (int row = 0; row <= used.r2; ++row) {
-                            const Cell* c = sh.get(row, col);
-                            if (!c) continue;
-                            const pdf::Font f{pdf::Family::Sans, c->style.bold, false};
-                            best = std::max(best, pdf::textWidth(f, display(c), 11) / 6.0);
-                        }
-                        sh.colWidths[col] = std::clamp(std::ceil(best + 1.5), 4.0, 80.0);
-                    }
+                    autofitColumns(sh, r.c1, std::min(c2, r.c1 + 1000), false);
                     done.push_back("autofit widths");
                 }
                 std::string list;

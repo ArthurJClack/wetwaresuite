@@ -240,7 +240,7 @@ void registerStyle(Session& session) {
                 }
                 std::string list;
                 for (const auto& x : done) list += (list.empty() ? "" : ", ") + x;
-                return withPreview(Result::success("styled " + where(d.data, a) + " (" + std::to_string(n) + " cells): " + list), d, p);
+                return withPreview(Result::success("styled " + where(d.data, a) + (n == 1 ? std::string(": ") : " (" + std::to_string(n) + " cells): ") + list), d, p);
             }));
 
     reg.add({"office.sheet_merge", "Merge Cells",

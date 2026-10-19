@@ -224,7 +224,7 @@ void Shell::gridView(const CellGrid& layout) {
                 if (cell.bar >= 0) {
                     const float bw = (b.x - a.x - 4) * std::clamp(cell.bar, 0.0f, 1.0f);
                     dl->PushClipRect(ca, b, true);
-                    dl->AddRectFilled({a.x + 2, a.y + 3}, {a.x + 2 + bw, b.y - 3}, rgb(cell.barColor & kSet ? cell.barColor : 0x638EC6, 170));
+                    dl->AddRectFilled({a.x + 2, a.y + 3}, {a.x + 2 + bw, b.y - 3}, rgb(cell.barColor & kSet ? cell.barColor : 0x638EC6, 110));
                     dl->PopClipRect();
                 }
             }

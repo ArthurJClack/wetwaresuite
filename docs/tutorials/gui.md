@@ -203,6 +203,12 @@ Every cell you change is one step in the history, the same `office.sheet_set` or
 command a script would run, so Ctrl+Z takes back exactly one cell. Formulas that depend on it update
 at once, and cells with errors (`#DIV/0!`, `#NAME?`) show in red.
 
+Cells look the way the file says: fill and font colours, bold, underline, alignment, merged cells,
+and conditional formats with their data bars, which change as soon as the numbers do. To style cells,
+merge them, freeze the top rows, add a dropdown, a conditional format, a chart or a pivot table,
+press **Ctrl+K** and type `style`, `merge`, `freeze`, `validate`, `conditional`, `chart` or `pivot`.
+The [office tutorial](office.md#task-7-a-sales-tracker-the-excel-way) has an example of each.
+
 ## 7. Painting
 
 In the image app (or any app with the paint tool), pictures get painting tools above the canvas:

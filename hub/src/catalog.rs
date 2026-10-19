@@ -39,6 +39,7 @@ pub const TOOLS: &[Tool] = &[
     tool("layout", "layout", "print layout and publishing", 10),
     tool("library", "library", "asset browser for every format", 3),
     tool("automate", "automate", "Python scripting across tools", 20),
+    tool("model", "model", "polygon modeling like Blender: edit mode, modifiers, UVs, materials", 3),
     tool("sculpt", "sculpt", "digital sculpting and retopology", 15),
     tool("render", "render", "3D scenes and path-traced renders", 20),
     tool("animate", "animate", "2D and 3D animation", 15),
@@ -76,7 +77,7 @@ pub struct App {
 pub const APPS: &[App] = &[
     App { id: "image", summary: "edit photos, paint pictures and make textures", tools: &["photo", "paint"], approx_mb: 2, always: false },
     App { id: "draw", summary: "vector art and logos, fonts, whiteboards and diagrams", tools: &["vector", "type", "board"], approx_mb: 5, always: false },
-    App { id: "model", summary: "3D modeling and sculpting, rendered pictures, animation", tools: &["sculpt", "render", "animate"], approx_mb: 4, always: false },
+    App { id: "model", summary: "3D modeling and sculpting, rendered pictures, animation", tools: &["model", "sculpt", "render", "animate"], approx_mb: 5, always: false },
     App { id: "game", summary: "game assets (meshes, sprites, textures) and game levels", tools: &["forge", "levels"], approx_mb: 4, always: false },
     App { id: "cad", summary: "precise parts, technical drawings and floor plans, 3D printing, parts that fit 3D scans", tools: &["cad", "blueprint", "slicer", "fit"], approx_mb: 5, always: false },
     App { id: "electronics", summary: "circuit diagrams, circuit boards and flashing microcontrollers", tools: &["circuit", "flash"], approx_mb: 4, always: false },

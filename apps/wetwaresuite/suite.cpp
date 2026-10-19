@@ -27,6 +27,7 @@
 #include "wetwaresuite/pdf/commands.hpp"
 #include "wetwaresuite/paint/paint.hpp"
 #include "wetwaresuite/photo/photo.hpp"
+#include "wetwaresuite/model/model.hpp"
 #include "wetwaresuite/sculpt/sculpt.hpp"
 #include "wetwaresuite/fit/fit.hpp"
 #include "wetwaresuite/render/render.hpp"
@@ -59,6 +60,7 @@ const std::set<std::string>& toolNames() {
         "office",
         "pdf",
         "levels",
+        "model",
         "sculpt",
         "beats",
         "animate",
@@ -107,6 +109,7 @@ void registerAll(Session& session, const std::set<std::string>& only) {
     if (want("office")) office::registerCommands(session);
     if (want("pdf")) pdf::registerCommands(session);
     if (want("levels")) levels::registerCommands(session);
+    if (want("model")) model::registerCommands(session);
     if (want("sculpt")) sculpt::registerCommands(session);
     if (want("beats")) beats::registerCommands(session);
     if (want("animate")) animate::registerCommands(session);

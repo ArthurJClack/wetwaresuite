@@ -11,7 +11,7 @@ const std::vector<App>& all() {
     static const std::vector<App> table = {
         {"image", "edit photos, paint pictures and make textures", {"photo", "paint"}, 0xe0559a},
         {"draw", "vector art and logos, fonts, whiteboards and diagrams", {"vector", "type", "board"}, 0x2fb37a},
-        {"model", "3D modeling and sculpting, rendered pictures, animation", {"sculpt", "render", "animate"}, 0xf08c2e},
+        {"model", "3D modeling and sculpting, rendered pictures, animation", {"model", "sculpt", "render", "animate"}, 0xf08c2e},
         {"game", "game assets (meshes, sprites, textures) and game levels", {"forge", "levels"}, 0x5bbf3a},
         {"cad", "precise parts, technical drawings and floor plans, 3D printing, parts that fit 3D scans", {"cad", "blueprint", "slicer", "fit"}, 0x2f8fd6},
         {"electronics", "circuit diagrams, circuit boards and flashing microcontrollers", {"circuit", "flash"}, 0x14a89a},
@@ -63,8 +63,8 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".drawio", {"draw", "board.open"}}, {".mmd", {"draw", ""}}, {".board.json", {"draw", "board.open"}},
         {".ai", {"draw", ""}}, {".eps", {"draw", ""}},
         // model
-        {".obj", {"model", "sculpt.open"}}, {".ply", {"model", "sculpt.open"}}, {".off", {"model", "sculpt.open"}},
-        {".glb", {"model", "sculpt.open"}}, {".gltf", {"model", "sculpt.open"}}, {".fbx", {"model", ""}},
+        {".obj", {"model", "model.open"}}, {".ply", {"model", "sculpt.open"}}, {".off", {"model", "sculpt.open"}},
+        {".glb", {"model", "sculpt.open"}}, {".gltf", {"model", "sculpt.open"}}, {".fbx", {"model", "model.open"}}, {".wwmodel", {"model", "model.open"}},
         {".scene.json", {"model", "render.open"}}, {".anim.json", {"model", "animate.open"}},
         // game
         {".tmx", {"game", "levels.open"}}, {".tmj", {"game", "levels.open"}}, {".ldtk", {"game", "levels.open"}},
@@ -155,6 +155,9 @@ const std::vector<SendRoute>& sendRoutes() {
         {"board", "image", "board.export", "path", ".png", "picture", "photo.open", "opened as a picture"},
         {"font", "office", "type.export", "path", ".ttf", "font", "", "use it in a layout: layout.font_add doc=<layout> path=FILE"},
         // model
+        {"model", "game", "model.export", "path", ".glb", "mesh", "forge.mesh_open", "opened as a game mesh: add LODs, fix scale, save"},
+        {"model", "cad", "model.export", "path", ".stl", "mesh", "slicer.load", "loaded on the printer bed: slicer.export_gcode doc=<print> path=<part.gcode>; or put it in a part: cad.import doc=<cad> path=FILE"},
+        {"model", "image", "model.render", "path", ".png", "picture", "photo.open", "the rendered picture"},
         {"sculpt", "game", "sculpt.export", "path", ".glb", "mesh", "forge.mesh_open", "opened as a game mesh: add LODs, fix scale, save"},
         {"sculpt", "cad", "sculpt.export", "path", ".stl", "mesh", "slicer.load", "loaded on the printer bed: slicer.export_gcode doc=<print> path=<part.gcode>; or put it in a part: cad.import doc=<cad> path=FILE"},
         {"sculpt", "image", "sculpt.export", "path", ".png", "picture", "photo.open", "a picture of the model"},
@@ -214,6 +217,7 @@ std::string toolGuide(const std::string& tool) {
         {"vector", "vector_* draws shapes, paths and text (vector_new returns vec1); vector_save writes SVG or PNG."},
         {"type", "type_* designs fonts and exports TTF/WOFF (type_new returns font1; type_proof shows a specimen)."},
         {"board", "board_* makes whiteboards and diagrams (board_from_mermaid turns Mermaid text into a laid-out diagram; board_export writes PNG/SVG/PDF)."},
+        {"model", "model_* is polygon modeling like Blender, z up: model_new returns model1 (a cube, light and camera); model_add adds primitives; model_select (by index, box, rect on the view, normal), model_select_loop and model_pick choose vertices/edges/faces of the active mesh; model_extrude, model_inset, model_bevel, model_loop_cut, model_bisect, model_knife, model_subdivide, model_merge, model_dissolve, model_bridge, model_spin, model_mirror edit it (model_elements lists indices); model_modifier_add stacks mirror/array/subsurf/solidify/bevel/boolean/...; model_uv_unwrap, model_material; model_render path-traces; model_export writes OBJ/glTF/FBX/STL; preview=true on any edit shows the viewport."},
         {"sculpt", "sculpt_* sculpts meshes in mm with z up using brush strokes along point paths (sculpt_new returns sculpt1; strokes accept space=screen points on a preview; sculpt_export writes STL/OBJ/glTF)."},
         {"render", "render_* builds 3D scenes and path-traces them (render_new returns scene1; render_model renders a model file in one go; render_render without output returns the image)."},
         {"animate", "animate_* keyframes 2D layers, cels, bone rigs and 3D meshes and exports GIF, sprite sheets or video."},

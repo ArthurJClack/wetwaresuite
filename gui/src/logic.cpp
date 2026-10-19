@@ -547,6 +547,7 @@ std::string toolBlurb(const std::string& tool) {
         {"layout", "Posters, flyers and booklets ready to print."},
         {"library", "Find, tag and sort all your files."},
         {"automate", "Repeat jobs on many files at once."},
+        {"model", "Build 3D models from boxes and loops, like Blender."},
         {"sculpt", "Shape 3D models like clay."},
         {"render", "Make pictures of 3D scenes with light and materials."},
         {"animate", "Make things move: 2D and 3D animation."},

@@ -25,6 +25,9 @@
 #if WW_TOOL_BOARD
 #include "wetwaresuite/board/board.hpp"
 #endif
+#if WW_TOOL_MODEL
+#include "wetwaresuite/model/model.hpp"
+#endif
 #if WW_TOOL_SCULPT
 #include "wetwaresuite/sculpt/sculpt.hpp"
 #endif
@@ -144,6 +147,9 @@ void registerTools(Session& session, const std::set<std::string>& requested) {
 #endif
 #if WW_TOOL_BOARD
     if (want("board")) board::registerCommands(session);
+#endif
+#if WW_TOOL_MODEL
+    if (want("model")) model::registerCommands(session);
 #endif
 #if WW_TOOL_SCULPT
     if (want("sculpt")) sculpt::registerCommands(session);

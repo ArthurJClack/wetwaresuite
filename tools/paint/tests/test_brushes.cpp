@@ -184,19 +184,20 @@ int main() {
         // multi-colour gradient
         CHECK(run("paint.clear", {{"doc", d}}).ok);
         CHECK(run("paint.gradient", {{"doc", d}, {"x1", 0.0}, {"y1", 0.0}, {"x2", 64.0}, {"y2", 0.0}, {"colors", std::string("#ff0000,#00ff00,#0000ff")}}).ok);
-        const raster::Image& g = doc->activeLayer().image;
-        CHECK(g.at(0, 5).r > 240 && g.at(32, 5).g > 240 && g.at(63, 5).b > 240);
+        // read through doc each time: a command may replace the layers (undo keeps the old ones)
+        auto g = [&] { return doc->activeLayer().image; };
+        CHECK(g().at(0, 5).r > 240 && g().at(32, 5).g > 240 && g().at(63, 5).b > 240);
         CHECK(run("paint.gradient", {{"doc", d}, {"x1", 0.0}, {"y1", 0.0}, {"x2", 64.0}, {"y2", 0.0}, {"colors", std::string("#ff0000,#0000ff")}, {"reverse", true}}).ok);
-        CHECK(g.at(0, 5).b > 240 && g.at(63, 5).r > 240);
+        CHECK(g().at(0, 5).b > 240 && g().at(63, 5).r > 240);
         CHECK(run("paint.gradient", {{"doc", d}, {"x1", 32.0}, {"y1", 16.0}, {"x2", 64.0}, {"y2", 16.0}, {"kind", std::string("reflected")},
                                      {"from", std::string("#000000")}, {"to", std::string("#ffffff")}}).ok);
-        CHECK(lum(g.at(32, 5)) < 10 && lum(g.at(1, 5)) > 240 && lum(g.at(63, 5)) > 240);
+        CHECK(lum(g().at(32, 5)) < 10 && lum(g().at(1, 5)) > 240 && lum(g().at(63, 5)) > 240);
         CHECK(run("paint.gradient", {{"doc", d}, {"x1", 32.0}, {"y1", 16.0}, {"x2", 64.0}, {"y2", 16.0}, {"preset", std::string("rainbow")}, {"kind", std::string("angle")}}).ok);
         CHECK(run("paint.gradient", {{"doc", d}, {"x1", 32.0}, {"y1", 16.0}, {"x2", 48.0}, {"y2", 16.0}, {"kind", std::string("diamond")}}).ok);
-        CHECK(lum(g.at(32, 16)) < 20 && lum(g.at(32 + 12, 16 + 6)) > 240);
+        CHECK(lum(g().at(32, 16)) < 20 && lum(g().at(32 + 12, 16 + 6)) > 240);
         CHECK(!run("paint.gradient", {{"doc", d}, {"x1", 0.0}, {"y1", 0.0}, {"x2", 1.0}, {"y2", 0.0}, {"colors", std::string("#ff0000")}}).ok);
         CHECK(run("paint.gradient", {{"doc", d}, {"x1", 0.0}, {"y1", 0.0}, {"x2", 64.0}, {"y2", 0.0}, {"colors", std::string("#000@0,#fff@50,#fff@100")}}).ok);
-        CHECK(lum(g.at(40, 5)) > 250);
+        CHECK(lum(g().at(40, 5)) > 250);
     }
     return check::summary("paint_brushes");
 }

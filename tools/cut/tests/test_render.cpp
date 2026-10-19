@@ -64,6 +64,17 @@ void testLayers(Session& s, const fs::path& dir) {
     img = frame(*tl, 1);
     CHECK(close(px(img, 61, 4), 0, 255, 0, 6) && close(px(img, 51, 4), 0, 0, 255, 6) && close(px(img, 32, 18), 255, 0, 0, 2) &&
           close(px(img, 56, 20), 255, 0, 0, 2));
+    {
+        // the box keeps the picture's own shape: a 4:3 source gets a 4:3 box, flush with the margin
+        Clip* c2 = tl->findClip("c2");
+        const int sw = c2->sourceWidth, sh = c2->sourceHeight;
+        c2->sourceWidth = 640, c2->sourceHeight = 480;
+        CHECK(run(s, "cut.transform doc=cut1 clip=c2 pip=bottom-right size=0.5 margin=2").ok);
+        CHECK(near(c2->width, 32) && near(c2->height, 24) && near(c2->x, 64 - 32 - 2) && near(c2->y, 36 - 24 - 2));
+        CHECK(run(s, "undo").ok);
+        c2 = tl->findClip("c2");
+        c2->sourceWidth = sw, c2->sourceHeight = sh;
+    }
     CHECK(run(s, "cut.transform doc=cut1 clip=c2 rotation=180").ok);
     img = frame(*tl, 1);
     CHECK(close(px(img, 51, 4), 0, 255, 0, 10) && close(px(img, 61, 4), 0, 0, 255, 10));

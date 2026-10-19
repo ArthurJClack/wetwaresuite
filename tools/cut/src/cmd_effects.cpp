@@ -314,7 +314,12 @@ void registerEffectCommands(Session& session) {
                         } else {
                             const double k = numberParam(p, "size", 0.3), m = numberParam(p, "margin", 40);
                             if (k <= 0.01 || k > 1) return Result::failure("size is a part of the frame, 0.01..1");
-                            const double w = std::round(W * k), h = std::round(H * k);
+                            // the box takes the picture's own shape (a 4:3 webcam stays 4:3), so the margin is exact
+                            const double aspect = c->sourceWidth > 0 && c->sourceHeight > 0 && c->cropW <= 0
+                                                      ? static_cast<double>(c->sourceWidth) / c->sourceHeight
+                                                      : c->cropW > 0 && c->cropH > 0 ? c->cropW / c->cropH
+                                                      : W / H;
+                            const double w = std::round(W * k), h = std::round(w / aspect);
                             double x = (W - w) / 2, y = (H - h) / 2;
                             if (where.find("left") != std::string::npos) x = m;
                             if (where.find("right") != std::string::npos) x = W - w - m;

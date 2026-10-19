@@ -232,9 +232,25 @@ std::mutex& recLock() {
     static std::mutex m;
     return m;
 }
+Result stopOne(const std::string& id, Recording& rec);
+
+// Recordings still running when the program ends (a batch script's last line, a closed MCP
+// session) are stopped properly, so their files are finished rather than cut off.
+struct RecordingList {
+    std::map<std::string, Recording> list;
+    RecordingList() = default;
+    RecordingList(const RecordingList&) = delete;
+    RecordingList& operator=(const RecordingList&) = delete;
+    ~RecordingList() {
+        for (auto& [id, rec] : list) {
+            if (rec.proc && rec.proc->running()) stopOne(id, rec);
+        }
+    }
+};
+
 std::map<std::string, Recording>& recordings() {
-    static std::map<std::string, Recording> r;
-    return r;
+    static RecordingList r;
+    return r.list;
 }
 int& recCounter() {
     static int n = 0;

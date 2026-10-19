@@ -56,7 +56,7 @@ AsmFn reported(AsmFn fn) {
         doc.solve();
         std::string loose;
         for (const auto& c : doc.freeComponents) loose += (loose.empty() ? "" : ",") + c;
-        r.message += doc.dof == 0 ? " (fully defined)" : " (" + std::to_string(doc.dof) + " degrees of freedom left: " + loose + ")";
+        r.message += doc.dof == 0 ? " (fully defined)" : " (" + std::to_string(doc.dof) + (doc.dof == 1 ? " degree" : " degrees") + " of freedom left: " + loose + ")";
         r.with("doc", stringParam(p, "doc")).with("dof", static_cast<std::int64_t>(doc.dof)).with("free", loose);
         return mesh::maybePreview(r, doc, p);
     };

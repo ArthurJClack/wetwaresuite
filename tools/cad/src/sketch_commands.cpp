@@ -675,7 +675,7 @@ void registerSketchEditCommands(Session& session) {
              "Show a sketch: its plane, how defined it is (degrees of freedom, points that can still move), every point "
              "with its solved position, every entity, every constraint (dimensions with their value now), and the closed "
              "profiles it makes (regions with their area and holes) or why it doesn't.",
-             with({}), false},
+             with({}), false, true},
             cadCommand(session, [](CadDoc& doc, const Params& p) {
                 const std::string name = stringParam(p, "sketch");
                 const Feature* f = doc.findFeature(name);

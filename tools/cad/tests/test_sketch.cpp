@@ -250,7 +250,7 @@ void testSketchShapes() {
     run(s, "cad.sketch doc=cad1 name=f");
     run(s, "cad.sketch_rect doc=cad1 sketch=f width=20 height=10");
     r = run(s, "cad.sketch_fillet doc=cad1 sketch=f point=p3 radius=3");
-    CHECK(r.ok);
+    CHECK(r.ok && r.message.find("redundant") == std::string::npos);  // tangent at an end is not degenerate
     info = run(s, "cad.sketch_info doc=cad1 sketch=f");
     CHECK(num(info, "regions") == 1 && within(num(info, "area"), 200 - 9 * (1 - kPi / 4), 2e-4));
     // three-point arc closing a polyline, and a closed spline
@@ -361,6 +361,11 @@ void testDraftRibThread() {
     // about half the ring between the major and minor diameters goes (the basic profile's share)
     const double ring = kPi * (16 - std::pow(4 - 0.5413 * 1.25, 2)) * 8;
     CHECK(cut > ring * 0.3 && cut < ring * 0.7 && watertight(s, "cad3"));
+    // a thread running out of the shaft's end (and from its start) stays closed too
+    CHECK(run(s, "cad.feature_set doc=cad3 feature=thread1 values=\"z=4; length=8\"").ok);
+    CHECK(watertight(s, "cad3"));
+    CHECK(run(s, "cad.feature_set doc=cad3 feature=thread1 values=\"z=0; length=12\"").ok);
+    CHECK(watertight(s, "cad3") && shaft - volumeOf(s, "cad3") > cut * 1.2);
 }
 
 void testFilesUndoMcp() {

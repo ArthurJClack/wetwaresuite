@@ -244,6 +244,21 @@ struct Builder {
     }
 };
 
+// The point two entities share as an end (a line's ends, an arc's start or end), or -1.
+int sharedEnd(const R& a, const R& b) {
+    auto ends = [](const R& r) -> std::vector<int> {
+        if (r.kind == RefKind::Line) return {r.pts[0], r.pts[1]};
+        if (r.kind == RefKind::Arc) return {r.pts[1], r.pts[2]};
+        return {};
+    };
+    for (int p : ends(a)) {
+        for (int q : ends(b)) {
+            if (p == q) return p;
+        }
+    }
+    return -1;
+}
+
 void equationsFor(const Model& m, const SketchConstraint& c, int owner, const Evaluator& eval, std::vector<Equation>& eqs) {
     Builder b{m, eqs, owner};
     std::vector<R> refs;
@@ -316,12 +331,33 @@ void equationsFor(const Model& m, const SketchConstraint& c, int owner, const Ev
             if (!curve(cv)) expects(c, "a line and a circle or arc");
             const R line = *l, circle = cv;
             const double side = aux == 0 ? 1 : aux;
+            // an arc ending on the line touches it there: its radius at that point is square to the line. (The
+            // distance form is flat at that solution, which reads as a redundant constraint.)
+            const int shared = sharedEnd(line, circle);
+            if (shared >= 0) {
+                b.add(join(Model::vars(line), Model::vars(circle)), [line, circle, shared](const std::vector<double>& x) {
+                    const Vec2 r = Model::P(x, shared) - Model::center(x, circle), d = Model::P(x, line.pts[1]) - Model::P(x, line.pts[0]);
+                    const double lr = mesh::length(r), ld = mesh::length(d);
+                    return lr < 1e-300 || ld < 1e-300 ? 0.0 : mesh::dot(r, d) / ld;
+                });
+                return;
+            }
             b.add(join(Model::vars(line), Model::vars(circle)), [line, circle, side](const std::vector<double>& x) {
                 return side * signedDist(Model::center(x, circle), Model::P(x, line.pts[0]), Model::P(x, line.pts[1])) - Model::radius(x, circle);
             });
         } else {
             if (!curve(refs[0]) || !curve(refs[1])) expects(c, "a line and a circle or arc, or two circles/arcs");
             const R c1 = refs[0], c2 = refs[1];
+            // two arcs meeting at an end: the centres and that end are in line
+            const int shared = sharedEnd(c1, c2);
+            if (shared >= 0) {
+                b.add(join(Model::vars(c1), Model::vars(c2)), [c1, c2, shared](const std::vector<double>& x) {
+                    const Vec2 a = Model::P(x, shared) - Model::center(x, c1), e = Model::P(x, shared) - Model::center(x, c2);
+                    const double la = mesh::length(a), le = mesh::length(e);
+                    return la < 1e-300 || le < 1e-300 ? 0.0 : mesh::cross(a, e) / le;
+                });
+                return;
+            }
             b.add(join(Model::vars(c1), Model::vars(c2)), [c1, c2, aux](const std::vector<double>& x) {
                 const double d = mesh::length(Model::center(x, c1) - Model::center(x, c2));
                 const double r1 = Model::radius(x, c1), r2 = Model::radius(x, c2);

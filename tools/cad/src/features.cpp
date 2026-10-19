@@ -947,20 +947,37 @@ Built buildThread(const Ctx& c, const Done& done) {
     const bool internal = c.flag("internal"), left = c.flag("left");
     const double rMaj = dMajor / 2, depth = 0.5413 * pitch;
     const double rOther = internal ? (rMaj - depth) * 0.9 : rMaj + pitch;  // the tool's plain side
-    const int rows = std::max(2, static_cast<int>(std::ceil(length / pitch * n)));
+    Vec3 dir;
+    directionByName(c.text("axis") == "z" ? "+z" : c.text("axis") == "x" ? "+x" : c.text("axis") == "y" ? "+y" : c.text("axis"), dir);
+    const Vec3 start{c.number("x"), c.number("y"), c.number("z")};
+    // a thread that reaches an end of the body runs out past it, so the cut doesn't end on that face
+    double lo = 1e300, hi = -1e300;
+    for (const auto& v : target->mesh->positions) {
+        const double h = mesh::dot(v - start, dir);
+        lo = std::min(lo, h);
+        hi = std::max(hi, h);
+    }
+    const double tol = 1e-6 * (1 + hi - lo);
+    // (by an odd fraction of the pitch, so no row of the tool lies on the end face)
+    const double run = 0.6180339887 * pitch;
+    const double z0 = lo >= -tol ? -run : 0.0, z1 = length >= hi - tol ? length + run : length;
+    const int rows = std::max(2, static_cast<int>(std::ceil((z1 - z0) / pitch * n)));
     Mesh tool;
     // thread surface grid (rows+1) x n, then the plain cylinder's two rings
     for (int k = 0; k <= rows; ++k) {
-        const double z = length * k / rows;
+        const double z = z0 + (z1 - z0) * k / rows;
         for (int j = 0; j < n; ++j) {
             const double th = 2 * kPi * j / n;
             const double f = z / pitch + (left ? 1 : -1) * static_cast<double>(j) / n;
-            const double r = threadRadius(f, rMaj, depth);
+            // the tool overshoots the stock surface a little (past the crest outside, the root inside), so
+            // its surface never lies on the stock's and the crest stays the stock's own flat
+            const double over = 0.1 * depth;
+            const double r = internal ? threadRadius(f, rMaj, depth + over) : threadRadius(f, rMaj + over, depth + over);
             tool.addVertex({r * std::cos(th), r * std::sin(th), z});
         }
     }
     const auto plain0 = static_cast<std::uint32_t>(tool.positions.size());
-    for (double z : {0.0, length}) {
+    for (double z : {z0, z1}) {
         for (int j = 0; j < n; ++j) {
             const double th = 2 * kPi * j / n;
             tool.addVertex({rOther * std::cos(th), rOther * std::sin(th), z});
@@ -988,9 +1005,6 @@ Built buildThread(const Ctx& c, const Done& done) {
     }
     mesh::cleanup(tool);
     if (mesh::volume(tool) < 0) mesh::flip(tool);
-    Vec3 dir;
-    directionByName(c.text("axis") == "z" ? "+z" : c.text("axis") == "x" ? "+x" : c.text("axis") == "y" ? "+y" : c.text("axis"), dir);
-    const Vec3 start{c.number("x"), c.number("y"), c.number("z")};
     Mat4 align;
     const Vec3 zAxis{0, 0, 1};
     const Vec3 ax = mesh::cross(zAxis, dir);

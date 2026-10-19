@@ -945,6 +945,13 @@ Built buildThread(const Ctx& c, const Done& done) {
     if (turnsD > 400) c.fail("that's more than 400 turns; shorten the thread");
     const int n = c.whole("segments", 8, 128);
     const bool internal = c.flag("internal"), left = c.flag("left");
+    if (c.flag("cosmetic")) {
+        Vec3 axisDir;
+        directionByName(c.text("axis") == "z" ? "+z" : c.text("axis") == "x" ? "+x" : c.text("axis") == "y" ? "+y" : c.text("axis"), axisDir);
+        auto extra = std::make_shared<FeatureExtra>();
+        extra->axes.push_back({{c.number("x"), c.number("y"), c.number("z")}, axisDir, internal ? dMajor / 2 - 0.5413 * pitch : dMajor / 2});
+        return {target->mesh, {}, extra, {}};
+    }
     const double rMaj = dMajor / 2, depth = 0.5413 * pitch;
     const double rOther = internal ? (rMaj - depth) * 0.9 : rMaj + pitch;  // the tool's plain side
     Vec3 dir;

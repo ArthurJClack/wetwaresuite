@@ -705,7 +705,7 @@ void registerSketchEditCommands(Session& session) {
                     if (s.measured.count(c.id)) t += " (now " + num(s.measured.at(c.id)) + ")";
                 }
                 double area = 0;
-                t += "\nprofile: " + std::to_string(s.regions.size()) + " regions";
+                t += "\nprofile: " + std::to_string(s.regions.size()) + (s.regions.size() == 1 ? " region" : " regions");
                 for (std::size_t i = 0; i < s.regions.size(); ++i) {
                     double a = std::fabs(mesh::loopArea(s.regions[i].outer));
                     for (const auto& h : s.regions[i].holes) a -= std::fabs(mesh::loopArea(h));

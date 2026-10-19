@@ -366,6 +366,10 @@ void testDraftRibThread() {
     CHECK(watertight(s, "cad3"));
     CHECK(run(s, "cad.feature_set doc=cad3 feature=thread1 values=\"z=0; length=12\"").ok);
     CHECK(watertight(s, "cad3") && shaft - volumeOf(s, "cad3") > cut * 1.2);
+    // a cosmetic thread leaves the solid alone but still has its axis
+    CHECK(run(s, "cad.feature_set doc=cad3 feature=thread1 param=cosmetic value=true").ok);
+    CHECK(near(volumeOf(s, "cad3"), shaft, 1e-9));
+    CHECK(run(s, "cad.datum_axis doc=cad3 on=thread1").ok);
 }
 
 void testFilesUndoMcp() {

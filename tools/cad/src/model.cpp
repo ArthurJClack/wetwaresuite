@@ -151,13 +151,15 @@ void addSketchTypes(std::vector<FeatureType>& t) {
                   num("thickness", "rib thickness", {}, true), flag("flip", "fill to the other side of the line", false)}});
     t.push_back({"thread", "Thread",
                  "Cut a modeled thread into a body along an axis: external (on a shaft: cuts the grooves) or internal (in a "
-                 "hole: the hole should be the minor diameter). Metric 60 degree profile. Also kept as a cosmetic callout "
-                 "(M8x1.25) for drawings.",
+                 "hole: the hole should be the minor diameter). Metric 60 degree profile. Drawings show it as a callout "
+                 "(M8x1.25); cosmetic=true only adds the callout and axis and leaves the solid plain (fast, and what "
+                 "most printed and machined parts want).",
                  {ref("target", "body to thread"), num("diameter", "major (nominal) diameter", {}, true),
                   num("pitch", "distance per turn", {}, true), num("length", "threaded length", {}, true),
                   num("x", "start of the thread on its axis: X", "0"), num("y", "Y", "0"), num("z", "Z", "0"),
                   choice("axis", "direction the thread runs from the start point", {"z", "-z", "x", "-x", "y", "-y"}, "z"),
                   flag("internal", "an internal thread (in a hole)", false), flag("left", "left-handed", false),
+                  flag("cosmetic", "callout only: don't cut the thread into the solid", false),
                   integer("segments", "segments per turn", "32")}});
 }
 

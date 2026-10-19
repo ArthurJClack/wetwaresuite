@@ -34,6 +34,11 @@ public:
     bool gridCell(int sheet, int row, int col, GridCell& out) const override;
     double gridColumnChars(int sheet, int col) const override;
     std::vector<std::string> gridSetCommand(int sheet, int row, int col, const std::string& input) const override;
+
+private:
+    // conditional formats for the window's grid, rebuilt on every grid() call (once per frame)
+    mutable std::shared_ptr<CellPainter> painter_;
+    mutable int painterSheet_ = -1;
 };
 
 class TextDoc : public Document {

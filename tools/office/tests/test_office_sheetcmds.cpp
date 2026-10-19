@@ -74,6 +74,24 @@ void testStyleCommands() {
     r = run(s, "office.sheet_merge", P({{"range", S("E2:F3")}, {"across", true}}));
     CHECK(r.ok && wb(s).sheets[0].merges.size() == 2);
 
+    // what the window's grid sees: styles, merges and conditional formats
+    {
+        auto d = s.workspace().getAs<SheetDoc>("sheet1");
+        CellGrid layout;
+        CHECK(d->grid(layout));
+        GridCell g;
+        CHECK(d->gridCell(0, 0, 0, g) && g.bold && g.align == 'c' && (g.color & 0xFFFFFF) == 0x112233 && (g.fill & 0x1000000));
+        GridCell top, inside;
+        CHECK(d->gridCell(0, 1, 4, top) && top.spanCols == 2 && top.spanRows == 1);
+        CHECK(d->gridCell(0, 1, 5, inside) && inside.covered);
+        run(s, "office.sheet_cond_format", P({{"range", S("B2:B4")}, {"op", S(">")}, {"value", S("60")}, {"fill", S("#00ff00")}}));
+        CHECK(d->grid(layout));
+        GridCell hit, miss;
+        CHECK(d->gridCell(0, 1, 1, hit) && (hit.fill & 0xFFFFFF) == 0x00FF00);
+        CHECK(d->gridCell(0, 2, 1, miss) && !(miss.fill & 0x1000000));
+        CHECK(s.history().undo());
+    }
+
     r = run(s, "office.sheet_freeze", P({{"at", S("B2")}}));
     CHECK(r.ok && wb(s).sheets[0].freezeRows == 1 && wb(s).sheets[0].freezeCols == 1);
     r = run(s, "office.sheet_freeze", P({{"none", true}}));

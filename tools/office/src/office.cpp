@@ -50,6 +50,8 @@ std::string SheetDoc::summary() const {
 }
 
 bool SheetDoc::grid(CellGrid& out) const {
+    painter_.reset();
+    painterSheet_ = -1;
     out.docParam = "doc";
     out.sheets.clear();
     for (const auto& sh : data.sheets) out.sheets.push_back(sh.name);
@@ -64,13 +66,48 @@ bool SheetDoc::grid(CellGrid& out) const {
 
 bool SheetDoc::gridCell(int sheet, int row, int col, GridCell& out) const {
     if (sheet < 0 || sheet >= static_cast<int>(data.sheets.size())) return false;
-    const Cell* c = data.sheets[static_cast<std::size_t>(sheet)].get(row, col);
-    if (!c || c->blank()) return false;
-    out.text = formatValue(c->value, c->format);
-    out.input = inputText(*c);
-    out.bold = c->style.bold;
-    out.number = c->value.type == CellValue::Number;
-    out.error = c->value.isError();
+    const Sheet& sh = data.sheets[static_cast<std::size_t>(sheet)];
+    bool merged = false;
+    for (const auto& m : sh.merges) {
+        if (row < m.r1 || row > m.r2 || col < m.c1 || col > m.c2) continue;
+        if (row != m.r1 || col != m.c1) {
+            out.covered = true;
+            return true;
+        }
+        out.spanRows = m.r2 - m.r1 + 1;
+        out.spanCols = m.c2 - m.c1 + 1;
+        merged = true;
+    }
+    const Cell* c = sh.get(row, col);
+    if ((!c || c->blank()) && !merged && sh.condFormats.empty()) return false;
+    CellStyle st = c ? c->style : CellStyle{};
+    if (!sh.condFormats.empty()) {
+        if (!painter_ || painterSheet_ != sheet) {
+            painter_ = std::make_shared<CellPainter>(data, sheet);
+            painterSheet_ = sheet;
+        }
+        double bar = -1;
+        std::uint32_t barColor = 0;
+        st = painter_->style(row, col, &bar, &barColor);
+        out.bar = static_cast<float>(bar);
+        out.barColor = barColor;
+    }
+    if (!c && !merged && st.plain() && out.bar < 0) return false;
+    if (c) {
+        out.text = formatValue(c->value, c->format);
+        out.input = inputText(*c);
+        out.number = c->value.type == CellValue::Number;
+        out.error = c->value.isError();
+        const std::uint32_t fc = formatColor(c->value, c->format);
+        if (fc && !hasColor(st.color)) st.color = fc;
+    }
+    out.bold = st.bold;
+    out.italic = st.italic;
+    out.underline = st.underline;
+    out.strike = st.strike;
+    out.align = st.align;
+    out.color = st.color;
+    out.fill = st.fill;
     return true;
 }
 

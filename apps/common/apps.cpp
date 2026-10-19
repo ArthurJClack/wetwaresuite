@@ -70,7 +70,7 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".tmx", {"game", "levels.open"}}, {".tmj", {"game", "levels.open"}}, {".ldtk", {"game", "levels.open"}},
         // cad
         {".stl", {"cad", "slicer.load"}}, {".3mf", {"cad", "slicer.load"}}, {".dxf", {"cad", "blueprint.open"}},
-        {".gcode", {"cad", ""}}, {".step", {"cad", "cad.open"}}, {".stp", {"cad", "cad.open"}}, {".wwcad", {"cad", "cad.open"}}, {".wwfit", {"cad", "fit.open"}},
+        {".gcode", {"cad", ""}}, {".step", {"cad", "cad.open"}}, {".stp", {"cad", "cad.open"}}, {".wwcad", {"cad", "cad.open"}}, {".wwasm", {"cad", "cad.assembly_open"}}, {".wwfit", {"cad", "fit.open"}},
         {".achcad", {"cad", "cad.open"}},  // .ach*: files saved before the rename
         // electronics
         {".hex", {"electronics", ""}}, {".elf", {"electronics", ""}}, {".ino", {"electronics", ""}},

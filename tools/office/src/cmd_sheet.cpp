@@ -148,7 +148,7 @@ bool looksLikeHeader(const Sheet& sh, const Range& r) {
         if (h && !h->value.empty() && h->value.type != CellValue::Text) allText = false;
         const Cell* b = sh.get(r.r1 + 1, c);
         if (b && b->value.type != CellValue::Text && !b->value.empty()) anyBelow = true;
-        if (h && h->bold) return true;
+        if (h && h->style.bold) return true;
     }
     return allText && anyBelow;
 }
@@ -427,7 +427,7 @@ void registerSheetCommands(Session& session) {
                     if (!c) return Result::success(name + " is empty", std::string()).with("cell", name).with("type", std::string("empty"));
                     std::string t = name + " = " + display(c);
                     if (c->hasFormula()) t += "  (formula =" + c->formula + ")";
-                    t += "\ntype " + typeName(c->value) + (c->format.empty() ? "" : ", format " + c->format) + (c->bold ? ", bold" : "");
+                    t += "\ntype " + typeName(c->value) + (c->format.empty() ? "" : ", format " + c->format) + (c->style.bold ? ", bold" : "");
                     if (c->hasFormula()) {
                         std::string refs;
                         for (const auto& ref : formulaReferences(d.data, c->formula, r.sheet)) refs += (refs.empty() ? "" : ", ") + where(d.data, ref);
@@ -659,12 +659,12 @@ void registerSheetCommands(Session& session) {
                         for (int col = r.c1; col <= r.c2; ++col) {
                             Cell& c = sh.at(row, col);
                             const std::string keepFormat = c.format;
-                            const bool keepBold = c.bold;
+                            const CellStyle keepStyle = c.style;
                             c = proto;
                             if (proto.hasFormula()) c.formula = offsetFormula(proto.formula, row - r.r1, col - r.c1);
                             c.ast.reset();
                             if (c.format.empty()) c.format = keepFormat;
-                            c.bold = keepBold;
+                            c.style = keepStyle;
                             if (c.blank()) sh.erase(row, col);
                         }
                     }
@@ -701,7 +701,7 @@ void registerSheetCommands(Session& session) {
                             c.ast.reset();
                         } else if (what == "formats") {
                             c.format.clear();
-                            c.bold = false;
+                            c.style = CellStyle{};
                         }
                         if (what == "all" || c.blank()) {
                             it = sh.cells.erase(it);
@@ -882,7 +882,7 @@ void registerSheetCommands(Session& session) {
                         Cell& dst = out.at(static_cast<int>(i), c - r.c1);
                         dst.value = src->value;
                         dst.format = src->format;
-                        dst.bold = src->bold;
+                        dst.style = src->style;
                     }
                 }
                 d.data.sheets.push_back(std::move(out));
@@ -972,7 +972,7 @@ void registerSheetCommands(Session& session) {
                             }
                             c = &sh.at(row, col);
                             if (has(p, "format")) c->format = fmt;
-                            if (has(p, "bold")) c->bold = boolParam(p, "bold");
+                            if (has(p, "bold")) c->style.bold = boolParam(p, "bold");
                             if (c->blank()) sh.erase(row, col);
                             ++n;
                         }
@@ -992,7 +992,7 @@ void registerSheetCommands(Session& session) {
                         for (int row = 0; row <= used.r2; ++row) {
                             const Cell* c = sh.get(row, col);
                             if (!c) continue;
-                            const pdf::Font f{pdf::Family::Sans, c->bold, false};
+                            const pdf::Font f{pdf::Family::Sans, c->style.bold, false};
                             best = std::max(best, pdf::textWidth(f, display(c), 11) / 6.0);
                         }
                         sh.colWidths[col] = std::clamp(std::ceil(best + 1.5), 4.0, 80.0);

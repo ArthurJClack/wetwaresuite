@@ -68,7 +68,7 @@ bool SheetDoc::gridCell(int sheet, int row, int col, GridCell& out) const {
     if (!c || c->blank()) return false;
     out.text = formatValue(c->value, c->format);
     out.input = inputText(*c);
-    out.bold = c->bold;
+    out.bold = c->style.bold;
     out.number = c->value.type == CellValue::Number;
     out.error = c->value.isError();
     return true;
@@ -422,7 +422,7 @@ std::string sheetHtml(const Workbook& wb, int only) {
                     std::string v = cell ? formatValue(cell->value, cell->format) : "";
                     const bool num = cell && cell->value.type == CellValue::Number;
                     out += std::string("<td") + (num ? " class=\"n\"" : "") + ">";
-                    if (cell && cell->bold) out += "<b>" + xml::escape(v) + "</b>";
+                    if (cell && cell->style.bold) out += "<b>" + xml::escape(v) + "</b>";
                     else out += xml::escape(v);
                     out += "</td>";
                 }

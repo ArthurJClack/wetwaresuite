@@ -5,6 +5,9 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <functional>
+#include <map>
+#include <set>
 
 #include "wetwaresuite/office/sheet.hpp"
 #include "text.hpp"
@@ -41,6 +44,70 @@ bool CellValue::operator==(const CellValue& o) const {
     if (type != o.type) return false;
     if (type == Number || type == Bool) return number == o.number;
     return text == o.text;
+}
+
+// ---- styles ----------------------------------------------------------------------
+
+bool CellStyle::operator==(const CellStyle& o) const {
+    return bold == o.bold && italic == o.italic && underline == o.underline && strike == o.strike && wrap == o.wrap && align == o.align &&
+           valign == o.valign && indent == o.indent && size == o.size && color == o.color && fill == o.fill && borderColor == o.borderColor &&
+           border[0] == o.border[0] && border[1] == o.border[1] && border[2] == o.border[2] && border[3] == o.border[3];
+}
+
+bool parseColor(const std::string& text, std::uint32_t& out) {
+    static const std::map<std::string, std::uint32_t> named = {
+        {"black", 0x000000},  {"white", 0xFFFFFF},  {"red", 0xFF0000},      {"green", 0x00B050},     {"blue", 0x0070C0},
+        {"yellow", 0xFFFF00}, {"orange", 0xFFC000}, {"purple", 0x7030A0},   {"gray", 0x808080},      {"grey", 0x808080},
+        {"lightgray", 0xD9D9D9}, {"lightgrey", 0xD9D9D9}, {"darkgray", 0x404040}, {"darkgrey", 0x404040}, {"pink", 0xFF99CC},
+        {"lightred", 0xFFC7CE}, {"darkred", 0x9C0006}, {"lightgreen", 0xC6EFCE}, {"darkgreen", 0x006100}, {"lightyellow", 0xFFEB9C},
+        {"darkyellow", 0x9C5700}, {"lightblue", 0xDDEBF7}, {"navy", 0x1F3864}, {"teal", 0x008080}, {"brown", 0x833C0B},
+    };
+    std::string t = lower(trimCopy(text));
+    if (t.empty() || t == "none" || t == "auto" || t == "automatic") {
+        out = 0;
+        return true;
+    }
+    auto it = named.find(t);
+    if (it != named.end()) {
+        out = it->second | kColorSet;
+        return true;
+    }
+    if (t[0] == '#') t.erase(0, 1);
+    if (t.size() == 8 && startsWith(t, "ff")) t.erase(0, 2);  // ARGB from xlsx files
+    if (t.size() == 3) t = std::string{t[0], t[0], t[1], t[1], t[2], t[2]};
+    if (t.size() != 6 || t.find_first_not_of("0123456789abcdef") != std::string::npos) return false;
+    out = static_cast<std::uint32_t>(std::strtoul(t.c_str(), nullptr, 16)) | kColorSet;
+    return true;
+}
+
+std::string colorName(std::uint32_t c) {
+    if (!hasColor(c)) return "none";
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "#%06x", rgbOf(c));
+    return buf;
+}
+
+const std::vector<std::string>& borderStyles() {
+    static const std::vector<std::string> v = {"none", "thin", "medium", "thick", "double", "dashed", "dotted"};
+    return v;
+}
+
+const std::vector<std::string>& condFormatTypes() {
+    static const std::vector<std::string> v = {"cell", "formula", "text", "begins", "ends", "top", "bottom", "above_average", "below_average",
+                                               "duplicate", "unique", "blank", "not_blank", "errors", "color_scale", "data_bar"};
+    return v;
+}
+
+const std::vector<std::string>& validationTypes() {
+    static const std::vector<std::string> v = {"list", "whole", "decimal", "date", "time", "length", "custom"};
+    return v;
+}
+
+const Range* Sheet::mergeAt(int row, int col) const {
+    for (const auto& m : merges) {
+        if (m.contains(row, col)) return &m;
+    }
+    return nullptr;
 }
 
 // ---- sheets ----------------------------------------------------------------------
@@ -548,11 +615,39 @@ std::string formatValue(const CellValue& v, const std::string& format) {
     return formatNumber(n, sec, sign);
 }
 
+std::uint32_t formatColor(const CellValue& v, const std::string& format) {
+    if (format.empty() || format.find('[') == std::string::npos) return 0;
+    auto secs = sections(format);
+    std::string sec = secs[0];
+    if (v.type == CellValue::Number) {
+        if (v.number < 0 && secs.size() >= 2) sec = secs[1];
+        else if (v.number == 0 && secs.size() >= 3) sec = secs[2];
+    } else if (v.type == CellValue::Text) {
+        if (secs.size() < 4) return 0;
+        sec = secs[3];
+    } else {
+        return 0;
+    }
+    static const std::map<std::string, std::uint32_t> colors = {{"black", 0x000000}, {"white", 0xFFFFFF}, {"red", 0xFF0000}, {"green", 0x00A000},
+                                                                 {"blue", 0x0000FF},  {"yellow", 0xC0A000}, {"magenta", 0xFF00FF}, {"cyan", 0x00A0A0}};
+    for (std::size_t i = 0; i < sec.size(); ++i) {
+        if (sec[i] != '[') continue;
+        auto e = sec.find(']', i);
+        if (e == std::string::npos) break;
+        auto it = colors.find(lower(sec.substr(i + 1, e - i - 1)));
+        if (it != colors.end()) return it->second | kColorSet;
+        i = e;
+    }
+    return 0;
+}
+
 // ---- typed input -----------------------------------------------------------------------
 
 void setInput(Cell& cell, const std::string& input) {
     cell.formula.clear();
     cell.ast.reset();
+    cell.spilled = false;  // typed over a spill: the cell is the user's now
+    cell.spillRows = cell.spillCols = 0;
     if (input.empty()) {
         cell.value = CellValue{};
         return;
@@ -675,21 +770,86 @@ bool shiftSpan(int& a, int& b, int at, int count, int limit) {
     return true;
 }
 
+// Rewrites one formula-like text that lives on sheet `s` (refs without a sheet name mean `s`).
+std::string rewriteOn(Workbook& wb, int s, int target, const std::string& text, const std::function<bool(FormulaRef&)>& fn) {
+    if (text.empty()) return text;
+    return rewriteFormula(text, [&](FormulaRef& r) {
+        const int sheet = r.sheet.empty() ? s : wb.sheetIndex(r.sheet);
+        if (sheet != target) return true;
+        return fn(r);
+    });
+}
+
 void rewriteAll(Workbook& wb, int target, const std::function<bool(FormulaRef&)>& fn) {
     for (std::size_t s = 0; s < wb.sheets.size(); ++s) {
-        for (auto& [k, c] : wb.sheets[s].cells) {
+        const int si = static_cast<int>(s);
+        Sheet& sh = wb.sheets[s];
+        for (auto& [k, c] : sh.cells) {
             if (!c.hasFormula()) continue;
-            std::string f = rewriteFormula(c.formula, [&](FormulaRef& r) {
-                const int sheet = r.sheet.empty() ? static_cast<int>(s) : wb.sheetIndex(r.sheet);
-                if (sheet != target) return true;
-                return fn(r);
-            });
+            std::string f = rewriteOn(wb, si, target, c.formula, fn);
             if (f != c.formula) {
                 c.formula = f;
                 c.ast.reset();
             }
         }
+        // rule formulas and chart ranges live on their sheet too
+        for (auto& cf : sh.condFormats) {
+            if (cf.type == "cell" || cf.type == "formula") {
+                cf.value1 = rewriteOn(wb, si, target, cf.value1, fn);
+                cf.value2 = rewriteOn(wb, si, target, cf.value2, fn);
+            }
+        }
+        for (auto& v : sh.validations) {
+            // a list of words has no references, so rewriting leaves it alone
+            if (v.type != "list" || v.value1.find(',') == std::string::npos) v.value1 = rewriteOn(wb, si, target, v.value1, fn);
+            v.value2 = rewriteOn(wb, si, target, v.value2, fn);
+        }
+        for (auto& ch : sh.charts) ch.range = rewriteOn(wb, si, target, ch.range, fn);
     }
+    // defined names always name their sheet
+    for (auto& [k, n] : wb.names) {
+        std::string f = rewriteFormula(n.formula, [&](FormulaRef& r) {
+            if (r.sheet.empty() || wb.sheetIndex(r.sheet) != target) return true;
+            return fn(r);
+        });
+        if (f != n.formula) {
+            n.formula = f;
+            n.ast.reset();
+        }
+    }
+}
+
+// Shifts the rows (or columns) of a range; false when it was deleted entirely.
+bool shiftRange(Range& r, bool rows, int at, int count) {
+    if (rows) return shiftSpan(r.r1, r.r2, at, count, kMaxRows);
+    return shiftSpan(r.c1, r.c2, at, count, kMaxCols);
+}
+
+template <typename T>
+void shiftAll(std::vector<T>& items, bool rows, int at, int count, Range T::*member) {
+    std::vector<T> kept;
+    for (auto& it : items) {
+        if (shiftRange(it.*member, rows, at, count)) kept.push_back(std::move(it));
+    }
+    items = std::move(kept);
+}
+
+std::set<int> shiftSet(const std::set<int>& in, int at, int count) {
+    std::set<int> out;
+    for (int v : in) {
+        if (count < 0 && v >= at && v < at - count) continue;
+        out.insert(v >= at ? v + count : v);
+    }
+    return out;
+}
+
+std::map<int, double> shiftMap(const std::map<int, double>& in, int at, int count) {
+    std::map<int, double> out;
+    for (auto [k, v] : in) {
+        if (count < 0 && k >= at && k < at - count) continue;
+        out[k >= at ? k + count : k] = v;
+    }
+    return out;
 }
 
 void moveCells(Sheet& sh, bool rows, int at, int count) {
@@ -703,13 +863,24 @@ void moveCells(Sheet& sh, bool rows, int at, int count) {
         moved.emplace(Sheet::key(r, col), std::move(c));
     }
     sh.cells = std::move(moved);
-    if (!rows) {
-        std::map<int, double> widths;
-        for (auto [col, w] : sh.colWidths) {
-            if (count < 0 && col >= at && col < at - count) continue;
-            widths[col >= at ? col + count : col] = w;
-        }
-        sh.colWidths = std::move(widths);
+    if (rows) {
+        sh.rowHeights = shiftMap(sh.rowHeights, at, count);
+        sh.hiddenRows = shiftSet(sh.hiddenRows, at, count);
+    } else {
+        sh.colWidths = shiftMap(sh.colWidths, at, count);
+        sh.hiddenCols = shiftSet(sh.hiddenCols, at, count);
+    }
+    std::vector<Range> merges;
+    for (Range m : sh.merges) {
+        if (shiftRange(m, rows, at, count) && (m.rows() > 1 || m.cols() > 1)) merges.push_back(m);
+    }
+    sh.merges = std::move(merges);
+    shiftAll(sh.condFormats, rows, at, count, &CondFormat::range);
+    shiftAll(sh.validations, rows, at, count, &Validation::range);
+    if (sh.hasAutoFilter) sh.hasAutoFilter = shiftRange(sh.autoFilter, rows, at, count);
+    for (auto& ch : sh.charts) {
+        int& p = rows ? ch.row : ch.col;
+        if (p >= at) p = std::max(at, p + count);
     }
 }
 
@@ -745,7 +916,7 @@ void Workbook::renameSheet(int sheet, const std::string& name) {
 
 void Workbook::deleteSheet(int sheet) {
     if (sheet < 0 || sheet >= static_cast<int>(sheets.size())) return;
-    // references from other sheets become #REF!; the sheet's own formulas go with it
+    // references from other sheets (and names) become #REF!; the sheet's own formulas go with it
     rewriteAll(*this, sheet, [&](FormulaRef& r) { return r.sheet.empty(); });
     sheets.erase(sheets.begin() + sheet);
     if (active >= static_cast<int>(sheets.size())) active = static_cast<int>(sheets.size()) - 1;

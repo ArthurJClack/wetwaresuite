@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 
 #include <nlohmann/json.hpp>
@@ -27,7 +28,9 @@ namespace fs = std::filesystem;
 namespace {
 
 fs::path tmp(const std::string& name) {
-    fs::path dir = fs::temp_directory_path() / "wetwaresuite_office_test";
+    // one folder per run, so parallel runs (other build trees on the machine) never collide
+    static const std::string run = std::to_string(std::random_device{}());
+    fs::path dir = fs::temp_directory_path() / ("wetwaresuite_office_test_" + run);
     fs::create_directories(dir);
     return dir / name;
 }
@@ -361,7 +364,7 @@ void testXlsxRoundTrip() {
     wb.sheets.emplace_back();
     wb.sheets[1].name = "Second sheet";
     put(wb, "A1", "Item");
-    wb.sheets[0].at(0, 0).bold = true;
+    wb.sheets[0].at(0, 0).style.bold = true;
     put(wb, "B1", "Cost");
     put(wb, "A2", "Rent & bills <home>");
     put(wb, "B2", "1200.5");
@@ -380,7 +383,7 @@ void testXlsxRoundTrip() {
     Workbook back = readXlsx(bytes);
     CHECK(back.sheets.size() == 2 && back.sheets[1].name == "Second sheet");
     const Sheet& s = back.sheets[0];
-    CHECK(s.get(0, 0)->value.text == "Item" && s.get(0, 0)->bold);
+    CHECK(s.get(0, 0)->value.text == "Item" && s.get(0, 0)->style.bold);
     CHECK(s.get(1, 0)->value.text == "Rent & bills <home>");
     CHECK(s.get(1, 1)->value.number == 1200.5 && s.get(1, 1)->format == "$#,##0.00");
     CHECK(s.get(3, 1)->formula == "SUM(B2:B3)" && s.get(3, 1)->value.number == 1510.5);
@@ -737,7 +740,7 @@ void testChart() {
     // grid preview and sheet pages
     put(wb, "D1", "Margin");
     put(wb, "D2", "=B2-C2");
-    wb.sheets[0].at(0, 0).bold = true;
+    wb.sheets[0].at(0, 0).style.bold = true;
     wb.recalc();
     Range all;
     CHECK(parseRange(wb, "A1:D5", 0, all, err));
@@ -1130,5 +1133,7 @@ int main() {
     testDocCommands();
     testDeckAndPdfCommands();
     testMcpAndBatch();
+    std::error_code ec;
+    fs::remove_all(tmp("x").parent_path(), ec);
     return check::summary("office");
 }

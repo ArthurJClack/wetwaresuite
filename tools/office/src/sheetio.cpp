@@ -354,7 +354,7 @@ Workbook readXlsx(const std::string& bytes) {
                             std::size_t si = static_cast<std::size_t>(std::atoi(sattr.c_str()));
                             if (si < xfs.size()) {
                                 cell.format = xfs[si].first;
-                                cell.bold = xfs[si].second;
+                                cell.style.bold = xfs[si].second;
                             }
                         }
                         if (!cell.blank()) sh.cells[Sheet::key(row, col)] = std::move(cell);
@@ -396,7 +396,7 @@ std::string writeXlsx(const Workbook& wb) {
         return id;
     };
     auto styleOf = [&](const Cell& c) {
-        auto key = std::make_pair(c.format, c.bold);
+        auto key = std::make_pair(c.format, c.style.bold);
         auto it = styleIndex.find(key);
         if (it != styleIndex.end()) return it->second;
         int id = static_cast<int>(styles.size());
@@ -754,7 +754,7 @@ Workbook readOds(const std::string& bytes) {
                                 if (!text.empty() || type == "string") cell.value = CellValue::str(text);
                             }
                             if (c.hasAttr("table:formula")) cell.formula = odfFormula(c.attr("table:formula"));
-                            if (boldStyles.count(c.attr("table:style-name"))) cell.bold = true;
+                            if (boldStyles.count(c.attr("table:style-name"))) cell.style.bold = true;
                             if (!cell.blank() && (!cell.value.empty() || cell.hasFormula())) {
                                 for (int m = 0; m < crep && col + m < kMaxCols; ++m) sh.cells[Sheet::key(row, col + m)] = cell;
                             }

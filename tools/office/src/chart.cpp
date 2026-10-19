@@ -430,7 +430,7 @@ void drawGrid(pdf::Page& page, const Sheet& sh, int r1, int c1, int r2, int c2, 
             if (!cell || cell->value.empty()) continue;
             std::string s = formatValue(cell->value, cell->format);
             if (s.empty()) continue;
-            const pdf::Font& ff = cell->bold ? fb : f;
+            const pdf::Font& ff = cell->style.bold ? fb : f;
             const std::size_t ci = static_cast<std::size_t>(c - c1);
             const double x = xs[ci], w = xs[ci + 1] - xs[ci];
             pdf::Color col = ink;

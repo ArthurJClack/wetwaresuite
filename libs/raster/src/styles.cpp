@@ -17,11 +17,12 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
-int blurRadius(double size) { return std::max(1, static_cast<int>(std::lround(size / 2))); }
+int blurRadius(double size) { return std::max(0, static_cast<int>(std::lround(size / 2))); }  // 0 = a hard edge
 int blurReach(double size) { return 3 * blurRadius(size) + 1; }
 
 // Three box passes (close to a Gaussian) over a float field, rows then columns.
 void blurField(std::vector<float>& f, int w, int h, int r) {
+    if (r <= 0) return;
     std::vector<float> tmp(f.size());
     auto line = [r](const float* in, float* out, int n, std::ptrdiff_t stride) {
         double acc = 0;

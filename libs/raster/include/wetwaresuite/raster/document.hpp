@@ -136,6 +136,15 @@ bool pixelLayer(ImageDoc& doc, int index, std::string& error);
 // layerIndex + pixelLayer: the layer a pixel edit goes to, or -1 with an error.
 int pixelLayerIndex(ImageDoc& doc, const Params& p, std::string& error);
 
+// Puts a new layer just above the active one (at the top of the group when a group is active),
+// in the same group, and makes it active. Returns its index.
+int insertLayer(ImageDoc& doc, Layer layer);
+
+// A geometry change for the whole document (resize, crop, rotate, warp): every layer's pixels and
+// mask and the selection go through fn and the canvas takes the size fn returns. Groups and
+// adjustment layers stay pixel-less; text and shape layers become plain pixels.
+void transformDocument(ImageDoc& doc, const std::function<Image(const Image&)>& fn);
+
 // Adds a preview attachment when the "preview" param is true.
 Result& maybePreview(Result& r, const ImageDoc& doc, const Params& p);
 

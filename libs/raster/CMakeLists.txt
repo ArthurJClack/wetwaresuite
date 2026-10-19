@@ -1,7 +1,8 @@
 find_package(Threads REQUIRED)
 include(${PROJECT_SOURCE_DIR}/cmake/webp.cmake)
 add_library(wetwaresuite_raster src/image.cpp src/codec.cpp src/ops.cpp src/paint.cpp src/ora.cpp src/document.cpp src/parallel.cpp
-            src/pyramid.cpp src/selection.cpp src/tiff.cpp src/webp.cpp src/composite.cpp src/adjustments.cpp src/styles.cpp src/psd.cpp)
+            src/pyramid.cpp src/selection.cpp src/tiff.cpp src/webp.cpp src/composite.cpp src/adjustments.cpp src/styles.cpp src/psd.cpp
+            src/retouch.cpp src/filters.cpp)
 add_library(wetwaresuite::raster ALIAS wetwaresuite_raster)
 target_include_directories(wetwaresuite_raster PUBLIC include PRIVATE ${PROJECT_SOURCE_DIR}/third_party/stb)
 target_link_libraries(wetwaresuite_raster PUBLIC wetwaresuite::core PRIVATE Threads::Threads)

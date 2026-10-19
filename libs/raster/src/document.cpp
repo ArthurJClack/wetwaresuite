@@ -399,6 +399,48 @@ int pixelLayerIndex(ImageDoc& doc, const Params& p, std::string& error) {
     return idx;
 }
 
+int insertLayer(ImageDoc& doc, Layer layer) {
+    auto& layers = doc.image.layers;
+    if (layers.empty()) {
+        layer.depth = 0;
+        layers.push_back(std::move(layer));
+        doc.active = 0;
+        return 0;
+    }
+    const int a = std::clamp(doc.active, 0, static_cast<int>(layers.size()) - 1);
+    const Layer& at = layers[static_cast<std::size_t>(a)];
+    const bool intoGroup = at.kind == LayerKind::Group;
+    layer.depth = intoGroup ? at.depth + 1 : at.depth;
+    const int pos = intoGroup ? a : a + 1;
+    layers.insert(layers.begin() + pos, std::move(layer));
+    doc.active = pos;
+    return pos;
+}
+
+void transformDocument(ImageDoc& doc, const std::function<Image(const Image&)>& fn) {
+    int width = -1, height = -1;
+    for (auto& layer : doc.image.layers) {
+        if (layer.hasPixels()) {
+            layer.image = fn(layer.image);
+            width = layer.image.width();
+            height = layer.image.height();
+            if (layer.kind != LayerKind::Pixel) {
+                layer.kind = LayerKind::Pixel;
+                layer.settings.clear();
+            }
+        }
+        if (!layer.mask.empty()) layer.mask = imageToMask(fn(maskToImage(layer.mask)));
+    }
+    if (doc.hasSelection()) doc.selection = imageToMask(fn(maskToImage(doc.selection)));
+    if (width < 0) {  // no pixel layers at all: find the new size from a blank canvas
+        const Image size = fn(Image(doc.image.width, doc.image.height));
+        width = size.width();
+        height = size.height();
+    }
+    doc.image.width = width;
+    doc.image.height = height;
+}
+
 int layerIndex(const ImageDoc& doc, const Params& p, std::string& error) {
     auto idx = intParam(p, "layer", doc.active);
     if (idx < 0 || idx >= static_cast<std::int64_t>(doc.image.layers.size())) {

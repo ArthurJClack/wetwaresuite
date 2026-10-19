@@ -24,6 +24,8 @@ void registerCommands(Session& session) {
     tool::registerTrackCommands(session);
     tool::registerPatternCommands(session);
     tool::registerArrangeCommands(session);
+    tool::registerNoteCommands(session);
+    tool::registerMixCommands(session);
 }
 
 std::string SongDoc::summary() const {
@@ -268,6 +270,13 @@ std::string listing(const Song& s) {
         if (t.fx.delayMix > 0) fx += " delay " + num(t.fx.delayMix, 2) + " (" + num(t.fx.delayBeats, 3) + " beats)";
         if (t.fx.reverb > 0) fx += " reverb " + num(t.fx.reverb, 2);
         if (!fx.empty()) out += ", effects:" + fx;
+        if (t.kind == TrackKind::Synth && (t.synth.unison > 1 || t.synth.filter != FilterMode::LowPass || t.synth.lfoTarget != LfoTarget::Off))
+            out += ", " + filterModeNames()[static_cast<std::size_t>(t.synth.filter)] + (t.synth.unison > 1 ? ", unison " + std::to_string(t.synth.unison) : "") +
+                   (t.synth.lfoTarget != LfoTarget::Off ? ", lfo " + lfoTargetNames()[static_cast<std::size_t>(t.synth.lfoTarget)] + " " + num(t.synth.lfoRate, 3) + " Hz" : "");
+        for (const auto& [lane, pd] : t.pads)
+            out += ", pad " + lane + " (" + num(pd.volumeDb, 3) + " dB, " + num(pd.tune, 3) + " st" + (pd.decay > 0 ? ", decay " + num(pd.decay, 3) + " s" : "") + ")";
+        for (std::size_t k = 0; k < t.rack.size(); ++k) out += "\n  fx " + std::to_string(k) + " " + audio::describeEffect(t.rack[k]);
+        for (const auto& lane : t.automation) out += "\n  automation " + lane.target + ": " + std::to_string(lane.points.size()) + " points";
         for (const auto& pl : s.arrangement) {
             if (pl.track != static_cast<int>(i)) continue;
             const Pattern* p = s.findPattern(pl.pattern);
@@ -276,6 +285,11 @@ std::string listing(const Song& s) {
             if (pl.repeat > 1) out += " x" + std::to_string(pl.repeat);
             if (!p) out += " (missing pattern)";
         }
+    }
+    if (!s.masterRack.empty() || !s.masterAutomation.empty() || s.metronome) {
+        out += "\nmaster" + std::string(s.metronome ? " (metronome on at " + num(s.metronomeDb, 3) + " dB)" : "") + ":";
+        for (std::size_t k = 0; k < s.masterRack.size(); ++k) out += "\n  fx " + std::to_string(k) + " " + audio::describeEffect(s.masterRack[k]);
+        for (const auto& lane : s.masterAutomation) out += "\n  automation " + lane.target + ": " + std::to_string(lane.points.size()) + " points";
     }
     for (const auto& p : s.patterns) {
         out += "\npattern \"" + p.name + "\": " + std::to_string(p.bars) + (p.bars == 1 ? " bar" : " bars");
@@ -304,6 +318,7 @@ bool renderArgs(const Song& s, const Params& p, RenderOptions& o, std::string& e
     o.bars = p.count("bars") ? static_cast<int>(intParam(p, "bars")) : -1;
     o.tailSeconds = p.count("tail") ? numberParam(p, "tail") : -1.0;
     o.limit = boolParam(p, "limit", true);
+    if (p.count("click")) o.click = boolParam(p, "click") ? 1 : 0;
     if (o.startBar < 0 || (p.count("bars") && o.bars < 1)) {
         error = "start_bar must be >= 0 and bars >= 1";
         return false;
@@ -331,7 +346,8 @@ std::vector<ParamSpec> renderParams() {
             {"bars", ParamType::Int, "how many bars (default: to the end of the arrangement)", false},
             {"track", ParamType::String, "render just this track (number or name), ignoring mute and solo", false},
             {"tail", ParamType::Number, "seconds to let sound ring past the end (default: automatic, trimmed)", false},
-            {"limit", ParamType::Bool, "brickwall limiter at -1 dBFS on the master", false, {}, true}};
+            {"limit", ParamType::Bool, "brickwall limiter at -1 dBFS on the master", false, {}, true},
+            {"click", ParamType::Bool, "add the metronome click (default: the song's metronome setting)", false}};
 }
 
 std::string waveformPng(const audio::Buffer& b) {

@@ -11,6 +11,7 @@
 
 #include "wetwaresuite/audio/dsp.hpp"
 #include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/audio/project.hpp"
 #include "wetwaresuite/beats/song.hpp"
 
 namespace wetwaresuite::beats {
@@ -237,6 +238,21 @@ bool parseOsc(const std::string& text, Osc& out) {
     else if (t == "none") out = Osc::Off;
     else return false;
     return true;
+}
+
+const std::vector<std::string>& filterModeNames() {
+    static const std::vector<std::string> v = {"lowpass", "highpass", "bandpass"};
+    return v;
+}
+
+const std::vector<std::string>& lfoTargetNames() {
+    static const std::vector<std::string> v = {"off", "pitch", "filter", "amp"};
+    return v;
+}
+
+const std::vector<std::string>& lfoShapeNames() {
+    static const std::vector<std::string> v = {"sine", "triangle", "square", "saw"};
+    return v;
 }
 
 const std::vector<std::string>& presetNames() {
@@ -475,7 +491,16 @@ json synthJson(const SynthSettings& s) {
             {"detune", s.detune},              {"osc2_level", s.osc2Level},         {"octave", s.octave},
             {"attack", s.attack},              {"decay", s.decay},                  {"sustain", s.sustain},
             {"release", s.release},            {"cutoff", s.cutoff},                {"resonance", s.resonance},
-            {"filter_env", s.filterEnv},       {"filter_decay", s.filterDecay}};
+            {"filter_env", s.filterEnv},       {"filter_decay", s.filterDecay},     {"filter", filterModeNames()[static_cast<std::size_t>(s.filter)]},
+            {"unison", s.unison},              {"unison_spread", s.unisonSpread},
+            {"lfo_target", lfoTargetNames()[static_cast<std::size_t>(s.lfoTarget)]}, {"lfo_shape", lfoShapeNames()[static_cast<std::size_t>(std::clamp(s.lfoShape, 0, 3))]},
+            {"lfo_rate", s.lfoRate},           {"lfo_depth", s.lfoDepth}};
+}
+
+int indexOf(const std::vector<std::string>& names, const std::string& v, int fallback) {
+    for (std::size_t i = 0; i < names.size(); ++i)
+        if (names[i] == v) return static_cast<int>(i);
+    return fallback;
 }
 
 SynthSettings synthFrom(const json& j, SynthSettings s) {
@@ -494,6 +519,13 @@ SynthSettings synthFrom(const json& j, SynthSettings s) {
     s.resonance = j.value("resonance", s.resonance);
     s.filterEnv = j.value("filter_env", s.filterEnv);
     s.filterDecay = j.value("filter_decay", s.filterDecay);
+    s.filter = static_cast<FilterMode>(indexOf(filterModeNames(), j.value("filter", std::string("lowpass")), 0));
+    s.unison = std::clamp(j.value("unison", s.unison), 1, 7);
+    s.unisonSpread = j.value("unison_spread", s.unisonSpread);
+    s.lfoTarget = static_cast<LfoTarget>(indexOf(lfoTargetNames(), j.value("lfo_target", std::string("off")), 0));
+    s.lfoShape = indexOf(lfoShapeNames(), j.value("lfo_shape", std::string("sine")), 0);
+    s.lfoRate = j.value("lfo_rate", s.lfoRate);
+    s.lfoDepth = j.value("lfo_depth", s.lfoDepth);
     return s;
 }
 
@@ -531,6 +563,13 @@ std::string toJson(const Song& s, const fs::path& songFile) {
         tj["effects"] = {{"distortion", t.fx.distortion}, {"compress", t.fx.compress},     {"delay", t.fx.delayMix},
                          {"delay_beats", t.fx.delayBeats}, {"delay_feedback", t.fx.delayFeedback}, {"reverb", t.fx.reverb},
                          {"reverb_size", t.fx.reverbSize}};
+        if (!t.pads.empty()) {
+            json pj = json::object();
+            for (const auto& [lane, pad] : t.pads) pj[lane] = {{"volume_db", pad.volumeDb}, {"tune", pad.tune}, {"decay", pad.decay}};
+            tj["pads"] = pj;
+        }
+        if (!t.rack.empty()) tj["rack"] = json::parse(audio::rackToJson(t.rack));
+        if (!t.automation.empty()) tj["automation"] = json::parse(audio::lanesToJson(t.automation));
         j["tracks"].push_back(tj);
     }
     j["patterns"] = json::array();
@@ -548,6 +587,10 @@ std::string toJson(const Song& s, const fs::path& songFile) {
     for (const auto& pl : s.arrangement) {
         j["arrangement"].push_back({{"track", pl.track}, {"pattern", pl.pattern}, {"bar", pl.bar}, {"repeat", pl.repeat}});
     }
+    if (!s.masterRack.empty()) j["master_rack"] = json::parse(audio::rackToJson(s.masterRack));
+    if (!s.masterAutomation.empty()) j["master_automation"] = json::parse(audio::lanesToJson(s.masterAutomation));
+    if (s.metronome) j["metronome"] = true;
+    j["metronome_db"] = s.metronomeDb;
     return j.dump(2) + "\n";
 }
 
@@ -612,6 +655,11 @@ Song fromJson(const std::string& text, const fs::path& songFile) {
                 t.fx.reverb = e.value("reverb", 0.0);
                 t.fx.reverbSize = e.value("reverb_size", t.fx.reverbSize);
             }
+            if (tj.contains("pads") && tj["pads"].is_object()) {
+                for (const auto& [lane, pj] : tj["pads"].items()) t.pads[lane] = {pj.value("volume_db", 0.0), pj.value("tune", 0.0), pj.value("decay", 0.0)};
+            }
+            if (tj.contains("rack")) t.rack = audio::rackFromJson(tj["rack"].dump());
+            if (tj.contains("automation")) t.automation = audio::lanesFromJson(tj["automation"].dump());
             s.tracks.push_back(std::move(t));
         }
         for (const auto& pj : j.value("patterns", json::array())) {
@@ -644,6 +692,10 @@ Song fromJson(const std::string& text, const fs::path& songFile) {
             pl.repeat = std::max(1, aj.value("repeat", 1));
             if (pl.track >= 0 && pl.track < static_cast<int>(s.tracks.size())) s.arrangement.push_back(pl);
         }
+        if (j.contains("master_rack")) s.masterRack = audio::rackFromJson(j["master_rack"].dump());
+        if (j.contains("master_automation")) s.masterAutomation = audio::lanesFromJson(j["master_automation"].dump());
+        s.metronome = j.value("metronome", false);
+        s.metronomeDb = std::clamp(j.value("metronome_db", -8.0), -60.0, 0.0);
         return s;
     } catch (const nlohmann::json::exception& e) {
         throw std::runtime_error(std::string("bad value in the song file: ") + e.what());

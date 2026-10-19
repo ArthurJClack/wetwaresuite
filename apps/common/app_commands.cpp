@@ -356,9 +356,17 @@ fs::path selfDir() { return selfPathStore().empty() ? fs::path() : selfPathStore
 fs::path locate(const std::string& binary) {
     std::vector<fs::path> dirs;
     if (!selfDir().empty()) dirs.push_back(selfDir());
+    std::error_code ec;
+    // macOS: each app is its own bundle (wetwaresuite image.app/Contents/MacOS/...) in one
+    // folder, so the others are in the sibling bundles
+    if (selfDir().filename() == "MacOS" && selfDir().parent_path().filename() == "Contents") {
+        const fs::path folder = selfDir().parent_path().parent_path().parent_path();
+        for (const auto& entry : fs::directory_iterator(folder, ec)) {
+            if (entry.path().extension() == ".app") dirs.push_back(entry.path() / "Contents" / "MacOS");
+        }
+    }
     dirs.push_back(dataRoot() / "bin");
     for (auto& d : pathDirs()) dirs.push_back(d);
-    std::error_code ec;
     for (const auto& d : dirs) {
         fs::path candidate = d / exe(binary);
         if (fs::is_regular_file(candidate, ec)) return candidate;

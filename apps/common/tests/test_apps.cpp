@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -282,6 +283,7 @@ int main() {
         auto gui = decide({"gui", "--action", "photo.resize", "--screenshot", "s.bmp"});
         CHECK(gui.kind == LaunchKind::Gui && gui.action == "photo.resize" && gui.screenshot == "s.bmp" && gui.error.empty());
         CHECK(!decide({"gui", "--action"}).error.empty());
+        CHECK(decide({"gui", "--all"}).all && !decide({"gui"}).all);  // --all: every tool in one window
         CHECK(!decide({"gui", "--nope"}).error.empty());
         CHECK(decide({"-psn_0_12345"}).kind == LaunchKind::Gui);  // old macOS Finder argument
         // the command line keeps every word it had, even when a file has that name
@@ -293,6 +295,49 @@ int main() {
         CHECK(decide({"photo.jpg", "--keep-going"}).kind == LaunchKind::Cli);
         CHECK(decide({"nonsense"}).kind == LaunchKind::Cli);
         CHECK(apps::isCliKeyword("batch") && !apps::isCliKeyword("open"));
+    }
+
+    // ---- the launcher: a tile per app, each started as its own program ----
+    {
+        auto launcher = apps::launcherInfo();
+        CHECK(launcher.id == "launcher" && launcher.tools.empty());
+        CHECK(launcher.launcher.size() + 1 == apps::all().size());  // every app but share
+        bool sawImage = false;
+        for (const auto& t : launcher.launcher) {
+            CHECK(t.id != "share" && apps::find(t.id));
+            CHECK(!t.name.empty() && t.name[0] >= 'A' && t.name[0] <= 'Z' && !t.summary.empty());
+            if (t.id == "image") sawImage = t.name == "Image" && t.accent == apps::find("image")->accent;
+        }
+        CHECK(sawImage);
+        CHECK(apps::guiInfo("image").id == "image" && apps::guiInfo("image").launcher.empty());
+    }
+
+    // ---- the installers' file types match the table (packaging/file_types.py makes them) ----
+    {
+        std::ifstream in(std::string(WETWARESUITE_SOURCE_DIR) + "/packaging/file-types.tsv");
+        CHECK(in.good());
+        std::set<std::string> listed;
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            std::istringstream cols(line);
+            std::string ext, app, mime, own;
+            std::getline(cols, ext, '\t');
+            std::getline(cols, app, '\t');
+            std::getline(cols, mime, '\t');
+            std::getline(cols, own, '\t');
+            const auto route = apps::routeForFile("x" + ext);
+            CHECK(route.app == app && !route.command.empty() && !mime.empty());
+            CHECK((own == "yes") == (ext.rfind(".ww", 0) == 0 || ext.rfind(".ach", 0) == 0));
+            listed.insert(ext);
+        }
+        std::size_t openable = 0;
+        for (const auto& [ext, route] : apps::fileTypes()) {
+            if (route.command.empty() || std::count(ext.begin(), ext.end(), '.') > 1) continue;
+            ++openable;
+            if (!listed.count(ext)) std::cerr << "packaging/file-types.tsv misses " << ext << ": run python3 packaging/file_types.py\n";
+        }
+        CHECK(openable == listed.size());
     }
 
     // ---- what the window shows for an app ----

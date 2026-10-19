@@ -90,7 +90,7 @@ install only what you need (`hub install image model --from <release folder>`); 
 | `tools/clock/` | clock: world time for ~110 cities with summer-time rules, conversions, timers, stopwatch with laps, alarms saved between runs, date differences and working days, calendars |
 | `apps/app/` | `wetwaresuite-<app>`: one small binary per app (image, draw, model...), built from one shared main; each links only its own tools |
 | `apps/common/` | what every app shares: the app table, which app opens which file, the handoff folder and the `app.*` commands |
-| `apps/wetwaresuite/` | `wetwaresuite`: every tool in one binary (the window with no arguments; commands, batch scripts or an MCP server with them), plus the `wetwaresuite-gui` launcher |
+| `apps/wetwaresuite/` | `wetwaresuite`: every tool in one binary (commands, batch scripts or an MCP server with them; `gui --all` is every tool in one window), plus the `wetwaresuite-gui` launcher that starts each app in its own window |
 | `share/` | `wetwaresuite-share`: share a folder with any browser (link, QR, code), live-sync code between machines, send files; LAN or internet |
 | `hub/` | `hub`: lists and installs apps offline from a folder or archive, makes offline editions (1-256 GB), prints the MCP config for Claude |
 

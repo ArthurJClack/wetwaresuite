@@ -1,6 +1,6 @@
 #!/bin/sh
 # wetwaresuite AppImage entry point.
-#   ./wetwaresuite-linux-x86_64.AppImage              the launcher window, every tool
+#   ./wetwaresuite-linux-x86_64.AppImage              the launcher: each app opens in its own window
 #   ./wetwaresuite-linux-x86_64.AppImage --run image  one app (or hub, share, wetwaresuite ...)
 #   ln -s wetwaresuite-linux-x86_64.AppImage wetwaresuite-image   a symlink named after a program runs it
 here=$(dirname "$(readlink -f "$0")")

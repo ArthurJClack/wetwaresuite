@@ -63,7 +63,9 @@ constexpr const char* kInstructions =
 void usage() {
     std::cout << "wetwaresuite " << kVersion << ": the whole suite, headless\n\n"
               << "usage:\n"
-                 "  wetwaresuite                          open the window with every tool (also: wetwaresuite <files>, open <files>, gui)\n"
+                 "  wetwaresuite                          open the launcher: every app starts in its own window\n"
+                 "  wetwaresuite <files>                  open each file in its own app (also: open <files>)\n"
+                 "  wetwaresuite gui --all                every tool in one window\n"
                  "  wetwaresuite list [tool]              list commands (optionally for one tool, e.g. photo)\n"
                  "  wetwaresuite help <command>           show a command's parameters\n"
                  "  wetwaresuite run <command> key=value  run one command, e.g. run convert.file input=a.png output=a.jpg\n"
@@ -155,6 +157,12 @@ int main(int argc, char** argv) {
             return 2;
         }
         gui::RunOptions options{launch.screenshot, launch.files, launch.action};
+        // the launcher (or files straight to their own apps), unless asked for every
+        // tool in one window or no app is installed next to this program
+        if (!launch.all && launch.action.empty()) {
+            int code = apps::runLauncher(session, options, usage);
+            if (code >= 0) return code;
+        }
         return apps::runGui(session, apps::guiInfo("suite"), options, usage);
     }
     const std::string cmd = args[0];

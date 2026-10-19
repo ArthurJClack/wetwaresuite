@@ -158,6 +158,7 @@ void Shell::frame() {
         if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Y) || ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z)) redo();
     }
     if (form_ && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Enter)) runForm();
+    if (!app_.launcher.empty()) return launcherFrame();
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);

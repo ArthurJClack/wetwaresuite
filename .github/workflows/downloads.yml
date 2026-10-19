@@ -86,6 +86,8 @@ jobs:
           [ -z "$v" ] && [[ "$GITHUB_REF" == refs/tags/v* ]] && v="$GITHUB_REF_NAME"
           [ -z "$v" ] && v=$(sed -n 's/^project(wetwaresuite VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
           echo "WW_VERSION=${v#v}" >> "$GITHUB_ENV"
+          # which app opens which file type: the installers' lists must match apps/common/apps.cpp
+          python3 packaging/file_types.py --check || python packaging/file_types.py --check
           # the windows start menu lists every app by hand; it must match packaging/apps.tsv
           for a in $(grep -v '^#' packaging/apps.tsv | cut -f1); do
             grep -q "wetwaresuite-$a.exe" packaging/windows/wetwaresuite.iss || { echo "::error::packaging/windows/wetwaresuite.iss has no start-menu entry for $a"; exit 1; }
@@ -112,8 +114,9 @@ jobs:
           # mount it and check the app inside runs
           mnt=$(mktemp -d)
           hdiutil attach -nobrowse -mountpoint "$mnt" wetwaresuite-macos-arm64.dmg
-          "$mnt/wetwaresuite.app/Contents/MacOS/wetwaresuite" --version
-          codesign --verify --deep "$mnt/wetwaresuite.app"
+          "$mnt/wetwaresuite/wetwaresuite.app/Contents/MacOS/wetwaresuite" --version
+          "$mnt/wetwaresuite/wetwaresuite image.app/Contents/MacOS/wetwaresuite-image" --version
+          for app in "$mnt"/wetwaresuite/*.app; do codesign --verify "$app"; done
           hdiutil detach "$mnt"
       - name: installer (linux AppImage and deb)
         if: runner.os == 'Linux'

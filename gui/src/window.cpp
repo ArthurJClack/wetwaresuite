@@ -79,9 +79,22 @@ bool saveScreenshot(SDL_Renderer* renderer, const std::string& path) {
     return ok;
 }
 
-void setWindowIcon(SDL_Window* window) {
+// The logo with its mark in the app's own colour, so every app is told apart in
+// the taskbar or dock (the launcher keeps the logo's mint). The icon is ink
+// (#0e1116) with a mint (#19e3b1) mark, so green says how much of a pixel is mark.
+void setWindowIcon(SDL_Window* window, const AppInfo& app) {
     try {
         raster::Image icon = raster::decode(std::string(reinterpret_cast<const char*>(kAppIcon), kAppIconSize));
+        if (app.launcher.empty() && !app.id.empty()) {
+            const float ink[3] = {14, 17, 22};
+            const float to[3] = {static_cast<float>((app.accent >> 16) & 0xff), static_cast<float>((app.accent >> 8) & 0xff),
+                                 static_cast<float>(app.accent & 0xff)};
+            std::uint8_t* px = icon.data();
+            for (std::size_t i = 0, n = static_cast<std::size_t>(icon.width()) * icon.height(); i < n; ++i, px += 4) {
+                const float t = std::clamp((px[1] - 17.0f) / (227.0f - 17.0f), 0.0f, 1.0f);
+                for (int c = 0; c < 3; ++c) px[c] = static_cast<std::uint8_t>(ink[c] + (to[c] - ink[c]) * t + 0.5f);
+            }
+        }
         SDL_Surface* surface = SDL_CreateSurfaceFrom(icon.width(), icon.height(), SDL_PIXELFORMAT_RGBA32,
                                                      icon.data(), icon.width() * 4);
         if (!surface) return;
@@ -96,6 +109,10 @@ void setWindowIcon(SDL_Window* window) {
 
 int run(Session& session, const AppInfo& app, const RunOptions& options) {
     SDL_SetHint(SDL_HINT_APP_NAME, app.name.c_str());
+    // wayland app_id / X11 WM_CLASS: matches the app's own .desktop file, so the dock
+    // shows each app as its own program with its own icon, not one wetwaresuite entry
+    const std::string appId = app.id.empty() ? std::string("wetwaresuite") : "wetwaresuite-" + app.id;
+    SDL_SetHint(SDL_HINT_APP_ID, appId.c_str());
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         std::cerr << "Couldn't start the window: " << SDL_GetError()
                   << "\nEverything still works from the command line: run `wetwaresuite help`.\n";
@@ -104,13 +121,15 @@ int run(Session& session, const AppInfo& app, const RunOptions& options) {
     float scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
     if (scale <= 0) scale = 1.0f;
     const SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
-    SDL_Window* window = SDL_CreateWindow(app.name.c_str(), static_cast<int>(1360 * scale), static_cast<int>(860 * scale), flags);
+    const bool launcher = !app.launcher.empty();  // the launcher is a small picker, apps get room to work
+    SDL_Window* window = SDL_CreateWindow(app.name.c_str(), static_cast<int>((launcher ? 1000 : 1360) * scale),
+                                          static_cast<int>((launcher ? 800 : 860) * scale), flags);
     if (!window) {
         std::cerr << "Couldn't open a window: " << SDL_GetError() << "\n";
         SDL_Quit();
         return 1;
     }
-    setWindowIcon(window);
+    setWindowIcon(window, app);
     SDL_Renderer* renderer = SDL_CreateRenderer(window, nullptr);
     if (!renderer) renderer = SDL_CreateRenderer(window, SDL_SOFTWARE_RENDERER);
     if (!renderer) {

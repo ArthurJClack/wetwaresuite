@@ -318,6 +318,7 @@ void Shell::onEvent(const SDL_Event& e) {
         case SDL_EVENT_WINDOW_FOCUS_GAINED:  // another app may have sent something or changed the colours
             refreshInbox();
             paletteStale_ = true;
+            installedStale_ = true;
             break;
         case SDL_EVENT_DROP_FILE:
             if (e.drop.data) openFile(e.drop.data);

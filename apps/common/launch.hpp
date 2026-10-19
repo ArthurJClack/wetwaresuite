@@ -23,6 +23,7 @@ struct Launch {
     std::vector<std::string> files;  // to open in the window
     std::string action;              // gui --action ID: start on this form
     std::string screenshot;          // gui --screenshot FILE: draw, save, quit
+    bool all = false;                // gui --all: every tool in one window, not the launcher
     std::string error;               // a bad window option, in plain words ("" = fine)
 };
 

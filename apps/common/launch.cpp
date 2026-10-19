@@ -34,10 +34,12 @@ void parseGuiArgs(const std::vector<std::string>& args, std::size_t start, Launc
                 return;
             }
             (a == "--action" ? out.action : out.screenshot) = args[++i];
+        } else if (a == "--all") {
+            out.all = true;
         } else if (a.rfind("-psn_", 0) == 0) {
             continue;
         } else if (!a.empty() && a[0] == '-' && a != "-") {
-            out.error = "unknown window option " + a + " (the window takes --action ID and --screenshot FILE)";
+            out.error = "unknown window option " + a + " (the window takes --action ID, --screenshot FILE and --all)";
             return;
         } else {
             out.files.push_back(a);

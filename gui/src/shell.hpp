@@ -326,6 +326,11 @@ private:
     void sendTo(const std::string& app);
     void launchApp(const std::string& app, const std::string& path);
 
+    // the launcher (launcher_view.cpp): a grid of apps, each started as its own program
+    void launcherFrame();
+    void launcherOpen(const std::string& path);
+    void launcherStart(const std::string& app, const std::string& path);
+
     Session& session_;
     AppInfo app_;
     SDL_Window* window_;
@@ -382,6 +387,10 @@ private:
     OpenSuggestion suggestion_;
     std::vector<SendChoice> sendChoices_;
     std::string launchOffer_;  // app to offer to start after a send
+    std::string installed_;      // the launcher: comma list from app.installed
+    bool installedStale_ = true;  // re-read it (the window got focus: the hub may have added an app)
+    std::string launcherNote_;   // the launcher's last answer
+    bool launcherNoteOk_ = true;
 
     std::unique_ptr<ToolPanels> panels_;
     std::string panel_;          // tool whose panel fills the middle; empty = home or a document

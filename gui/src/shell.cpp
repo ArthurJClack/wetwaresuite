@@ -195,6 +195,7 @@ void Shell::redo() {
 }
 
 void Shell::openFile(const std::string& path) {
+    if (!app_.launcher.empty()) return launcherOpen(path);  // the launcher hands every file to its own app
     if (openFolder(path)) return;  // a folder opens in the file manager (or as a code project)
     const auto candidates = openCandidates(path, tools_, commands_);
     resultFor_ = "Open a file";

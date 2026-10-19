@@ -31,10 +31,12 @@ wetwaresuite_add_icon(wetwaresuite)
 target_link_libraries(wetwaresuite PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::mcp)
 install(TARGETS wetwaresuite RUNTIME DESTINATION bin)
 
-# the window launcher: every tool, or --app image for one app's tools
+# the launcher (each app starts in its own window), or --app image for one app's tools here.
+# It sits in <build>/bin next to the apps so it finds them, the way an install lays them out.
 if(WETWARESUITE_GUI)
   add_executable(wetwaresuite-gui gui_main.cpp)
   wetwaresuite_add_icon(wetwaresuite-gui)
+  set_target_properties(wetwaresuite-gui PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${PROJECT_BINARY_DIR}/bin)
   target_link_libraries(wetwaresuite-gui PRIVATE wetwaresuite_suite wetwaresuite::apps wetwaresuite::gui wetwaresuite::mcp)
   install(TARGETS wetwaresuite-gui RUNTIME DESTINATION bin)
   if(UNIX AND NOT APPLE)

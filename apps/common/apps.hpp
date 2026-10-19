@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace wetwaresuite::apps {
@@ -33,6 +34,9 @@ struct OpenRoute {
     std::string command;  // command that opens it there, taking path=..., "" if none
 };
 OpenRoute routeForFile(const std::string& path);
+// Every extension an app knows (".png" -> image, photo.open), for the installers'
+// file types (packaging/file_types.py writes them out; test_apps checks they agree).
+std::vector<std::pair<std::string, OpenRoute>> fileTypes();
 
 // How a document goes from one app to another: the command that writes it
 // (with doc=... and `pathParam`=file), the file type, and what the target does with it.

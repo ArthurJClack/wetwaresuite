@@ -11,8 +11,23 @@ needs no graphics card: on a computer without one it draws in software.
 
 ## 1. Start it
 
-Every app opens its window when you start it without typing anything after its name. In a file
-manager (Explorer, Finder, Files), **double-click** the app's program:
+Every app is its own program with its own window, its own icon (the logo in the app's colour) and
+its own entry in the start menu, the dock or Launchpad. Opening one never opens the others, and you
+can have several open side by side, like Photoshop next to Blender.
+
+**The launcher.** The plain "wetwaresuite" entry in the start menu (on a Mac, `wetwaresuite.app` in
+the wetwaresuite folder) opens a small window with a tile for every app. Click a tile and that app
+starts in its own window; the launcher stays open so you can start another, and closing it closes
+nothing else. **Open a file...** (or dropping files on the launcher) hands each file to the app made
+for it. An app that isn't installed yet shows "not installed": add it with the hub.
+
+**Straight to an app.** Each app is in the start menu as "wetwaresuite image", "wetwaresuite cad"
+and so on, and the installers add every app to the "Open with" menu of the files it opens
+(Explorer, Finder and Linux file managers), so you can right-click a `.stl` and open it in cad. Files
+in wetwaresuite's own formats (`.wwcad`, `.wwcut`, `.wwlay`, `.wwmap`, `.wwfit`) open in their app
+with a double-click.
+
+In a file manager (Explorer, Finder, Files) you can also **double-click** an app's program:
 
 | program | what its window is for |
 |---------|------------------------|
@@ -28,7 +43,7 @@ manager (Explorer, Finder, Files), **double-click** the app's program:
 | `wetwaresuite-maps` | maps, GPS tracks and map data |
 | `wetwaresuite-system` | calculator, code editor, file manager, terminal, system monitor and clock |
 | `wetwaresuite-files` | converting, finding and batch-processing files |
-| `wetwaresuite` | every tool in one window |
+| `wetwaresuite-gui`, `wetwaresuite` | the launcher (`gui --all`: every tool in one window) |
 
 Each app has its own colour, so you can tell the windows apart at a glance. If you installed the
 apps with the hub they are in your personal wetwaresuite `bin` folder (see [the apps](apps.md));
@@ -58,18 +73,28 @@ double-click one in Explorer, Windows briefly makes a black console box for it; 
 the box belongs to it alone and closes it, so only the window stays. Started from a terminal
 (PowerShell or Command Prompt) it keeps the terminal, so any messages still show there.
 
-### The all-tools launcher
+### The launcher from the command line
 
-`wetwaresuite-gui` is the same window with a choice of tools. It is built next to the all-in-one
-`wetwaresuite` (`build/apps/wetwaresuite/`):
+`wetwaresuite-gui` is built into `build/bin/` next to the apps, so it finds them:
 
 ```sh
-wetwaresuite-gui                       # every tool
+wetwaresuite-gui                       # the launcher: every app starts in its own window
+wetwaresuite-gui a.png song.wav        # a.png opens in image, song.wav in sound, each in its own window
+wetwaresuite open part.step            # the all-in-one does the same
+wetwaresuite-gui --app all             # every tool in one window, the way it used to be
+wetwaresuite gui --all                 # the same from the all-in-one
 wetwaresuite-gui --app image           # the same window wetwaresuite-image opens
 wetwaresuite-gui --app image a.jpg     # and open a picture straight away
 wetwaresuite-gui --tools photo,convert # or name the tools yourself
 wetwaresuite-gui --list-apps           # the app names
 ```
+
+When no app is installed next to it (say you copied just the `wetwaresuite` program somewhere),
+the launcher has nothing to start, so it opens every tool in one window instead.
+
+The AppImage on Linux runs everything from inside its one file, which unmounts when the program
+you started it with closes, so keep the launcher open while you use apps you started from it (or
+start each app with `--run image`, or install the `.deb`).
 
 ## 2. The home screen
 

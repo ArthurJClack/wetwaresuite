@@ -137,6 +137,8 @@ OpenRoute routeForFile(const std::string& path) {
     return {"files", "toolkit.inspect"};
 }
 
+std::vector<std::pair<std::string, OpenRoute>> fileTypes() { return {extensionTable().begin(), extensionTable().end()}; }
+
 const std::vector<SendRoute>& sendRoutes() {
     static const std::vector<SendRoute> table = {
         // pictures out of image

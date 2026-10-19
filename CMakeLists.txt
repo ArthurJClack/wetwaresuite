@@ -29,14 +29,22 @@ if(WETWARESUITE_BUILD_TESTS)
 endif()
 
 # the logo and app icon live in branding/ (see branding/README.md).
-# wetwaresuite_add_icon(target) gives a Windows .exe the icon; elsewhere it does nothing
+# wetwaresuite_add_icon(target [app]) gives a Windows .exe the icon (an app's own,
+# branding/apps/<app>.ico, when named); elsewhere it does nothing
 if(WIN32)
   enable_language(RC)
+  set(WW_ICON ${PROJECT_SOURCE_DIR}/branding/wetwaresuite.ico)
   configure_file(${PROJECT_SOURCE_DIR}/branding/wetwaresuite.rc.in ${PROJECT_BINARY_DIR}/wetwaresuite.rc @ONLY)
 endif()
 function(wetwaresuite_add_icon target)
   if(WIN32)
-    target_sources(${target} PRIVATE ${PROJECT_BINARY_DIR}/wetwaresuite.rc)
+    if(ARGC GREATER 1 AND EXISTS ${PROJECT_SOURCE_DIR}/branding/apps/${ARGV1}.ico)
+      set(WW_ICON ${PROJECT_SOURCE_DIR}/branding/apps/${ARGV1}.ico)
+      configure_file(${PROJECT_SOURCE_DIR}/branding/wetwaresuite.rc.in ${PROJECT_BINARY_DIR}/icons/${ARGV1}.rc @ONLY)
+      target_sources(${target} PRIVATE ${PROJECT_BINARY_DIR}/icons/${ARGV1}.rc)
+    else()
+      target_sources(${target} PRIVATE ${PROJECT_BINARY_DIR}/wetwaresuite.rc)
+    endif()
   endif()
 endfunction()
 

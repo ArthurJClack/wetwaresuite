@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "wetwaresuite/audio/buffer.hpp"
+#include "wetwaresuite/audio/rack.hpp"
 #include "wetwaresuite/raster/image.hpp"
 
 namespace wetwaresuite::beats {
@@ -49,6 +50,12 @@ std::string toString(Osc o);
 bool parseOsc(const std::string& text, Osc& out);
 const std::vector<std::string>& oscNames();
 
+enum class FilterMode { LowPass, HighPass, BandPass };
+const std::vector<std::string>& filterModeNames();  // lowpass highpass bandpass
+enum class LfoTarget { Off, Pitch, Filter, Amp };
+const std::vector<std::string>& lfoTargetNames();  // off pitch filter amp
+const std::vector<std::string>& lfoShapeNames();   // sine triangle square saw
+
 struct SynthSettings {
     Osc osc1 = Osc::Saw;
     Osc osc2 = Osc::Off;
@@ -64,6 +71,13 @@ struct SynthSettings {
     double resonance = 0.2;    // 0..1
     double filterEnv = 0;      // octaves the filter opens at a note's start
     double filterDecay = 0.25; // seconds the filter envelope takes to close
+    FilterMode filter = FilterMode::LowPass;
+    int unison = 1;             // voices per oscillator, spread over unisonSpread cents
+    double unisonSpread = 20;   // cents between the outermost unison voices
+    LfoTarget lfoTarget = LfoTarget::Off;
+    int lfoShape = 0;           // index of lfoShapeNames()
+    double lfoRate = 5;         // Hz
+    double lfoDepth = 0;        // pitch: semitones; filter: octaves; amp: 0..1
 };
 // bass, lead, pad, pluck, keys, sub, brass.
 const std::vector<std::string>& presetNames();
@@ -86,6 +100,13 @@ struct Effects {
     bool any() const { return distortion > 0 || compress > 0 || delayMix > 0 || reverb > 0; }
 };
 
+// Per-lane settings of a drum track (a built-in voice or a sample slot): the drum rack's pads.
+struct Pad {
+    double volumeDb = 0;
+    double tune = 0;   // semitones (plays the hit faster/slower)
+    double decay = 0;  // seconds to fade the hit out over; 0 = let it ring
+};
+
 struct Track {
     std::string name;
     TrackKind kind = TrackKind::Synth;
@@ -99,6 +120,9 @@ struct Track {
     bool mute = false;
     bool solo = false;
     Effects fx;
+    std::map<std::string, Pad> pads;            // drum lane -> pad settings
+    audio::Rack rack;                           // effects after the built-in ones, before the volume
+    std::vector<audio::Automation> automation;  // volume (dB), pan and fx<i>.<setting> lanes, time in beats
 };
 
 // Built-in drum voices: kick, snare, hat, openhat, clap, tom, hitom, lotom, rim, crash, cowbell, shaker.
@@ -143,6 +167,10 @@ struct Song {
     std::vector<Track> tracks;
     std::vector<Pattern> patterns;
     std::vector<Placement> arrangement;
+    audio::Rack masterRack;                           // on the whole mix, before the limiter
+    std::vector<audio::Automation> masterAutomation;  // volume and fx<i>.<setting>, time in beats
+    bool metronome = false;   // a click on every beat (accented on the bar) when playing and rendering
+    double metronomeDb = -8;  // click level
 
     double beatsInBar() const { return beatsPerBar * 4.0 / beatUnit; }  // in quarter notes
     double secondsPerBeat() const { return 60.0 / bpm; }
@@ -175,7 +203,11 @@ struct RenderOptions {
     double tailSeconds = -1;  // let notes and reverb ring past the end; -1 = automatic (up to 3 s)
     bool limit = true;        // brickwall limiter at -1 dBFS on the master
     int onlyTrack = -1;       // render one track alone (ignores mute/solo)
+    int click = -1;           // metronome: -1 = the song's setting, 0 off, 1 on
+    bool master = true;       // the master rack and automation (off for stems of single tracks)
 };
+// One metronome click, mono: higher and louder on the first beat of a bar.
+audio::Buffer metronomeClick(int rate, bool accent);
 // Stereo mix of the arrangement.
 audio::Buffer render(const Song& s, const RenderOptions& o = {});
 // One synth note, mono (exposed for tests and the sampler preview).

@@ -29,11 +29,75 @@ double Project::seconds() const {
     return e;
 }
 
+double Project::tailSeconds() const {
+    double tail = 0;
+    for (const auto& t : tracks) tail = std::max(tail, rackTail(t.fx));
+    return std::min(15.0, tail + rackTail(masterFx));
+}
+
+std::vector<Automation> trackLanes(const Track& t) {
+    std::vector<Automation> out;
+    if (!t.envelope.empty()) {
+        Automation v{"volume", {}};
+        for (const auto& e : t.envelope) v.points.push_back({e.time, e.gainDb});
+        v.sort();
+        out.push_back(std::move(v));
+    }
+    for (const auto& l : t.automation)
+        if (!l.points.empty()) out.push_back(l);
+    return out;
+}
+
+void setLane(std::vector<Automation>& lanes, const std::string& target, std::vector<AutomationPoint> points) {
+    lanes.erase(std::remove_if(lanes.begin(), lanes.end(), [&](const Automation& l) { return l.target == target; }), lanes.end());
+    if (points.empty()) return;
+    Automation a{target, std::move(points)};
+    a.sort();
+    lanes.push_back(std::move(a));
+}
+
+void setTrackLane(Track& t, const std::string& target, std::vector<AutomationPoint> points) {
+    if (target == "volume") {
+        t.envelope.clear();
+        for (const auto& pt : points) t.envelope.push_back({pt.time, pt.value});
+        std::stable_sort(t.envelope.begin(), t.envelope.end(), [](const EnvelopePoint& a, const EnvelopePoint& b) { return a.time < b.time; });
+        return;
+    }
+    setLane(t.automation, target, std::move(points));
+}
+
+void renumberLanes(std::vector<Automation>& lanes, int removed, int inserted, int moveFrom, int moveTo) {
+    std::vector<Automation> kept;
+    for (auto& l : lanes) {
+        int i = 0;
+        std::string prm;
+        if (!parseFxTarget(l.target, i, prm)) {
+            kept.push_back(std::move(l));
+            continue;
+        }
+        if (removed >= 0) {
+            if (i == removed) continue;
+            if (i > removed) --i;
+        }
+        if (inserted >= 0 && i >= inserted) ++i;
+        if (moveFrom >= 0 && moveTo >= 0) {
+            if (i == moveFrom) i = moveTo;
+            else if (moveFrom < moveTo && i > moveFrom && i <= moveTo) --i;
+            else if (moveFrom > moveTo && i >= moveTo && i < moveFrom) ++i;
+        }
+        l.target = "fx" + std::to_string(i) + "." + prm;
+        kept.push_back(std::move(l));
+    }
+    lanes = std::move(kept);
+}
+
 namespace {
 
-std::size_t framesOf(const Project& p) { return static_cast<std::size_t>(std::ceil(p.seconds() * p.rate)); }
+std::size_t framesOf(const Project& p) {
+    return static_cast<std::size_t>(std::ceil((p.seconds() + p.tailSeconds()) * p.rate));
+}
 
-// Clips, fades, clip gain, track gain and envelope; no ducking or pan.
+// Clips (fades, clip gain), the track's effects, track gain and envelope; no ducking or pan.
 Buffer renderDry(const Project& p, const Track& t, std::size_t frames) {
     Buffer out(p.channels, frames, p.rate);
     for (const auto& clip : t.clips) {
@@ -41,11 +105,12 @@ Buffer renderDry(const Project& p, const Track& t, std::size_t frames) {
         const bool trimmed = clip.offset > 0 || clip.length >= 0;
         Buffer a = conform(trimmed ? slice(*clip.audio, rangeOf(*clip.audio, clip.offset, clip.offset + clip.seconds())) : *clip.audio,
                            p.rate, p.channels);
-        if (clip.fadeIn > 0) fadeIn(a, clip.fadeIn, all(a), FadeCurve::SCurve);
-        if (clip.fadeOut > 0) fadeOut(a, clip.fadeOut, all(a), FadeCurve::SCurve);
+        if (clip.fadeIn > 0) fadeIn(a, clip.fadeIn, all(a), clip.fadeInCurve);
+        if (clip.fadeOut > 0) fadeOut(a, clip.fadeOut, all(a), clip.fadeOutCurve);
         mixInto(out, a, static_cast<std::size_t>(std::llround(std::max(0.0, clip.at) * p.rate)), clip.gainDb);
     }
     out.resize(frames);
+    applyRack(out, t.fx, t.automation);
     if (t.gainDb != 0) gain(out, t.gainDb, all(out));
     if (!t.envelope.empty()) {
         auto pts = t.envelope;
@@ -131,7 +196,8 @@ Buffer renderTrack(const Project& p, int index) {
             for (auto& c : out.channels) c[i] *= g;
         }
     }
-    applyPan(out, t.pan);
+    if (const Automation* lane = findLane(t.automation, "pan"); lane && out.channelCount() >= 2) applyPanLane(out, *lane);
+    else applyPan(out, t.pan);
     return out;
 }
 
@@ -146,6 +212,23 @@ Buffer mixdown(const Project& p) {
         mixInto(out, renderTrack(p, static_cast<int>(i)), 0, 0.0);
     }
     if (p.masterGainDb != 0) gain(out, p.masterGainDb, all(out));
+    applyRack(out, p.masterFx, p.masterAutomation);
+    if (const Automation* lane = findLane(p.masterAutomation, "volume")) applyVolumeLane(out, *lane);
+    if (const Automation* lane = findLane(p.masterAutomation, "pan"); lane && out.channelCount() >= 2) applyPanLane(out, *lane);
+    // a tail that rang out early: drop its silent end (never shorter than the clips)
+    const std::size_t music = static_cast<std::size_t>(std::ceil(p.seconds() * p.rate));
+    if (out.frames() > music) {
+        std::size_t last = music;
+        for (std::size_t i = out.frames(); i > music; --i) {
+            bool loud = false;
+            for (const auto& c : out.channels) loud = loud || std::fabs(c[i - 1]) > 3e-5f;
+            if (loud) {
+                last = i;
+                break;
+            }
+        }
+        out.resize(last == music ? music : std::min(out.frames(), last + static_cast<std::size_t>(p.rate / 100)));
+    }
     return out;
 }
 
@@ -199,6 +282,85 @@ raster::Image renderProject(const Project& p, int width, int laneHeight) {
     return img;
 }
 
+namespace {
+
+json rackJson(const Rack& r) {
+    json a = json::array();
+    for (const auto& e : r) {
+        json prm = json::object();
+        for (const auto& [k, v] : e.params) prm[k] = v;
+        a.push_back({{"type", e.type}, {"bypass", e.bypass}, {"params", prm}});
+    }
+    return a;
+}
+
+Rack rackOf(const json& a) {
+    Rack r;
+    if (!a.is_array()) return r;
+    for (const auto& je : a) {
+        Effect e;
+        e.type = je.value("type", std::string());
+        if (!findEffectType(e.type)) throw std::runtime_error("unknown effect \"" + e.type + "\" in the file");
+        e.bypass = je.value("bypass", false);
+        const json prm = je.value("params", json::object());
+        for (const auto& [k, v] : prm.items())
+            if (v.is_number()) e.params[k] = v.get<double>();
+        r.push_back(std::move(e));
+    }
+    return r;
+}
+
+json lanesJson(const std::vector<Automation>& lanes) {
+    json a = json::array();
+    for (const auto& l : lanes) {
+        json pts = json::array();
+        for (const auto& pt : l.points) pts.push_back({pt.time, pt.value});
+        a.push_back({{"target", l.target}, {"points", pts}});
+    }
+    return a;
+}
+
+std::vector<Automation> lanesOf(const json& a) {
+    std::vector<Automation> out;
+    if (!a.is_array()) return out;
+    for (const auto& jl : a) {
+        Automation l;
+        l.target = jl.value("target", std::string());
+        for (const auto& pt : jl.value("points", json::array()))
+            if (pt.is_array() && pt.size() == 2) l.points.push_back({pt[0].get<double>(), pt[1].get<double>()});
+        l.sort();
+        if (!l.target.empty()) out.push_back(std::move(l));
+    }
+    return out;
+}
+
+std::string curveName(FadeCurve c) { return fadeCurveNames()[static_cast<std::size_t>(c)]; }
+
+FadeCurve curveOf(const json& j, const char* key) {
+    FadeCurve c = FadeCurve::SCurve;
+    parseFadeCurve(j.value(key, std::string("s_curve")), c);
+    return c;
+}
+
+}  // namespace
+
+std::string rackToJson(const Rack& r) { return rackJson(r).dump(); }
+Rack rackFromJson(const std::string& text) {
+    try {
+        return rackOf(json::parse(text));
+    } catch (const json::exception& e) {
+        throw std::runtime_error(std::string("bad effects rack: ") + e.what());
+    }
+}
+std::string lanesToJson(const std::vector<Automation>& lanes) { return lanesJson(lanes).dump(); }
+std::vector<Automation> lanesFromJson(const std::string& text) {
+    try {
+        return lanesOf(json::parse(text));
+    } catch (const json::exception& e) {
+        throw std::runtime_error(std::string("bad automation: ") + e.what());
+    }
+}
+
 void saveProject(const Project& p, const fs::path& path) {
     const fs::path dir = path.parent_path() / (path.stem().string() + "_clips");
     std::error_code ec;
@@ -216,15 +378,22 @@ void saveProject(const Project& p, const fs::path& path) {
             const std::string file = "t" + std::to_string(ti + 1) + "_c" + std::to_string(ci + 1) + ".wav";
             if (c.audio) save(*c.audio, dir / file, wav);
             clips.push_back({{"name", c.name}, {"file", (fs::path(dir.filename()) / file).generic_string()}, {"at", c.at}, {"gain", c.gainDb},
-                             {"fade_in", c.fadeIn}, {"fade_out", c.fadeOut}, {"offset", c.offset}, {"length", c.length}});
+                             {"fade_in", c.fadeIn}, {"fade_out", c.fadeOut}, {"fade_in_curve", curveName(c.fadeInCurve)},
+                             {"fade_out_curve", curveName(c.fadeOutCurve)}, {"offset", c.offset}, {"length", c.length}});
         }
         json env = json::array();
         for (const auto& e : t.envelope) env.push_back({e.time, e.gainDb});
         tracks.push_back({{"name", t.name}, {"gain", t.gainDb}, {"pan", t.pan}, {"mute", t.mute}, {"solo", t.solo},
                           {"duck_under", t.duckUnder}, {"duck_db", t.duckDb}, {"duck_threshold", t.duckThresholdDb},
-                          {"duck_attack", t.duckAttack}, {"duck_release", t.duckRelease}, {"envelope", env}, {"clips", clips}});
+                          {"duck_attack", t.duckAttack}, {"duck_release", t.duckRelease}, {"envelope", env},
+                          {"fx", rackJson(t.fx)}, {"automation", lanesJson(t.automation)}, {"clips", clips}});
     }
     j["tracks"] = tracks;
+    j["master_fx"] = rackJson(p.masterFx);
+    j["master_automation"] = lanesJson(p.masterAutomation);
+    json markers = json::array();
+    for (const auto& m : p.markers) markers.push_back({{"name", m.name}, {"start", m.start}, {"end", m.end}});
+    j["markers"] = markers;
     std::ofstream out(path);
     if (!(out << j.dump(2) << "\n")) throw std::runtime_error("can't write " + path.string());
 }
@@ -246,6 +415,9 @@ Project loadProject(const fs::path& path) {
     p.rate = j.value("rate", 44100);
     p.channels = std::clamp(j.value("channels", 2), 1, 32);
     p.masterGainDb = j.value("master_gain", 0.0);
+    p.masterFx = rackOf(j.value("master_fx", json::array()));
+    p.masterAutomation = lanesOf(j.value("master_automation", json::array()));
+    for (const auto& jm : j.value("markers", json::array())) p.markers.push_back({jm.value("name", std::string()), jm.value("start", 0.0), jm.value("end", -1.0)});
     for (const auto& jt : j.value("tracks", json::array())) {
         Track t;
         t.name = jt.value("name", std::string());
@@ -258,6 +430,8 @@ Project loadProject(const fs::path& path) {
         t.duckThresholdDb = jt.value("duck_threshold", -40.0);
         t.duckAttack = jt.value("duck_attack", 0.15);
         t.duckRelease = jt.value("duck_release", 0.6);
+        t.fx = rackOf(jt.value("fx", json::array()));
+        t.automation = lanesOf(jt.value("automation", json::array()));
         for (const auto& e : jt.value("envelope", json::array())) {
             if (e.is_array() && e.size() == 2) t.envelope.push_back({e[0].get<double>(), e[1].get<double>()});
         }
@@ -268,6 +442,8 @@ Project loadProject(const fs::path& path) {
             c.gainDb = jc.value("gain", 0.0);
             c.fadeIn = jc.value("fade_in", 0.0);
             c.fadeOut = jc.value("fade_out", 0.0);
+            c.fadeInCurve = curveOf(jc, "fade_in_curve");
+            c.fadeOutCurve = curveOf(jc, "fade_out_curve");
             c.offset = std::max(0.0, jc.value("offset", 0.0));
             c.length = jc.value("length", -1.0);
             const fs::path file = path.parent_path() / jc.value("file", std::string());

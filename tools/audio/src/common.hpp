@@ -11,6 +11,7 @@
 #include "wetwaresuite/audio/document.hpp"
 #include "wetwaresuite/audio/dsp.hpp"
 #include "wetwaresuite/audio/io.hpp"
+#include "wetwaresuite/audio/rack.hpp"
 #include "wetwaresuite/core/command.hpp"
 
 namespace wetwaresuite::audio::tool {
@@ -68,5 +69,11 @@ void registerFileCommands(Session& session, const std::shared_ptr<State>& state)
 void registerEditCommands(Session& session, const std::shared_ptr<State>& state);
 void registerProjectCommands(Session& session);
 void registerPlayCommands(Session& session);
+void registerEffectCommands(Session& session);
+void registerRackCommands(Session& session);
+void registerMixCommands(Session& session);
+// The settings of a rack effect as typed command params, and back.
+std::vector<ParamSpec> effectParamSpecs(const EffectType& t);
+bool effectFromParams(const EffectType& t, const Params& p, Effect& out, std::string& error);
 
 }  // namespace wetwaresuite::audio::tool

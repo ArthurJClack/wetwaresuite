@@ -4,13 +4,13 @@
 
 - **Songs** have a tempo, a time signature (4/4, 3/4, 6/8, 7/8...) and swing.
 - **Tracks** play one of three instruments:
-  - **synth**: a built-in subtractive synth with two oscillators (saw, square, sine, triangle, noise), an ADSR envelope, and a resonant low-pass filter with its own envelope. Presets: `bass`, `lead`, `pad`, `pluck`, `keys`, `sub`, `brass`.
-  - **drum**: a synthesized kit (`kick`, `snare`, `hat`, `openhat`, `clap`, `tom`, `hitom`, `lotom`, `rim`, `crash`, `cowbell`, `shaker`) plus sample slots, so any lane can play a WAV, MP3, FLAC or Ogg file.
+  - **synth**: a built-in subtractive synth with two oscillators (saw, square, sine, triangle, noise), an ADSR envelope, a resonant low-pass, high-pass or band-pass filter with its own envelope, unison (up to 7 detuned voices per oscillator) and an LFO for vibrato, filter wobble or tremolo. Presets: `bass`, `lead`, `pad`, `pluck`, `keys`, `sub`, `brass`.
+  - **drum**: a synthesized kit (`kick`, `snare`, `hat`, `openhat`, `clap`, `tom`, `hitom`, `lotom`, `rim`, `crash`, `cowbell`, `shaker`) plus sample slots, so any lane can play a WAV, MP3, FLAC or Ogg file. Each pad has its own level, tuning and decay.
   - **sampler**: plays one sample at the pitch of each note.
-- **Patterns** hold step-sequencer lanes (`kick: x...x...x...x...`) and piano-roll notes (`C4 0 1, E4 1 1`). You can also type chord symbols (`Am F C G`).
-- **The arrangement** places patterns on tracks by bar.
-- **Mixing**: per-track volume, pan, mute and solo, plus four effects on every track: distortion, compression, delay and reverb. A limiter on the master stops clipping.
-- **Output**: WAV built in; MP3, Ogg, FLAC, Opus and M4A when ffmpeg is installed. Single tracks render as stems. `beats.bounce` hands the mix to the [audio](audio.md) editor for mastering.
+- **Patterns** hold step-sequencer lanes (`kick: x...x...x...x...`) and piano-roll notes (`C4 0 1, E4 1 1`), edited note by note (add, move, resize, velocity, quantize, transpose). You can also type chord symbols (`Am F C G`).
+- **The arrangement** places patterns on tracks by bar; placements can be moved, repeated and dragged in the window.
+- **Mixing**: per-track volume, pan, mute and solo, four quick effects on every track (distortion, compression, delay, reverb), and an effects rack on every track and on the master with the audio editor's effects (EQ, filter, compressor, limiter, gate, de-esser, reverb, delay, chorus, flanger, phaser, tremolo, distortion...). Volume, pan and any effect setting can be automated over the song in beats. A limiter on the master stops clipping, and a metronome clicks along when you want it.
+- **Output**: WAV built in; MP3, Ogg, FLAC, Opus and M4A when ffmpeg is installed. `beats.stems` writes one file per track. `beats.bounce` hands the mix to the [audio](audio.md) editor for mastering.
 - **MIDI**: Standard MIDI Files, both export and import, so you can move parts to and from any DAW.
 - **beats.generate** builds a starting point from a genre, a key and a seed: drums, bass, chords and a melody.
 - **Pictures**: the arrangement, a pattern's step grid and piano roll, and the waveform, all as PNG. You and Claude can see what you're building.
@@ -466,6 +466,122 @@ rendered stems/lead.wav: 0:24.333, peak -16 dBFS, -16.6 LUFS
 
 Claude calls `beats_bounce`, `audio_normalize`, `audio_fade` and `audio_save`, then `beats_render` once per track.
 
+## Task 8: edit and mix like a DAW
+
+The steps above build songs from whole patterns. This task works the way Ableton Live or FL Studio does: notes edited one at a time in a piano roll, a synth with unison and an LFO, an effects rack on each track and on the master, automation in beats, drum pads tuned and shortened, the metronome, and stems.
+
+**Batch** (`daw.txt`):
+
+```text
+# edit like a DAW: piano roll, a modulated synth, effects racks, automation, pads, stems
+beats.new bpm=124 name=night -> song
+beats.track_add song=$song kind=drum
+beats.pattern_add song=$song name=beat track=Drums repeat=8 steps="kick: x...x...x...x...; clap: ....x.......x...; hat: ..x...x...x...x."
+beats.track_add song=$song name=Lead preset=lead unison=5 unison_spread=25 lfo_target=filter lfo_shape=triangle lfo_rate=0.5 lfo_depth=1.5
+beats.pattern_add song=$song name=riff bars=2
+# the piano roll, one note at a time
+beats.note_add song=$song pattern=riff pitch=A3 start=0 length=0.5
+beats.note_add song=$song pattern=riff pitch=C4 start=0.75 length=0.5
+beats.note_add song=$song pattern=riff pitch=E4 start=1.6 length=1 velocity=110
+beats.note_add song=$song pattern=riff pitch=G4 start=3 length=1
+beats.note_move song=$song pattern=riff notes=2,3 shift=4
+beats.note_add song=$song pattern=riff pitch=D4 start=6 length=2
+beats.note_quantize song=$song pattern=riff grid=0.25
+beats.note_transpose song=$song pattern=riff semitones=12 from=4
+beats.notes song=$song pattern=riff
+beats.arrange_place song=$song track=Lead pattern=riff bar=0 repeat=2
+# racks: a high-pass and a chorus on the lead, glue on the master; open the filter over 8 bars
+beats.fx_add song=$song track=Lead type=filter values="mode=highpass cutoff=200"
+beats.fx_add song=$song track=Lead type=chorus values="mix=0.4"
+beats.automate song=$song track=Lead target=fx0.cutoff points=0,800,32,80
+beats.automate song=$song track=Lead target=pan points=0,-0.5,16,0.5,32,-0.5
+beats.fx_add song=$song master=true type=compressor values="threshold=-16 ratio=2 attack=20"
+beats.automate song=$song master=true target=volume points=0,-12,4,0
+# the drum pads: a shorter, lower clap, quieter hats
+beats.pad_set song=$song track=Drums lane=clap tune=-3 decay=0.15
+beats.pad_set song=$song track=Drums lane=hat volume=-6
+beats.arrange_move song=$song placement=1 repeat=4
+beats.metronome song=$song on=true level=-12
+beats.info song=$song
+beats.render song=$song path=night.wav click=false
+beats.stems song=$song folder=night-stems mix=true
+beats.save song=$song path=night.beats.json
+```
+
+```sh
+$ wetwaresuite batch daw.txt
+made song1: night: 124 bpm 4/4, 0 tracks, 0 patterns, 0 bars (0.000 s)
+...
+added A3 at beat 0 to "riff"
+...
+moved 2 notes
+...
+quantized 5 notes to 0.25 beats (1 moved)
+...
+transposed 3 notes by 12 semitones
+...
+"riff": 5 notes over 2 bars
+  0: A3 at beat 0 for 0.5 beats, velocity 100
+  1: C4 at beat 0.75 for 0.5 beats, velocity 100
+  2: E5 at beat 5.5 for 1 beats, velocity 110
+  3: D5 at beat 6 for 2 beats, velocity 100
+  4: G5 at beat 7 for 1 beats, velocity 100
+rows: 0	57	A3	0	0.5	100
+...
+added effect 0 to track 1 "Lead": filter: mode highpass, cutoff 200 Hz, resonance 0.7071, slope 1
+...
+track 1 "Lead": fx0.cutoff automated with 2 points
+...
+Drums pad clap: volume 0 dB, tune -3, decay 0.15 s
+Drums pad hat: volume -6 dB, tune 0, decay full
+"riff" now on track 1 from bar 0 x4
+metronome on at -12 dB
+night: 124 bpm 4/4, 2 tracks, 2 patterns, 8 bars (0:15.484)
+track 0 "Drums" (drum): volume 0 dB, pan 0, pad clap (0 dB, -3 st, decay 0.15 s), pad hat (-6 dB, 0 st)
+  bar 0-7: beat x8
+track 1 "Lead" (synth, lead): volume 0 dB, pan 0, lowpass, unison 5, lfo filter 0.5 Hz
+  fx 0 filter: mode highpass, cutoff 200 Hz, resonance 0.7071, slope 1
+  fx 1 chorus: rate 0.8 Hz, depth 3 ms, delay 15 ms, feedback 0, spread 90 deg, mix 0.4
+  automation fx0.cutoff: 2 points
+  automation pan: 3 points
+  bar 0-7: riff x4
+master (metronome on at -12 dB):
+  fx 0 compressor: threshold -16 dB, ratio 2, attack 20 ms, release 120 ms, knee 6 dB, makeup 0 dB, auto_makeup off
+  automation volume: 2 points
+...
+rendered night.wav: 0:15.719, peak -2.36 dBFS, -15.9 LUFS
+...
+wrote 3 files (0:15.719 each) to night-stems
+  night-stems/01_Drums.wav
+  night-stems/02_Lead.wav
+  night-stems/mix.wav
+...
+saved night.beats.json
+```
+
+What each part does:
+
+- **The piano roll.** Notes are numbered in time order (then by pitch), as `beats.notes` lists them; `rows` has one line per note (number, MIDI pitch, name, start, length, velocity). `beats.note_add` returns the new note's number and grows the pattern if the note runs past its end. `beats.note_set` sets a note's `pitch`, `start`, `length` or `velocity`. `beats.note_move` shifts by `shift` beats and `semitones`, scales lengths with `length_scale` and adds `velocity`. `beats.note_transpose`, `beats.note_quantize` (`grid` in beats, `strength` 0..1 for a looser feel, `ends=true` to snap note ends too) and `beats.note_remove` (`all=true` empties the piano roll) round it out. All of them pick notes with `notes=` (numbers), `from`/`to` (beats) or `low`/`high` (pitches), and act on every note when none are given.
+- **The synth.** `filter=` is lowpass (the default), highpass or bandpass. `unison=` stacks up to 7 copies of each oscillator, detuned evenly over `unison_spread` cents, for a wide, thick sound. The LFO moves `lfo_target=` pitch (vibrato, `lfo_depth` in semitones), filter (wah or wobble, octaves) or amp (tremolo, 0..1) at `lfo_rate` Hz with a sine, triangle, square or saw `lfo_shape`.
+- **Racks.** `beats.fx_add`, `fx_set` (`values=`, `bypass=`), `fx_move`, `fx_remove` and `fx_list` work like their audio namesakes, on `track=` or `master=true`, with the same effects (`audio.fx_types` lists them all). A track's rack runs after its built-in `beats.effect` chain and before its volume and pan; the master rack runs on the whole mix before the limiter.
+- **Automation in beats.** `beats.automate` takes `points=beat,value,...` from the start of the song, so `points=0,800,32,80` sweeps over 8 bars of 4/4 whatever the tempo. Targets are `volume` (dB), `pan` (tracks only) and `fx<number>.<setting>`. `mode=add` merges points and `mode=clear` removes a lane; `beats.automation` lists them.
+- **Drum pads.** `beats.pad_set lane=clap` gives a kit voice or sample slot its own `volume` (dB), `tune` (semitones; it plays faster or slower, like a sampler) and `decay` (seconds until it fades out; 0 lets it ring).
+- **The arrangement.** `beats.arrange_move placement=1` changes one placement (numbered as `beats.info` lists them, from 0): `bar=` moves it, `to_track=` moves it to another track, `repeat=` sets how many times it plays.
+- **The metronome** clicks on every beat for plays and renders (see [playback](playback.md#task-4-play-a-song-or-a-video-edit)); `click=false` leaves it out of one render.
+- **Stems.** `beats.stems` writes every track with its own effects and automation, but without the master rack, the limiter or the click, all the length of the full mix so they line up. `to=`, `bits=` (24 by default) and `rate=` pick the format; `mix=true` adds the mix.
+
+**In the window.** Open the song in the sound app (`wetwaresuite-sound night.beats.json`):
+
+1. The bottom of the middle is the **arrangement**: a lane per track and a block per placement. Drag a block to move it (to another bar, or another track); drag its right edge to set how many times it repeats; select it and press Delete to remove it. Every drag is one `beats.arrange_move` or `beats.arrange_remove`, so undo works.
+2. Above it is the **piano roll**. Pick the pattern in the list at the top left. Double-click an empty spot to add a note (it snaps to 16ths and takes the length of the last note you resized). Drag a note to move it in time and pitch; drag its right edge to make it longer or shorter; right-click it to delete it. Select a note to change its velocity with the slider, or delete it with the Delete button. **Quantize** snaps every note to 16ths and **-12**/**+12** move the pattern an octave.
+3. The right panel's **Effects** section is the rack: pick Master or a track, tick to bypass, arrows to reorder, sliders for every setting, **Add** for a new effect. Its **Envelope** graph draws automation in beats: click to add a point, drag to move one, right-click to delete it.
+
+**Claude.**
+
+> In song1, write a two-bar lead riff in A minor in the piano roll, make the lead wide with unison and a slow filter LFO, high-pass it and open the high-pass over 8 bars, fade the song in over the first bar, and give me stems.
+
+Claude calls `beats_note_add` once per note (it reads `beats_notes` with `preview: true` to see the piano roll), `beats_track_set` with `unison` and the `lfo_*` settings, `beats_fx_add` and `beats_automate` for the lead and the master, then `beats_stems`.
+
 ## Other time signatures
 
 ```text
@@ -527,6 +643,13 @@ All commands take `song=` (an open song id) unless noted. "file" commands also t
 | `beats.track_set` | change a track | `track`, see the table below |
 | `beats.track_remove` | delete a track and its placements | `track` |
 | `beats.effect` | set one effect | `track`, `type` (distortion, compress, delay, reverb), `amount` 0..1, `time` (delay, beats), `feedback` (delay, 0..0.95), `size` (reverb, 0..1) |
+| `beats.fx_add` | add an effect to a track's or the master's rack | `track` or `master=true`, `type` (as `audio.fx_types` lists), `values`, `at` |
+| `beats.fx_set` / `beats.fx_remove` / `beats.fx_move` | change, bypass, remove or reorder an effect | `track` or `master`, `fx`, `values`, `bypass`, `to` |
+| `beats.fx_list` | the racks with every setting (read-only) | `track` or `master` (default: all) |
+| `beats.automate` | draw a lane in beats | `track` or `master`, `target` (volume, pan, fx<i>.<setting>), `points` (beat,value pairs), `mode` (replace, add, clear) |
+| `beats.automation` | the lanes (read-only) | `track` or `master` |
+| `beats.pad_set` | one drum lane's level, tuning and length | `track`, `lane`, `volume` (dB), `tune` (semitones, -24..24), `decay` (seconds, 0 = full) |
+| `beats.metronome` | click on every beat for plays and renders | `on`, `level` (-60..0 dB) |
 
 | track setting | meaning | range |
 | --- | --- | --- |
@@ -536,7 +659,11 @@ All commands take `song=` (an open song id) unless noted. "file" commands also t
 | `osc2_semitones`, `osc2_level`, `detune` | second oscillator pitch, level, detune in cents | -48..48, 0..1, -100..100 |
 | `octave` | shift the instrument | -4..4 |
 | `attack`, `decay`, `sustain`, `release` | volume envelope (seconds; sustain is a level) | 0..10, sustain 0..1 |
-| `cutoff`, `resonance` | low-pass filter | 20..20000 Hz, 0..1 |
+| `cutoff`, `resonance` | filter | 20..20000 Hz, 0..1 |
+| `filter` | filter type | lowpass, highpass, bandpass |
+| `unison`, `unison_spread` | voices per oscillator, cents between the outer ones | 1..7, 0..100 |
+| `lfo_target`, `lfo_shape` | what the LFO moves, its wave | off, pitch, filter, amp; sine, triangle, square, saw |
+| `lfo_rate`, `lfo_depth` | Hz; semitones (pitch), octaves (filter) or 0..1 (amp) | 0.01..40, 0..24 |
 | `filter_env`, `filter_decay` | filter opens by octaves at note start, closes over seconds | -8..8, 0.005..10 |
 | `volume`, `pan` | dB, position | -60..12, -1..1 |
 | `mute`, `solo` | | true/false |
@@ -556,6 +683,16 @@ All commands take `song=` (an open song id) unless noted. "file" commands also t
 | `beats.pattern_remove` | delete a pattern and its placements | `pattern` |
 | `beats.arrange_place` | put a pattern on a track | `track`, `pattern`, `bar` (default: after the last), `repeat` |
 | `beats.arrange_remove` | take placements out | `track` + `bar`, `pattern`, or `all=true` |
+| `beats.arrange_move` | move one placement or change its repeats | `placement`, `bar`, `to_track`, `repeat` |
+| `beats.notes` | the piano roll as a list (read-only) | `pattern`, `preview` |
+| `beats.note_add` | one note | `pattern`, `pitch`, `start`, `length` (1), `velocity` (100) |
+| `beats.note_set` | set notes' pitch, start, length or velocity | `pattern`, `notes`, `pitch`, `start`, `length`, `velocity` |
+| `beats.note_move` | shift, transpose, stretch, change velocity | `pattern`, `shift` (beats), `semitones`, `length_scale`, `velocity` (added) |
+| `beats.note_transpose` | move pitches | `pattern`, `semitones` |
+| `beats.note_quantize` | snap to a grid | `pattern`, `grid` (0.25), `strength` (1), `ends` |
+| `beats.note_remove` | delete notes | `pattern`, `notes`, `from`/`to`, `low`/`high`, or `all=true` |
+
+The `note_*` commands pick notes with `notes=` (numbers from `beats.notes`), `from`/`to` (beats) and `low`/`high` (pitches); without any of them they act on every note.
 
 | step character | meaning |
 | --- | --- |
@@ -570,7 +707,8 @@ All commands take `song=` (an open song id) unless noted. "file" commands also t
 
 | command | what it does | key parameters |
 | --- | --- | --- |
-| `beats.render` | mix to an audio file (file) | `path` (.wav built in; .mp3 .ogg .flac .opus .m4a via ffmpeg), `start_bar`, `bars`, `track`, `tail` (seconds), `limit` (true), `bits` (16, 24, 32, 32f), `bitrate`, `preview` |
+| `beats.render` | mix to an audio file (file) | `path` (.wav built in; .mp3 .ogg .flac .opus .m4a via ffmpeg), `start_bar`, `bars`, `track`, `tail` (seconds), `limit` (true), `click`, `bits` (16, 24, 32, 32f), `bitrate`, `preview` |
+| `beats.stems` | one file per track, the length of the mix | `folder`, `to` (wav), `bits` (24), `rate`, `mix` |
 | `beats.bounce` | mix into an audio document `aud1` | `start_bar`, `bars`, `track`, `tail`, `limit` |
 | `beats.midi_export` | write `.mid` (file) | `path` |
 | `beats.midi_import` | `.mid` to a new song | `path` |
@@ -628,14 +766,15 @@ A `.beats.json` file is readable and can be written by hand:
 }
 ```
 
-Fields left out take their defaults (`rate` 44100, volume 0 dB, no effects). A track's `preset` is applied first and its `synth` settings on top, so `"preset": "bass"` alone gives the bass sound.
+Fields left out take their defaults (`rate` 44100, volume 0 dB, no effects). A track's `preset` is applied first and its `synth` settings on top, so `"preset": "bass"` alone gives the bass sound. Racks and automation are saved as `"rack"`, `"automation"`, `"pads"` on a track and `"master_rack"`, `"master_automation"`, `"metronome"` on the song, in the same form as audio projects.
 
 ## Limitations
 
 - No MIDI input or real-time recording. `beats.play` mixes the song before it starts, so edits are heard on the next play, not mid-loop.
-- Sound quality is "good sketch" rather than studio. The synth uses PolyBLEP oscillators with one filter per note and no LFOs, glide, unison stacks or modulation matrix. The drum kit is synthesized and simple, and the sampler pitches by resampling, so pitch and length change together.
-- One tempo and one time signature per song, with no tempo changes or automation. Volume, pan and effect settings are fixed for the whole song.
-- Effects are a fixed chain per track (distortion, compression, delay, reverb) with no sends, EQ or master bus effects other than the limiter. For more processing, bounce the mix and use the audio tool's EQ, compressor and loudness tools.
+- Sound quality is "good sketch" rather than studio. The synth uses PolyBLEP oscillators with one filter per note, unison and one LFO, but no glide, second filter or modulation matrix. The drum kit is synthesized and simple, and the sampler and pad tuning pitch by resampling, so pitch and length change together.
+- One tempo and one time signature per song, with no tempo changes or tempo automation.
+- No sends or group buses: each track has its own rack, and the master has one. Automation points are joined by straight lines.
+- The piano roll in the window edits one pattern at a time and has no box selection; multi-note edits go through `beats.note_move`, `note_set` and friends with `notes=` or a range.
 - Generated songs are templates. Drum grooves come from a small table per genre with seeded variations, progressions are diatonic triads or sevenths, and melodies are simple. Treat them as a starting point to edit.
 - MIDI import keeps notes, tempo, time signature, program, pan and volume. It drops controllers, pitch bend, tempo changes after the first, and SMPTE-timed files. Format 2 files aren't read. Each imported part is one long pattern, and swing comes in baked into the timing.
 - Pictures have no text labels. Lanes run in track order, as `beats.info` lists them.

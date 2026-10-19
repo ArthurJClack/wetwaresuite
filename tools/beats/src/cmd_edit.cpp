@@ -27,6 +27,13 @@ std::vector<ParamSpec> soundParams() {
             {"resonance", ParamType::Number, "filter resonance 0..1", false},
             {"filter_env", ParamType::Number, "octaves the filter opens at each note's start (0 = none)", false},
             {"filter_decay", ParamType::Number, "seconds the filter envelope takes to close", false},
+            {"filter", ParamType::String, "filter type", false, filterModeNames()},
+            {"unison", ParamType::Int, "voices per oscillator, 1..7 (thicker, wider)", false},
+            {"unison_spread", ParamType::Number, "cents between the outer unison voices, 0..100", false},
+            {"lfo_target", ParamType::String, "what the LFO moves", false, lfoTargetNames()},
+            {"lfo_shape", ParamType::String, "LFO wave", false, lfoShapeNames()},
+            {"lfo_rate", ParamType::Number, "LFO speed, Hz", false},
+            {"lfo_depth", ParamType::Number, "LFO amount: semitones (pitch), octaves (filter) or 0..1 (amp)", false},
             {"volume", ParamType::Number, "track volume in dB (0 = unchanged)", false},
             {"pan", ParamType::Number, "-1 left .. 0 centre .. 1 right", false},
             {"mute", ParamType::Bool, "mute the track", false},
@@ -60,8 +67,31 @@ bool applySound(Song& song, Track& t, const Params& p, std::string& error) {
         !range("detune", -100, 100, t.synth.detune) || !range("attack", 0, 10, t.synth.attack) || !range("decay", 0, 10, t.synth.decay) ||
         !range("sustain", 0, 1, t.synth.sustain) || !range("release", 0, 10, t.synth.release) || !range("cutoff", 20, 20000, t.synth.cutoff) ||
         !range("resonance", 0, 1, t.synth.resonance) || !range("filter_env", -8, 8, t.synth.filterEnv) ||
-        !range("filter_decay", 0.005, 10, t.synth.filterDecay) || !range("volume", -60, 12, t.volumeDb) || !range("pan", -1, 1, t.pan)) {
+        !range("filter_decay", 0.005, 10, t.synth.filterDecay) || !range("volume", -60, 12, t.volumeDb) || !range("pan", -1, 1, t.pan) ||
+        !range("unison_spread", 0, 100, t.synth.unisonSpread) || !range("lfo_rate", 0.01, 40, t.synth.lfoRate) ||
+        !range("lfo_depth", 0, 24, t.synth.lfoDepth)) {
         return false;
+    }
+    auto pick = [&](const char* key, const std::vector<std::string>& names, int& out) {
+        if (!p.count(key)) return true;
+        const std::string v = stringParam(p, key);
+        for (std::size_t i = 0; i < names.size(); ++i)
+            if (names[i] == v) return out = static_cast<int>(i), true;
+        error = std::string(key) + " is one of " + [&] {
+            std::string l;
+            for (const auto& n : names) l += (l.empty() ? "" : ", ") + n;
+            return l;
+        }();
+        return false;
+    };
+    int filterMode = static_cast<int>(t.synth.filter), target = static_cast<int>(t.synth.lfoTarget);
+    if (!pick("filter", filterModeNames(), filterMode) || !pick("lfo_target", lfoTargetNames(), target) || !pick("lfo_shape", lfoShapeNames(), t.synth.lfoShape)) return false;
+    t.synth.filter = static_cast<FilterMode>(filterMode);
+    t.synth.lfoTarget = static_cast<LfoTarget>(target);
+    if (p.count("unison")) {
+        const auto u = intParam(p, "unison");
+        if (u < 1 || u > 7) return error = "unison must be 1..7", false;
+        t.synth.unison = static_cast<int>(u);
     }
     if (p.count("octave")) {
         const auto o = intParam(p, "octave");

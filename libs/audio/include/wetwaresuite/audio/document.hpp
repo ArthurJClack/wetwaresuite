@@ -19,6 +19,7 @@ class AudioDoc : public Document {
 public:
     Buffer audio;
     NoiseProfile noise;  // learned by audio.noise_profile, used by audio.denoise
+    std::vector<Marker> markers;  // markers and regions (audio.marker_add), in seconds
 
     std::string kind() const override { return "audio"; }
     std::string summary() const override;
@@ -51,6 +52,7 @@ private:
     std::function<Result(AudioDoc&)> fn_;
     Buffer before_;
     NoiseProfile beforeNoise_;
+    std::vector<Marker> beforeMarkers_;
 };
 
 class ProjectEdit : public Action {

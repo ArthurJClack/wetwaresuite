@@ -220,6 +220,8 @@ private:
     void runBrushTool();
     void drawBrushTool(ImDrawList* dl, ImVec2 origin, bool hovered);
     void layersPanel();
+    void soundPanel();     // effects rack and envelope of audio projects and songs (sound_view.cpp)
+    void pianoRollView();  // the notes of a song pattern (sound_view.cpp)
 
     // the play bar over sound documents (transport.cpp)
     bool playTarget(std::string& tool, Params& target) const;

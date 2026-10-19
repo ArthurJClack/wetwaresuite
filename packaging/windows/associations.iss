@@ -111,6 +111,9 @@ Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-cad.exe\Supported
 Root: HKA; Subkey: "Software\Classes\.wwcad\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.cad"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-cad.exe\SupportedTypes"; ValueType: string; ValueName: ".wwcad"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.wwcad"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite.cad"; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.wwasm\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.cad"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-cad.exe\SupportedTypes"; ValueType: string; ValueName: ".wwasm"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.wwasm"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite.cad"; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.wwfit\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.cad"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-cad.exe\SupportedTypes"; ValueType: string; ValueName: ".wwfit"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.wwfit"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite.cad"; Flags: uninsdeletevalue; Tasks: filetypes

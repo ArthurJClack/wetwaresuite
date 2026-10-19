@@ -29,6 +29,7 @@
 .step	cad	model/step	no
 .stp	cad	model/step	no
 .wwcad	cad	application/x-wetwaresuite-wwcad	yes
+.wwasm	cad	application/x-wetwaresuite-wwasm	yes
 .wwfit	cad	application/x-wetwaresuite-wwfit	yes
 .achcad	cad	application/x-wetwaresuite-achcad	yes
 .wav	sound	audio/x-wav	no

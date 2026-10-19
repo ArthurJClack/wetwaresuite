@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdlib>
 #include <fstream>
 #include <sstream>
 
@@ -38,6 +39,55 @@ std::string SongDoc::summary() const {
 
 std::unique_ptr<Attachment> SongDoc::preview() const {
     return std::make_unique<Attachment>(Attachment{"image/png", tool::pngOf(drawArrangement(song)), "arrangement.png"});
+}
+
+bool SongDoc::timeline(TimelineLayout& out) const {
+    out.docParam = "song";
+    out.tracks.clear();
+    const double bar = song.barSeconds();
+    for (std::size_t ti = 0; ti < song.tracks.size(); ++ti) {
+        const Track& t = song.tracks[ti];
+        TimelineTrack tt;
+        tt.id = std::to_string(ti);
+        tt.name = t.name + (t.mute ? " (muted)" : t.solo ? " (solo)" : "");
+        tt.kind = "pattern";
+        for (std::size_t pi = 0; pi < song.arrangement.size(); ++pi) {
+            const Placement& pl = song.arrangement[pi];
+            if (pl.track != static_cast<int>(ti)) continue;
+            const Pattern* pat = song.findPattern(pl.pattern);
+            TimelineClip c;
+            c.id = std::to_string(pi);
+            c.label = pl.pattern + (pl.repeat > 1 ? " x" + std::to_string(pl.repeat) : "");
+            c.start = pl.bar * bar;
+            c.length = (pat ? pat->bars : 1) * pl.repeat * bar;
+            c.headroom = 0;  // the start only moves (whole bars); the end sets the repeats
+            tt.clips.push_back(c);
+        }
+        out.tracks.push_back(std::move(tt));
+    }
+    return true;
+}
+
+std::string SongDoc::timelineCommand(const TimelineEdit& e) const {
+    const std::size_t pi = static_cast<std::size_t>(std::atoi(e.clip.c_str()));
+    if (pi >= song.arrangement.size()) return {};
+    const Placement& pl = song.arrangement[pi];
+    const double bar = song.barSeconds();
+    switch (e.kind) {
+        case TimelineEditKind::Move: {
+            std::string line = "beats.arrange_move placement=" + e.clip + " bar=" + std::to_string(std::max(0, static_cast<int>(std::lround(e.start / bar))));
+            if (!e.toTrack.empty() && e.toTrack != e.track) line += " to_track=" + e.toTrack;
+            return line;
+        }
+        case TimelineEditKind::TrimEnd: {
+            const Pattern* pat = song.findPattern(pl.pattern);
+            const double one = (pat ? pat->bars : 1) * bar;
+            return "beats.arrange_move placement=" + e.clip + " repeat=" + std::to_string(std::max(1, static_cast<int>(std::lround(e.length / one))));
+        }
+        case TimelineEditKind::Delete:
+            return "beats.arrange_remove track=" + std::to_string(pl.track) + " bar=" + std::to_string(pl.bar) + " pattern=" + pl.pattern;
+        default: return {};  // no trimming the start or splitting a placement
+    }
 }
 
 Result SongEdit::apply() {

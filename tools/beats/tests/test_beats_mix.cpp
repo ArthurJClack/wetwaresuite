@@ -135,7 +135,7 @@ int main() {
     Session s;
     registerCommands(s);
     for (const char* id : {"beats.notes", "beats.note_add", "beats.note_set", "beats.note_move", "beats.note_transpose", "beats.note_quantize", "beats.note_remove",
-                           "beats.fx_add", "beats.fx_set", "beats.fx_remove", "beats.fx_list", "beats.automate", "beats.pad_set", "beats.metronome",
+                           "beats.fx_add", "beats.fx_set", "beats.fx_remove", "beats.fx_list", "beats.fx_move", "beats.automation", "beats.automate", "beats.pad_set", "beats.metronome",
                            "beats.arrange_move", "beats.stems"})
         CHECK(s.registry().find(id) != nullptr);
     CHECK(s.registry().find("beats.notes")->readOnly && s.registry().find("beats.fx_list")->readOnly && s.registry().find("beats.note_add")->undoable);
@@ -205,6 +205,16 @@ int main() {
     {
         audio::Buffer b = render(song());
         CHECK(tone(b, 440, 0.05, 0.3) > tone(b, 440, 1.0, 1.9) + 20);
+    }
+    {
+        Result al = s.run("beats.automation", {{"song", g}, {"track", S("0")}});
+        CHECK(al.ok && str(al, "rows") == "0\tfx0.cutoff\t0\t20000\n0\tfx0.cutoff\t1.5\t100\n0\tfx0.cutoff\t4\t100\n" && numField(al, "length") == 8);
+        // a second effect in front: the cutoff lane follows the filter to fx1
+        CHECK(s.run("beats.fx_add", {{"song", g}, {"track", S("0")}, {"type", S("utility")}}).ok);
+        CHECK(s.run("beats.fx_move", {{"song", g}, {"track", S("0")}, {"fx", I(1)}, {"to", I(0)}}).ok && song().tracks[0].rack[0].type == "utility");
+        CHECK(song().tracks[0].automation[0].target == "fx1.cutoff");
+        CHECK(!s.run("beats.fx_move", {{"song", g}, {"track", S("0")}, {"fx", I(1)}, {"to", I(5)}}).ok);
+        CHECK(s.history().undo() && s.history().undo() && song().tracks[0].automation[0].target == "fx0.cutoff");
     }
     CHECK(s.run("beats.automate", {{"song", g}, {"track", S("0")}, {"target", S("fx0.cutoff")}, {"mode", S("clear")}}).ok);
     CHECK(s.run("beats.fx_remove", {{"song", g}, {"track", S("0")}, {"fx", I(0)}}).ok && song().tracks[0].rack.empty());
@@ -302,6 +312,25 @@ int main() {
     }
     CHECK(s.run("beats.arrange_move", {{"song", g}, {"placement", I(0)}, {"bar", I(0)}, {"repeat", I(2)}}).ok && song().bars() == 4);
     CHECK(!s.run("beats.arrange_move", {{"song", g}, {"placement", I(9)}, {"bar", I(0)}}).ok);
+    {
+        // the window's arrangement timeline: a lane per track, a clip per placement, edits become commands
+        auto doc = s.workspace().getAs<SongDoc>(g);
+        TimelineLayout tl;
+        CHECK(doc->timeline(tl) && tl.docParam == "song" && tl.tracks.size() == 2 && tl.tracks[0].clips.size() == 1 && tl.tracks[1].clips.size() == 1);
+        CHECK(tl.tracks[0].clips[0].start == 0 && std::fabs(tl.tracks[0].clips[0].length - 8.0) < 1e-9 && tl.tracks[0].clips[0].label == "lead x2");
+        TimelineEdit e;
+        e.clip = "0";
+        e.track = "0";
+        e.start = 4.1;
+        CHECK(doc->timelineCommand(e) == "beats.arrange_move placement=0 bar=2");
+        e.kind = TimelineEditKind::TrimEnd;
+        e.length = 12.3;
+        CHECK(doc->timelineCommand(e) == "beats.arrange_move placement=0 repeat=3");
+        e.kind = TimelineEditKind::Delete;
+        CHECK(doc->timelineCommand(e) == "beats.arrange_remove track=0 bar=0 pattern=lead");
+        e.kind = TimelineEditKind::Split;
+        CHECK(doc->timelineCommand(e).empty());
+    }
     CHECK(!s.run("beats.arrange_move", {{"song", g}, {"placement", I(0)}, {"to_track", S("8")}}).ok);
     CHECK(s.history().undo() && song().arrangement[0].repeat == 1 && song().arrangement[0].bar == 2);
 

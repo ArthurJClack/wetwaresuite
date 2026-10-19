@@ -78,9 +78,77 @@ std::string safeName(std::string s) {
     return s.empty() ? std::string("track") : s;
 }
 
+// Reordering a rack and reading automation back (the window's envelope editor polls this).
+void registerLaneCommands(Session& session) {
+    auto& reg = session.registry();
+    reg.add({"beats.fx_move",
+             "Move effect",
+             "Change the order of a rack: move effect fx to position `to` (its automation follows it).",
+             [] {
+                 auto v = ownerParams();
+                 v.push_back(fxParam());
+                 v.push_back({"to", ParamType::Int, "new position, from 0", true});
+                 return v;
+             }(),
+             true},
+            songCommand(session, [](SongDoc& d, const Params& p) {
+                RackRef r;
+                std::size_t i = 0;
+                std::string error;
+                if (!rackArg(d.song, p, r, error) || !fxArg(r, p, i, error)) return failed(error);
+                const auto to = intParam(p, "to");
+                if (to < 0 || to >= static_cast<std::int64_t>(r.rack->size())) return failed("to must be 0.." + std::to_string(r.rack->size() - 1));
+                const audio::Effect e = (*r.rack)[i];
+                r.rack->erase(r.rack->begin() + static_cast<std::ptrdiff_t>(i));
+                r.rack->insert(r.rack->begin() + to, e);
+                audio::renumberLanes(*r.lanes, -1, -1, static_cast<int>(i), static_cast<int>(to));
+                return songResult(r.name + " rack:" + rackText(*r.rack), d, p);
+            }));
+
+    reg.add({"beats.automation",
+             "List automation",
+             "Show the automation lanes of a track or the master (or of everything), times in beats. rows: owner (track "
+             "number or master), target, beat, value. length is the song's length in beats.",
+             ownerParams(),
+             false, true},
+            songCommand(
+                session,
+                [](SongDoc& d, const Params& p) {
+                    std::string text, rows;
+                    auto one = [&](const std::string& owner, const std::string& name, const std::vector<audio::Automation>& lanes) {
+                        text += "\n" + name + ":";
+                        if (lanes.empty()) text += " (no automation)";
+                        for (const auto& l : lanes) {
+                            text += "\n  " + l.target + ":";
+                            for (const auto& pt : l.points) {
+                                text += " " + num(pt.time, 4) + "=" + num(pt.value, 4);
+                                rows += owner + "\t" + l.target + "\t" + num(pt.time, 8) + "\t" + num(pt.value, 8) + "\n";
+                            }
+                        }
+                    };
+                    if (p.count("track") || boolParam(p, "master", false)) {
+                        RackRef r;
+                        std::string error;
+                        if (!rackArg(d.song, p, r, error)) return failed(error);
+                        int ti = -1;
+                        if (!boolParam(p, "master", false)) trackArg(d.song, p, ti, error);
+                        one(ti >= 0 ? std::to_string(ti) : "master", r.name, *r.lanes);
+                    } else {
+                        for (std::size_t t = 0; t < d.song.tracks.size(); ++t)
+                            one(std::to_string(t), "track " + std::to_string(t) + " \"" + d.song.tracks[t].name + "\"", d.song.tracks[t].automation);
+                        one("master", "the master", d.song.masterAutomation);
+                    }
+                    Result r = Result::success("automation" + text);
+                    r.with("song", stringParam(p, "song")).with("rows", rows).with("length", d.song.bars() * d.song.beatsInBar());
+                    return r;
+                },
+                false));
+}
+
 }  // namespace
 
 void registerMixCommands(Session& session) {
+    registerLaneCommands(session);
     auto& reg = session.registry();
 
     reg.add({"beats.fx_add",

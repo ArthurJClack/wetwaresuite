@@ -565,6 +565,7 @@ namespace wetwaresuite::circuit {
 void registerCommands(Session& session) {
     cmd::registerFileCommands(session);
     cmd::registerSchematicCommands(session);
+    cmd::registerSchematicMarkCommands(session);
     cmd::registerSchematicQueryCommands(session);
     cmd::registerPcbCommands(session);
     cmd::registerPcbOutputCommands(session);

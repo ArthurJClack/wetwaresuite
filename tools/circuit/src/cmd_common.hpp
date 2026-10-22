@@ -164,6 +164,7 @@ inline std::string issuesText(const std::vector<Issue>& issues, int& errors, int
 
 void registerFileCommands(Session& session);
 void registerSchematicCommands(Session& session);
+void registerSchematicMarkCommands(Session& session);
 void registerSchematicQueryCommands(Session& session);
 void registerPcbCommands(Session& session);
 void registerPcbOutputCommands(Session& session);

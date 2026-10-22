@@ -460,7 +460,11 @@ void registerSchematicCommands(Session& session) {
                     return edited("label " + name, p);
                 },
                 View::Schematic));
+}
 
+// power symbols, no-connect marks, wire removal and annotation
+void registerSchematicMarkCommands(Session& session) {
+    auto& reg = session.registry();
     reg.add({"circuit.power", "Power Symbol",
              "Attach a power or ground symbol to pins: symbol=gnd pins=R2.2,C1.2 puts a ground symbol under each pin and wires it. "
              "Power symbols with the same value are one global net (GND, VCC, +5V, +3V3, +12V, or any value=...).",

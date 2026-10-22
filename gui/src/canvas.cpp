@@ -69,6 +69,7 @@ bool showLevel(SDL_Renderer* renderer, Texture& tex, MipCache& mc, float zoom, b
 
 bool Shell::toolAvailable(CanvasTool tool) const {
     if (tool == CanvasTool::Move) return true;
+    if (tool == CanvasTool::Pick || tool == CanvasTool::Anchor) return vectorDoc();
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc || doc->kind() != "image") return false;
     switch (tool) {
@@ -129,7 +130,13 @@ void Shell::refreshCanvas() {
     mipCaches().erase(this);
     // anything else: the document's own preview, else the tool's preview command
     std::string png;
-    if (auto att = doc->preview()) png = att->bytes;
+    if (doc->kind() == "vector" && find("vector.preview")) {  // sharper than the small built-in preview, for zooming in
+        Result r = session_.run("vector.preview", {{"doc", currentDoc_}, {"size", std::int64_t{1400}}});
+        if (r.ok && !r.attachments.empty()) png = r.attachments[0].bytes;
+    }
+    if (png.empty()) {
+        if (auto att = doc->preview()) png = att->bytes;
+    }
     if (png.empty()) {
         std::vector<std::string> owners;
         if (auto it = docTool_.find(currentDoc_); it != docTool_.end()) owners.push_back(it->second);
@@ -177,7 +184,7 @@ void Shell::canvasToolbar() {
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%d%%", static_cast<int>(std::lround(canvas_.zoom * 100)));
-    const CanvasTool editing[] = {CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
+    const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
                                   CanvasTool::Remove, CanvasTool::Clone, CanvasTool::Dodge, CanvasTool::Smudge, CanvasTool::Blur};
     if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
     ImGui::SameLine();
@@ -187,6 +194,12 @@ void Shell::canvasToolbar() {
         CanvasTool tool;
         const char* tip;
     } tools[] = {{"Move", CanvasTool::Move, "Drag to move around, scroll to zoom"},
+                 {"Pick", CanvasTool::Pick,
+                  "Click a shape to pick it, drag to move it, drag a corner or edge handle to resize (Shift keeps the "
+                  "proportions). Arrow keys nudge, Delete removes"},
+                 {"Anchors", CanvasTool::Anchor,
+                  "Click a path to show its anchors and handles, drag them to reshape it (Alt breaks a smooth pair). "
+                  "Alt+click on the path adds an anchor"},
                  {"Select", CanvasTool::Select,
                   "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
                   "Alt takes away. Edits then only change inside it"},
@@ -218,6 +231,10 @@ void Shell::canvasToolbar() {
         ImGui::SetItemTooltip("%s", t.tip);
     }
     if (canvas_.tool == CanvasTool::Move || !toolAvailable(canvas_.tool)) return;
+    if (canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor) {
+        vectorSettings();
+        return;
+    }
     if (canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove) {
         retouchSettings();
         return;
@@ -422,6 +439,13 @@ void Shell::canvasView() {
         if (canvas_.selecting && active) selectDrag(io.MousePos);
         if (canvas_.selecting && !active) selectRelease(io.MousePos);
     }
+    const bool vectorTool = canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor;
+    if (painting && vectorTool) {
+        if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) vectorPress(io.MousePos);
+        if (canvas_.vecDrag && active) vectorDrag(io.MousePos);
+        if (canvas_.vecDrag && !active) vectorRelease();
+        if (hovered) vectorKeys();
+    }
     if (painting && canvas_.tool == CanvasTool::Fill && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         const ImVec2 img = toImage(io.MousePos);
         if (img.x >= 0 && img.y >= 0 && img.x < w && img.y < h && find("paint.fill")) {
@@ -466,6 +490,7 @@ void Shell::canvasView() {
         }
     }
     drawSelection(dl, p0, hovered);
+    if (vectorTool && toolAvailable(canvas_.tool)) drawVector(dl, p0);
     dl->PopClipRect();
 }
 

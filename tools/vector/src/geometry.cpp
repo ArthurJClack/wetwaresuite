@@ -275,6 +275,8 @@ const char* toString(ShapeKind kind) {
         case ShapeKind::Polygon: return "polygon";
         case ShapeKind::Path: return "path";
         case ShapeKind::Text: return "text";
+        case ShapeKind::Group: return "group";
+        case ShapeKind::Instance: return "instance";
     }
     return "shape";
 }
@@ -286,6 +288,36 @@ Matrix Matrix::operator*(const Matrix& m) const {
 Matrix Matrix::rotate(double degrees) {
     const double t = degrees * kPi / 180, cs = std::cos(t), sn = std::sin(t);
     return {cs, sn, -sn, cs, 0, 0};
+}
+
+Matrix Matrix::skew(double xDegrees, double yDegrees) {
+    return {1, std::tan(yDegrees * kPi / 180), std::tan(xDegrees * kPi / 180), 1, 0, 0};
+}
+
+double Matrix::scaleFactor() const { return std::sqrt(std::abs(a * d - b * c)); }
+
+bool Matrix::invert(Matrix& out) const {
+    const double det = a * d - b * c;
+    if (std::fabs(det) < 1e-14) return false;
+    out = {d / det, -b / det, -c / det, a / det, (c * f - d * e) / det, (b * e - a * f) / det};
+    return true;
+}
+
+void Bounds::add(Point p) {
+    if (empty) {
+        *this = {p.x, p.y, p.x, p.y, false};
+        return;
+    }
+    x0 = std::min(x0, p.x);
+    y0 = std::min(y0, p.y);
+    x1 = std::max(x1, p.x);
+    y1 = std::max(y1, p.y);
+}
+
+void Bounds::add(const Bounds& b) {
+    if (b.empty) return;
+    add(Point{b.x0, b.y0});
+    add(Point{b.x1, b.y1});
 }
 
 Bounds bounds(const Outline& outline) {
@@ -354,6 +386,10 @@ Outline localOutline(const Shape& s, double detail) {
             out = flattenPath(textPathData(s), detail);
             for (auto& c : out) c.closed = true;
             break;
+        case ShapeKind::Instance:  // the symbol's box (outlineIn draws the symbol itself)
+            if (s.w > 0 && s.h > 0) out.push_back({{{s.x, s.y}, {s.x + s.w, s.y}, {s.x + s.w, s.y + s.h}, {s.x, s.y + s.h}}, true});
+            break;
+        case ShapeKind::Group: break;
     }
     return out;
 }

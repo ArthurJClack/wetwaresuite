@@ -142,6 +142,7 @@ struct TextDocument {
     std::vector<TrackedChange> changes;
     bool trackChanges = false;  // edits are recorded as insertions and deletions
     bool showMarkup = true;     // previews and PDFs show tracked changes and comment highlights
+    std::string editor;         // who new tracked changes and comments are by (not saved; default: the login name)
 
     const Comment* comment(int id) const;
     const TrackedChange* change(int id) const;

@@ -29,6 +29,9 @@ add_library(wetwaresuite_office
   src/cmd_sheet_objects.cpp
   src/cmd_sheet_data.cpp
   src/cmd_doc.cpp
+  src/cmd_doc_format.cpp
+  src/cmd_doc_table.cpp
+  src/cmd_doc_review.cpp
   src/cmd_deck.cpp
   src/cmd_pdf.cpp)
 add_library(wetwaresuite::office ALIAS wetwaresuite_office)
@@ -52,4 +55,8 @@ if(WETWARESUITE_BUILD_TESTS)
   target_include_directories(test_office_sheetcmds PRIVATE src)
   target_link_libraries(test_office_sheetcmds PRIVATE wetwaresuite::office wetwaresuite_check)
   add_test(NAME office_sheetcmds COMMAND test_office_sheetcmds)
+  add_executable(test_office_doccmds tests/test_office_doccmds.cpp)
+  target_include_directories(test_office_doccmds PRIVATE src)
+  target_link_libraries(test_office_doccmds PRIVATE wetwaresuite::office wetwaresuite_check)
+  add_test(NAME office_doccmds COMMAND test_office_doccmds)
 endif()

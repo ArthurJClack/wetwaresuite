@@ -1013,7 +1013,9 @@ std::string writeMarkdown(const TextDocument& doc, const std::string& mediaPrefi
                 for (const auto& r : b.rows) cols = std::max(cols, r.size());
                 auto cell = [](const Runs& r) {
                     std::string s = inlineMarkdown(r), o;
-                    for (char c : s) {
+                    for (std::size_t k = 0; k < s.size(); ++k) {
+                        const char c = s[k];
+                        if (c == '\\' && k + 1 < s.size() && s[k + 1] == '\n') continue;  // a hard break is <br> here
                         if (c == '|') o += "\\|";
                         else if (c == '\n') o += "<br>";
                         else o += c;

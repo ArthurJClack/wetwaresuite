@@ -5,6 +5,7 @@
 
 #include "wetwaresuite/raster/codec.hpp"
 #include "commands.hpp"
+#include "doc_cmd.hpp"
 #include "text.hpp"
 
 namespace wetwaresuite::office {
@@ -176,6 +177,12 @@ bool makeBlocks(const std::string& kind, const Params& p, std::vector<Block>& ou
                 error = "no list items in text (one per line)";
                 return false;
             }
+            if (has(p, "numbering")) {
+                const std::string n = stringParam(p, "numbering");
+                b.ordered = n != "bullet";
+                b.numbering = n == "bullet" || n == "decimal" ? "" : n;
+            }
+            if (has(p, "start")) b.start = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "start"), 0, 100000));
         } else if (kind == "table") {
             b.kind = Block::Table;
             b.header = boolParam(p, "header", true);
@@ -196,6 +203,10 @@ bool makeBlocks(const std::string& kind, const Params& p, std::vector<Block>& ou
     }
     out.push_back(std::move(b));
     return true;
+}
+
+ParamSpec numberingSpec() {
+    return str("numbering", "list numbering", false, {}, {"bullet", "decimal", "lowerLetter", "upperLetter", "lowerRoman", "upperRoman"});
 }
 
 std::string clip(const std::string& s, std::size_t n) {
@@ -396,6 +407,8 @@ Result exportTo(TextDocument& d, const Params& p, const std::string& path) {
 
 }  // namespace
 
+static void registerDocToolCommands(Session& session);
+
 void registerDocCommands(Session& session) {
     auto& reg = session.registry();
 
@@ -529,12 +542,17 @@ void registerDocCommands(Session& session) {
              {doc(), str("kind", "what to add", false, std::string("paragraph"), blockKinds()), str("text", "the content"), str("text_file", "read the content from this file"),
               integer("level", "heading level 1-6", false, std::int64_t{1}), integer("at", "insert before this block number (default: append)"),
               str("path", "image file (kind=image)"), number("width", "image width in pt (default: natural size, at most the text width)"),
-              str("alt", "image description"), flag("header", "table: the first row is a header", true), previewSpec()},
+              str("alt", "image description"), flag("header", "table: the first row is a header", true), numberingSpec(),
+              integer("start", "numbered list: first number (default 1)"), previewSpec()},
              true},
             edit(session, [](TextDoc& d, const Params& p, const std::string&) -> Result {
                 std::vector<Block> blocks;
                 std::string error;
                 if (!makeBlocks(stringParam(p, "kind", "paragraph"), p, blocks, error)) return Result::failure(error);
+                if (d.data.trackChanges) {  // the new text is an insertion
+                    const int id = doccmd::newChange(d.data, true);
+                    for (auto& b : blocks) doccmd::markBlock(d.data, b, id);
+                }
                 std::size_t at = d.data.blocks.size();
                 if (has(p, "at")) {
                     const std::int64_t a = intParam(p, "at");
@@ -557,7 +575,7 @@ void registerDocCommands(Session& session) {
              {doc(), integer("block", "block number (office.doc_info lists them)", true), str("text", "new content"), str("text_file", "read the new content from this file"),
               str("kind", "change the block into this kind", false, {}, blockKinds()), integer("level", "heading level 1-6"),
               str("path", "image file"), number("width", "image width in pt"), str("alt", "image description"), flag("header", "table: first row is a header"),
-              previewSpec()},
+              numberingSpec(), integer("start", "numbered list: first number"), previewSpec()},
              true},
             edit(session, [](TextDoc& d, const Params& p, const std::string&) -> Result {
                 std::size_t i;
@@ -593,8 +611,34 @@ void registerDocCommands(Session& session) {
                         if (has(p, "width")) b.width = numberParam(p, "width");
                     } else {
                         if (kind == "table" && !has(p, "header")) q["header"] = b.kind == Block::Table ? b.header : true;
+                        if (b.kind == Block::List && (kind == "list" || kind == "numbered")) {
+                            if (!has(p, "numbering") && kind == (b.ordered ? "numbered" : "list") && !b.numbering.empty()) q["numbering"] = b.numbering;
+                            if (!has(p, "start")) q["start"] = static_cast<std::int64_t>(b.start);
+                        }
                         std::vector<Block> made;
                         if (!makeBlocks(kind, q, made, error)) return Result::failure(error);
+                        const bool textKind = made.front().kind == Block::Paragraph || made.front().kind == Block::Heading || made.front().kind == Block::Quote;
+                        if (d.data.trackChanges && textKind && b.kind == made.front().kind && hasText(p, "text")) {
+                            // the edit is recorded: what changed is deleted, the new text inserted
+                            const int del = doccmd::newChange(d.data, false), ins = doccmd::newChange(d.data, true);
+                            Runs merged = doccmd::trackedReplace(d.data, b.runs, made.front().runs, del, ins);
+                            made.front().runs = merged;
+                            made.front().fmt = b.fmt;
+                            made.front().style = b.style;
+                            d.data.changes.erase(std::remove_if(d.data.changes.begin(), d.data.changes.end(),
+                                                                [&](const TrackedChange& c) {
+                                                                    if (c.id != del && c.id != ins) return false;
+                                                                    for (const auto& r : merged) {
+                                                                        if (r.change == c.id) return false;
+                                                                    }
+                                                                    return true;
+                                                                }),
+                                                 d.data.changes.end());
+                        } else if (d.data.trackChanges) {
+                            doccmd::markBlock(d.data, made.front(), doccmd::newChange(d.data, true));
+                        }
+                        made.front().fmt = made.front().kind == b.kind ? b.fmt : made.front().fmt;
+                        if (made.front().kind == b.kind && made.front().style.empty()) made.front().style = b.style;
                         b = made.front();
                     }
                 } else {
@@ -605,6 +649,12 @@ void registerDocCommands(Session& session) {
                     if (has(p, "alt")) b.alt = stringParam(p, "alt");
                     if (has(p, "width")) b.width = numberParam(p, "width");
                     if (has(p, "header")) b.header = boolParam(p, "header");
+                    if (b.kind == Block::List && has(p, "numbering")) {
+                        const std::string n = stringParam(p, "numbering");
+                        b.ordered = n != "bullet";
+                        b.numbering = n == "bullet" || n == "decimal" ? "" : n;
+                    }
+                    if (b.kind == Block::List && has(p, "start")) b.start = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "start"), 0, 100000));
                 }
                 Result r = Result::success("block " + describe(b, i));
                 maybePreview(r, d, p);
@@ -619,6 +669,22 @@ void registerDocCommands(Session& session) {
                 if (!blockArg(d.data, p, "block", i, error)) return Result::failure(error);
                 const auto count = static_cast<std::size_t>(std::clamp<std::int64_t>(intParam(p, "count", 1), 1, static_cast<std::int64_t>(d.data.blocks.size() - i)));
                 std::string first = describe(d.data.blocks[i], i);
+                if (d.data.trackChanges) {
+                    // text is marked deleted (accept removes it); images, page breaks and contents go now
+                    const int id = doccmd::newChange(d.data, false);
+                    std::vector<Block> kept;
+                    for (std::size_t k = 0; k < d.data.blocks.size(); ++k) {
+                        Block& b = d.data.blocks[k];
+                        if (k >= i && k < i + count && !doccmd::markBlock(d.data, b, id)) continue;
+                        kept.push_back(std::move(b));
+                    }
+                    d.data.blocks = std::move(kept);
+                    Result r = Result::success("marked " + (count == 1 ? first : std::to_string(count) + " blocks from " + std::to_string(i + 1)) +
+                                               " as deleted (tracked change " + std::to_string(id) + "; office.doc_accept removes it)");
+                    r.with("blocks", static_cast<std::int64_t>(d.data.blocks.size())).with("change", static_cast<std::int64_t>(id));
+                    maybePreview(r, d, p);
+                    return r;
+                }
                 d.data.blocks.erase(d.data.blocks.begin() + static_cast<std::ptrdiff_t>(i), d.data.blocks.begin() + static_cast<std::ptrdiff_t>(i + count));
                 Result r = Result::success(count == 1 ? "deleted " + first : "deleted " + std::to_string(count) + " blocks from " + std::to_string(i + 1));
                 r.with("blocks", static_cast<std::int64_t>(d.data.blocks.size()));
@@ -639,6 +705,16 @@ void registerDocCommands(Session& session) {
                 maybePreview(r, d, p);
                 return r;
             }));
+
+    registerDocToolCommands(session);
+    doccmd::registerDocFormatCommands(session);
+    doccmd::registerDocTableCommands(session);
+    doccmd::registerDocReviewCommands(session);
+}
+
+// Find and replace, word count, preview and page setup.
+static void registerDocToolCommands(Session& session) {
+    auto& reg = session.registry();
 
     reg.add({"office.doc_find_replace", "Find and Replace",
              "Find text everywhere in the document (headings, paragraphs, lists, tables, quotes, code) and replace it, keeping each "
@@ -673,9 +749,57 @@ void registerDocCommands(Session& session) {
                     if (n && doReplace) s = out + s.substr(pos);
                     return n;
                 };
+                const bool track = d.data.trackChanges && doReplace;
+                int del = 0, ins = 0;
                 auto inRuns = [&](Runs& runs) {
                     int n = 0;
-                    for (auto& r : runs) n += inRun(r.text);
+                    if (!track) {
+                        for (auto& r : runs) {
+                            const TrackedChange* ch = r.change ? d.data.change(r.change) : nullptr;
+                            if (!(ch && !ch->insert)) n += inRun(r.text);
+                        }
+                        return n;
+                    }
+                    // tracked: each match becomes a deletion followed by the inserted replacement
+                    Runs out;
+                    for (auto& r : runs) {
+                        const TrackedChange* ch = r.change ? d.data.change(r.change) : nullptr;
+                        if ((ch && !ch->insert) || r.text.empty()) {
+                            out.push_back(r);
+                            continue;
+                        }
+                        if (ch) {  // text that is still a pending insertion is simply changed
+                            n += inRun(r.text);
+                            out.push_back(r);
+                            continue;
+                        }
+                        Runs one = {r};
+                        auto found = doccmd::matches(one, find, mc, whole);
+                        if (found.empty()) {
+                            out.push_back(r);
+                            continue;
+                        }
+                        if (!del) del = doccmd::newChange(d.data, false), ins = rep.empty() ? 0 : doccmd::newChange(d.data, true);
+                        std::size_t pos = 0;
+                        for (const auto& [a, b] : found) {
+                            Run before = r, gone = r, added = r;
+                            before.text = r.text.substr(pos, a - pos);
+                            gone.text = r.text.substr(a, b - a);
+                            gone.change = del;
+                            added.text = rep;
+                            added.change = ins;
+                            if (!before.text.empty()) out.push_back(before);
+                            out.push_back(gone);
+                            if (!rep.empty()) out.push_back(added);
+                            pos = b;
+                            ++n;
+                        }
+                        Run after = r;
+                        after.text = r.text.substr(pos);
+                        if (!after.text.empty()) out.push_back(after);
+                    }
+                    runs = std::move(out);
+                    mergeRuns(runs);
                     return n;
                 };
                 for (std::size_t i = 0; i < d.data.blocks.size(); ++i) {
@@ -684,7 +808,7 @@ void registerDocCommands(Session& session) {
                     for (auto& it : b.items) n += inRuns(it.runs);
                     for (auto& row : b.rows)
                         for (auto& c : row) n += inRuns(c);
-                    n += inRun(b.alt);
+                    if (!track) n += inRun(b.alt);
                     if (n) where.push_back(i + 1);
                     total += n;
                 }
@@ -693,7 +817,8 @@ void registerDocCommands(Session& session) {
                 if (where.size() > 30) blocks += ", ...";
                 std::string msg = !total ? "\"" + find + "\" not found"
                                          : std::string(doReplace ? "replaced " : "found ") + std::to_string(total) + " match(es) of \"" + find + "\"" +
-                                               (doReplace ? " with \"" + rep + "\"" : "") + " in block(s) " + blocks;
+                                               (doReplace ? " with \"" + rep + "\"" : "") + " in block(s) " + blocks +
+                                               (track ? " (tracked changes " + std::to_string(del) + (ins ? " and " + std::to_string(ins) : std::string()) + ")" : "");
                 Result r = Result::success(msg, static_cast<std::int64_t>(total));
                 r.with("count", static_cast<std::int64_t>(total));
                 maybePreview(r, d, p);
@@ -743,5 +868,18 @@ void registerDocCommands(Session& session) {
                 return r;
             }));
 }
+
+namespace doccmd {
+
+ActionFactory edit(Session& s, Edit fn) { return docCommand<TextDoc>(s, std::move(fn), true); }
+ActionFactory read(Session& s, Edit fn) { return docCommand<TextDoc>(s, std::move(fn), false); }
+ParamSpec doc() { return docSpec("document", "doc1"); }
+std::string describe(const Block& b, std::size_t index) { return office::describe(b, index); }
+bool blockArg(const TextDocument& d, const Params& p, const char* key, std::size_t& index, std::string& error) {
+    return office::blockArg(d, p, key, index, error);
+}
+Runs inlineLines(const std::string& text) { return office::inlineLines(text); }
+
+}  // namespace doccmd
 
 }  // namespace wetwaresuite::office

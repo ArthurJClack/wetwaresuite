@@ -247,7 +247,7 @@ struct DocxReader {
             StyleDef keep;
             bool any = false;
             if (!d.font.empty() && familyOf(d.font) != base.font) keep.font = d.font, any = true;
-            if (d.size > 0 && std::fabs(d.size - base.size) > 0.05) keep.size = d.size, any = true;
+            if (d.size > 0 && std::fabs(d.size - base.size) > 0.3) keep.size = d.size, any = true;
             if (d.color && rgbOf(d.color) != rgbOf(base.color)) keep.color = d.color, any = true;
             if (d.bold >= 0 && (d.bold != 0) != base.bold) keep.bold = d.bold, any = true;
             if (d.italic >= 0 && (d.italic != 0) != base.italic) keep.italic = d.italic, any = true;

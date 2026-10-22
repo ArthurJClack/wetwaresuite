@@ -236,9 +236,15 @@ struct OdtReader {
         return n;
     }
 
+    // The name a style is shown with (its display name, else its decoded name).
+    std::string idOf(const std::string& name) {
+        auto it = styles.find(name);
+        return it != styles.end() && !it->second.display.empty() ? it->second.display : displayOf(name);
+    }
+
     // Built-in style id for an ODF common style name ("" = a style of your own).
     std::string builtinFor(const std::string& name) {
-        const std::string d = lower(displayOf(name));
+        const std::string d = lower(idOf(name));
         if (d.empty() || d == "standard" || d == "default" || d == "text body" || d == "body text" || d == "default paragraph style") return "Normal";
         if (d == "title") return "Title";
         if (d == "subtitle") return "Subtitle";
@@ -254,7 +260,7 @@ struct OdtReader {
     }
 
     bool helperStyle(const std::string& name) {
-        const std::string d = lower(displayOf(name));
+        const std::string d = lower(idOf(name));
         return d == "table contents" || d == "table heading" || d == "footnote" || d == "endnote" || d == "header" || d == "footer" || startsWith(d, "contents") ||
                d == "index" || d == "frame contents" || d == "header and footer" || d == "horizontal line";
     }
@@ -280,7 +286,7 @@ struct OdtReader {
             if (s.automatic || (s.family != "paragraph" && !s.family.empty())) continue;
             const std::string b = builtinFor(name);
             if (b.empty()) continue;
-            const std::string d = lower(displayOf(name));
+            const std::string d = lower(idOf(name));
             if (b == "Normal" && d != "standard") continue;  // Text body and friends
             found.emplace_back(b, &s);
         }
@@ -308,14 +314,14 @@ struct OdtReader {
     void useStyle(const std::string& name) {
         std::string cur = name;
         for (int hops = 0; hops < 8 && !cur.empty(); ++hops) {
-            const std::string id = displayOf(cur);
+            const std::string id = idOf(cur);
             if (doc.styles.count(id) || !builtinFor(cur).empty()) break;
             auto it = styles.find(cur);
             if (it == styles.end()) break;
             StyleDef d = defOf(it->second);
             const std::string parent = it->second.parent;
             const std::string pb = parent.empty() ? "" : builtinFor(parent);
-            d.basedOn = parent.empty() || pb == "Normal" ? "" : !pb.empty() ? pb : displayOf(parent);
+            d.basedOn = parent.empty() || pb == "Normal" ? "" : !pb.empty() ? pb : idOf(parent);
             doc.styles[id] = d;
             if (!pb.empty()) break;
             cur = parent;
@@ -534,7 +540,7 @@ struct OdtReader {
             b.style = builtin;
         } else if (builtin.empty() && !helperStyle(common) && styles.count(common)) {
             useStyle(common);
-            if (doc.styles.count(displayOf(common))) b.style = displayOf(common);
+            if (doc.styles.count(idOf(common))) b.style = idOf(common);
         }
         return b;
     }

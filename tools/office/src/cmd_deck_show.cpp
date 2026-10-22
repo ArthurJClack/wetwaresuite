@@ -138,13 +138,13 @@ void registerDeckShowCommands(Session& session) {
              "Make the deck a slide show to present from any browser: one .html file with every visible slide, the transitions and "
              "timings, speaker notes (N), a presenter window with the next slide, notes and a timer (P), full screen (F), black or "
              "white screen (B/W), and jumping to a slide by typing its number.",
-             {doc(), str("path", "the .html file (default: next to the deck, <name>-show.html)"), integer("width", "slide image width in pixels", false, std::int64_t{1600}),
+             {doc(), fileSpec("slide deck"), str("path", "the .html file (default: next to the deck, <name>-show.html)"), integer("width", "slide image width in pixels", false, std::int64_t{1600}),
               flag("loop", "start again after the last slide (a kiosk show with advance_after timings)", false), integer("start", "open at this slide")},
              false, false},
             read(session, [](DeckDoc& d, const Params& p, const std::string& id) -> Result {
                 std::string path = has(p, "path") ? stringParam(p, "path") : std::string();
                 if (path.empty()) {
-                    if (d.path.empty() || d.path == id) return Result::failure(id + " has no file yet; give path=<show.html>");
+                    if (d.path.empty()) return Result::failure(id + " has no file yet; give path=<show.html>");
                     fs::path base = pathFromUtf8(d.path);
                     path = (base.parent_path() / (base.stem().string() + "-show.html")).string();
                 }

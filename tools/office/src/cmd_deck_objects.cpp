@@ -16,7 +16,7 @@ std::vector<ParamSpec> join(std::vector<ParamSpec> a, const std::vector<ParamSpe
 }
 
 std::vector<ParamSpec> whereSpecs() {
-    return {doc(), integer("slide", "slide number (or master=true)"), flag("master", "put it on the master: it shows on every slide but title and section slides", false)};
+    return {doc(), integer("slide", "slide number (or master=true)"), flag("master", "the master instead of a slide (its objects show on every slide but title and section slides)", false)};
 }
 
 std::vector<ParamSpec> boxSpecs() {
@@ -37,7 +37,7 @@ std::vector<ParamSpec> paintSpecs() {
 
 std::vector<ParamSpec> textSpecs() {
     return {str("text", "the text (inline Markdown: **bold**, *italic*, [links](url)); one paragraph per line"),
-            number("size", "text size in points (default 20)"),
+            number("size", "text size in points (default 20 in text boxes, 18 in shapes)"),
             str("color", "text colour (default: readable on the fill)"),
             flag("bold", "bold text"),
             flag("italic", "italic text"),

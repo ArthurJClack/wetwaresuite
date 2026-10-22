@@ -4,7 +4,7 @@
 
 - **Spreadsheets** (`office.sheet_*`): an Excel-style formula engine with about 300 functions and dynamic arrays (XLOOKUP, SUMIFS, FILTER, SORT, UNIQUE, LET, finance and statistics), named ranges, number formats, cell styles (fonts, colours, borders, alignment), merged cells, frozen panes, conditional formatting with colour scales and data bars, data validation with dropdowns, sorting, filtering and autofilter, fill series, paste special, pivot tables, and charts placed in the sheet. It reads and writes `.xlsx`, `.ods` and `.csv` with all of that kept, and prints to PDF.
 - **Documents** (`office.doc_*`): Word-style documents with paragraph styles (built-in and your own), character and paragraph formatting, numbered and bulleted lists, tables with shading and merged cells, images, headers and footers with page numbers, a table of contents, footnotes, comments and tracked changes, plus find and replace and word count. It reads and writes `.docx` and `.odt` with all of that kept, reads and writes Markdown and HTML, and exports PDF and PNG through its own layout engine.
-- **Slide decks** (`office.deck_*`): build slides from a Markdown outline or one by one, pick from eight colour themes, add speaker notes, and save `.pptx` (PowerPoint, Keynote, Google Slides and LibreOffice open it), PDF and PNG.
+- **Slide decks** (`office.deck_*`): PowerPoint-style decks with eight layouts and colour themes (or your own colours), text boxes, shapes, lines and pictures placed anywhere, a master with a logo, footer and slide numbers, speaker notes, transitions and timings, and hidden slides. Build them from a Markdown outline or one by one. They save as `.pptx` with all of that kept (PowerPoint, Keynote, Google Slides and LibreOffice open it) and export to PDF, notes pages and PNG. `office.deck_present` turns a deck into a slide show for any browser, with a presenter window.
 - **PDF tools** (`office.pdf_*`): info, text extraction, merge, split, extract, delete or rotate pages, and images to PDF. Any PDF can also be rendered to PNG (this needs `pdftoppm` from poppler-utils). To view, mark up, edit, redact, fill in or sign a PDF, use the [PDF editor](pdf.md) that ships in the same app.
 
 All of the formats above are handled inside the suite, with no other programs. `office.convert` converts between them in one step. When LibreOffice is installed it adds the rest: `.doc`, `.xls`, `.ppt`, `.rtf`, `.odp` output and more.
@@ -705,7 +705,7 @@ Some things to notice:
 - A content slide with a picture puts the picture to the right of the bullets. `layout=image` makes the picture fill the slide under the title instead.
 - The themes are `blue` (the default), `teal`, `green`, `orange`, `red`, `purple`, `slate` (light grey background) and `dark` (dark background). Any colour such as `#5b3cc4` works as the accent. `font=serif` or `font=mono` changes every slide's font.
 - Exporting to `.md` writes the deck back as an outline, with its pictures in `talk-built_media/`. You can edit that file as text and convert it again.
-- `office.deck_open` reads `.pptx` files from PowerPoint, Google Slides and LibreOffice: titles, subtitles, bullets with levels, the first picture on each slide, speaker notes and the theme colour. Then `deck_edit_slide`, `deck_move_slide` and `deck_delete_slide` change them. The deck is saved in the suite's own layouts, so a heavily designed corporate template comes back plainer (see the limits).
+- `office.deck_open` reads `.pptx` files from PowerPoint, Google Slides and LibreOffice: titles, subtitles, bullets with levels, pictures, text boxes, shapes, speaker notes, transitions and the theme colours. Then `deck_edit_slide`, `deck_move_slide` and `deck_delete_slide` change them. Titles and bullets are laid out again in the suite's own layouts, so a heavily designed corporate template comes back plainer (see the limits). Task 9 adds shapes, a master and transitions, and presents the deck.
 
 **Claude.**
 
@@ -852,7 +852,7 @@ Connect the server once, with just the office tools:
 claude mcp add wetwaresuite-office -- /path/to/wetwaresuite/build/apps/wetwaresuite/wetwaresuite mcp --tools office
 ```
 
-(or add `"args": ["mcp", "--tools", "office"]` in Claude Desktop's config, see [mcp.md](mcp.md)). Claude then sees 107 `office_*` tools plus `undo`, `redo`, `history` and `documents`. A whole afternoon's work can be one request:
+(or add `"args": ["mcp", "--tools", "office"]` in Claude Desktop's config, see [mcp.md](mcp.md)). Claude then sees 119 `office_*` tools plus `undo`, `redo`, `history` and `documents`. A whole afternoon's work can be one request:
 
 > In /home/me/q1:
 > 1. Make budget.xlsx with rent 1200/1200/1200, groceries 420/385/450, transport 95/110/80 and fun 150/90/200 for Jan-Mar, with totals across and down in currency format and a bar chart of spending by month saved as budget-chart.png.
@@ -1227,6 +1227,143 @@ office.doc_reject
 Claude calls `office_doc_open`, `office_doc_info` to learn the block numbers, then `office_doc_format` with `style=Title`, `office_doc_toc`, two `office_doc_table_cell`, `office_doc_header_footer`, `office_doc_footnote`, `office_doc_track`, `office_doc_find_replace` and `office_doc_save` twice. It checks the page with `office_doc_preview`. Asked "what did Ann change?", it calls `office_doc_changes`; "accept them all" is `office_doc_accept`.
 
 **In the window.** Open `field.docx` in `wetwaresuite-office`. The page shows as it prints, with the header, footer, footnotes, tracked changes and highlighted comments. Press **Ctrl+K** and type `format`, `style`, `table`, `footnote`, `comment`, `track`, `accept` or `contents` to get each command's form; **Document** is already set to the open file, and Ctrl+Z undoes each step.
+
+## Task 9: a launch talk the PowerPoint way
+
+You are giving a launch talk and want it to look like a designed PowerPoint deck, not only bullets. You want a picture with a caption, a row of chevrons with an arrow and a callout, a logo, a footer and slide numbers on every slide, and transitions. Then you want to present it, with your notes on a second screen, and send the `.pptx` and a PDF of the notes afterwards.
+
+Slides still start from the layouts of Task 4. On top of the layout, each slide (and the master) holds **objects**: text boxes, shapes, lines and pictures, placed in points from the top-left corner. A 16:9 slide is 960 x 540 points (4:3 is 720 x 540). `position=` (`center`, `top`, `bottom_right`, ...) places an object for you, 48 points from the edges. The first object is at the back. `office.deck_objects` lists a slide's objects with their numbers, and `name=` gives one a name to use instead of its number.
+
+**CLI.** A `.pptx` from PowerPoint, Google Slides or LibreOffice can be looked at, and presented, without opening it:
+
+```sh
+$ wetwaresuite office.deck_objects file=launch.pptx slide=3
+slide 3: 5 object(s)
+  1. chevron at 60,200 size 260x110, fill accent, text "Build" 18 pt #ffffff center
+  2. chevron at 340,200 size 260x110, fill #f39c12, text "Test" 18 pt #222222 center
+  3. chevron "ship" at 620,200 size 260x110, fill #2e7d32, text "Ship" 18 pt bold #ffffff center
+  4. line from 100,380 to 840,380, accent 3 pt, arrow
+  5. callout at 660,400 size 200x60, fill #fff3c4, outline #c08a00 1.5 pt, text "On track!" 18 pt #222222 center
+count: 5
+$ wetwaresuite office.deck_notes file=launch.pptx
+2 of 4 slide(s) have notes:
+1. Launch plan: (no notes)
+2. Where we are: Mention the beta survey.
+3. Three steps to launch: Six weeks in all.
+4. Questions?: (no notes)
+count: 2
+$ wetwaresuite office.deck_present file=launch.pptx
+slide show of 4 slide(s) in launch-show.html: open it in a browser. Space or arrow keys move on, F full screen, P presenter window, N notes, ? help.
+...
+```
+
+**Batch.**
+
+```text
+# launch.txt - a launch talk the PowerPoint way: shapes, a master, transitions, a show
+office.deck_new title="Launch plan" author="Sam Rivera" theme=teal
+office.deck_add_slide layout=title title="Launch plan" subtitle="Platform team, Q4 2026"
+office.deck_add_slide title="Where we are" bullets="Beta with 40 teams\nCrash rate down 60%\nDocs rewritten" notes="Mention the beta survey."
+office.deck_add_slide layout=title_only title="Three steps to launch" notes="Six weeks in all."
+office.deck_add_slide layout=section title="Questions?" subtitle="launch@example.com"
+
+# pictures and text boxes go anywhere (points; the slide is 960 x 540)
+office.deck_image slide=2 path=budget-chart.png x=560 y=140 w=340
+office.deck_text_box slide=2 text="Survey, October" x=560 y=400 w=340 size=14 italic=true align=center
+
+# shapes with text, an arrow and a callout
+office.deck_shape slide=3 shape=chevron x=60 y=200 w=260 h=110 text=Build
+office.deck_shape slide=3 shape=chevron x=340 y=200 w=260 h=110 text=Test fill=#f39c12
+office.deck_shape slide=3 shape=chevron x=620 y=200 w=260 h=110 text="**Ship**" fill=#2e7d32 name=ship
+office.deck_line slide=3 x=100 y=380 x2=840 y2=380 arrow=true color=accent line_width=3
+office.deck_shape slide=3 shape=callout x=660 y=400 w=200 h=60 text="On track!" fill=#fff3c4 line=#c08a00
+office.deck_objects slide=3
+
+# the master: a logo, a footer and slide numbers on every content slide
+office.deck_image master=true path=logo.png x=840 y=20 w=80
+office.deck_master footer="Launch plan | Confidential"
+
+# transitions and timings
+office.deck_transition all=true type=fade
+office.deck_transition slide=3 type=push direction=left duration=1
+
+office.deck_info
+office.deck_save path=launch.pptx
+office.deck_export path=launch.pdf
+office.deck_export path=launch-notes.pdf notes=true
+office.deck_present path=launch-show.html
+```
+
+```sh
+$ wetwaresuite batch launch.txt
+created deck1: "Launch plan", 0 slides, theme teal
+...
+added to slide 2: 1. image at 560,140 size 340x213, picture 800x500
+...
+added to slide 2: 2. text box at 560,400 size 340x24 (auto height), text "Survey, October" 14 pt italic center
+...
+added to slide 3: 1. chevron at 60,200 size 260x110, fill accent, text "Build" 18 pt center
+...
+added to slide 3: 4. line from 100,380 to 840,380, accent 3 pt, arrow
+...
+added to the master: 1. image at 840,20 size 80x40, picture 120x60
+...
+master: slide numbers on, footer "Launch plan | Confidential", 1 object(s), not on title and section slides
+4 slides: fade 0.75 s, advances on click
+slide 3: push left 1 s, advances on click
+deck1: "Launch plan", 4 slide(s), theme teal, 16:9
+  master: slide numbers, footer "Launch plan | Confidential", 1 object(s)
+  1. title: "Launch plan" / Platform team, Q4 2026, fade transition
+  2. content: "Where we are", 3 bullet(s), notes, 2 object(s), fade transition
+  3. title_only: "Three steps to launch", notes, 5 object(s), push transition
+  4. section: "Questions?" / launch@example.com, fade transition
+...
+saved launch.pptx (4 slides)
+...
+exported launch.pdf (4 slides)
+...
+exported notes pages to launch-notes.pdf (4 pages)
+...
+slide show of 4 slide(s) in launch-show.html: open it in a browser. Space or arrow keys move on, F full screen, P presenter window, N notes, ? help.
+...
+```
+
+(Shortened.) Some things to notice:
+
+- **Shapes.** `office.deck_shape` draws `rect`, `rounded`, `ellipse`, `triangle`, `right_triangle`, `diamond`, `pentagon`, `hexagon`, `octagon`, `star`, `arrow_right`, `arrow_left`, `arrow_up`, `arrow_down`, `chevron`, `parallelogram`, `trapezoid`, `plus` and `callout`. Each one has a fill, an outline (`line=`, `line_width=`) and optional text, which is centred and shrinks to fit. In PowerPoint they are real shapes of the same kind, so you can still drag, recolour and type into them there.
+- **Colours** are `#rrggbb`, a name such as `red`, `none`, or a theme colour: `accent`, `text` or `background`. Theme colours follow `office.deck_theme`, in the suite and in PowerPoint. Text with no `color=` is the theme's text colour, or white or dark when that reads better on the fill.
+- **Text boxes** take inline Markdown and one paragraph per line, or bullets with `bullets=true`. Without `h=` a text box grows with its text, as in PowerPoint.
+- **The master** holds what every slide shares: objects added with `master=true` (a logo here), the footer and the slide numbers. They show on every slide except title and section slides; `office.deck_master on_title=true` shows them there too.
+- **Transitions** are `fade`, `push`, `wipe`, `cover` and `zoom`, with a direction and a duration. `advance_after=` moves to the next slide by itself after that many seconds. All of it is kept in `.pptx`, and the slide show plays it.
+- **Presenting.** `office.deck_present` writes one `.html` file that any browser can show full screen (F). Space, the arrow keys or a click move through the slides, and typing a number and Enter jumps to that slide. B or W blanks the screen, and N shows your notes under the slide. P opens a presenter window for your second screen with the current and next slide, your notes and a timer. Hidden slides are left out. `loop=true` with `advance_after=` timings makes a kiosk show.
+- **Handouts.** `office.deck_export notes=true` writes notes pages, with each slide above its speaker notes, the way PowerPoint prints them.
+- **What `.pptx` keeps.** Everything above: layouts, objects with their geometry, colours and text, pictures, the master's objects, footer and slide numbers, theme colours and font, notes, transitions and timings, and hidden slides. Decks from other programs open with their pictures, text boxes, shapes, lines and grouped shapes kept where they were, and their master's shapes become master objects.
+
+More things the same commands do:
+
+```text
+office.deck_object_edit slide=3 object=ship text="**Ship** in December" fill=#1b5e20
+office.deck_object_edit slide=3 object=5 position=bottom_right order=back
+office.deck_shape slide=4 shape=star x=420 y=60 w=120 h=120 fill=#ffd54f line=none
+office.deck_text_box slide=2 text="- one\n- two" bullets=true x=48 y=380 w=400 fill=#eef6f6 line=accent
+office.deck_object_delete slide=2 object=2
+office.deck_duplicate_slide slide=3
+office.deck_edit_slide slide=4 hidden=true background=#102030
+office.deck_theme background=#fdf6e3 text_color=#073642
+office.deck_master slide_numbers=false on_title=true
+office.deck_transition slide=2 type=wipe direction=up advance_after=8
+office.deck_transition all=true type=none
+office.deck_present path=kiosk.html loop=true
+office.deck_object_delete master=true all=true
+```
+
+**Claude.**
+
+> Open ~/talks/launch.pptx. On slide 3 draw three chevrons for Build, Test and Ship (Ship in green) with an arrow under them and an "On track!" callout. Put logo.png in the top right corner of every slide, add the footer "Launch plan | Confidential", make every slide fade in, then give me a slide show I can present from the browser and a PDF of my notes.
+
+Claude calls `office_deck_open`, `office_deck_info`, three `office_deck_shape`, `office_deck_line` and another `office_deck_shape` for the callout. It looks at the slide with `office_deck_preview` and moves anything that overlaps with `office_deck_object_edit`. Then it calls `office_deck_image` with `master=true`, `office_deck_master`, `office_deck_transition` with `all=true`, `office_deck_present`, `office_deck_export` with `notes=true` and `office_deck_save`. Asked "what do my notes say?", it calls `office_deck_notes`.
+
+**In the window.** Open `launch.pptx` in `wetwaresuite-office`. The window shows the deck as a slide sorter: every slide drawn as it prints, numbered, with its transition, and hidden slides faded. Press **Ctrl+K** and type `shape`, `text box`, `picture`, `object`, `master`, `transition`, `duplicate` or `present` to get each command's form; Ctrl+Z undoes each step.
 
 ## Formulas
 
@@ -2138,7 +2275,7 @@ Create a 16:9 slide deck and return its id (deck1, ...). outline= builds every s
 | `aspect` | string |  | slide shape [16:9\|4:3] (default 16:9) |
 
 #### office.deck_open
-Open a deck: .pptx (titles, subtitles, bullets with levels, the first picture and speaker notes of each slide, theme accent colour) or a Markdown outline (.md); .odp and .ppt through LibreOffice. Read-only.
+Open a deck: .pptx (titles, subtitles, bullets with levels, pictures, text boxes, shapes and lines, speaker notes, transitions, hidden slides, theme colours and font, the master's shapes, footer and slide numbers) or a Markdown outline (.md); .odp and .ppt through LibreOffice. Read-only.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
@@ -2152,14 +2289,16 @@ Save the deck: .pptx (PowerPoint, Keynote, Google Slides and LibreOffice open it
 | `path` | string |  | output file (default: the deck's own path) |
 
 #### office.deck_export
-Export without changing the deck's own file: .pdf, .pptx, .md, .odp/.ppt (LibreOffice), or .png - one slide with slide=, otherwise every slide as name-1.png, name-2.png, ... Not undoable.
+Export without changing the deck's own file: .pdf (notes=true: notes pages, the slide above its speaker notes), .pptx, .md, .html (a slide show to present from a browser, like office.deck_present), .odp/.ppt (LibreOffice), or .png/.jpg - one slide with slide=, otherwise every slide as name-1.png, name-2.png, ... Hidden slides are left out of .pdf and .html. Not undoable.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `file` | string |  | instead of an open slide deck: read this file (for one-shot use) |
 | `path` | string | yes | output file; the extension picks the format |
 | `slide` | integer |  | png: only this slide |
-| `width` | integer |  | png width in pixels (default 1280) |
+| `width` | integer |  | image width in pixels (png default 1280, html 1600) |
+| `notes` | boolean |  | pdf: notes pages with the speaker notes (default false) |
+| `loop` | boolean |  | html: start again after the last slide (default false) |
 
 #### office.deck_close
 Close a deck without saving (undo reopens it). Undoable.
@@ -2185,6 +2324,8 @@ Add a slide. Layouts: title, section, content, two_column, image, image_right, t
 | `right` | string |  | two_column: the right column's bullets |
 | `image` | string |  | picture file (png/jpg) for image layouts |
 | `notes` | string |  | speaker notes |
+| `background` | string |  | this slide's background colour (#rrggbb, a name, accent; none = the layout's) |
+| `hidden` | boolean |  | hide the slide: left out of shows and PDF exports |
 | `at` | integer |  | insert at this position (default: last) |
 
 #### office.deck_edit_slide
@@ -2194,12 +2335,15 @@ Change a slide's layout, title, subtitle, bullets, right column, image or notes;
 `office.deck_delete_slide` deletes `slide` (required). `office.deck_move_slide` moves `slide` (required) so it ends up at position `to` (required). Both undoable.
 
 #### office.deck_theme
-Change the colour theme and/or the font of the whole deck. Undoable.
+Change the colour theme and/or the font of the whole deck; accent=, background= and text_color= set single theme colours (after theme=). Title and section slides use the accent as their background. Undoable.
 
 | Parameter | Type | Required | Description |
 | --- | --- | --- | --- |
 | `theme` | string |  | colour theme: blue, teal, green, orange, red, purple, slate, dark, or an accent colour like #0a7d5a |
 | `font` | string |  | font family [sans\|serif\|mono] |
+| `accent` | string |  | accent colour |
+| `background` | string |  | background colour of content slides |
+| `text_color` | string |  | body text colour |
 
 #### office.deck_preview
 Render a slide (or all=true for every slide) as PNG, exactly as the PDF export draws it. Read-only.
@@ -2210,6 +2354,189 @@ Render a slide (or all=true for every slide) as PNG, exactly as the PDF export d
 | `slide` | integer |  | slide number (default 1) |
 | `all` | boolean |  | attach every slide (default false) |
 | `width` | integer |  | pixels (default 960) |
+
+#### office.deck_text_box
+Put a text box anywhere on a slide (or on the master, for every slide). Without w it is 400 points wide; without h it grows with its text. Without x/y or position it goes in the middle. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slide` | integer |  | slide number (or master=true) |
+| `master` | boolean |  | the master instead of a slide (its objects show on every slide but title and section slides) (default false) |
+| `x` | number |  | left edge in points from the slide's left (the slide is 960 x 540 points, 720 x 540 at 4:3) |
+| `y` | number |  | top edge in points from the slide's top |
+| `w` | number |  | width in points |
+| `h` | number |  | height in points (text boxes: 0 = grow with the text) |
+| `position` | string |  | place it on the slide instead of x/y (48 pt from the edges) [center\|top\|bottom\|left\|right\|top_left\|top_right\|bottom_left\|bottom_right] |
+| `name` | string |  | a name to find it by later (instead of its number) |
+| `text` | string |  | the text (inline Markdown: **bold**, *italic*, [links](url)); one paragraph per line |
+| `size` | number |  | text size in points (default 20 in text boxes, 18 in shapes) |
+| `color` | string |  | text colour (default: readable on the fill) |
+| `bold` | boolean |  | bold text |
+| `italic` | boolean |  | italic text |
+| `align` | string |  | horizontal alignment [left\|center\|right] |
+| `valign` | string |  | vertical alignment [top\|middle\|bottom] |
+| `bullets` | boolean |  | lines are bullet points (indent 2 spaces for sub-bullets, 1. for numbers) |
+| `fill` | string |  | fill colour: #rrggbb, a name, accent, text, background or none |
+| `line` | string |  | outline colour (none = no outline) |
+| `line_width` | number |  | outline width in points (default 1.5) |
+
+#### office.deck_shape
+Draw a shape (rect, rounded, ellipse, triangle, right_triangle, diamond, pentagon, hexagon, octagon, star, arrow_right, arrow_left, arrow_up, arrow_down, chevron, parallelogram, trapezoid, plus, callout) on a slide or the master, optionally with text inside (centred). Default 200 x 120 points in the middle, filled with the theme accent. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slide` | integer |  | slide number (or master=true) |
+| `master` | boolean |  | the master instead of a slide (its objects show on every slide but title and section slides) (default false) |
+| `shape` | string |  | the shape [rect\|rounded\|ellipse\|triangle\|right_triangle\|diamond\|pentagon\|hexagon\|octagon\|star\|arrow_right\|arrow_left\|arrow_up\|arrow_down\|chevron\|parallelogram\|trapezoid\|plus\|callout] (default rect) |
+| `x` | number |  | left edge in points from the slide's left (the slide is 960 x 540 points, 720 x 540 at 4:3) |
+| `y` | number |  | top edge in points from the slide's top |
+| `w` | number |  | width in points |
+| `h` | number |  | height in points (text boxes: 0 = grow with the text) |
+| `position` | string |  | place it on the slide instead of x/y (48 pt from the edges) [center\|top\|bottom\|left\|right\|top_left\|top_right\|bottom_left\|bottom_right] |
+| `name` | string |  | a name to find it by later (instead of its number) |
+| `text` | string |  | the text (inline Markdown: **bold**, *italic*, [links](url)); one paragraph per line |
+| `size` | number |  | text size in points (default 20 in text boxes, 18 in shapes) |
+| `color` | string |  | text colour (default: readable on the fill) |
+| `bold` | boolean |  | bold text |
+| `italic` | boolean |  | italic text |
+| `align` | string |  | horizontal alignment [left\|center\|right] |
+| `valign` | string |  | vertical alignment [top\|middle\|bottom] |
+| `bullets` | boolean |  | lines are bullet points (indent 2 spaces for sub-bullets, 1. for numbers) |
+| `fill` | string |  | fill colour: #rrggbb, a name, accent, text, background or none |
+| `line` | string |  | outline colour (none = no outline) |
+| `line_width` | number |  | outline width in points (default 1.5) |
+
+#### office.deck_line
+Draw a straight line or an arrow from (x, y) to (x2, y2), in points, on a slide or the master. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slide` | integer |  | slide number (or master=true) |
+| `master` | boolean |  | the master instead of a slide (its objects show on every slide but title and section slides) (default false) |
+| `x` | number | yes | start, from the left |
+| `y` | number | yes | start, from the top |
+| `x2` | number | yes | end, from the left |
+| `y2` | number | yes | end, from the top |
+| `color` | string |  | line colour (default: the theme's text colour) |
+| `line_width` | number |  | width in points (default 2) |
+| `arrow` | boolean |  | an arrowhead at the end (default false) |
+| `name` | string |  | a name to find it by later |
+
+#### office.deck_image
+Place a picture (png, jpg, ...) anywhere on a slide, or on the master for a logo on every slide. Without w it keeps its natural size up to 480 points wide; h follows the picture's proportions unless given. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slide` | integer |  | slide number (or master=true) |
+| `master` | boolean |  | the master instead of a slide (its objects show on every slide but title and section slides) (default false) |
+| `path` | string | yes | picture file |
+| `x` | number |  | left edge in points from the slide's left (the slide is 960 x 540 points, 720 x 540 at 4:3) |
+| `y` | number |  | top edge in points from the slide's top |
+| `w` | number |  | width in points |
+| `h` | number |  | height in points (text boxes: 0 = grow with the text) |
+| `position` | string |  | place it on the slide instead of x/y (48 pt from the edges) [center\|top\|bottom\|left\|right\|top_left\|top_right\|bottom_left\|bottom_right] |
+| `name` | string |  | a name to find it by later (instead of its number) |
+| `line` | string |  | border colour (default none) |
+| `line_width` | number |  | border width in points |
+
+#### office.deck_object_edit
+Change a text box, shape, line or picture on a slide or the master: move it (x/y or position), resize it, change its text, colours or shape, swap the picture (path=), rename it, or bring it forward/back. Fields left out stay. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slide` | integer |  | slide number (or master=true) |
+| `master` | boolean |  | the master instead of a slide (its objects show on every slide but title and section slides) (default false) |
+| `object` | string | yes | object number (office.deck_objects lists them) or name |
+| `shape` | string |  | change the shape [rect\|rounded\|ellipse\|triangle\|right_triangle\|diamond\|pentagon\|hexagon\|octagon\|star\|arrow_right\|arrow_left\|arrow_up\|arrow_down\|chevron\|parallelogram\|trapezoid\|plus\|callout] |
+| `x` | number |  | left edge in points from the slide's left (the slide is 960 x 540 points, 720 x 540 at 4:3) |
+| `y` | number |  | top edge in points from the slide's top |
+| `w` | number |  | width in points |
+| `h` | number |  | height in points (text boxes: 0 = grow with the text) |
+| `position` | string |  | place it on the slide instead of x/y (48 pt from the edges) [center\|top\|bottom\|left\|right\|top_left\|top_right\|bottom_left\|bottom_right] |
+| `name` | string |  | a name to find it by later (instead of its number) |
+| `text` | string |  | the text (inline Markdown: **bold**, *italic*, [links](url)); one paragraph per line |
+| `size` | number |  | text size in points (default 20 in text boxes, 18 in shapes) |
+| `color` | string |  | text colour (default: readable on the fill) |
+| `bold` | boolean |  | bold text |
+| `italic` | boolean |  | italic text |
+| `align` | string |  | horizontal alignment [left\|center\|right] |
+| `valign` | string |  | vertical alignment [top\|middle\|bottom] |
+| `bullets` | boolean |  | lines are bullet points (indent 2 spaces for sub-bullets, 1. for numbers) |
+| `fill` | string |  | fill colour: #rrggbb, a name, accent, text, background or none |
+| `line` | string |  | outline colour (none = no outline) |
+| `line_width` | number |  | outline width in points (default 1.5) |
+| `x2` | number |  | line: end, from the left |
+| `y2` | number |  | line: end, from the top |
+| `arrow` | boolean |  | line: arrowhead at the end |
+| `path` | string |  | picture: a new picture file |
+| `order` | string |  | move it in front of or behind the others [front\|back\|forward\|backward] |
+
+#### office.deck_object_delete
+Delete an object (or all=true: every object) from a slide or the master. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slide` | integer |  | slide number (or master=true) |
+| `master` | boolean |  | the master instead of a slide (its objects show on every slide but title and section slides) (default false) |
+| `object` | string |  | object number or name |
+| `all` | boolean |  | delete every object there (default false) |
+
+#### office.deck_objects
+List the text boxes, shapes, lines and pictures on a slide (or on the master) with their numbers, names, positions, sizes, colours and text. Read-only.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slide` | integer |  | slide number (or master=true) |
+| `master` | boolean |  | the master instead of a slide (its objects show on every slide but title and section slides) (default false) |
+| `file` | string |  | instead of an open slide deck: read this file (for one-shot use) |
+
+#### office.deck_master
+Change what every slide shares: the footer text, slide numbers, and whether master objects (office.deck_shape, deck_text_box or deck_image with master=true, e.g. a logo) also show on title and section slides. clear=true removes the master objects. Without changes it describes the master. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `footer` | string |  | footer text at the bottom left (empty removes it) |
+| `slide_numbers` | boolean |  | slide numbers bottom right |
+| `on_title` | boolean |  | also show the master, footer and numbers on title and section slides |
+| `clear` | boolean |  | remove every master object (default false) |
+
+#### office.deck_transition
+Set how a slide comes in during a show (fade, push, wipe, cover, zoom or none) and its timing: advance_after= moves on by itself after that many seconds (0 = on click). all=true sets every slide. PowerPoint keeps them. Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slide` | integer |  | slide number |
+| `all` | boolean |  | every slide (default false) |
+| `type` | string |  | transition [none\|fade\|push\|wipe\|cover\|zoom] |
+| `direction` | string |  | push, wipe, cover: the way the new slide moves [left\|right\|up\|down] |
+| `duration` | number |  | seconds the transition takes (default 0.75) |
+| `advance_after` | number |  | seconds before moving on by itself; 0 = on click |
+
+#### office.deck_duplicate_slide
+Copy a slide, with its objects, notes and transition, right after it (or to position to=). Undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `slide` | integer | yes | slide to copy |
+| `to` | integer |  | position of the copy (default: right after the original) |
+
+#### office.deck_notes
+List every slide's speaker notes (office.deck_edit_slide notes= changes them). Read-only.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `file` | string |  | instead of an open slide deck: read this file (for one-shot use) |
+
+#### office.deck_present
+Make the deck a slide show to present from any browser: one .html file with every visible slide, the transitions and timings, speaker notes (N), a presenter window with the next slide, notes and a timer (P), full screen (F), black or white screen (B/W), and jumping to a slide by typing its number. Not undoable.
+
+| Parameter | Type | Required | Description |
+| --- | --- | --- | --- |
+| `file` | string |  | instead of an open slide deck: read this file (for one-shot use) |
+| `path` | string |  | the .html file (default: next to the deck, <name>-show.html) |
+| `width` | integer |  | slide image width in pixels (default 1600) |
+| `loop` | boolean |  | start again after the last slide (a kiosk show with advance_after timings) (default false) |
+| `start` | integer |  | open at this slide |
 
 ### PDF files
 
@@ -2272,8 +2599,13 @@ List the file formats the office tool reads and writes, which are built in and w
   - Markdown tables ignore column alignment (`---:`); `office.doc_table_cell align=` sets it.
   - Images are placed inline, one per block, aligned left, centred or right.
 - **Slides:**
-  - Decks use the suite's eight layouts. A `.pptx` from elsewhere is read for its text, the first picture on each slide, notes and accent colour, then laid out again in those layouts. Its own master slides, shapes, animations, transitions and extra pictures are not kept.
-  - There are no charts or tables on slides; put a chart PNG on an image slide.
+  - A `.pptx` from elsewhere keeps its pictures, text boxes, shapes and lines where they were, but its titles and bullets are laid out again in the suite's eight layouts, and its own layouts and fonts are not kept. Its master's shapes become master objects.
+  - Objects can't be rotated, cropped or grouped here. Rotated shapes from other files open unrotated, groups open as their separate shapes, a gradient opens as its first colour, and shapes other than the nineteen listed open as the nearest one or a rectangle.
+  - Charts, tables, SmartArt, video, audio and animations inside a slide are not supported; from a `.pptx` they are left out. Put a chart PNG on the slide instead.
+  - Transitions are fade, push, wipe, cover and zoom. Other effects open as the nearest one, and durations are saved as PowerPoint's fast, medium and slow (0.5, 0.75 and 1 second).
+  - Text with automatic colour comes back from `.pptx` with that colour fixed.
+  - The Markdown outline keeps slides, notes and pictures, but not objects, the master or transitions.
+  - The slide show draws each slide as a picture, so its text can't be selected and links don't work there (they do in the PDF and `.pptx`).
 - **PDFs:**
   - Merge, split, extract and rotate keep each page as it is, but the new file has no bookmarks and no working form fields.
   - Encrypted PDFs can't be merged, split or read; `office.pdf_info` says when a file is encrypted.

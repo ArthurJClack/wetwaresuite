@@ -449,7 +449,7 @@ void registerDeckCommands(Session& session) {
             }));
 
     reg.add({"office.deck_theme", "Deck Theme",
-             "Change the colour theme (" + themeHelp() + ") and/or the font of the whole deck; accent=, background= and text_color= "
+             "Change the colour theme and/or the font of the whole deck; accent=, background= and text_color= "
              "set single theme colours (after theme=). Title and section slides use the accent as their background.",
              {doc(), str("theme", themeHelp()), str("font", "font family", false, {}, {"sans", "serif", "mono"}), str("accent", "accent colour"),
               str("background", "background colour of content slides"), str("text_color", "body text colour"), previewSpec()},
@@ -502,7 +502,7 @@ void registerDeckCommands(Session& session) {
              ".md, .html (a slide show to present from a browser, like office.deck_present), .odp/.ppt (LibreOffice), or .png/.jpg - one "
              "slide with slide=, otherwise every slide as name-1.png, name-2.png, ... Hidden slides are left out of .pdf and .html.",
              {doc(), fileSpec("slide deck"), str("path", "output file; the extension picks the format", true), integer("slide", "png: only this slide"),
-              integer("width", "png width in pixels (html: slide image width, default 1600)", false, std::int64_t{1280}),
+              integer("width", "image width in pixels (png default 1280, html 1600)"),
               flag("notes", "pdf: notes pages with the speaker notes", false), flag("loop", "html: start again after the last slide", false)},
              false, false},
             read(session, [](DeckDoc& d, const Params& p, const std::string&) -> Result {

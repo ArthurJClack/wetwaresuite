@@ -1,11 +1,15 @@
 #include <cmath>
 #include <filesystem>
 #include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include <nlohmann/json.hpp>
 
 #include "wetwaresuite/forge/forge.hpp"
 #include "wetwaresuite/forge/meshops.hpp"
+#include "wetwaresuite/forge/sprite.hpp"
 #include "wetwaresuite/forge/texture.hpp"
 #include "wetwaresuite/mcp/server.hpp"
 #include "wetwaresuite/mesh/document.hpp"
@@ -63,6 +67,229 @@ std::string addImage(Session& s, const raster::Image& img) {
     doc->image.height = img.height();
     doc->image.layers.push_back({"Background", img});
     return s.workspace().add(doc, "img");
+}
+
+void testSprites(const fs::path& dir) {
+    using forge::SpriteDoc;
+    using raster::Color;
+    fs::create_directories(dir);
+    Session s;
+    forge::registerCommands(s);
+    auto str = [](const fs::path& p) { return p.string(); };
+
+    // a new indexed sprite on the pico8 palette
+    Result made = s.run("forge.sprite_new", {{"width", std::int64_t{16}}, {"height", std::int64_t{16}}, {"frames", std::int64_t{2}},
+                                             {"duration", std::int64_t{120}}, {"color_mode", std::string("indexed")}, {"palette", std::string("pico8")}});
+    CHECK(made.ok);
+    const std::string id = docOf(made);
+    CHECK(id == "spr1");
+    auto doc = s.workspace().getAs<SpriteDoc>(id);
+    CHECK(doc && doc->sprite.indexed && doc->sprite.palette.size() == 17 && doc->sprite.frames() == 2);
+    CHECK(doc->sprite.palette[0].a == 0);
+
+    // draw tools; colours snap to the palette
+    Result fr = s.run("forge.draw", {{"doc", id}, {"tool", std::string("fill_rect")}, {"points", NumberList{2, 2, 13, 13}}, {"index", std::int64_t{8}}});
+    CHECK(fr.ok && intField(fr, "changed") == 144);
+    CHECK(doc->sprite.flatten(0).at(5, 5) == doc->sprite.palette[8]);
+    Result pen = s.run("forge.draw", {{"doc", id}, {"tool", std::string("pencil")}, {"points", NumberList{0, 0, 15, 15}}, {"color", std::string("#ffffff")}});
+    CHECK(pen.ok && intField(pen, "changed") == 4);  // the line over the rectangle is already that colour
+    CHECK(doc->sprite.flatten(0).at(0, 0) == (Color{0xff, 0xf1, 0xe8, 255}));
+    Result el = s.run("forge.draw", {{"doc", id}, {"frame", std::int64_t{1}}, {"tool", std::string("fill_ellipse")}, {"points", NumberList{2, 2, 13, 13}},
+                                     {"color", std::string("#29adff")}});
+    CHECK(el.ok && intField(el, "changed") > 80 && intField(el, "changed") < 144);
+    Result bucket = s.run("forge.draw", {{"doc", id}, {"frame", std::int64_t{1}}, {"tool", std::string("bucket")}, {"points", NumberList{0, 15}},
+                                         {"color", std::string("#00e436")}});
+    CHECK(bucket.ok && intField(bucket, "changed") == 256 - intField(el, "changed"));
+    CHECK(s.history().undo());
+    CHECK(doc->sprite.flatten(1).at(0, 15).a == 0);
+    Result line = s.run("forge.draw", {{"doc", id}, {"frame", std::int64_t{1}}, {"tool", std::string("line")}, {"points", NumberList{0, 0, 15, 0}},
+                                       {"index", std::int64_t{12}}});
+    CHECK(line.ok && intField(line, "changed") == 16);
+    CHECK(!s.run("forge.draw", {{"doc", id}, {"tool", std::string("line")}, {"points", NumberList{0, 0}}}).ok);
+    CHECK(!s.run("forge.draw", {{"doc", id}, {"frame", std::int64_t{9}}, {"points", NumberList{0, 0}}, {"index", std::int64_t{1}}}).ok);
+
+    // frames, layers, tags
+    Result added = s.run("forge.frame_add", {{"doc", id}, {"count", std::int64_t{2}}});
+    CHECK(added.ok && intField(added, "frames") == 4);
+    CHECK(sameImage(doc->sprite.flatten(3), doc->sprite.flatten(1)));
+    CHECK(s.run("forge.sprite_layer_add", {{"doc", id}, {"name", std::string("top")}}).ok);
+    CHECK(s.run("forge.draw", {{"doc", id}, {"layer", std::string("top")}, {"tool", std::string("rect")}, {"points", NumberList{4, 4, 11, 11}},
+                               {"index", std::int64_t{12}}})
+              .ok);
+    CHECK(doc->sprite.layers.size() == 2 && doc->sprite.layers[1].name == "top");
+    CHECK(s.run("forge.tag_add", {{"doc", id}, {"name", std::string("idle")}, {"from", std::int64_t{0}}, {"to", std::int64_t{1}}}).ok);
+    CHECK(s.run("forge.tag_add", {{"doc", id}, {"name", std::string("run")}, {"from", std::int64_t{2}}, {"to", std::int64_t{3}},
+                                  {"direction", std::string("pingpong")}})
+              .ok);
+    CHECK(!s.run("forge.tag_add", {{"doc", id}, {"name", std::string("bad")}, {"from", std::int64_t{3}}, {"to", std::int64_t{9}}}).ok);
+    CHECK(doc->sprite.tags.size() == 2);
+    CHECK((doc->sprite.tagFrames(doc->sprite.tags[1]) == std::vector<int>{2, 3}));
+    CHECK(s.run("forge.frame_duration", {{"doc", id}, {"tag", std::string("run")}, {"ms", std::int64_t{60}}}).ok);
+    CHECK((doc->sprite.durations == std::vector<int>{120, 120, 60, 60}));
+
+    // .aseprite round trip
+    const fs::path ase = dir / "hero.aseprite";
+    CHECK(s.run("forge.sprite_save", {{"doc", id}, {"path", str(ase)}}).ok);
+    Result reopened = s.run("forge.sprite_open", {{"path", str(ase)}});
+    CHECK(reopened.ok);
+    auto back = s.workspace().getAs<SpriteDoc>(docOf(reopened));
+    CHECK(back && back->sprite.width == 16 && back->sprite.height == 16 && back->sprite.frames() == 4);
+    CHECK(back->sprite.indexed && back->sprite.palette.size() == 17);
+    CHECK(back->sprite.durations == doc->sprite.durations);
+    CHECK(back->sprite.layers.size() == 2 && back->sprite.layers[1].name == "top");
+    CHECK(back->sprite.tags.size() == 2 && back->sprite.tags[1].name == "run" && back->sprite.tags[1].direction == "pingpong");
+    bool same = true;
+    for (int f = 0; f < 4; ++f) same = same && sameImage(back->sprite.flatten(f), doc->sprite.flatten(f));
+    CHECK(same);
+    // RGBA round trip with layer opacity and blend
+    {
+        forge::Sprite rgba = forge::newSprite(5, 3, 2, 80);
+        rgba.cel(0, 0).set(1, 1, Color{10, 20, 30, 200});
+        rgba.cel(0, 1).set(4, 2, Color{250, 0, 0, 255});
+        rgba.layers.push_back({"fx", false, 128, 1, false, 0});
+        rgba.cels.push_back(std::vector<raster::Image>(2));
+        rgba.cel(1, 1).set(0, 0, Color{1, 2, 3, 4});
+        forge::Sprite r2 = forge::readAseprite(forge::writeAseprite(rgba));
+        CHECK(r2.width == 5 && r2.height == 3 && r2.frames() == 2 && r2.durations[1] == 80);
+        CHECK(r2.layers.size() == 2 && !r2.layers[1].visible && r2.layers[1].opacity == 128 && r2.layers[1].blend == 1);
+        CHECK(r2.celIf(0, 0) && r2.celIf(0, 0)->at(1, 1) == (Color{10, 20, 30, 200}));
+        CHECK(r2.celIf(0, 1) && r2.celIf(0, 1)->at(4, 2) == (Color{250, 0, 0, 255}));
+        CHECK(r2.celIf(1, 1) && r2.celIf(1, 1)->at(0, 0) == (Color{1, 2, 3, 4}));
+        CHECK(r2.celIf(1, 0) == nullptr || r2.celIf(1, 0)->width() == 0);
+        bool threw = false;
+        try {
+            forge::readAseprite("not an aseprite file");
+        } catch (const std::exception&) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
+    // sheet + JSON + Godot SpriteFrames + frames
+    const fs::path sheet = dir / "hero.png";
+    Result ex = s.run("forge.sprite_export", {{"doc", id}, {"output", str(sheet)}, {"layout", std::string("grid")}, {"padding", std::int64_t{1}},
+                                              {"godot", str(dir / "hero.tres")}, {"frames_dir", str(dir / "frames")}});
+    CHECK(ex.ok && intField(ex, "width") == 35 && intField(ex, "height") == 35);
+    CHECK(fs::exists(dir / "hero.json") && fs::exists(dir / "hero.tres") && fs::exists(dir / "frames" / "hero_003.png"));
+    {
+        std::ifstream in(dir / "hero.json");
+        json j = json::parse(in);
+        CHECK(j["frames"].is_object() && j["frames"].size() == 4);
+        CHECK(j["frames"]["hero 2.aseprite"]["duration"] == 60);
+        CHECK(j["frames"]["hero 1.aseprite"]["frame"]["x"] == 18);
+        CHECK(j["meta"]["frameTags"].size() == 2 && j["meta"]["frameTags"][1]["name"] == "run" && j["meta"]["frameTags"][1]["direction"] == "pingpong");
+        CHECK(j["meta"]["size"]["w"] == 35 && j["meta"]["image"] == "hero.png");
+        CHECK(j["meta"]["layers"].size() == 2);
+        raster::Image img = raster::load(sheet);
+        CHECK(img.width() == 35 && img.at(1 + 5, 1 + 5) == doc->sprite.flatten(0).at(5, 5));
+        std::ifstream t(dir / "hero.tres");
+        std::stringstream ts;
+        ts << t.rdbuf();
+        const std::string tres = ts.str();
+        CHECK(tres.find("[gd_resource type=\"SpriteFrames\"") == 0);
+        CHECK(tres.find("&\"idle\"") != std::string::npos && tres.find("&\"run\"") != std::string::npos);
+        CHECK(tres.find("region = Rect2(18, 18, 16, 16)") != std::string::npos);
+    }
+    Result packed = s.run("forge.sprite_export", {{"doc", id}, {"output", str(dir / "packed.png")}, {"layout", std::string("packed")},
+                                                  {"trim", true}, {"format", std::string("array")}});
+    CHECK(packed.ok);
+    {
+        std::ifstream in(dir / "packed.json");
+        json j = json::parse(in);
+        CHECK(j["frames"].is_array() && j["frames"].size() == 4 && j["frames"][0]["trimmed"].is_boolean());
+        CHECK(j["frames"][0]["sourceSize"]["w"] == 16);
+    }
+
+    // GIF
+    const fs::path gif = dir / "hero.gif";
+    CHECK(s.run("forge.sprite_save", {{"doc", id}, {"path", str(gif)}, {"scale", std::int64_t{2}}}).ok);
+    {
+        raster::Image first = raster::load(gif);
+        CHECK(first.width() == 32 && first.height() == 32);
+        CHECK(first.at(10, 10) == doc->sprite.flatten(0).at(5, 5));
+        const std::string bytes = forge::encodeSpriteGif(doc->sprite, {2, 3}, 1);
+        CHECK(bytes.rfind("GIF89a", 0) == 0 && bytes.back() == 0x3b && bytes.find("NETSCAPE2.0") != std::string::npos);
+    }
+    CHECK(s.run("forge.sprite_save", {{"doc", id}, {"path", str(dir / "run.gif")}, {"tag", std::string("run")}}).ok);
+    CHECK(!s.run("forge.sprite_save", {{"doc", id}, {"path", str(dir / "x.gif")}, {"tag", std::string("nope")}}).ok);
+
+    // preview with onion skin; info
+    Result pv = s.run("forge.sprite_preview", {{"doc", id}, {"frame", std::int64_t{1}}, {"onion_before", std::int64_t{1}}, {"onion_after", std::int64_t{1}}});
+    CHECK(pv.ok && !pv.attachments.empty());
+    {
+        raster::Image onion = forge::onionSkin(doc->sprite, 1, 1, 0);
+        CHECK(onion.width() == 16 && onion.at(3, 3).a > 0);
+    }
+    Result inf = s.run("forge.sprite_info", {{"doc", id}});
+    CHECK(inf.ok && intField(inf, "frames") == 4 && intField(inf, "layers") == 2);
+
+    // palette swap recolours an indexed sprite
+    const Color before = doc->sprite.flatten(0).at(5, 5);
+    Result swap = s.run("forge.sprite_palette", {{"doc", id}, {"action", std::string("preset")}, {"name", std::string("db16")}, {"remap", true}});
+    CHECK(swap.ok && doc->sprite.palette.size() == 17);
+    CHECK(!(doc->sprite.flatten(0).at(5, 5) == before));
+    bool onPalette = true;
+    for (int f = 0; f < doc->sprite.frames(); ++f) {
+        raster::Image im = doc->sprite.flatten(f);
+        for (int y = 0; y < im.height(); ++y)
+            for (int x = 0; x < im.width(); ++x) {
+                Color c = im.at(x, y);
+                if (c.a == 0) continue;
+                bool found = false;
+                for (const auto& p : doc->sprite.palette) found = found || p == c;
+                onPalette = onPalette && found;
+            }
+    }
+    CHECK(onPalette);
+    CHECK(s.history().undo());
+    CHECK(doc->sprite.flatten(0).at(5, 5) == before);
+    CHECK(s.run("forge.sprite_palette", {{"doc", id}, {"action", std::string("set_color")}, {"index", std::int64_t{8}}, {"color", std::string("#123456")}}).ok);
+    CHECK(doc->sprite.flatten(0).at(5, 5) == (Color{0x12, 0x34, 0x56, 255}));
+    CHECK(s.run("forge.sprite_palette", {{"doc", id}, {"action", std::string("save")}, {"path", str(dir / "pal.gpl")}}).ok);
+    CHECK(forge::loadPalette(str(dir / "pal.gpl")).size() == 16);
+    CHECK(forge::presetPalette("gameboy").size() == 4 && forge::presetPalette("nope").empty());
+
+    // transform, resize, cel ops, frame remove/move all undo
+    const raster::Image f0 = doc->sprite.flatten(0);
+    CHECK(s.run("forge.sprite_transform", {{"doc", id}, {"flip_h", true}}).ok);
+    CHECK(doc->sprite.flatten(0).at(15, 0) == f0.at(0, 0));
+    CHECK(s.history().undo());
+    CHECK(s.run("forge.sprite_transform", {{"doc", id}, {"rotate", std::int64_t{90}}}).ok);
+    CHECK(doc->sprite.flatten(0).at(15, 0) == f0.at(0, 0));
+    CHECK(s.history().undo());
+    CHECK(s.run("forge.sprite_resize", {{"doc", id}, {"scale", std::int64_t{2}}}).ok);
+    CHECK(doc->sprite.width == 32 && doc->sprite.flatten(0).at(11, 11) == f0.at(5, 5));
+    CHECK(s.history().undo() && doc->sprite.width == 16);
+    CHECK(s.run("forge.sprite_resize", {{"doc", id}, {"width", std::int64_t{20}}, {"anchor", std::string("top_left")}}).ok);
+    CHECK(doc->sprite.width == 20 && doc->sprite.height == 16 && doc->sprite.flatten(0).at(5, 5) == f0.at(5, 5));
+    CHECK(s.history().undo());
+    CHECK(s.run("forge.cel_clear", {{"doc", id}, {"layer", std::string("top")}, {"frame", std::int64_t{0}}}).ok);
+    CHECK(doc->sprite.flatten(0).at(4, 4) == doc->sprite.flatten(0).at(5, 5));  // the outline is gone
+    CHECK(s.history().undo());
+    CHECK(s.run("forge.frame_remove", {{"doc", id}, {"frame", std::int64_t{1}}}).ok);
+    CHECK(doc->sprite.frames() == 3 && doc->sprite.tags[0].to == 0 && doc->sprite.tags[1].from == 1 && doc->sprite.tags[1].to == 2);
+    CHECK(s.history().undo() && doc->sprite.frames() == 4 && doc->sprite.tags[0].to == 1);
+    CHECK(s.run("forge.frame_move", {{"doc", id}, {"frame", std::int64_t{0}}, {"to", std::int64_t{3}}}).ok);
+    CHECK(sameImage(doc->sprite.flatten(3), f0));
+    CHECK(s.history().undo() && sameImage(doc->sprite.flatten(0), f0));
+    CHECK(s.run("forge.sprite_layer_set", {{"doc", id}, {"layer", std::string("top")}, {"visible", false}}).ok);
+    CHECK(!(doc->sprite.flatten(0).at(4, 4) == f0.at(4, 4)));
+    CHECK(s.history().undo());
+
+    // colour modes
+    CHECK(s.run("forge.sprite_color_mode", {{"doc", id}, {"mode", std::string("rgba")}}).ok && !doc->sprite.indexed);
+    CHECK(s.run("forge.draw", {{"doc", id}, {"points", NumberList{0, 0}}, {"color", std::string("#010203")}}).ok);
+    CHECK(doc->sprite.flatten(0).at(0, 0) == (Color{1, 2, 3, 255}));
+    CHECK(s.run("forge.sprite_color_mode", {{"doc", id}, {"mode", std::string("indexed")}, {"count", std::int64_t{8}}}).ok);
+    CHECK(doc->sprite.indexed && doc->sprite.palette.size() <= 18);
+
+    // opening a sheet cuts it into frames
+    Result cut = s.run("forge.sprite_open", {{"path", str(sheet)}, {"columns", std::int64_t{2}}, {"rows", std::int64_t{2}}});
+    CHECK(cut.ok);
+    auto cutDoc = s.workspace().getAs<SpriteDoc>(docOf(cut));
+    CHECK(cutDoc && cutDoc->sprite.frames() == 4);
+    CHECK(s.run("forge.sprite_close", {{"doc", docOf(cut)}}).ok && !s.workspace().get(docOf(cut)));
+    CHECK(!s.run("forge.sprite_open", {{"path", str(dir / "missing.aseprite")}}).ok);
 }
 
 }  // namespace
@@ -458,6 +685,8 @@ int main() {
         CHECK(n["isError"] == false && n["structuredContent"]["doc"] == "img1" && n["content"].size() == 2);
         CHECK(call(server, 6, "undo", json::object())["isError"] == false);
     }
+
+    testSprites(dir / "sprites");
 
     fs::remove_all(dir);
     return check::summary("forge");

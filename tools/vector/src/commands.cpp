@@ -13,19 +13,14 @@
 namespace wetwaresuite::vector {
 
 Result VectorEdit::apply() {
-    before_ = {doc_->width, doc_->height, doc_->background, doc_->shapes, doc_->nextId};
+    before_ = static_cast<const Drawing&>(*doc_);
     Result r = fn_(*doc_);
     if (!r.ok) revert();  // failed edits leave the document untouched
+    else doc_->refresh();
     return r;
 }
 
-void VectorEdit::revert() {
-    doc_->width = before_.width;
-    doc_->height = before_.height;
-    doc_->background = before_.background;
-    doc_->shapes = before_.shapes;
-    doc_->nextId = before_.nextId;
-}
+void VectorEdit::revert() { static_cast<Drawing&>(*doc_) = before_; }
 
 using namespace detail;
 

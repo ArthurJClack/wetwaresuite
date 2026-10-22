@@ -1,7 +1,8 @@
-add_library(wetwaresuite_vector src/geometry.cpp src/render.cpp src/svg.cpp src/commands.cpp src/text.cpp src/boolean.cpp src/cmd_text.cpp)
+add_library(wetwaresuite_vector src/geometry.cpp src/bezier.cpp src/stroke.cpp src/doc.cpp src/render.cpp src/serial.cpp src/svg.cpp src/svg_write.cpp
+            src/export.cpp src/import.cpp src/trace.cpp src/commands.cpp src/text.cpp src/boolean.cpp src/cmd_text.cpp)
 add_library(wetwaresuite::vector ALIAS wetwaresuite_vector)
 target_include_directories(wetwaresuite_vector PUBLIC include)
-target_link_libraries(wetwaresuite_vector PUBLIC wetwaresuite::core wetwaresuite::raster PRIVATE wetwaresuite::pdfdoc)
+target_link_libraries(wetwaresuite_vector PUBLIC wetwaresuite::core wetwaresuite::raster PRIVATE wetwaresuite::pdfdoc wetwaresuite::pdf)
 
 if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_vector tests/test_vector.cpp)

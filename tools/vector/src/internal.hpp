@@ -175,12 +175,52 @@ inline std::string describe(const Shape& s) {
         case ShapeKind::Text:
             g = "text=\"" + (s.text.size() > 60 ? s.text.substr(0, 57) + "..." : s.text) + "\" x=" + num(s.x) + " y=" + num(s.y) +
                 " size=" + num(s.fontSize) + " font=" + s.font + (s.anchor != "start" ? " anchor=" + s.anchor : "");
+            if (s.boxWidth > 0) g += " box=" + num(s.boxWidth) + "x" + num(s.boxHeight) + (s.columns > 1 ? " columns=" + std::to_string(s.columns) : "") + " align=" + s.align;
+            if (!s.onPath.empty()) g += " on_path=" + s.onPath + (s.pathOffset != 0 ? " offset=" + num(s.pathOffset) : "");
+            if (s.textCase != "none") g += " case=" + s.textCase;
+            if (!s.textStyle.empty()) g += " style=" + s.textStyle;
             break;
+        case ShapeKind::Group:
+            g = s.layer ? "(layer)" : "(group)";
+            if (!s.clip.empty()) g += " clip=" + s.clip;
+            if (!s.mask.empty()) g += " mask=" + s.mask;
+            break;
+        case ShapeKind::Instance: g = "symbol=" + s.symbol; break;
     }
-    std::string out = s.id + " " + toString(s.kind) + " \"" + s.name + "\" " + g + " fill=" + paintText(s.fill) +
-                      " stroke=" + paintText(s.stroke);
+    std::string out = s.id + " " + toString(s.kind) + " \"" + s.name + "\" " + g;
+    if (!s.parent.empty()) out += " in=" + s.parent;
+    if (s.kind == ShapeKind::Group || s.kind == ShapeKind::Instance) {
+        if (s.opacity < 1) out += " opacity=" + num(s.opacity);
+        if (s.blend != "normal") out += " blend=" + s.blend;
+        if (!s.visible) out += " hidden";
+        if (s.locked) out += " locked";
+        return out;
+    }
+    out += " fill=" + paintText(s.fill) + " stroke=" + paintText(s.stroke);
     if (s.gradient) out += std::string(" gradient=") + (s.gradient->radial ? "radial" : "linear") + "(" + std::to_string(s.gradient->stops.size()) + " stops)";
+    if (s.gradient && s.gradient->freeform) out += "(freeform)";
+    if (s.strokeGradient) out += " stroke_gradient";
+    if (s.pattern) out += " pattern=" + s.pattern->type;
     if (s.stroke) out += " stroke_width=" + num(s.strokeWidth);
+    if (s.stroke) {
+        std::string opts;
+        const StrokeStyle def;
+        if (s.line.cap != def.cap) opts += " cap=" + s.line.cap;
+        if (s.line.join != def.join) opts += " join=" + s.line.join;
+        if (!s.line.dash.empty()) opts += " dashed";
+        if (s.line.align != "center") opts += " align=" + s.line.align;
+        if (s.line.startArrow != "none" || s.line.endArrow != "none") opts += " arrows=" + s.line.startArrow + "," + s.line.endArrow;
+        if (s.line.profile != "uniform") opts += " profile=" + s.line.profile;
+        out += opts;
+    }
+    if (s.fillRule == "nonzero" && (s.kind == ShapeKind::Path || s.kind == ShapeKind::Polygon)) out += " fill_rule=nonzero";
+    if (!s.appearance.empty()) out += " appearance=" + std::to_string(s.appearance.size());
+    if (!s.effects.empty()) {
+        out += " effects=";
+        for (std::size_t i = 0; i < s.effects.size(); ++i) out += (i ? "," : "") + s.effects[i].type;
+    }
+    if (s.blend != "normal") out += " blend=" + s.blend;
+    if (s.locked) out += " locked";
     if (s.opacity < 1) out += " opacity=" + num(s.opacity);
     const Transform& t = s.transform;
     if (!t.identity()) {
@@ -196,6 +236,52 @@ inline std::string describe(const Shape& s) {
     return out;
 }
 
+
+// Coverage of an area on a W x H picture (0..1 per pixel), kept to the area's box.
+struct Cover {
+    int x0 = 0, y0 = 0, w = 0, h = 0;
+    std::vector<float> a;
+    bool empty() const { return w <= 0 || h <= 0; }
+    float at(int x, int y) const {
+        if (x < x0 || y < y0 || x >= x0 + w || y >= y0 + h) return 0;
+        return a[static_cast<std::size_t>(y - y0) * w + (x - x0)];
+    }
+};
+Cover rasterize(const Outline& area, bool nonzero, int W, int H);
+
+// One laid-out line of area text: its words, where its baseline starts, extra px per space (justify).
+struct TextLine {
+    std::string text;
+    double x = 0, y = 0, width = 0, wordGap = 0;
+};
+std::vector<TextLine> layoutArea(const Shape& s, bool* overflow);
+
+// The nearest translate/rotate/scale about `centre` (skew is dropped).
+Transform decomposeMatrix(const Matrix& m, Point centre);
+// Copies a shape and everything inside it (fresh ids) just above it; returns the copy's id.
+std::string duplicateSubtree(VectorDoc& doc, int index, const std::string& newParent);
+// Removes a shape and everything inside it, and any clip/mask links to them.
+void eraseSubtree(VectorDoc& doc, int index);
+
+// Text forms (serial.cpp), shared by commands, vector.info and the SVG data-* attributes.
+std::string colorText(const Color& c);
+std::vector<std::string> splitOn(const std::string& text, char sep);  // trimmed, empties dropped, (..) kept whole
+bool readStrokeOption(StrokeStyle& st, const std::string& key, const std::string& value, std::string& error);
+std::string strokeOptionsText(const StrokeStyle& st);  // only what differs from the defaults
+std::string appearanceText(const std::vector<AppearanceItem>& items);
+bool parseAppearanceItem(const std::string& text, AppearanceItem& a, std::string& error);
+bool parseAppearance(const std::string& text, std::vector<AppearanceItem>& out, std::string& error);
+std::string effectsText(const std::vector<Effect>& effects);
+bool parseEffect(const std::string& text, Effect& e, std::string& error);
+bool parseEffects(const std::string& text, std::vector<Effect>& out, std::string& error);
+std::string patternText(const Pattern& p);
+bool parsePattern(const std::string& text, Pattern& p, std::string& error);
+std::string freeformText(const std::vector<ColorPoint>& pts);
+bool parseFreeform(const std::string& text, std::vector<ColorPoint>& out, std::string& error);
+std::string textStyleText(const TextStyle& t);
+bool parseTextStyle(const std::string& text, TextStyle& t);
+bool validName(const std::string& name);  // letters, digits, _ - . (swatch, symbol, style and artboard names)
+void applyTextStyle(Shape& s, const TextStyle& t);
 
 // Registers the text, gradient, boolean and to-path commands (cmd_text.cpp).
 void registerTextCommands(Session& session);

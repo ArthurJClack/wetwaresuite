@@ -331,27 +331,29 @@ void testSvgImport() {
     auto doc = fromSvg(svg);
     CHECK(doc->width == 756 && doc->height == 378);  // 200mm at 96 dpi
     CHECK(doc->background.a == 0);
-    CHECK(doc->shapes.size() == 8);
-    if (doc->shapes.size() != 8) return;
-    const Shape& r = doc->shapes[0];
-    CHECK(r.kind == ShapeKind::Rect && r.name == "r1");
+    // the <g> becomes a group that owns the opacity and translate; its shapes inherit the fill
+    CHECK(doc->shapes.size() == 9);
+    if (doc->shapes.size() != 9) return;
+    const Shape& g = doc->shapes[0];
+    CHECK(g.kind == ShapeKind::Group && near(g.opacity, 0.5));
+    const Shape& r = doc->shapes[1];
+    CHECK(r.kind == ShapeKind::Rect && r.name == "r1" && r.parent == g.id);
     CHECK(r.fill == Color{255, 0, 0, 255});
     CHECK(r.stroke == Color{0, 0, 255, 255});
     CHECK(near(r.strokeWidth, 2));
-    CHECK(near(r.opacity, 0.5));
-    // viewBox scale 3.78 and the group's translate both end up in the transform
-    Bounds b = bounds(outline(r));
+    // viewBox scale 3.78 and the group's translate both end up in the outline on the canvas
+    Bounds b = bounds(outlineIn(*doc, 1));
     CHECK(near(b.x0, 10 * 3.7795, 0.01) && near(b.y0, 20 * 3.7795, 0.01) && near(b.width(), 37.795, 0.01));
-    const Shape& dot = doc->shapes[1];
+    const Shape& dot = doc->shapes[2];
     CHECK(dot.kind == ShapeKind::Ellipse && dot.name == "dot" && !dot.fill && dot.stroke == Color{0, 255, 0, 255});
-    const Shape& el = doc->shapes[2];
+    const Shape& el = doc->shapes[3];
     CHECK(el.kind == ShapeKind::Ellipse && near(el.transform.rotate, 45, 1e-6));
     CHECK(el.fill && el.fill->a == 64);
-    CHECK(doc->shapes[3].kind == ShapeKind::Line && !doc->shapes[3].fill);
-    CHECK(doc->shapes[4].kind == ShapeKind::Polyline && doc->shapes[4].points.size() == 3);
-    CHECK(doc->shapes[5].kind == ShapeKind::Polygon && doc->shapes[5].fill == Color{0, 0, 0, 255});
-    CHECK(doc->shapes[6].kind == ShapeKind::Path && !doc->shapes[6].visible);
-    CHECK(doc->shapes[7].kind == ShapeKind::Rect && doc->shapes[7].fill == Color{128, 128, 128, 255});
+    CHECK(doc->shapes[4].kind == ShapeKind::Line && !doc->shapes[4].fill);
+    CHECK(doc->shapes[5].kind == ShapeKind::Polyline && doc->shapes[5].points.size() == 3);
+    CHECK(doc->shapes[6].kind == ShapeKind::Polygon && doc->shapes[6].fill == Color{0, 0, 0, 255});
+    CHECK(doc->shapes[7].kind == ShapeKind::Path && !doc->shapes[7].visible);
+    CHECK(doc->shapes[8].kind == ShapeKind::Rect && doc->shapes[8].fill == Color{128, 128, 128, 255});
 
     bool threw = false;
     try {

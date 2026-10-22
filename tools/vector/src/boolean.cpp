@@ -37,18 +37,41 @@ std::vector<Edge> edgesOf(const Outline& o, int src) {
     return out;
 }
 
-// Even-odd: is p inside the edges that came from `src`?
-bool inside(const std::vector<Edge>& edges, int src, Point p) {
-    bool in = false;
-    for (const auto& e : edges) {
-        if (e.src != src) continue;
-        if ((e.a.y > p.y) != (e.b.y > p.y)) {
-            const double x = e.a.x + (p.y - e.a.y) / (e.b.y - e.a.y) * (e.b.x - e.a.x);
-            if (x > p.x) in = !in;
+// Edges binned by height, so an inside test only looks at edges near its row.
+class EdgeIndex {
+public:
+    EdgeIndex(const std::vector<Edge>& edges, double minY, double maxY) : edges_(edges), minY_(minY) {
+        const std::size_t n = std::max<std::size_t>(1, std::min<std::size_t>(4096, edges.size() / 4 + 1));
+        step_ = std::max((maxY - minY) / static_cast<double>(n), 1e-12);
+        bins_.resize(n);
+        for (std::size_t i = 0; i < edges.size(); ++i) {
+            const auto [lo, hi] = std::minmax(edges[i].a.y, edges[i].b.y);
+            for (std::size_t b = bin(lo); b <= bin(hi); ++b) bins_[b].push_back(i);
         }
     }
-    return in;
-}
+    // Is p inside the edges that came from `src` (winding count, or even-odd)?
+    bool inside(int src, Point p, bool nonzero) const {
+        int wind = 0;
+        for (std::size_t i : bins_[bin(p.y)]) {
+            const Edge& e = edges_[i];
+            if (e.src != src) continue;
+            if ((e.a.y > p.y) != (e.b.y > p.y)) {
+                const double x = e.a.x + (p.y - e.a.y) / (e.b.y - e.a.y) * (e.b.x - e.a.x);
+                if (x > p.x) wind += e.b.y > e.a.y ? 1 : -1;
+            }
+        }
+        return nonzero ? wind != 0 : (wind & 1) != 0;
+    }
+
+private:
+    const std::vector<Edge>& edges_;
+    double minY_, step_ = 1;
+    std::vector<std::vector<std::size_t>> bins_;
+    std::size_t bin(double y) const {
+        const double k = std::floor((y - minY_) / step_);
+        return static_cast<std::size_t>(std::clamp(k, 0.0, static_cast<double>(bins_.size() - 1)));
+    }
+};
 
 bool apply(BoolOp op, bool a, bool b) {
     switch (op) {
@@ -68,7 +91,7 @@ struct Key {
 
 }  // namespace
 
-Outline booleanOp(const Outline& a, const Outline& b, BoolOp op) {
+Outline booleanOp(const Outline& a, const Outline& b, BoolOp op, bool nonzeroA, bool nonzeroB) {
     std::vector<Edge> edges = edgesOf(a, 0);
     const std::vector<Edge> eb = edgesOf(b, 1);
     edges.insert(edges.end(), eb.begin(), eb.end());
@@ -122,6 +145,7 @@ Outline booleanOp(const Outline& a, const Outline& b, BoolOp op) {
     }
 
     // the pieces that bound the result, turned so the inside is on the left (y down: left = clockwise side)
+    const EdgeIndex index(edges, minY - grid, maxY + grid);
     std::map<std::pair<Key, Key>, std::pair<Point, Point>> kept;
     for (std::size_t i = 0; i < edges.size(); ++i) {
         auto& c = cuts[i];
@@ -138,8 +162,8 @@ Outline booleanOp(const Outline& a, const Outline& b, BoolOp op) {
             const double off = std::min(len * 0.01, size * 1e-5) + grid * 2;
             const Point n{-(q.y - p.y) / len * off, (q.x - p.x) / len * off};
             const Point left{m.x + n.x, m.y + n.y}, right{m.x - n.x, m.y - n.y};
-            const bool inL = apply(op, inside(edges, 0, left), inside(edges, 1, left));
-            const bool inR = apply(op, inside(edges, 0, right), inside(edges, 1, right));
+            const bool inL = apply(op, index.inside(0, left, nonzeroA), index.inside(1, left, nonzeroB));
+            const bool inR = apply(op, index.inside(0, right, nonzeroA), index.inside(1, right, nonzeroB));
             if (inL == inR) continue;
             const Point from = inL ? p : q, to = inL ? q : p;
             kept.emplace(std::make_pair(key(from), key(to)), std::make_pair(from, to));

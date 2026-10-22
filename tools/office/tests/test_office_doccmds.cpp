@@ -202,6 +202,7 @@ void testReview() {
     const Run* gone = runWith(d.blocks[3].runs, "three");
     const Run* added = runWith(d.blocks[3].runs, "four");
     CHECK(gone && added && gone->change && added->change && !d.change(gone->change)->insert && d.change(added->change)->insert);
+    const int delId = gone ? gone->change : 0;  // the runs move as later commands edit the document
     // the footnote survives the edit
     bool kept = false;
     for (const auto& x : d.blocks[3].runs) kept = kept || !x.footnote.empty();
@@ -226,7 +227,6 @@ void testReview() {
     }
     CHECK(notes == 2);
     // accept one, reject the rest
-    const int delId = gone->change;
     r = run(s, "office.doc_accept", P({{"id", I(delId)}}));
     CHECK(r.ok && plainText(d.blocks[3].runs).find("three") == std::string::npos);
     r = run(s, "office.doc_reject", {});

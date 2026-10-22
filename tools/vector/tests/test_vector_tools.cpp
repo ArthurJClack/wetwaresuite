@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <sstream>
+#include <system_error>
 
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
@@ -17,6 +18,12 @@ using namespace wetwaresuite;
 using namespace wetwaresuite::vector;
 
 namespace {
+
+// clean-up never throws (windows keeps a file locked while anything still has it open)
+void removeFile(const std::filesystem::path& p) {
+    std::error_code ec;
+    std::filesystem::remove(p, ec);
+}
 
 bool near(double a, double b, double tol = 1e-6) { return std::abs(a - b) <= tol; }
 
@@ -485,8 +492,11 @@ void testArtboardsAndSnap() {
     }
     const auto pdf = tmp("art.pdf");
     CHECK(f.run("vector.save doc=vec1 path=" + pdf.string() + " artboard=all").ok);
-    std::ifstream in(pdf, std::ios::binary);
-    std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    std::string bytes;
+    {
+        std::ifstream in(pdf, std::ios::binary);  // closed before the file is removed below (windows)
+        bytes.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
     std::size_t pages = 0;
     for (std::size_t at = bytes.find("/Type /Page"); at != std::string::npos; at = bytes.find("/Type /Page", at + 1)) {
         if (bytes.compare(at, 12, "/Type /Pages") != 0) ++pages;
@@ -498,7 +508,7 @@ void testArtboardsAndSnap() {
     CHECK(f.fails("vector.save doc=vec1 path=x.png artboard=nope"));
     CHECK(f.field(f.run("vector.artboards doc=vec1"), "count") == "2");
     CHECK(f.run("vector.remove_artboard doc=vec1 artboard=2").ok && f.doc().artboards.size() == 1);
-    for (const auto& p : {png, backPng, tmp("art-front.png"), pdf, tmp("one.svg")}) std::filesystem::remove(p);
+    for (const auto& p : {png, backPng, tmp("art-front.png"), pdf, tmp("one.svg")}) removeFile(p);
     // grid, guides and snapping
     CHECK(f.run("vector.grid doc=vec1 size=10 snap_grid=true").ok);
     r = f.run("vector.snap doc=vec1 x=13 y=17");
@@ -582,7 +592,7 @@ void testTrace() {
     raster::save(img, file);
     r = f.run("vector.trace doc=vec1 path=" + file.string() + " colors=3");
     CHECK(r.ok && f.field(r, "paths") == "2");
-    std::filesystem::remove(file);
+    removeFile(file);
     CHECK(f.fails("vector.trace doc=vec1 path=/nonexistent.png"));
 }
 
@@ -660,13 +670,13 @@ void testRoundTrips() {
             if (s.stroke && s.stroke->b == 255 && near(bb.width(), 60, 0.5) && near(s.strokeWidth, 4, 0.1)) ++rings;
         }
         CHECK(rects == 1 && rings == 1);
-        std::filesystem::remove(file);
+        removeFile(file);
     }
     const auto pdf = tmp("conv.pdf"), out = tmp("conv.svg");
     g.run("vector.save doc=vec1 path=" + pdf.string());
     CHECK(g.run("vector.convert input=" + pdf.string() + " output=" + out.string()).ok && std::filesystem::exists(out));
-    std::filesystem::remove(pdf);
-    std::filesystem::remove(out);
+    removeFile(pdf);
+    removeFile(out);
 }
 
 void testToolsOverMcp() {

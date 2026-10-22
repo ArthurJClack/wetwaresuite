@@ -328,7 +328,8 @@ void registerSearch(Session& session) {
                                     if (v.kind != Prop::String) continue;
                                     int s = matchScore(fold(v.str), q, qWords);
                                     if (!s) continue;
-                                    if (nameField(k)) s += 10;
+                                    // names count most; a category such as amenity=cafe counts half
+                                    s = nameField(k) ? s + 10 : s / 2;
                                     if (s > best.score) {
                                         best.score = s;
                                         best.text = v.str;
@@ -336,6 +337,10 @@ void registerSearch(Session& session) {
                                     }
                                 }
                                 if (!best.score || fs[i].geom.empty()) continue;
+                                if (!nameField(best.field)) {  // found by its kind: still show its name
+                                    const std::string n = featureName(fs[i]);
+                                    if (!n.empty()) best.text = n;
+                                }
                                 best.layer = layerName;
                                 best.index = i;
                                 best.at = labelPoint(fs[i].geom);

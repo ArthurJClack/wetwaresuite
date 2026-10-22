@@ -28,6 +28,8 @@ std::string plural(std::size_t n, const std::string& word) {
     if (n == 1) return "1 " + word;
     if (word.size() > 1 && word.back() == 'y' && std::string("aeiou").find(word[word.size() - 2]) == std::string::npos)
         return std::to_string(n) + " " + word.substr(0, word.size() - 1) + "ies";
+    const auto ends = [&](const char* e) { const std::string s(e); return word.size() >= s.size() && word.compare(word.size() - s.size(), s.size(), s) == 0; };
+    if (ends("ch") || ends("sh") || ends("s") || ends("x")) return std::to_string(n) + " " + word + "es";
     return std::to_string(n) + " " + word + "s";
 }
 

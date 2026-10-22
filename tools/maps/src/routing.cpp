@@ -384,7 +384,13 @@ Route RoadGraph::route(const std::vector<Coord>& stops) const {
             ++j;
         }
         prevBearing = bearing(pts[j - 1], pts[j]);
-        r.steps.push_back(st);
+        // a few metres onto another road right at a stop is GPS-scale noise, not a turn
+        if (!first && st.distance < 8 && !round && !r.steps.empty() && r.steps.back().distance > 0) {
+            r.steps.back().distance += st.distance;
+            r.steps.back().duration += st.duration;
+        } else {
+            r.steps.push_back(st);
+        }
         first = false;
         while (nextStop + 1 < stopAt.size() && j >= stopAt[nextStop]) {
             RouteStep via;

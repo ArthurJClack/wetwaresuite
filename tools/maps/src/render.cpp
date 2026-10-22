@@ -330,13 +330,15 @@ struct View {
 View makeView(const Map& map, const RenderOptions& o, std::vector<std::string>& warnings) {
     View v;
     v.crs = o.crs;
-    BBox ll = o.bbox ? *o.bbox : map.bounds(true);
+    // an explicit area, else the map's own view (set by maps.view or a bookmark), else everything
+    const std::optional<BBox> chosen = o.bbox ? o.bbox : (map.view && map.view->valid() ? map.view : std::nullopt);
+    BBox ll = chosen ? *chosen : map.bounds(true);
     if (!ll.valid()) ll = {-180, -60, 180, 85};
     if (v.crs.kind == Crs::WebMercator) {
         ll.minY = std::max(ll.minY, -85.0);
         ll.maxY = std::min(ll.maxY, 85.0);
         // a world view: Antarctica would fill the bottom half
-        if (!o.bbox && ll.width() > 180 && ll.minY < -60) ll.minY = -60;
+        if (!chosen && ll.width() > 180 && ll.minY < -60) ll.minY = -60;
     }
     // a single point or a tiny extent: open it up to about 2 km
     if (ll.width() < 1e-4 && ll.height() < 1e-4) {
@@ -352,7 +354,7 @@ View makeView(const Map& map, const RenderOptions& o, std::vector<std::string>& 
             pb.add(p.x, p.y);
         }
     }
-    if (!o.bbox) {
+    if (!chosen) {
         const double mx = pb.width() * o.margin, my = pb.height() * o.margin;
         pb.minX -= mx;
         pb.maxX += mx;
@@ -1714,10 +1716,42 @@ std::string MapDoc::summary() const {
     return s;
 }
 
-std::unique_ptr<Attachment> MapDoc::preview() const {
+RenderOptions previewOptions(const Map& map) {
     RenderOptions o;
     o.width = 800;
     o.title = map.title;
+    return o;
+}
+
+Coord pixelToLonLat(const Map& map, const RenderOptions& options, double x, double y) {
+    std::vector<std::string> warnings;
+    const View v = makeView(map, options, warnings);
+    return v.lonlat(x, y);
+}
+
+Coord lonLatToPixel(const Map& map, const RenderOptions& options, double lon, double lat) {
+    std::vector<std::string> warnings;
+    const View v = makeView(map, options, warnings);
+    const P p = v.px({lon, lat});
+    return {p.x, p.y};
+}
+
+BBox shownArea(const Map& map, const RenderOptions& options, int* width, int* height) {
+    std::vector<std::string> warnings;
+    const View v = makeView(map, options, warnings);
+    if (width) *width = v.W;
+    if (height) *height = v.H;
+    return viewLonLat(v);
+}
+
+double renderMetresPerPixel(const Map& map, const RenderOptions& options) {
+    std::vector<std::string> warnings;
+    const View v = makeView(map, options, warnings);
+    return metresPerPixel(v, v.H / 2.0);
+}
+
+std::unique_ptr<Attachment> MapDoc::preview() const {
+    const RenderOptions o = previewOptions(map);
     return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(renderImage(map, o)), "preview.png"});
 }
 

@@ -188,6 +188,10 @@ void Shell::canvasToolbar() {
         circuitToolbar();
         return;
     }
+    if (mapsDoc()) {
+        mapsToolbar();
+        return;
+    }
     const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
                                   CanvasTool::Remove, CanvasTool::Clone, CanvasTool::Dodge, CanvasTool::Smudge, CanvasTool::Blur};
     if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
@@ -414,7 +418,7 @@ void Shell::canvasView() {
     const bool painting = toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
                           !canvas_.pending;
     const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
-                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking && (!circuitEditing() || ImGui::IsKeyDown(ImGuiKey_Space))));
+                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking && ((!circuitEditing() && !mapsEditing()) || ImGui::IsKeyDown(ImGuiKey_Space))));
     if (dragPan) {
         canvas_.pan.x += io.MouseDelta.x;
         canvas_.pan.y += io.MouseDelta.y;
@@ -496,6 +500,7 @@ void Shell::canvasView() {
     drawSelection(dl, p0, hovered);
     if (vectorTool && toolAvailable(canvas_.tool)) drawVector(dl, p0);
     if (circuitDoc()) circuitCanvas(dl, p0, hovered, ImGui::IsItemClicked(ImGuiMouseButton_Left));
+    if (mapsDoc()) mapsCanvas(dl, p0, hovered, ImGui::IsItemClicked(ImGuiMouseButton_Left));
     dl->PopClipRect();
 }
 

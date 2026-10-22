@@ -96,7 +96,7 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".geojson", {"maps", "maps.open"}}, {".kml", {"maps", "maps.open"}}, {".gpx", {"maps", "maps.open"}},
         {".shp", {"maps", "maps.open"}}, {".tif", {"maps", ""}}, {".tiff", {"maps", ""}}, {".pmtiles", {"maps", ""}},
         {".mbtiles", {"maps", ""}}, {".wwmap", {"maps", "maps.open"}},
-        {".achmap", {"maps", "maps.open"}},
+        {".achmap", {"maps", "maps.open"}}, {".fit", {"maps", "maps.open"}}, {".osm", {"maps", "maps.open"}},
         // system: source code and config open in the code editor; archives in the file manager
         {".c", {"system", "code.open"}}, {".h", {"system", "code.open"}}, {".cpp", {"system", "code.open"}},
         {".hpp", {"system", "code.open"}}, {".cc", {"system", "code.open"}}, {".cxx", {"system", "code.open"}},
@@ -240,7 +240,7 @@ std::string toolGuide(const std::string& tool) {
         {"pdf", "pdf_* edits any PDF like Acrobat: pdf_open returns pdf1; pdf_view shows a page (coordinates are points from its top-left); pdf_add_text, pdf_replace_text (edit the page's own text), pdf_highlight, pdf_note, pdf_draw, pdf_shape, pdf_redact, pdf_image, pdf_sign; pdf_fields and pdf_fill fill forms; pdf_page_* turns, moves, inserts and deletes pages; pdf_save writes the file."},
         {"layout", "layout_* builds print layouts (posters, flyers, booklets) exported to PDF."},
         {"notes", "notes_* works on an Obsidian-style folder of Markdown notes (notes_search, notes_backlinks, notes_tasks)."},
-        {"maps", "maps_* handles GeoJSON/KML/GPX/Shapefile data in lon/lat and renders maps (maps_new returns map1)."},
+        {"maps", "maps_* handles GeoJSON/KML/GPX/FIT/OSM/Shapefile data in lon/lat and renders maps (maps_new returns map1): edit features and vertices, overlay and dissolve, track splits and cleaning, offline routing (maps_route on an .osm roads layer), place search, bookmarks; maps_hit turns a preview pixel into lat,lon."},
         {"calc", "calc_eval works out any expression: exact fractions and big whole numbers, units (\"5 km to miles\", \"3 ft + 20 cm\"), hex/bin/oct and bitwise maths, functions you define with calc_define, and ans/mem; calc_solve, calc_stats, calc_regression, calc_integrate and calc_graph (a PNG) do the rest."},
         {"code", "code_* edits source files (code_open returns code1; code_edit replaces an exact piece of text, code_read shows numbered lines; code_save keeps line ends), searches folders (code_search, code_replace_in_files), runs files and builds projects with the installed compilers (code_run, code_build; errors come back as file/line rows), and drives git (code_git_status, code_git_commit)."},
         {"explorer", "explorer_* manages files: list, search, preview, copy, move, rename and delete (to the suite's trash; every change is undoable), zip/tar archives (explorer_archive, explorer_extract), checksums, folder compare and duplicates. Several paths go in one paths= separated by | or new lines."},

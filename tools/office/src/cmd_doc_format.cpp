@@ -472,7 +472,7 @@ void registerDocFormatCommands(Session& session) {
                 std::string list;
                 for (const auto& s : did) list += (list.empty() ? "" : ", ") + s;
                 Result r = Result::success("formatted " + what + ": " + list);
-                r.with("matches", static_cast<std::int64_t>(found));
+                if (!find.empty()) r.with("matches", static_cast<std::int64_t>(found));
                 maybePreview(r, d, p);
                 return r;
             }));

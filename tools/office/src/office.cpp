@@ -393,7 +393,7 @@ namespace {
 
 const std::set<std::string> kSheetNative = {"csv", "tsv", "tab", "xlsx", "xlsm", "ods"};
 const std::set<std::string> kSheetLoIn = {"xls", "xlsb", "fods", "numbers", "dbf", "sxc", "xlt", "xltx"};
-const std::set<std::string> kSheetOut = {"xlsx", "csv", "tsv", "pdf", "html"};
+const std::set<std::string> kSheetOut = {"xlsx", "ods", "csv", "tsv", "pdf", "html"};
 const std::set<std::string> kSheetLoOut = {"xls", "fods"};
 
 const std::set<std::string> kDocNative = {"docx", "md", "markdown", "txt", "html", "htm", "odt"};

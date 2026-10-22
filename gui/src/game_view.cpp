@@ -232,7 +232,14 @@ void Shell::gameInput(ImDrawList* dl, ImVec2 origin, bool hovered, bool active) 
     ImGuiIO& io = ImGui::GetIO();
     const float z = canvas_.zoom;
     const bool isLevel = g.kind == "level";
-    const float cw = isLevel ? static_cast<float>(g.tileW) : 1.0f, ch = isLevel ? static_cast<float>(g.tileH) : 1.0f;
+    // a map bigger than the preview's size limit comes back shrunk: cells are then smaller on the picture
+    const float shrinkX = isLevel && g.mapW > 0 && canvas_.texture.srcWidth > 0
+                              ? std::min(1.0f, static_cast<float>(canvas_.texture.srcWidth) / static_cast<float>(g.mapW * g.tileW))
+                              : 1.0f;
+    const float shrinkY = isLevel && g.mapH > 0 && canvas_.texture.srcHeight > 0
+                              ? std::min(1.0f, static_cast<float>(canvas_.texture.srcHeight) / static_cast<float>(g.mapH * g.tileH))
+                              : 1.0f;
+    const float cw = isLevel ? static_cast<float>(g.tileW) * shrinkX : 1.0f, ch = isLevel ? static_cast<float>(g.tileH) * shrinkY : 1.0f;
     const int cols = isLevel ? g.mapW : g.width, rows = isLevel ? g.mapH : g.height;
     auto screenOf = [&](float x, float y) { return ImVec2{origin.x + x * z, origin.y + y * z}; };
 
@@ -260,6 +267,15 @@ void Shell::gameInput(ImDrawList* dl, ImVec2 origin, bool hovered, bool active) 
         g.dragTo = {static_cast<float>(ex), static_cast<float>(ey)};
         const bool path = g.tool == GameTool::Paint || g.tool == GameTool::Pencil || g.tool == GameTool::Eraser;
         if (path && inside && (g.points.size() < 2 || g.points[g.points.size() - 2] != cx || g.points.back() != cy)) {
+            // tiles: fill in the cells a fast drag jumped over (the pencil joins its dots itself)
+            if (isLevel && g.points.size() >= 2) {
+                const int x0 = static_cast<int>(g.points[g.points.size() - 2]), y0 = static_cast<int>(g.points.back());
+                const int steps = std::max(std::abs(cx - x0), std::abs(cy - y0));
+                for (int i = 1; i < steps; ++i) {
+                    g.points.push_back(std::lround(x0 + static_cast<double>(cx - x0) * i / steps));
+                    g.points.push_back(std::lround(y0 + static_cast<double>(cy - y0) * i / steps));
+                }
+            }
             g.points.push_back(cx);
             g.points.push_back(cy);
         }

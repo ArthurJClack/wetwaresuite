@@ -293,7 +293,10 @@ void registerPcbCommands(Session& session) {
                     }
                     const auto fills = fillZones(c, nl);
                     double area = 0;
-                    for (const auto& f : fills) area += static_cast<double>(std::count(f.cells.begin(), f.cells.end(), 1)) * f.cell * f.cell;
+                    for (const auto& f : fills) {
+                        if (std::find(layers.begin(), layers.end(), f.layer) == layers.end()) continue;  // only this pour
+                        area += static_cast<double>(std::count(f.cells.begin(), f.cells.end(), 1)) * f.cell * f.cell;
+                    }
                     return edited("poured " + realName + " on " + (l == "both" ? "both outer layers" : layerName(layers[0])) + ", " + num(area) + " mm2 of copper", p)
                         .with("area", area);
                 },

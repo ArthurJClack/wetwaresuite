@@ -67,6 +67,7 @@ struct LibInfo {
     std::vector<std::string> hiddenPower;  // pin names of hidden power-in pins (implicit global nets)
     int units = 1;
     int pins = 0;  // for a symbol mapped onto a sized built-in one (headers)
+    std::string footprint;  // the built-in one's default footprint, for parts KiCad gave none
 };
 
 class SchReader {
@@ -263,6 +264,7 @@ private:
                 if (ok) {
                     s->name = bs->name;
                     info.pins = pins;
+                    info.footprint = bs->footprint;
                 }
             }
         }
@@ -393,6 +395,7 @@ private:
             p.ref = ref;
             p.unit = info->units > 1 ? instUnit : 0;
             if (n.value("dnp") == "yes") p.fields["dnp"] = "yes";
+            if (p.footprint.empty() || p.footprint == "~") p.footprint = info->footprint;
             if (sym.power) {
                 if (p.value.empty() && !sym.pins.empty()) p.value = sym.pins[0].name;
                 p.footprint.clear();

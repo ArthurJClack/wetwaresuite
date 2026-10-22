@@ -157,6 +157,18 @@ Tileset loadTileset(const std::filesystem::path& image, int tileWidth, int tileH
     return t;
 }
 
+void attachLayerImage(Layer& layer) {
+    layer.pixels.reset();
+    if (layer.image.empty()) return;
+    std::error_code ec;
+    if (!std::filesystem::exists(layer.image, ec)) return;
+    try {
+        layer.pixels = std::make_shared<Image>(raster::load(layer.image));
+    } catch (const std::exception&) {
+        layer.pixels.reset();
+    }
+}
+
 Tileset& addTileset(Map& map, Tileset tileset) {
     tileset.firstGid = map.nextGid();
     map.tilesets.push_back(std::move(tileset));
@@ -279,6 +291,147 @@ int autotile(const Map& map, const Layer& src, Layer& dst, const std::function<b
         }
     }
     return n;
+}
+
+namespace {
+
+// Bits N 1, NE 2, E 4, SE 8, S 16, SW 32, W 64, NW 128 for terrain neighbours.
+int neighbourMask(const std::function<bool(int, int)>& terrain, int x, int y) {
+    static const int dx[8] = {0, 1, 1, 1, 0, -1, -1, -1}, dy[8] = {-1, -1, 0, 1, 1, 1, 0, -1};
+    int m = 0;
+    for (int k = 0; k < 8; ++k) {
+        if (terrain(x + dx[k], y + dy[k])) m |= 1 << k;
+    }
+    return m;
+}
+
+// Drops corner bits whose two neighbouring sides aren't both set.
+int reduceBlob(int m) {
+    const int n = 1, ne = 2, e = 4, se = 8, s = 16, sw = 32, w = 64, nw = 128;
+    if (!((m & n) && (m & e))) m &= ~ne;
+    if (!((m & s) && (m & e))) m &= ~se;
+    if (!((m & s) && (m & w))) m &= ~sw;
+    if (!((m & n) && (m & w))) m &= ~nw;
+    return m;
+}
+
+}  // namespace
+
+const std::vector<int>& blobMasks() {
+    static const std::vector<int> masks = [] {
+        std::vector<int> out;
+        for (int m = 0; m < 256; ++m) {
+            if (reduceBlob(m) == m) out.push_back(m);
+        }
+        return out;
+    }();
+    return masks;
+}
+
+int blobIndex(int mask) {
+    const auto& ms = blobMasks();
+    auto it = std::lower_bound(ms.begin(), ms.end(), mask);
+    return it != ms.end() && *it == mask ? static_cast<int>(it - ms.begin()) : -1;
+}
+
+int autotileBlob(const Map& map, const Layer& src, Layer& dst, const std::function<bool(std::uint32_t)>& isTerrain, std::uint32_t base,
+                 CellRect region, bool edgesSolid) {
+    const CellRect c = clip(map, region);
+    const std::vector<std::uint32_t> before = src.cells;
+    std::function<bool(int, int)> terrain = [&](int x, int y) {
+        if (!map.inside(x, y)) return edgesSolid;
+        return isTerrain(before[static_cast<std::size_t>(y) * map.width + x]);
+    };
+    int n = 0;
+    for (int y = c.y; y < c.y + c.h; ++y) {
+        for (int x = c.x; x < c.x + c.w; ++x) {
+            if (!terrain(x, y)) continue;
+            const std::uint32_t g = base + static_cast<std::uint32_t>(blobIndex(reduceBlob(neighbourMask(terrain, x, y))));
+            if (map.at(dst, x, y) != g) {
+                map.set(dst, x, y, g);
+                ++n;
+            }
+        }
+    }
+    return n;
+}
+
+int autotileWang(const Map& map, const Layer& src, Layer& dst, const std::function<bool(std::uint32_t)>& isTerrain, const Tileset& tileset,
+                 const WangSet& set, int color, int other, CellRect region, bool edgesSolid, int* unmatched) {
+    const CellRect c = clip(map, region);
+    const std::vector<std::uint32_t> before = src.cells;
+    std::function<bool(int, int)> terrain = [&](int x, int y) {
+        if (!map.inside(x, y)) return edgesSolid;
+        return isTerrain(before[static_cast<std::size_t>(y) * map.width + x]);
+    };
+    const bool useEdges = set.type != "corner", useCorners = set.type != "edge";
+    auto probability = [&](int col) {
+        return col >= 1 && col <= static_cast<int>(set.colors.size()) ? set.colors[static_cast<std::size_t>(col - 1)].probability : 1.0;
+    };
+    int n = 0, misses = 0;
+    for (int y = c.y; y < c.y + c.h; ++y) {
+        for (int x = c.x; x < c.x + c.w; ++x) {
+            if (!terrain(x, y)) continue;
+            const int m = reduceBlob(neighbourMask(terrain, x, y));
+            std::array<int, 8> want{};
+            for (int k = 0; k < 8; ++k) {
+                const bool corner = k % 2 == 1;
+                if ((corner && !useCorners) || (!corner && !useEdges)) continue;
+                want[static_cast<std::size_t>(k)] = (m >> k & 1) ? color : other;
+            }
+            int bestTile = -1, bestMiss = 1 << 30;
+            double bestProb = -1;
+            for (const auto& [tile, id] : set.tiles) {
+                int miss = 0;
+                double prob = 1;
+                for (std::size_t k = 0; k < 8; ++k) {
+                    if (!want[k]) continue;
+                    if (id[k] != want[k]) miss += id[k] == 0 ? 1 : 2;
+                    else prob *= probability(id[k]);
+                }
+                if (miss < bestMiss || (miss == bestMiss && prob > bestProb)) {
+                    bestMiss = miss;
+                    bestProb = prob;
+                    bestTile = tile;
+                }
+            }
+            if (bestTile < 0 || bestTile >= tileset.tileCount) continue;
+            if (bestMiss > 0) ++misses;
+            const std::uint32_t g = tileset.firstGid + static_cast<std::uint32_t>(bestTile);
+            if (map.at(dst, x, y) != g) {
+                map.set(dst, x, y, g);
+                ++n;
+            }
+        }
+    }
+    if (unmatched) *unmatched = misses;
+    return n;
+}
+
+void wangTemplate(WangSet& set, const std::string& layout, int first, int color, int other) {
+    if (layout == "blob47") {
+        set.type = "mixed";
+        const auto& ms = blobMasks();
+        for (std::size_t i = 0; i < ms.size(); ++i) {
+            std::array<int, 8> id{};
+            for (int k = 0; k < 8; ++k) id[static_cast<std::size_t>(k)] = (ms[i] >> k & 1) ? color : other;
+            set.tiles[first + static_cast<int>(i)] = id;
+        }
+    } else if (layout == "edge16") {
+        set.type = "edge";
+        for (int i = 0; i < 16; ++i) {
+            std::array<int, 8> id{};
+            for (int b = 0; b < 4; ++b) id[static_cast<std::size_t>(b * 2)] = (i >> b & 1) ? color : other;
+            set.tiles[first + i] = id;
+        }
+    } else {  // corner16
+        set.type = "corner";
+        for (int i = 0; i < 16; ++i) {
+            std::array<int, 8> id{};
+            for (int b = 0; b < 4; ++b) id[static_cast<std::size_t>(b * 2 + 1)] = (i >> b & 1) ? color : other;
+            set.tiles[first + i] = id;
+        }
+    }
 }
 
 // ---- randomness ---------------------------------------------------------------
@@ -608,18 +761,62 @@ void over(std::uint8_t* d, const std::uint8_t* s, double opacity) {
     d[3] = static_cast<std::uint8_t>(oa * 255 + 0.5);
 }
 
-void drawTile(Image& out, const Map& map, std::uint32_t raw, int px, int py, double opacity) {
+// Multiplies a colour by a "#rrggbb" tint (straight through when there is none).
+struct Tint {
+    bool on = false;
+    int r = 255, g = 255, b = 255, a = 255;
+    explicit Tint(const std::string& text) {
+        if (text.empty()) return;
+        if (auto c = Color::parse(text)) {
+            on = true;
+            r = c->r;
+            g = c->g;
+            b = c->b;
+            a = c->a;
+        }
+    }
+    void apply(std::uint8_t* px) const {
+        px[0] = static_cast<std::uint8_t>(px[0] * r / 255);
+        px[1] = static_cast<std::uint8_t>(px[1] * g / 255);
+        px[2] = static_cast<std::uint8_t>(px[2] * b / 255);
+        px[3] = static_cast<std::uint8_t>(px[3] * a / 255);
+    }
+};
+
+// The tile an animated tile shows `time` ms in.
+std::uint32_t animatedGid(const Map& map, std::uint32_t raw, int time) {
+    const std::uint32_t gid = raw & kGidMask;
+    const Tileset* t = map.tilesetFor(gid);
+    if (!t || t->animations.empty()) return raw;
+    auto it = t->animations.find(static_cast<int>(gid - t->firstGid));
+    if (it == t->animations.end() || it->second.empty()) return raw;
+    int total = 0;
+    for (const auto& f : it->second) total += std::max(1, f.duration);
+    int at = time % std::max(1, total);
+    for (const auto& f : it->second) {
+        at -= std::max(1, f.duration);
+        if (at < 0) return (raw & ~kGidMask) | (t->firstGid + static_cast<std::uint32_t>(std::max(0, f.tile)));
+    }
+    return raw;
+}
+
+// Draws a tile with its top-left at (px, py), stretched to w x h (0 = the tile's own size).
+void drawTile(Image& out, const Map& map, std::uint32_t raw, int px, int py, double opacity, const Tint& tint, int w = 0, int h = 0) {
     const std::uint32_t gid = raw & kGidMask;
     const Tileset* t = map.tilesetFor(gid);
     if (!t || !t->pixels) {
         const Color c = placeholderColor(gid);
-        const std::uint8_t fill[4] = {c.r, c.g, c.b, 255};
-        const std::uint8_t edge[4] = {static_cast<std::uint8_t>(c.r * 3 / 4), static_cast<std::uint8_t>(c.g * 3 / 4),
-                                      static_cast<std::uint8_t>(c.b * 3 / 4), 255};
-        for (int y = 0; y < map.tileHeight; ++y) {
-            for (int x = 0; x < map.tileWidth; ++x) {
+        std::uint8_t fill[4] = {c.r, c.g, c.b, 255};
+        std::uint8_t edge[4] = {static_cast<std::uint8_t>(c.r * 3 / 4), static_cast<std::uint8_t>(c.g * 3 / 4), static_cast<std::uint8_t>(c.b * 3 / 4), 255};
+        if (tint.on) {
+            tint.apply(fill);
+            tint.apply(edge);
+        }
+        const int tw = w > 0 ? w : map.tileWidth, th = h > 0 ? h : map.tileHeight;
+        for (int y = 0; y < th; ++y) {
+            for (int x = 0; x < tw; ++x) {
                 if (!out.contains(px + x, py + y)) continue;
-                const bool border = x == 0 || y == 0 || x == map.tileWidth - 1 || y == map.tileHeight - 1;
+                const bool border = x == 0 || y == 0 || x == tw - 1 || y == th - 1;
                 over(out.pixel(px + x, py + y), border ? edge : fill, opacity);
             }
         }
@@ -627,18 +824,60 @@ void drawTile(Image& out, const Map& map, std::uint32_t raw, int px, int py, dou
     }
     const int id = static_cast<int>(gid - t->firstGid);
     const int sx = t->tileX(id), sy = t->tileY(id);
-    // Tiled anchors tiles taller than the grid at the bottom-left of the cell
-    const int oy = py + map.tileHeight - t->tileHeight;
+    const int dw = w > 0 ? w : t->tileWidth, dh = h > 0 ? h : t->tileHeight;
     const bool fh = raw & kFlipH, fv = raw & kFlipV, fd = raw & kFlipD;
-    for (int y = 0; y < t->tileHeight; ++y) {
-        for (int x = 0; x < t->tileWidth; ++x) {
-            int u = x, v = y;
+    for (int y = 0; y < dh; ++y) {
+        for (int x = 0; x < dw; ++x) {
+            int u = x * t->tileWidth / dw, v = y * t->tileHeight / dh;
             if (fd) std::swap(u, v);
             if (fh) u = t->tileWidth - 1 - u;
             if (fv) v = t->tileHeight - 1 - v;
-            if (!t->pixels->contains(sx + u, sy + v) || !out.contains(px + x, oy + y)) continue;
-            over(out.pixel(px + x, oy + y), t->pixels->pixel(sx + u, sy + v), opacity);
+            if (!t->pixels->contains(sx + u, sy + v) || !out.contains(px + x, py + y)) continue;
+            if (tint.on) {
+                std::uint8_t c[4];
+                std::copy_n(t->pixels->pixel(sx + u, sy + v), 4, c);
+                tint.apply(c);
+                over(out.pixel(px + x, py + y), c, opacity);
+            } else {
+                over(out.pixel(px + x, py + y), t->pixels->pixel(sx + u, sy + v), opacity);
+            }
         }
+    }
+}
+
+// A tile in a map cell: Tiled anchors tiles taller than the grid at the bottom-left of the cell.
+void drawCellTile(Image& out, const Map& map, std::uint32_t raw, int px, int py, double opacity, const Tint& tint) {
+    const Tileset* t = map.tilesetFor(raw & kGidMask);
+    const int oy = t && t->pixels ? py + map.tileHeight - t->tileHeight : py;
+    drawTile(out, map, raw, px, oy, opacity, tint);
+}
+
+void drawImageLayer(Image& out, const Layer& l, const Tint& tint) {
+    if (!l.pixels || l.pixels->empty()) return;
+    const Image& img = *l.pixels;
+    const int ox = static_cast<int>(std::lround(l.offsetX)), oy = static_cast<int>(std::lround(l.offsetY));
+    const int iw = img.width(), ih = img.height();
+    int x0 = ox, y0 = oy;
+    if (l.repeatX) x0 = ((ox % iw) + iw) % iw - iw;
+    if (l.repeatY) y0 = ((oy % ih) + ih) % ih - ih;
+    const int x1 = l.repeatX ? out.width() : ox + iw, y1 = l.repeatY ? out.height() : oy + ih;
+    for (int by = y0; by < y1; by += ih) {
+        for (int bx = x0; bx < x1; bx += iw) {
+            for (int y = 0; y < ih; ++y) {
+                const int dy = by + y;
+                if (dy < 0 || dy >= out.height()) continue;
+                for (int x = 0; x < iw; ++x) {
+                    const int dx = bx + x;
+                    if (dx < 0 || dx >= out.width()) continue;
+                    std::uint8_t c[4];
+                    std::copy_n(img.pixel(x, y), 4, c);
+                    if (tint.on) tint.apply(c);
+                    over(out.pixel(dx, dy), c, l.opacity);
+                }
+            }
+            if (!l.repeatX) break;
+        }
+        if (!l.repeatY) break;
     }
 }
 
@@ -649,7 +888,28 @@ Color typeColor(const std::string& type) {
     return c;
 }
 
+// An object's outline points in map px: rects and polygons turn with their rotation around (x, y).
+std::vector<raster::Point> objectOutline(const MapObject& ob) {
+    std::vector<raster::Point> pts;
+    if (ob.shape == "polygon" || ob.shape == "polyline") {
+        for (const auto& p : ob.points) pts.push_back({p.x, p.y});
+    } else if (ob.shape == "ellipse") {
+        for (const auto& p : raster::ellipsePoints(ob.width / 2, ob.height / 2, ob.width / 2, ob.height / 2)) pts.push_back(p);
+    } else {
+        pts = {{0, 0}, {ob.width, 0}, {ob.width, ob.height}, {0, ob.height}};
+    }
+    const double a = ob.rotation * 3.14159265358979323846 / 180, ca = std::cos(a), sa = std::sin(a);
+    for (auto& p : pts) p = {ob.x + p.x * ca - p.y * sa, ob.y + p.x * sa + p.y * ca};
+    return pts;
+}
+
 }  // namespace
+
+std::vector<ObjPoint> objectWorldPoints(const MapObject& ob) {
+    std::vector<ObjPoint> out;
+    for (const auto& p : objectOutline(ob)) out.push_back({p.x, p.y});
+    return out;
+}
 
 Image render(const Map& map, const RenderOptions& o) {
     const int pw = map.width * map.tileWidth, ph = map.height * map.tileHeight;
@@ -666,12 +926,25 @@ Image render(const Map& map, const RenderOptions& o) {
     };
     for (std::size_t i = 0; i < map.layers.size(); ++i) {
         const Layer& l = map.layers[i];
-        if (l.kind != LayerKind::Tiles || !wanted(i)) continue;
-        if (l.collision) continue;  // drawn as an overlay below
-        for (int y = 0; y < map.height; ++y) {
-            for (int x = 0; x < map.width; ++x) {
-                const std::uint32_t g = map.at(l, x, y);
-                if (g & kGidMask) drawTile(img, map, g, x * map.tileWidth, y * map.tileHeight, l.opacity);
+        if (!wanted(i)) continue;
+        const Tint tint(l.tint);
+        const int ox = static_cast<int>(std::lround(l.offsetX)), oy = static_cast<int>(std::lround(l.offsetY));
+        if (l.kind == LayerKind::Image) {
+            drawImageLayer(img, l, tint);
+        } else if (l.kind == LayerKind::Objects) {
+            if (!o.objects) continue;
+            for (const auto& ob : l.objects) {
+                if (!(ob.gid & kGidMask)) continue;
+                const int w = static_cast<int>(std::lround(ob.width)), h = static_cast<int>(std::lround(ob.height));
+                drawTile(img, map, animatedGid(map, ob.gid, o.time), static_cast<int>(std::lround(ob.x)) + ox, static_cast<int>(std::lround(ob.y)) + oy,
+                         l.opacity, tint, w, h);
+            }
+        } else if (!l.collision) {  // collision grids are drawn as an overlay below
+            for (int y = 0; y < map.height; ++y) {
+                for (int x = 0; x < map.width; ++x) {
+                    const std::uint32_t g = map.at(l, x, y);
+                    if (g & kGidMask) drawCellTile(img, map, animatedGid(map, g, o.time), x * map.tileWidth + ox, y * map.tileHeight + oy, l.opacity, tint);
+                }
             }
         }
     }
@@ -702,21 +975,34 @@ Image render(const Map& map, const RenderOptions& o) {
             const Layer& l = map.layers[i];
             if (l.kind != LayerKind::Objects || !wanted(i)) continue;
             for (const auto& ob : l.objects) {
+                if (ob.gid & kGidMask) continue;  // drawn as a tile above
                 Color c = typeColor(ob.type.empty() ? ob.name : ob.type);
                 if (l.collision || ob.type == "collision") c = {230, 40, 40, 255};
                 Color fill = c;
                 fill.a = 70;
-                const double x = ob.x * s, y = ob.y * s, w = ob.width * s, h = ob.height * s;
-                if (ob.shape == "point" || (w <= 0 && h <= 0)) {
+                const double lx = l.offsetX, ly = l.offsetY;
+                const double x = (ob.x + lx) * s, y = (ob.y + ly) * s, w = ob.width * s, h = ob.height * s;
+                if (ob.shape == "point" || (w <= 0 && h <= 0 && ob.points.empty())) {
                     const double r = std::max(3.0, std::min(tw, th) * 0.25);
                     raster::fillEllipse(img, x, y, r, r, c);
                     raster::strokeEllipse(img, x, y, r, r, Color{255, 255, 255, 255}, 1);
-                } else if (ob.shape == "ellipse") {
+                } else if (ob.shape == "ellipse" && std::abs(ob.rotation) < 1e-9) {
                     raster::fillEllipse(img, x + w / 2, y + h / 2, w / 2, h / 2, fill);
                     raster::strokeEllipse(img, x + w / 2, y + h / 2, w / 2, h / 2, c, std::max(1.0, s));
-                } else {
+                } else if (ob.shape == "rect" && std::abs(ob.rotation) < 1e-9) {
                     raster::fillRect(img, x, y, w, h, fill);
                     raster::strokeRect(img, x + 0.5, y + 0.5, std::max(0.0, w - 1), std::max(0.0, h - 1), c, std::max(1.0, s));
+                } else {
+                    std::vector<raster::Point> pts = objectOutline(ob);
+                    for (auto& p : pts) p = {(p.x + lx) * s, (p.y + ly) * s};
+                    if (pts.empty()) continue;
+                    const bool closed = ob.shape != "polyline";
+                    if (closed && pts.size() >= 3) raster::fillPolygon(img, pts, fill);
+                    for (std::size_t k = 0; k + 1 < pts.size() + (closed ? 1 : 0); ++k) {
+                        const auto& a = pts[k];
+                        const auto& b = pts[(k + 1) % pts.size()];
+                        raster::drawLine(img, a.x, a.y, b.x, b.y, c, std::max(1.0, s));
+                    }
                 }
             }
         }
@@ -729,18 +1015,46 @@ Image placeholderTileset(int tiles, int columns, int tw, int th, const std::stri
     columns = columns > 0 ? columns : std::min(tiles, 8);
     const int rows = (tiles + columns - 1) / columns;
     Image img(columns * tw, rows * th);
+    const Color body = colors.empty() ? Color{96, 160, 72, 255} : colors[0];
+    const Color rim{static_cast<std::uint8_t>(body.r / 3), static_cast<std::uint8_t>(body.g / 3), static_cast<std::uint8_t>(body.b / 3), 255};
+    const Color ground = colors.size() > 1 ? colors[1] : Color{176, 140, 96, 255};
+    const int bw = std::max(1, std::min(tw, th) / 6);
     for (int i = 0; i < tiles; ++i) {
         const int ox = (i % columns) * tw, oy = (i / columns) * th;
         Color c = i < static_cast<int>(colors.size()) ? colors[static_cast<std::size_t>(i)] : placeholderColor(static_cast<std::uint32_t>(i + 1));
         if (style == "autotile") {
             // body colour with a dark rim on every side that has no neighbour (mask bits N1 E2 S4 W8)
-            c = colors.empty() ? Color{96, 160, 72, 255} : colors[0];
-            const Color rim{static_cast<std::uint8_t>(c.r / 3), static_cast<std::uint8_t>(c.g / 3), static_cast<std::uint8_t>(c.b / 3), 255};
-            const int m = i % 16, bw = std::max(1, std::min(tw, th) / 6);
+            const int m = i % 16;
             for (int y = 0; y < th; ++y) {
                 for (int x = 0; x < tw; ++x) {
                     bool edge = (!(m & 1) && y < bw) || (!(m & 2) && x >= tw - bw) || (!(m & 4) && y >= th - bw) || (!(m & 8) && x < bw);
-                    img.set(ox + x, oy + y, edge ? rim : c);
+                    img.set(ox + x, oy + y, edge ? rim : body);
+                }
+            }
+            continue;
+        }
+        if (style == "blob") {
+            // 47 tiles in blobMasks() order: rims on open sides, notches on open inner corners
+            const int m = blobMasks()[static_cast<std::size_t>(i % 47)];
+            for (int y = 0; y < th; ++y) {
+                for (int x = 0; x < tw; ++x) {
+                    const bool top = y < bw, right = x >= tw - bw, bottom = y >= th - bw, left = x < bw;
+                    bool edge = (!(m & 1) && top) || (!(m & 4) && right) || (!(m & 16) && bottom) || (!(m & 64) && left);
+                    edge = edge || ((m & 1) && (m & 4) && !(m & 2) && top && right) || ((m & 4) && (m & 16) && !(m & 8) && bottom && right) ||
+                           ((m & 16) && (m & 64) && !(m & 32) && bottom && left) || ((m & 64) && (m & 1) && !(m & 128) && top && left);
+                    img.set(ox + x, oy + y, edge ? rim : body);
+                }
+            }
+            continue;
+        }
+        if (style == "corner") {
+            // 16 Wang corner tiles: quarter q is terrain when bit NE 1, SE 2, SW 4, NW 8 is set, else ground
+            const int m = i % 16;
+            for (int y = 0; y < th; ++y) {
+                for (int x = 0; x < tw; ++x) {
+                    const bool east = x >= tw / 2, south = y >= th / 2;
+                    const int bit = east ? (south ? 2 : 1) : (south ? 4 : 8);
+                    img.set(ox + x, oy + y, (m & bit) ? body : ground);
                 }
             }
             continue;
@@ -762,13 +1076,20 @@ Image placeholderTileset(int tiles, int columns, int tw, int th, const std::stri
 // ---- documents ----------------------------------------------------------------
 
 std::string LevelDoc::summary() const {
-    std::size_t tileLayers = 0, objectLayers = 0;
-    for (const auto& l : map.layers) (l.kind == LayerKind::Tiles ? tileLayers : objectLayers)++;
+    std::size_t tileLayers = 0, objectLayers = 0, imageLayers = 0;
+    for (const auto& l : map.layers) (l.kind == LayerKind::Tiles ? tileLayers : l.kind == LayerKind::Objects ? objectLayers : imageLayers)++;
     std::string s = std::to_string(map.width) + "x" + std::to_string(map.height) + " cells of " + std::to_string(map.tileWidth) + "x" +
                     std::to_string(map.tileHeight) + " px, " + std::to_string(tileLayers) + " tile layer" + (tileLayers == 1 ? "" : "s") +
-                    ", " + std::to_string(objectLayers) + " object layer" + (objectLayers == 1 ? "" : "s") + ", " +
-                    std::to_string(map.objectCount()) + " object" + (map.objectCount() == 1 ? "" : "s") + ", " +
-                    std::to_string(map.tilesets.size()) + " tileset" + (map.tilesets.size() == 1 ? "" : "s");
+                    ", " + std::to_string(objectLayers) + " object layer" + (objectLayers == 1 ? "" : "s") + ", ";
+    if (imageLayers) s += std::to_string(imageLayers) + " image layer" + (imageLayers == 1 ? "" : "s") + ", ";
+    s += std::to_string(map.objectCount()) + " object" + (map.objectCount() == 1 ? "" : "s") + ", " + std::to_string(map.tilesets.size()) +
+         " tileset" + (map.tilesets.size() == 1 ? "" : "s");
+    if (!path.empty()) s += ", " + path;
+    return s;
+}
+
+std::string WorldDoc::summary() const {
+    std::string s = "world of " + std::to_string(entries.size()) + " level" + (entries.size() == 1 ? "" : "s");
     if (!path.empty()) s += ", " + path;
     return s;
 }

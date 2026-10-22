@@ -1,3 +1,4 @@
+#include <array>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -5,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iterator>
+#include <set>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -644,6 +646,287 @@ void testMcp() {
     CHECK(r.find("\"isError\":true") != std::string::npos);
 }
 
+void testBlobAndWang() {
+    // the 47 blob masks: corners only with both sides
+    CHECK(blobMasks().size() == 47);
+    CHECK(blobMasks().front() == 0 && blobMasks().back() == 255);
+    CHECK(blobIndex(255) == 46 && blobIndex(2) == -1 && blobIndex(1 | 4 | 2) >= 0);
+
+    Map m = newMap(6, 5, 8, 8);
+    Layer& l = m.addLayer("t", LayerKind::Tiles);
+    fillRect(m, l, {1, 1, 3, 3}, 1);
+    const int n = autotileBlob(m, l, l, [](std::uint32_t g) { return (g & kGidMask) != 0; }, 100, {0, 0, 6, 5}, false);
+    CHECK(n == 9);
+    CHECK(m.at(l, 2, 2) == 100u + static_cast<std::uint32_t>(blobIndex(255)));  // the middle sees all eight
+    CHECK(m.at(l, 1, 1) == 100u + static_cast<std::uint32_t>(blobIndex(4 | 8 | 16)));  // top-left: E, SE, S
+    CHECK(m.at(l, 0, 0) == 0);
+
+    // a corner Wang set from the template: interior cells get the all-terrain tile, rims mixed ones
+    Tileset ts;
+    ts.name = "w";
+    ts.firstGid = 1;
+    ts.tileCount = 16;
+    ts.columns = 4;
+    WangSet ws;
+    ws.name = "terrain";
+    ws.colors = {{"grass", "#00ff00", -1, 1}, {"dirt", "#884400", -1, 1}};
+    wangTemplate(ws, "corner16", 0, 1, 2);
+    CHECK(ws.type == "corner" && ws.tiles.size() == 16);
+    CHECK((ws.tiles[15] == std::array<int, 8>{0, 1, 0, 1, 0, 1, 0, 1}));
+    Map w = newMap(6, 6, 8, 8);
+    Layer& wl = w.addLayer("t", LayerKind::Tiles);
+    fillRect(w, wl, {1, 1, 4, 4}, 99);
+    int unmatched = -1;
+    autotileWang(w, wl, wl, [](std::uint32_t g) { return (g & kGidMask) != 0; }, ts, ws, 1, 2, {0, 0, 6, 6}, false, &unmatched);
+    CHECK(unmatched == 0);
+    CHECK(w.at(wl, 2, 2) == 16);         // all four corners terrain: tile 15
+    CHECK(w.at(wl, 1, 1) == 1u + 2u);    // top-left of the block: only SE (bit 2)
+    CHECK(w.at(wl, 4, 1) == 1u + 4u);    // top-right: only SW
+    CHECK(w.at(wl, 2, 1) == 1u + 2u + 4u);  // top edge: SE and SW
+
+    WangSet blob;
+    wangTemplate(blob, "blob47", 0, 1, 0);
+    CHECK(blob.type == "mixed" && blob.tiles.size() == 47);
+    WangSet edge;
+    wangTemplate(edge, "edge16", 0, 1, 2);
+    CHECK(edge.type == "edge" && (edge.tiles[5] == std::array<int, 8>{1, 0, 2, 0, 1, 0, 2, 0}));
+
+    // placeholders
+    CHECK(placeholderTileset(47, 8, 8, 8, "blob", {}).width() == 64);
+    CHECK(placeholderTileset(16, 4, 8, 8, "corner", {}).height() == 32);
+}
+
+void testTiledExtras(const fs::path& dir) {
+    fs::create_directories(dir);
+    raster::save(placeholderTileset(16, 4, 8, 8, "colors", {}), dir / "t.png");
+    raster::save(placeholderTileset(4, 4, 8, 8, "colors", {}), dir / "sky.png");
+    Map m = newMap(6, 4, 8, 8);
+    Tileset t = loadTileset(dir / "t.png", 8, 8, 0, 0);
+    t.animations[2] = {{2, 100}, {3, 150}};
+    MapObject slope;
+    slope.shape = "polygon";
+    slope.points = {{0, 8}, {8, 0}, {8, 8}};
+    t.tileShapes[5].push_back(slope);
+    WangSet ws;
+    ws.name = "grass";
+    ws.colors = {{"grass", "#00ff00", 3, 0.5}};
+    wangTemplate(ws, "corner16", 0, 1, 0);
+    t.wangsets.push_back(ws);
+    addTileset(m, t);
+    Layer& sky = m.addLayer("sky", LayerKind::Image);
+    sky.image = fs::absolute(dir / "sky.png").lexically_normal().string();
+    sky.repeatX = true;
+    sky.offsetY = 4;
+    sky.parallaxX = 0.5;
+    sky.tint = "#ff8080";
+    attachLayerImage(sky);
+    CHECK(sky.pixels && sky.pixels->width() == 32);
+    Layer& g = m.addLayer("ground", LayerKind::Tiles);
+    fillRect(m, g, {0, 2, 6, 2}, 3 | kFlipH);
+    g.offsetX = 2;
+    Layer& o = m.addLayer("ents", LayerKind::Objects);
+    MapObject poly;
+    poly.id = m.nextObjectId++;
+    poly.shape = "polygon";
+    poly.x = 10;
+    poly.y = 5;
+    poly.points = {{0, 0}, {10, 0}, {5, 7.5}};
+    poly.rotation = 30;
+    o.objects.push_back(poly);
+    MapObject line = poly;
+    line.id = m.nextObjectId++;
+    line.shape = "polyline";
+    line.rotation = 0;
+    o.objects.push_back(line);
+    MapObject chest;
+    chest.id = m.nextObjectId++;
+    chest.gid = 4;
+    chest.x = 16;
+    chest.y = 8;
+    chest.width = chest.height = 8;
+    chest.type = "chest";
+    o.objects.push_back(chest);
+
+    for (const char* ext : {".tmx", ".tmj", ".json"}) {
+        const fs::path file = dir / (std::string("extras") + ext);
+        saveMap(m, file, formatFor(file) == "json" || std::string(ext) == ".json" ? "json" : formatFor(file));
+        Map b = loadMap(file);
+        CHECK(b.layers.size() == 3);
+        if (b.layers.size() != 3) continue;
+        const Layer& bs = b.layers[0];
+        CHECK(bs.kind == LayerKind::Image && bs.pixels && bs.repeatX && !bs.repeatY);
+        CHECK(bs.offsetY == 4 && bs.parallaxX == 0.5 && bs.tint == "#ff8080");
+        CHECK(b.layers[1].offsetX == 2 && b.layers[1].cells[12] == (3u | kFlipH));
+        const auto& objs = b.layers[2].objects;
+        CHECK(objs.size() == 3);
+        if (objs.size() == 3) {
+            CHECK(objs[0].shape == "polygon" && objs[0].points.size() == 3 && objs[0].points[2].y == 7.5 && objs[0].rotation == 30);
+            CHECK(objs[1].shape == "polyline" && objs[1].points.size() == 3);
+            CHECK(objs[2].gid == 4 && objs[2].y == 8 && objs[2].type == "chest");
+        }
+        const Tileset& bt = b.tilesets[0];
+        CHECK(bt.animations.count(2) && bt.animations.at(2).size() == 2 && bt.animations.at(2)[1].duration == 150);
+        CHECK(bt.tileShapes.count(5) && bt.tileShapes.at(5)[0].shape == "polygon" && bt.tileShapes.at(5)[0].points.size() == 3);
+        CHECK(bt.wangsets.size() == 1 && bt.wangsets[0].tiles.size() == 16 && bt.wangsets[0].colors[0].probability == 0.5 &&
+              bt.wangsets[0].colors[0].tile == 3 && bt.wangsets[0].tiles.at(9) == ws.tiles.at(9));
+    }
+    // animation frames show in renders at their time
+    RenderOptions ro;
+    ro.objects = false;
+    Map anim = newMap(1, 1, 8, 8);
+    addTileset(anim, t);
+    Layer& al = anim.addLayer("a", LayerKind::Tiles);
+    al.cells[0] = 3;  // local tile 2, animated 2 -> 3
+    ro.time = 0;
+    const Color c0 = render(anim, ro).at(4, 4);
+    ro.time = 120;
+    const Color c1 = render(anim, ro).at(4, 4);
+    CHECK(!(c0 == c1));
+    CHECK(objectWorldPoints(poly).size() == 3);
+
+    // an infinite Tiled map becomes a finite one around its chunks; objects move with it
+    std::ofstream(dir / "inf.tmx") << "<?xml version=\"1.0\"?>\n<map orientation=\"orthogonal\" width=\"30\" height=\"20\" tilewidth=\"8\" tileheight=\"8\" infinite=\"1\">\n"
+                                      " <layer id=\"1\" name=\"a\" width=\"30\" height=\"20\"><data encoding=\"csv\">\n"
+                                      "  <chunk x=\"-16\" y=\"0\" width=\"16\" height=\"16\">" +
+                                          [] {
+                                              std::string s;
+                                              for (int i = 0; i < 256; ++i) s += (i ? "," : "") + std::string(i == 17 ? "5" : "0");
+                                              return s;
+                                          }() +
+                                          "</chunk>\n  <chunk x=\"0\" y=\"16\" width=\"16\" height=\"16\">" + [] {
+                                              std::string s;
+                                              for (int i = 0; i < 256; ++i) s += (i ? "," : "") + std::string(i == 0 ? "7" : "0");
+                                              return s;
+                                          }() + "</chunk>\n </data></layer>\n"
+                                                " <objectgroup id=\"2\" name=\"o\"><object id=\"1\" x=\"0\" y=\"0\"><point/></object></objectgroup>\n</map>\n";
+    Map inf = loadMap(dir / "inf.tmx");
+    CHECK(inf.width == 32 && inf.height == 32);
+    CHECK(inf.at(inf.layers[0], 1, 1) == 5 && inf.at(inf.layers[0], 16, 16) == 7);
+    CHECK(inf.layers[1].objects.size() == 1 && inf.layers[1].objects[0].x == 128);
+    // TMJ infinite with base64 chunks
+    {
+        std::string raw;
+        for (int i = 0; i < 4; ++i) {
+            const std::uint32_t gid = i == 3 ? 9 : 0;
+            for (int b = 0; b < 4; ++b) raw += static_cast<char>(gid >> (8 * b) & 0xFF);
+        }
+        std::ofstream(dir / "inf.tmj") << "{\"orientation\":\"orthogonal\",\"infinite\":true,\"tiledversion\":\"1.10\",\"tilewidth\":8,\"tileheight\":8,"
+                                          "\"width\":4,\"height\":4,\"layers\":[{\"type\":\"tilelayer\",\"name\":\"a\",\"encoding\":\"base64\",\"chunks\":["
+                                          "{\"x\":4,\"y\":-2,\"width\":2,\"height\":2,\"data\":\"" +
+                                              b64(raw) + "\"}]}]}";
+        Map ij = loadMap(dir / "inf.tmj");
+        CHECK(ij.width == 2 && ij.height == 2 && ij.at(ij.layers[0], 1, 1) == 9);
+    }
+}
+
+void testGodotAndWorld(const fs::path& dir) {
+    fs::create_directories(dir);
+    Session s;
+    registerCommands(s);
+    CHECK(run(s, "levels.new width=8 height=5 tile_width=16 tile_height=16").ok);
+    CHECK(run(s, "levels.tileset_placeholder doc=lvl1 path=" + q(dir / "art" / "corner.png") + " style=corner").ok);
+    CHECK(mapOf(s, "lvl1").tilesets[0].wangsets.size() == 1);
+    CHECK(run(s, "levels.fill_rect doc=lvl1 x=1 y=1 width=5 height=3 tile=0").ok);
+    Result r = run(s, "levels.autotile doc=lvl1 mode=wang wangset=terrain other=2");
+    CHECK(r.ok && intField(r, "unmatched") == 0);
+    CHECK(mapOf(s, "lvl1").at(mapOf(s, "lvl1").layers[0], 3, 2) == 16);
+    CHECK(run(s, "undo").ok);
+    CHECK(mapOf(s, "lvl1").at(mapOf(s, "lvl1").layers[0], 3, 2) == 1);
+    CHECK(run(s, "redo").ok);
+    CHECK(!run(s, "levels.autotile doc=lvl1 mode=wang wangset=nope").ok);
+    // a second tileset for the blob rule
+    CHECK(run(s, "levels.tileset_placeholder doc=lvl1 path=" + q(dir / "art" / "blob.png") + " style=blob").ok);
+    CHECK(run(s, "levels.layer_add doc=lvl1 name=deco").ok);
+    CHECK(run(s, "levels.fill_rect doc=lvl1 layer=deco x=0 y=0 width=3 height=2 tile=0 tileset=blob").ok);
+    CHECK(run(s, "levels.autotile doc=lvl1 layer=deco mode=blob tileset=blob edges=empty").ok);
+    const Map& m1 = mapOf(s, "lvl1");
+    CHECK(m1.at(m1.layers[1], 0, 0) == m1.tilesets[1].firstGid + static_cast<std::uint32_t>(blobIndex(4 | 8 | 16)));
+    // random brush
+    r = run(s, "levels.fill_rect doc=lvl1 layer=deco x=4 y=2 width=4 height=3 random=1,2 seed=3");
+    CHECK(r.ok && intField(r, "changed") == 12);
+    std::set<std::uint32_t> seen;
+    for (int y = 2; y < 5; ++y)
+        for (int x = 4; x < 8; ++x) seen.insert(mapOf(s, "lvl1").at(mapOf(s, "lvl1").layers[1], x, y));
+    CHECK(seen == std::set<std::uint32_t>({2, 3}));
+    CHECK(!run(s, "levels.fill_rect doc=lvl1 x=0 y=0 width=1 height=1").ok);  // no tile and no random
+    CHECK(run(s, "levels.flood_fill doc=lvl1 layer=deco x=7 y=0 random=4,5").ok);
+    CHECK(run(s, "levels.paint doc=lvl1 layer=deco cells=0,4,1,4 random=6").ok);
+    CHECK(mapOf(s, "lvl1").at(mapOf(s, "lvl1").layers[1], 1, 4) == 7);
+    // animations, tile shapes, wang sets by command
+    CHECK(run(s, "levels.tile_animation doc=lvl1 tile=3 frames=3,4,5 durations=100,100,300").ok);
+    CHECK(mapOf(s, "lvl1").tilesets[0].animations.at(3).size() == 3);
+    CHECK(!run(s, "levels.tile_animation doc=lvl1 tile=3 frames=3,99").ok);
+    CHECK(run(s, "levels.tile_collision doc=lvl1 tile=15 shape=polygon points=0,16,16,0,16,16").ok);
+    CHECK(run(s, "levels.tile_collision doc=lvl1 tile=14 shape=rect y=8 height=8").ok);
+    CHECK(run(s, "levels.tile_property doc=lvl1 tile=6 key=solid value=true").ok);
+    CHECK(run(s, "levels.wangset doc=lvl1 tileset=blob name=walls colors=wall:#444444 layout=blob47 color=1 other=0").ok);
+    CHECK(mapOf(s, "lvl1").tilesets[1].wangsets[0].tiles.size() == 47);
+    CHECK(run(s, "levels.wang_tile doc=lvl1 tileset=blob wangset=walls tile=0 wangid=0,0,0,0,0,0,0,0").ok);
+    CHECK(mapOf(s, "lvl1").tilesets[1].wangsets[0].tiles.size() == 46);
+    CHECK(!run(s, "levels.wang_tile doc=lvl1 tileset=blob wangset=walls tile=0 wangid=1,2").ok);
+    // shapes in collision output
+    r = run(s, "levels.collision doc=lvl1 from=ground");
+    CHECK(r.ok && intField(r, "shapes") == 3);  // three all-terrain cells carry the slope
+    const Layer* col = mapOf(s, "lvl1").layer("collision");
+    CHECK(col && col->objects.size() > 3);
+    // objects: polygon, polyline, tile object
+    CHECK(run(s, "levels.object_add doc=lvl1 layer=ents shape=polygon x=10 y=10 points=0,0,20,0,10,15 rotation=45 properties=\"hp=2\"").ok);
+    CHECK(!run(s, "levels.object_add doc=lvl1 layer=ents shape=polygon x=10 y=10 points=0,0,20,0").ok);
+    CHECK(run(s, "levels.object_add doc=lvl1 layer=ents shape=point cell=1,1 type=spawn").ok);
+    r = run(s, "levels.object_add doc=lvl1 layer=ents cell=2,1 tile=3 name=chest");
+    CHECK(r.ok);
+    CHECK(mapOf(s, "lvl1").object(static_cast<int>(intField(r, "id")))->gid == 4);
+    CHECK(run(s, "levels.object_set doc=lvl1 id=" + std::to_string(intField(r, "id")) + " rotation=90").ok);
+    // image layer
+    CHECK(run(s, "levels.layer_add doc=lvl1 name=bg kind=image image=" + q(dir / "art" / "corner.png") + " index=0 repeat_x=true").ok);
+    CHECK(!run(s, "levels.layer_add doc=lvl1 name=bg2 kind=image").ok);
+    CHECK(run(s, "levels.layer_set doc=lvl1 layer=bg parallax_x=0.25 tint=#a0a0ff offset_y=3").ok);
+    CHECK(!run(s, "levels.paint doc=lvl1 layer=bg x=0 y=0 tile=1").ok);
+    CHECK(run(s, "levels.preview doc=lvl1 time=150").ok);
+
+    // Godot scene
+    r = run(s, "levels.save doc=lvl1 path=" + q(dir / "game" / "level.tscn"));
+    CHECK(r.ok);
+    const std::string tscn = readAll(dir / "game" / "level.tscn");
+    CHECK(tscn.rfind("[gd_scene load_steps=", 0) == 0);
+    CHECK(tscn.find("path=\"../art/corner.png\"") != std::string::npos);
+    CHECK(tscn.find("[sub_resource type=\"TileSetAtlasSource\"") != std::string::npos);
+    CHECK(tscn.find("3:3/0/physics_layer_0/polygon_0/points = PackedVector2Array(-8, 8, 8, -8, 8, 8)") != std::string::npos);
+    CHECK(tscn.find("2:1/0/physics_layer_0/polygon_0/points") != std::string::npos);  // solid=true tile 6
+    CHECK(tscn.find("type=\"TileMap\"") != std::string::npos && tscn.find("layer_0/name = \"ground\"") != std::string::npos);
+    // cell (3,2) holds local tile 15 = atlas 3:3 of source 0: 2<<16|3, 0|3<<16, 3
+    CHECK(tscn.find("131075, 196608, 3") != std::string::npos);
+    CHECK(tscn.find("type=\"Sprite2D\"") != std::string::npos && tscn.find("type=\"Marker2D\"") != std::string::npos);
+    CHECK(tscn.find("metadata/hp = 2") != std::string::npos && tscn.find("CollisionPolygon2D") != std::string::npos);
+    CHECK(tscn.find("metadata/type = \"spawn\"") != std::string::npos);
+    CHECK(mapOf(s, "lvl1").layers.size() == 5);
+    CHECK(!run(s, "levels.open path=" + q(dir / "game" / "level.tscn")).ok);
+
+    // worlds
+    CHECK(run(s, "levels.save doc=lvl1 path=" + q(dir / "world" / "one.tmx")).ok);
+    CHECK(run(s, "levels.new width=4 height=5 tile_width=16 tile_height=16").ok);  // lvl2
+    CHECK(run(s, "levels.world_new").ok);
+    CHECK(run(s, "levels.world_add world=world1 level=lvl1").ok);
+    CHECK(!run(s, "levels.world_add world=world1 level=lvl2").ok);  // never saved: needs file=
+    r = run(s, "levels.world_add world=world1 level=lvl2 file=" + q(dir / "world" / "two.tmj") + " side=below beside=lvl1");
+    CHECK(r.ok && intField(r, "x") == 0 && intField(r, "y") == 80);
+    CHECK(!run(s, "levels.world_add world=world1 level=lvl1").ok);
+    CHECK(run(s, "undo").ok);
+    CHECK(s.workspace().getAs<WorldDoc>("world1")->entries.size() == 1);
+    CHECK(run(s, "redo").ok);
+    r = run(s, "levels.world_save world=world1 path=" + q(dir / "world" / "game.world"));
+    CHECK(r.ok && intField(r, "levels") == 2);
+    CHECK(fs::exists(dir / "world" / "two.tmj"));
+    const std::string world = readAll(dir / "world" / "game.world");
+    CHECK(world.find("\"fileName\": \"one.tmx\"") != std::string::npos && world.find("\"y\": 80") != std::string::npos);
+    r = run(s, "levels.world_preview world=world1");
+    CHECK(r.ok && intField(r, "width") == 128 && intField(r, "height") == 160 && !r.attachments.empty());
+    r = run(s, "levels.world_open path=" + q(dir / "world" / "game.world"));
+    CHECK(r.ok && intField(r, "count") == 2);
+    CHECK(run(s, "levels.world_remove world=world1 level=two.tmj").ok);
+    CHECK(s.workspace().getAs<WorldDoc>("world1")->entries.size() == 1);
+}
+
 }  // namespace
 
 int main() {
@@ -656,6 +939,9 @@ int main() {
     testTilesetSlicing(dir);
     testFiles(dir / "files");
     testMcp();
+    testBlobAndWang();
+    testTiledExtras(dir / "extras");
+    testGodotAndWorld(dir / "godot");
     std::error_code ec;
     fs::remove_all(dir, ec);
     return check::summary("levels");

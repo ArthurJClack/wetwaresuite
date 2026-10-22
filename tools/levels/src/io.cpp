@@ -1,6 +1,8 @@
 // Map files: Tiled TMX (XML) and TMJ (JSON), a plain JSON format, LDtk-lite
 // JSON, CSV per layer and flattened images.
 #include <algorithm>
+#include <array>
+#include <set>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
@@ -546,7 +548,144 @@ void checkSize(const Map& m) {
     if (static_cast<long long>(m.width) * m.height > 16LL * 1024 * 1024) throw std::runtime_error("the map is too big (over 16M cells)");
 }
 
+// ---- objects ----------------------------------------------------------------------
+
+std::vector<ObjPoint> parsePoints(const std::string& text) {
+    std::vector<ObjPoint> out;
+    std::istringstream in(text);
+    std::string pair;
+    while (in >> pair) {
+        auto comma = pair.find(',');
+        if (comma == std::string::npos) continue;
+        out.push_back({std::strtod(pair.c_str(), nullptr), std::strtod(pair.c_str() + comma + 1, nullptr)});
+    }
+    return out;
+}
+
+std::string pointsText(const std::vector<ObjPoint>& pts) {
+    std::string s;
+    for (const auto& p : pts) s += (s.empty() ? "" : " ") + num(p.x) + "," + num(p.y);
+    return s;
+}
+
+MapObject objectFromXml(const XmlNode& o) {
+    MapObject ob;
+    ob.id = o.getInt("id");
+    ob.name = o.get("name");
+    ob.type = o.get("type", o.get("class"));
+    ob.x = o.getNum("x");
+    ob.y = o.getNum("y");
+    ob.width = o.getNum("width");
+    ob.height = o.getNum("height");
+    ob.rotation = o.getNum("rotation");
+    if (o.child("point")) ob.shape = "point";
+    else if (o.child("ellipse")) ob.shape = "ellipse";
+    else if (const XmlNode* pg = o.child("polygon")) {
+        ob.shape = "polygon";
+        ob.points = parsePoints(pg->get("points"));
+    } else if (const XmlNode* pl = o.child("polyline")) {
+        ob.shape = "polyline";
+        ob.points = parsePoints(pl->get("points"));
+    }
+    ob.props = propsFromXml(o);
+    const std::string gid = o.get("gid");
+    if (!gid.empty()) {
+        ob.gid = static_cast<std::uint32_t>(std::strtoul(gid.c_str(), nullptr, 10));
+        ob.y -= ob.height;  // tile objects are anchored bottom-left in Tiled
+    }
+    return ob;
+}
+
+void objectXml(std::ostringstream& o, const MapObject& ob, const std::string& indent) {
+    o << indent << "<object id=\"" << ob.id << "\"";
+    if (!ob.name.empty()) o << " name=\"" << esc(ob.name) << "\"";
+    if (!ob.type.empty()) o << " type=\"" << esc(ob.type) << "\"";
+    if (ob.gid) o << " gid=\"" << ob.gid << "\"";
+    o << " x=\"" << num(ob.x) << "\" y=\"" << num(ob.gid ? ob.y + ob.height : ob.y) << "\"";
+    const bool sized = ob.shape == "rect" || ob.shape == "ellipse";
+    if (sized && (ob.width > 0 || ob.height > 0)) o << " width=\"" << num(ob.width) << "\" height=\"" << num(ob.height) << "\"";
+    if (std::abs(ob.rotation) > 1e-9) o << " rotation=\"" << num(ob.rotation) << "\"";
+    if (ob.props.empty() && ob.shape == "rect") {
+        o << "/>\n";
+        return;
+    }
+    o << ">\n";
+    propsXml(o, ob.props, indent + " ");
+    if (ob.shape == "point") o << indent << " <point/>\n";
+    if (ob.shape == "ellipse") o << indent << " <ellipse/>\n";
+    if (ob.shape == "polygon" || ob.shape == "polyline") o << indent << " <" << ob.shape << " points=\"" << pointsText(ob.points) << "\"/>\n";
+    o << indent << "</object>\n";
+}
+
+MapObject objectFromTiledJson(const json& o) {
+    MapObject ob;
+    ob.id = o.value("id", 0);
+    ob.name = o.value("name", std::string());
+    ob.type = o.value("type", o.value("class", std::string()));
+    ob.x = o.value("x", 0.0);
+    ob.y = o.value("y", 0.0);
+    ob.width = o.value("width", 0.0);
+    ob.height = o.value("height", 0.0);
+    ob.rotation = o.value("rotation", 0.0);
+    if (o.value("point", false)) ob.shape = "point";
+    else if (o.value("ellipse", false)) ob.shape = "ellipse";
+    for (const char* kind : {"polygon", "polyline"}) {
+        if (o.contains(kind) && o[kind].is_array()) {
+            ob.shape = kind;
+            for (const auto& p : o[kind]) ob.points.push_back({p.value("x", 0.0), p.value("y", 0.0)});
+        }
+    }
+    ob.props = propsFromTiledJson(o.value("properties", json::array()));
+    if (o.contains("gid") && o["gid"].is_number()) {
+        ob.gid = static_cast<std::uint32_t>(o["gid"].get<double>());
+        ob.y -= ob.height;
+    }
+    return ob;
+}
+
+json objectTiledJson(const MapObject& ob) {
+    json oj = {{"id", ob.id}, {"name", ob.name}, {"type", ob.type}, {"x", ob.x}, {"y", ob.gid ? ob.y + ob.height : ob.y},
+               {"width", ob.width}, {"height", ob.height}, {"rotation", ob.rotation}, {"visible", true}};
+    if (ob.gid) oj["gid"] = ob.gid;
+    if (ob.shape == "point") oj["point"] = true;
+    if (ob.shape == "ellipse") oj["ellipse"] = true;
+    if (ob.shape == "polygon" || ob.shape == "polyline") {
+        json pts = json::array();
+        for (const auto& p : ob.points) pts.push_back({{"x", p.x}, {"y", p.y}});
+        oj[ob.shape] = pts;
+    }
+    if (!ob.props.empty()) oj["properties"] = propsTiledJson(ob.props);
+    return oj;
+}
+
 // ---- TMX tilesets -----------------------------------------------------------------
+
+std::array<int, 8> parseWangId(const std::string& text) {
+    std::array<int, 8> id{};
+    std::size_t k = 0;
+    for (const auto& part : [&] {
+             std::vector<std::string> v;
+             std::string cur;
+             for (char c : text + ",") {
+                 if (c == ',') {
+                     v.push_back(cur);
+                     cur.clear();
+                 } else {
+                     cur += c;
+                 }
+             }
+             return v;
+         }()) {
+        if (k < 8) id[k++] = std::atoi(part.c_str());
+    }
+    return id;
+}
+
+std::string wangIdText(const std::array<int, 8>& id) {
+    std::string s;
+    for (std::size_t k = 0; k < 8; ++k) s += (k ? "," : "") + std::to_string(id[k]);
+    return s;
+}
 
 Tileset tilesetFromXml(const XmlNode& n, const fs::path& dir) {
     Tileset t;
@@ -563,14 +702,117 @@ Tileset tilesetFromXml(const XmlNode& n, const fs::path& dir) {
         t.imageHeight = img->getInt("height");
     }
     for (const auto& c : n.children) {
+        if (c.name == "wangsets") {
+            for (const auto& w : c.children) {
+                if (w.name != "wangset") continue;
+                WangSet ws;
+                ws.name = w.get("name");
+                ws.type = w.get("type", "corner");
+                ws.tile = w.getInt("tile", -1);
+                for (const auto& e : w.children) {
+                    if (e.name == "wangcolor") ws.colors.push_back({e.get("name"), e.get("color", "#ff0000"), e.getInt("tile", -1), e.getNum("probability", 1)});
+                    if (e.name == "wangtile") ws.tiles[e.getInt("tileid")] = parseWangId(e.get("wangid"));
+                }
+                t.wangsets.push_back(std::move(ws));
+            }
+            continue;
+        }
         if (c.name != "tile") continue;
+        const int id = c.getInt("id");
         Properties p = propsFromXml(c);
         if (!c.get("type").empty()) p["type"] = {"string", c.get("type")};
         if (!c.get("class").empty()) p["type"] = {"string", c.get("class")};
-        if (!p.empty()) t.tileProps[c.getInt("id")] = std::move(p);
+        if (!p.empty()) t.tileProps[id] = std::move(p);
+        if (const XmlNode* anim = c.child("animation")) {
+            for (const auto& f : anim->children) {
+                if (f.name == "frame") t.animations[id].push_back({f.getInt("tileid"), f.getInt("duration", 100)});
+            }
+        }
+        if (const XmlNode* og = c.child("objectgroup")) {
+            for (const auto& o : og->children) {
+                if (o.name == "object") t.tileShapes[id].push_back(objectFromXml(o));
+            }
+        }
     }
     attachImage(t);
     return t;
+}
+
+void tilesetXml(std::ostringstream& o, const Tileset& t, const fs::path& dir) {
+    o << " <tileset firstgid=\"" << t.firstGid << "\" name=\"" << esc(t.name) << "\" tilewidth=\"" << t.tileWidth << "\" tileheight=\""
+      << t.tileHeight << "\"";
+    if (t.spacing) o << " spacing=\"" << t.spacing << "\"";
+    if (t.margin) o << " margin=\"" << t.margin << "\"";
+    o << " tilecount=\"" << t.tileCount << "\" columns=\"" << t.columns << "\">\n";
+    if (!t.image.empty()) {
+        o << "  <image source=\"" << esc(relativeTo(t.image, dir)) << "\" width=\"" << t.imageWidth << "\" height=\"" << t.imageHeight << "\"/>\n";
+    }
+    std::set<int> ids;
+    for (const auto& [id, props] : t.tileProps) ids.insert(id);
+    for (const auto& [id, frames] : t.animations) ids.insert(id);
+    for (const auto& [id, shapes] : t.tileShapes) ids.insert(id);
+    for (int id : ids) {
+        o << "  <tile id=\"" << id << "\">\n";
+        if (auto it = t.tileProps.find(id); it != t.tileProps.end()) propsXml(o, it->second, "   ");
+        if (auto it = t.tileShapes.find(id); it != t.tileShapes.end() && !it->second.empty()) {
+            o << "   <objectgroup draworder=\"index\">\n";
+            for (const auto& ob : it->second) objectXml(o, ob, "    ");
+            o << "   </objectgroup>\n";
+        }
+        if (auto it = t.animations.find(id); it != t.animations.end() && !it->second.empty()) {
+            o << "   <animation>\n";
+            for (const auto& f : it->second) o << "    <frame tileid=\"" << f.tile << "\" duration=\"" << f.duration << "\"/>\n";
+            o << "   </animation>\n";
+        }
+        o << "  </tile>\n";
+    }
+    if (!t.wangsets.empty()) {
+        o << "  <wangsets>\n";
+        for (const auto& w : t.wangsets) {
+            o << "   <wangset name=\"" << esc(w.name) << "\" type=\"" << esc(w.type) << "\" tile=\"" << w.tile << "\">\n";
+            for (const auto& c : w.colors) {
+                o << "    <wangcolor name=\"" << esc(c.name) << "\" color=\"" << esc(c.color) << "\" tile=\"" << c.tile << "\" probability=\""
+                  << num(c.probability) << "\"/>\n";
+            }
+            for (const auto& [id, wid] : w.tiles) o << "    <wangtile tileid=\"" << id << "\" wangid=\"" << wangIdText(wid) << "\"/>\n";
+            o << "   </wangset>\n";
+        }
+        o << "  </wangsets>\n";
+    }
+    o << " </tileset>\n";
+}
+
+std::vector<WangSet> wangsetsFromJson(const json& a) {
+    std::vector<WangSet> out;
+    if (!a.is_array()) return out;
+    for (const auto& w : a) {
+        WangSet ws;
+        ws.name = w.value("name", std::string());
+        ws.type = w.value("type", std::string("corner"));
+        ws.tile = w.value("tile", -1);
+        for (const auto& c : w.value("colors", json::array())) {
+            ws.colors.push_back({c.value("name", std::string()), c.value("color", std::string("#ff0000")), c.value("tile", -1), c.value("probability", 1.0)});
+        }
+        for (const auto& wt : w.value("wangtiles", json::array())) {
+            std::array<int, 8> id{};
+            const json ids = wt.value("wangid", json::array());
+            for (std::size_t k = 0; k < 8 && k < ids.size(); ++k) id[k] = ids[k].is_number() ? ids[k].get<int>() : 0;
+            ws.tiles[wt.value("tileid", 0)] = id;
+        }
+        out.push_back(std::move(ws));
+    }
+    return out;
+}
+
+json wangsetsJson(const std::vector<WangSet>& sets) {
+    json ws = json::array();
+    for (const auto& w : sets) {
+        json colors = json::array(), tiles = json::array();
+        for (const auto& c : w.colors) colors.push_back({{"name", c.name}, {"color", c.color}, {"tile", c.tile}, {"probability", c.probability}});
+        for (const auto& [id, wid] : w.tiles) tiles.push_back({{"tileid", id}, {"wangid", wid}});
+        ws.push_back({{"name", w.name}, {"type", w.type}, {"tile", w.tile}, {"colors", colors}, {"wangtiles", tiles}});
+    }
+    return ws;
 }
 
 Tileset tilesetFromTiledJson(const json& j, const fs::path& dir) {
@@ -587,14 +829,56 @@ Tileset tilesetFromTiledJson(const json& j, const fs::path& dir) {
     t.imageHeight = j.value("imageheight", 0);
     if (j.contains("tiles") && j["tiles"].is_array()) {
         for (const auto& tile : j["tiles"]) {
+            const int id = tile.value("id", 0);
             Properties p = propsFromTiledJson(tile.value("properties", json::array()));
             const std::string type = tile.value("type", tile.value("class", std::string()));
             if (!type.empty()) p["type"] = {"string", type};
-            if (!p.empty()) t.tileProps[tile.value("id", 0)] = std::move(p);
+            if (!p.empty()) t.tileProps[id] = std::move(p);
+            for (const auto& f : tile.value("animation", json::array())) t.animations[id].push_back({f.value("tileid", 0), f.value("duration", 100)});
+            if (tile.contains("objectgroup") && tile["objectgroup"].is_object()) {
+                for (const auto& o : tile["objectgroup"].value("objects", json::array())) t.tileShapes[id].push_back(objectFromTiledJson(o));
+            }
         }
     }
+    t.wangsets = wangsetsFromJson(j.value("wangsets", json::array()));
     attachImage(t);
     return t;
+}
+
+json tilesetTiledJson(const Tileset& t, const fs::path& dir) {
+    json tj = {{"firstgid", t.firstGid}, {"name", t.name}, {"tilewidth", t.tileWidth}, {"tileheight", t.tileHeight},
+               {"spacing", t.spacing},   {"margin", t.margin}, {"columns", t.columns}, {"tilecount", t.tileCount}};
+    if (!t.image.empty()) {
+        tj["image"] = relativeTo(t.image, dir);
+        tj["imagewidth"] = t.imageWidth;
+        tj["imageheight"] = t.imageHeight;
+    }
+    std::set<int> ids;
+    for (const auto& [id, props] : t.tileProps) ids.insert(id);
+    for (const auto& [id, frames] : t.animations) ids.insert(id);
+    for (const auto& [id, shapes] : t.tileShapes) ids.insert(id);
+    if (!ids.empty()) {
+        json tiles = json::array();
+        for (int id : ids) {
+            json tile = {{"id", id}};
+            if (auto it = t.tileProps.find(id); it != t.tileProps.end()) tile["properties"] = propsTiledJson(it->second);
+            if (auto it = t.animations.find(id); it != t.animations.end()) {
+                json frames = json::array();
+                for (const auto& f : it->second) frames.push_back({{"tileid", f.tile}, {"duration", f.duration}});
+                tile["animation"] = frames;
+            }
+            if (auto it = t.tileShapes.find(id); it != t.tileShapes.end()) {
+                json objs = json::array();
+                for (const auto& ob : it->second) objs.push_back(objectTiledJson(ob));
+                tile["objectgroup"] = {{"type", "objectgroup"}, {"draworder", "index"}, {"name", ""}, {"opacity", 1}, {"visible", true},
+                                       {"x", 0},           {"y", 0},             {"objects", objs}};
+            }
+            tiles.push_back(tile);
+        }
+        tj["tiles"] = tiles;
+    }
+    if (!t.wangsets.empty()) tj["wangsets"] = wangsetsJson(t.wangsets);
+    return tj;
 }
 
 Tileset externalTileset(const fs::path& file) {
@@ -610,119 +894,198 @@ Tileset externalTileset(const fs::path& file) {
     return tilesetFromTiledJson(j, file.parent_path());
 }
 
-void tmxLayers(Map& m, const XmlNode& parent, const fs::path& dir, bool parentVisible, double parentOpacity) {
-    for (const auto& c : parent.children) {
-        const bool visible = parentVisible && c.get("visible", "1") != "0";
-        const double opacity = parentOpacity * c.getNum("opacity", 1.0);
-        if (c.name == "group") {
-            tmxLayers(m, c, dir, visible, opacity);
-        } else if (c.name == "layer") {
-            Layer l;
-            l.id = c.getInt("id");
-            l.name = c.get("name", "Layer " + std::to_string(m.layers.size() + 1));
-            l.visible = visible;
-            l.opacity = opacity;
-            l.props = propsFromXml(c);
-            const std::size_t count = static_cast<std::size_t>(m.width) * m.height;
-            const XmlNode* d = c.child("data");
-            if (!d) throw std::runtime_error("layer " + l.name + " has no <data>");
-            if (d->child("chunk")) throw std::runtime_error("infinite maps (chunked layers) aren't supported; turn off Map > Infinite in Tiled");
-            const std::string enc = d->get("encoding");
-            if (enc == "csv") {
-                l.cells = parseNumbers(d->text, count);
-            } else if (enc == "base64") {
-                l.cells = unpackGids(inflate(base64Decode(d->text), d->get("compression")), count);
-            } else if (enc.empty()) {
-                for (const auto& t : d->children) {
-                    if (t.name == "tile") l.cells.push_back(static_cast<std::uint32_t>(std::strtoul(t.get("gid", "0").c_str(), nullptr, 10)));
-                }
-                l.cells.resize(count, 0);
-            } else {
-                throw std::runtime_error("unknown tile encoding '" + enc + "'");
-            }
-            m.layers.push_back(std::move(l));
-        } else if (c.name == "objectgroup") {
-            Layer l;
-            l.id = c.getInt("id");
-            l.kind = LayerKind::Objects;
-            l.name = c.get("name", "Objects " + std::to_string(m.layers.size() + 1));
-            l.visible = visible;
-            l.opacity = opacity;
-            l.props = propsFromXml(c);
-            for (const auto& o : c.children) {
-                if (o.name != "object") continue;
-                MapObject ob;
-                ob.id = o.getInt("id");
-                ob.name = o.get("name");
-                ob.type = o.get("type", o.get("class"));
-                ob.x = o.getNum("x");
-                ob.y = o.getNum("y");
-                ob.width = o.getNum("width");
-                ob.height = o.getNum("height");
-                if (o.child("point")) ob.shape = "point";
-                else if (o.child("ellipse")) ob.shape = "ellipse";
-                ob.props = propsFromXml(o);
-                const std::string gid = o.get("gid");
-                if (!gid.empty()) {
-                    ob.props["gid"] = {"int", gid};
-                    ob.y -= ob.height;  // tile objects are anchored bottom-left in Tiled
-                }
-                l.objects.push_back(std::move(ob));
-            }
-            m.layers.push_back(std::move(l));
+// What a group passes down to its layers, and where an infinite map's chunks start.
+struct LayerCtx {
+    bool visible = true;
+    double opacity = 1.0;
+    double offsetX = 0, offsetY = 0;
+    double parallaxX = 1, parallaxY = 1;
+    std::string tint;
+    int originX = 0, originY = 0;  // cell of an infinite map that becomes (0, 0)
+};
+
+LayerCtx childCtx(const LayerCtx& p, bool visible, double opacity, double ox, double oy, double px, double py, const std::string& tint) {
+    LayerCtx c = p;
+    c.visible = p.visible && visible;
+    c.opacity = p.opacity * opacity;
+    c.offsetX += ox;
+    c.offsetY += oy;
+    c.parallaxX *= px;
+    c.parallaxY *= py;
+    if (!tint.empty()) c.tint = tint;
+    return c;
+}
+
+void applyCtx(Layer& l, const LayerCtx& c, const Map& m) {
+    l.visible = c.visible;
+    l.opacity = c.opacity;
+    l.offsetX = c.offsetX;
+    l.offsetY = c.offsetY;
+    l.parallaxX = c.parallaxX;
+    l.parallaxY = c.parallaxY;
+    l.tint = c.tint;
+    for (auto& ob : l.objects) {
+        ob.x -= c.originX * m.tileWidth;
+        ob.y -= c.originY * m.tileHeight;
+    }
+    if (l.kind == LayerKind::Image) {
+        l.offsetX -= c.originX * m.tileWidth;
+        l.offsetY -= c.originY * m.tileHeight;
+    }
+}
+
+// Writes a chunk's gids into the layer at its place in the finite map.
+void placeChunk(const Map& m, Layer& l, const std::vector<std::uint32_t>& cells, int cx, int cy, int cw, int ch) {
+    for (int y = 0; y < ch; ++y) {
+        for (int x = 0; x < cw; ++x) {
+            const std::size_t i = static_cast<std::size_t>(y) * cw + x;
+            if (i < cells.size() && m.inside(cx + x, cy + y)) m.set(l, cx + x, cy + y, cells[i]);
         }
     }
 }
 
-void tiledJsonLayers(Map& m, const json& layers, const fs::path& dir, bool parentVisible, double parentOpacity) {
+std::vector<std::uint32_t> xmlCells(const XmlNode& d, const std::string& enc, const std::string& compression, std::size_t count) {
+    if (enc == "csv") return parseNumbers(d.text, count);
+    if (enc == "base64") return unpackGids(inflate(base64Decode(d.text), compression), count);
+    if (enc.empty()) {
+        std::vector<std::uint32_t> cells;
+        for (const auto& t : d.children) {
+            if (t.name == "tile") cells.push_back(static_cast<std::uint32_t>(std::strtoul(t.get("gid", "0").c_str(), nullptr, 10)));
+        }
+        cells.resize(count, 0);
+        return cells;
+    }
+    throw std::runtime_error("unknown tile encoding '" + enc + "'");
+}
+
+// Cell bounds of every chunk under `parent` (TMX), for infinite maps.
+void tmxChunkBounds(const XmlNode& parent, int& x0, int& y0, int& x1, int& y1) {
+    for (const auto& c : parent.children) {
+        if (c.name == "group") tmxChunkBounds(c, x0, y0, x1, y1);
+        if (c.name != "layer") continue;
+        const XmlNode* d = c.child("data");
+        if (!d) continue;
+        for (const auto& ch : d->children) {
+            if (ch.name != "chunk") continue;
+            x0 = std::min(x0, ch.getInt("x"));
+            y0 = std::min(y0, ch.getInt("y"));
+            x1 = std::max(x1, ch.getInt("x") + ch.getInt("width"));
+            y1 = std::max(y1, ch.getInt("y") + ch.getInt("height"));
+        }
+    }
+}
+
+void tmxLayers(Map& m, const XmlNode& parent, const fs::path& dir, const LayerCtx& ctx) {
+    for (const auto& c : parent.children) {
+        const LayerCtx lc = childCtx(ctx, c.get("visible", "1") != "0", c.getNum("opacity", 1.0), c.getNum("offsetx"), c.getNum("offsety"),
+                                     c.getNum("parallaxx", 1.0), c.getNum("parallaxy", 1.0), c.get("tintcolor"));
+        if (c.name == "group") {
+            tmxLayers(m, c, dir, lc);
+            continue;
+        }
+        if (c.name != "layer" && c.name != "objectgroup" && c.name != "imagelayer") continue;
+        Layer l;
+        l.id = c.getInt("id");
+        l.props = propsFromXml(c);
+        if (c.name == "layer") {
+            l.name = c.get("name", "Layer " + std::to_string(m.layers.size() + 1));
+            const std::size_t count = static_cast<std::size_t>(m.width) * m.height;
+            const XmlNode* d = c.child("data");
+            if (!d) throw std::runtime_error("layer " + l.name + " has no <data>");
+            const std::string enc = d->get("encoding"), comp = d->get("compression");
+            if (d->child("chunk")) {
+                l.cells.assign(count, 0);
+                for (const auto& ch : d->children) {
+                    if (ch.name != "chunk") continue;
+                    const int cw = ch.getInt("width"), chh = ch.getInt("height");
+                    placeChunk(m, l, xmlCells(ch, enc, comp, static_cast<std::size_t>(std::max(0, cw * chh))), ch.getInt("x") - ctx.originX,
+                               ch.getInt("y") - ctx.originY, cw, chh);
+                }
+            } else {
+                l.cells = xmlCells(*d, enc, comp, count);
+            }
+        } else if (c.name == "objectgroup") {
+            l.kind = LayerKind::Objects;
+            l.name = c.get("name", "Objects " + std::to_string(m.layers.size() + 1));
+            for (const auto& o : c.children) {
+                if (o.name == "object") l.objects.push_back(objectFromXml(o));
+            }
+        } else {
+            l.kind = LayerKind::Image;
+            l.name = c.get("name", "Image " + std::to_string(m.layers.size() + 1));
+            l.repeatX = c.get("repeatx") == "1";
+            l.repeatY = c.get("repeaty") == "1";
+            if (const XmlNode* img = c.child("image")) l.image = resolveFrom(dir, img->get("source"));
+            attachLayerImage(l);
+        }
+        applyCtx(l, lc, m);
+        m.layers.push_back(std::move(l));
+    }
+}
+
+std::vector<std::uint32_t> jsonCells(const json& d, const std::string& compression, std::size_t count) {
+    if (d.is_string()) return unpackGids(inflate(base64Decode(d.get<std::string>()), compression), count);
+    std::vector<std::uint32_t> cells;
+    if (d.is_array()) {
+        for (const auto& v : d) cells.push_back(v.is_number() ? static_cast<std::uint32_t>(v.get<double>()) : 0u);
+    }
+    cells.resize(count, 0);
+    return cells;
+}
+
+void tiledJsonChunkBounds(const json& layers, int& x0, int& y0, int& x1, int& y1) {
+    if (!layers.is_array()) return;
+    for (const auto& j : layers) {
+        if (j.value("type", std::string()) == "group") tiledJsonChunkBounds(j.value("layers", json::array()), x0, y0, x1, y1);
+        for (const auto& ch : j.value("chunks", json::array())) {
+            x0 = std::min(x0, ch.value("x", 0));
+            y0 = std::min(y0, ch.value("y", 0));
+            x1 = std::max(x1, ch.value("x", 0) + ch.value("width", 0));
+            y1 = std::max(y1, ch.value("y", 0) + ch.value("height", 0));
+        }
+    }
+}
+
+void tiledJsonLayers(Map& m, const json& layers, const fs::path& dir, const LayerCtx& ctx) {
     if (!layers.is_array()) return;
     for (const auto& j : layers) {
         const std::string type = j.value("type", std::string());
-        const bool visible = parentVisible && j.value("visible", true);
-        const double opacity = parentOpacity * j.value("opacity", 1.0);
+        const LayerCtx lc = childCtx(ctx, j.value("visible", true), j.value("opacity", 1.0), j.value("offsetx", 0.0), j.value("offsety", 0.0),
+                                     j.value("parallaxx", 1.0), j.value("parallaxy", 1.0), j.value("tintcolor", std::string()));
         if (type == "group") {
-            tiledJsonLayers(m, j.value("layers", json::array()), dir, visible, opacity);
+            tiledJsonLayers(m, j.value("layers", json::array()), dir, lc);
             continue;
         }
         Layer l;
         l.id = j.value("id", 0);
         l.name = j.value("name", std::string("Layer ") + std::to_string(m.layers.size() + 1));
-        l.visible = visible;
-        l.opacity = opacity;
         l.props = propsFromTiledJson(j.value("properties", json::array()));
         if (type == "tilelayer") {
-            if (j.contains("chunks")) throw std::runtime_error("infinite maps (chunked layers) aren't supported; turn off Map > Infinite in Tiled");
             const std::size_t count = static_cast<std::size_t>(m.width) * m.height;
-            const json& d = j.value("data", json::array());
-            if (d.is_string()) {
-                l.cells = unpackGids(inflate(base64Decode(d.get<std::string>()), j.value("compression", std::string())), count);
+            const std::string comp = j.value("compression", std::string());
+            if (j.contains("chunks")) {
+                l.cells.assign(count, 0);
+                for (const auto& ch : j["chunks"]) {
+                    const int cw = ch.value("width", 0), chh = ch.value("height", 0);
+                    placeChunk(m, l, jsonCells(ch.value("data", json::array()), comp, static_cast<std::size_t>(std::max(0, cw * chh))),
+                               ch.value("x", 0) - ctx.originX, ch.value("y", 0) - ctx.originY, cw, chh);
+                }
             } else {
-                for (const auto& v : d) l.cells.push_back(v.is_number() ? static_cast<std::uint32_t>(v.get<double>()) : 0u);
-                l.cells.resize(count, 0);
+                l.cells = jsonCells(j.value("data", json::array()), comp, count);
             }
         } else if (type == "objectgroup") {
             l.kind = LayerKind::Objects;
-            for (const auto& o : j.value("objects", json::array())) {
-                MapObject ob;
-                ob.id = o.value("id", 0);
-                ob.name = o.value("name", std::string());
-                ob.type = o.value("type", o.value("class", std::string()));
-                ob.x = o.value("x", 0.0);
-                ob.y = o.value("y", 0.0);
-                ob.width = o.value("width", 0.0);
-                ob.height = o.value("height", 0.0);
-                if (o.value("point", false)) ob.shape = "point";
-                else if (o.value("ellipse", false)) ob.shape = "ellipse";
-                ob.props = propsFromTiledJson(o.value("properties", json::array()));
-                if (o.contains("gid")) {
-                    ob.props["gid"] = {"int", jsonText(o["gid"])};
-                    ob.y -= ob.height;
-                }
-                l.objects.push_back(std::move(ob));
-            }
+            for (const auto& o : j.value("objects", json::array())) l.objects.push_back(objectFromTiledJson(o));
+        } else if (type == "imagelayer") {
+            l.kind = LayerKind::Image;
+            l.image = resolveFrom(dir, j.value("image", std::string()));
+            l.repeatX = j.value("repeatx", false);
+            l.repeatY = j.value("repeaty", false);
+            attachLayerImage(l);
         } else {
-            continue;  // image layers are skipped
+            continue;
         }
+        applyCtx(l, lc, m);
         m.layers.push_back(std::move(l));
     }
 }
@@ -731,6 +1094,18 @@ Properties layerPropsOut(const Layer& l) {
     Properties p = l.props;
     if (l.collision) p["collision"] = {"bool", "true"};
     return p;
+}
+
+std::string layerAttrsXml(const Layer& l) {
+    std::string extra;
+    if (!l.visible) extra += " visible=\"0\"";
+    if (l.opacity < 1.0) extra += " opacity=\"" + num(l.opacity) + "\"";
+    if (!l.tint.empty()) extra += " tintcolor=\"" + esc(l.tint) + "\"";
+    if (l.offsetX != 0) extra += " offsetx=\"" + num(l.offsetX) + "\"";
+    if (l.offsetY != 0) extra += " offsety=\"" + num(l.offsetY) + "\"";
+    if (l.parallaxX != 1) extra += " parallaxx=\"" + num(l.parallaxX) + "\"";
+    if (l.parallaxY != 1) extra += " parallaxy=\"" + num(l.parallaxY) + "\"";
+    return extra;
 }
 
 }  // namespace
@@ -746,27 +1121,10 @@ std::string toTmx(const Map& m, const fs::path& dir, const std::string& encoding
     if (!m.background.empty()) o << " backgroundcolor=\"" << esc(m.background) << "\"";
     o << " nextlayerid=\"" << m.nextLayerId << "\" nextobjectid=\"" << m.nextObjectId << "\">\n";
     propsXml(o, m.props, " ");
-    for (const auto& t : m.tilesets) {
-        o << " <tileset firstgid=\"" << t.firstGid << "\" name=\"" << esc(t.name) << "\" tilewidth=\"" << t.tileWidth << "\" tileheight=\""
-          << t.tileHeight << "\"";
-        if (t.spacing) o << " spacing=\"" << t.spacing << "\"";
-        if (t.margin) o << " margin=\"" << t.margin << "\"";
-        o << " tilecount=\"" << t.tileCount << "\" columns=\"" << t.columns << "\">\n";
-        if (!t.image.empty()) {
-            o << "  <image source=\"" << esc(relativeTo(t.image, dir)) << "\" width=\"" << t.imageWidth << "\" height=\"" << t.imageHeight << "\"/>\n";
-        }
-        for (const auto& [id, props] : t.tileProps) {
-            o << "  <tile id=\"" << id << "\">\n";
-            propsXml(o, props, "   ");
-            o << "  </tile>\n";
-        }
-        o << " </tileset>\n";
-    }
+    for (const auto& t : m.tilesets) tilesetXml(o, t, dir);
     for (const auto& l : m.layers) {
         const std::string common = " id=\"" + std::to_string(l.id) + "\" name=\"" + esc(l.name) + "\"";
-        std::string extra;
-        if (!l.visible) extra += " visible=\"0\"";
-        if (l.opacity < 1.0) extra += " opacity=\"" + num(l.opacity) + "\"";
+        const std::string extra = layerAttrsXml(l);
         if (l.kind == LayerKind::Tiles) {
             o << " <layer" << common << " width=\"" << m.width << "\" height=\"" << m.height << "\"" << extra << ">\n";
             propsXml(o, layerPropsOut(l), "  ");
@@ -785,25 +1143,19 @@ std::string toTmx(const Map& m, const fs::path& dir, const std::string& encoding
                 o << "</data>\n";
             }
             o << " </layer>\n";
+        } else if (l.kind == LayerKind::Image) {
+            o << " <imagelayer" << common << extra << (l.repeatX ? " repeatx=\"1\"" : "") << (l.repeatY ? " repeaty=\"1\"" : "") << ">\n";
+            if (!l.image.empty()) {
+                o << "  <image source=\"" << esc(relativeTo(l.image, dir)) << "\"";
+                if (l.pixels) o << " width=\"" << l.pixels->width() << "\" height=\"" << l.pixels->height() << "\"";
+                o << "/>\n";
+            }
+            propsXml(o, layerPropsOut(l), "  ");
+            o << " </imagelayer>\n";
         } else {
             o << " <objectgroup" << common << extra << ">\n";
             propsXml(o, layerPropsOut(l), "  ");
-            for (const auto& ob : l.objects) {
-                o << "  <object id=\"" << ob.id << "\"";
-                if (!ob.name.empty()) o << " name=\"" << esc(ob.name) << "\"";
-                if (!ob.type.empty()) o << " type=\"" << esc(ob.type) << "\"";
-                o << " x=\"" << num(ob.x) << "\" y=\"" << num(ob.y) << "\"";
-                if (ob.shape != "point" && (ob.width > 0 || ob.height > 0)) o << " width=\"" << num(ob.width) << "\" height=\"" << num(ob.height) << "\"";
-                if (ob.props.empty() && ob.shape == "rect") {
-                    o << "/>\n";
-                    continue;
-                }
-                o << ">\n";
-                propsXml(o, ob.props, "   ");
-                if (ob.shape == "point") o << "   <point/>\n";
-                if (ob.shape == "ellipse") o << "   <ellipse/>\n";
-                o << "  </object>\n";
-            }
+            for (const auto& ob : l.objects) objectXml(o, ob, "  ");
             o << " </objectgroup>\n";
         }
     }
@@ -816,8 +1168,19 @@ Map fromTmx(const std::string& text, const fs::path& dir) {
     if (root.name != "map") throw std::runtime_error("not a TMX map (root element is <" + root.name + ">)");
     const std::string orient = root.get("orientation", "orthogonal");
     if (orient != "orthogonal") throw std::runtime_error(orient + " maps aren't supported (only orthogonal)");
-    if (root.get("infinite") == "1") throw std::runtime_error("infinite maps aren't supported; turn off Map > Infinite in Tiled");
-    Map m = newMap(root.getInt("width"), root.getInt("height"), root.getInt("tilewidth", 16), root.getInt("tileheight", 16));
+    LayerCtx ctx;
+    int width = root.getInt("width"), height = root.getInt("height");
+    if (root.get("infinite") == "1") {
+        // an infinite map becomes a finite one just big enough for its chunks
+        int x0 = 1 << 30, y0 = 1 << 30, x1 = -(1 << 30), y1 = -(1 << 30);
+        tmxChunkBounds(root, x0, y0, x1, y1);
+        if (x1 <= x0 || y1 <= y0) x0 = y0 = 0, x1 = y1 = 1;
+        ctx.originX = x0;
+        ctx.originY = y0;
+        width = x1 - x0;
+        height = y1 - y0;
+    }
+    Map m = newMap(width, height, root.getInt("tilewidth", 16), root.getInt("tileheight", 16));
     checkSize(m);
     m.background = root.get("backgroundcolor");
     m.nextLayerId = root.getInt("nextlayerid", 1);
@@ -834,7 +1197,7 @@ Map fromTmx(const std::string& text, const fs::path& dir) {
         t.firstGid = static_cast<std::uint32_t>(c.getInt("firstgid", 1));
         m.tilesets.push_back(std::move(t));
     }
-    tmxLayers(m, root, dir, true, 1.0);
+    tmxLayers(m, root, dir, ctx);
     finish(m);
     return m;
 }
@@ -859,21 +1222,7 @@ std::string toTmj(const Map& m, const fs::path& dir, const std::string& encoding
     j["nextobjectid"] = m.nextObjectId;
     if (!m.props.empty()) j["properties"] = propsTiledJson(m.props);
     json ts = json::array();
-    for (const auto& t : m.tilesets) {
-        json tj = {{"firstgid", t.firstGid}, {"name", t.name}, {"tilewidth", t.tileWidth}, {"tileheight", t.tileHeight},
-                   {"spacing", t.spacing},   {"margin", t.margin}, {"columns", t.columns}, {"tilecount", t.tileCount}};
-        if (!t.image.empty()) {
-            tj["image"] = relativeTo(t.image, dir);
-            tj["imagewidth"] = t.imageWidth;
-            tj["imageheight"] = t.imageHeight;
-        }
-        if (!t.tileProps.empty()) {
-            json tiles = json::array();
-            for (const auto& [id, props] : t.tileProps) tiles.push_back({{"id", id}, {"properties", propsTiledJson(props)}});
-            tj["tiles"] = tiles;
-        }
-        ts.push_back(tj);
-    }
+    for (const auto& t : m.tilesets) ts.push_back(tilesetTiledJson(t, dir));
     j["tilesets"] = ts;
     json layers = json::array();
     for (const auto& l : m.layers) {
@@ -889,24 +1238,31 @@ std::string toTmj(const Map& m, const fs::path& dir, const std::string& encoding
             } else {
                 lj["data"] = l.cells;
             }
+        } else if (l.kind == LayerKind::Image) {
+            lj["type"] = "imagelayer";
+            lj["image"] = relativeTo(l.image, dir);
+            if (l.pixels) {
+                lj["imagewidth"] = l.pixels->width();
+                lj["imageheight"] = l.pixels->height();
+            }
+            lj["repeatx"] = l.repeatX;
+            lj["repeaty"] = l.repeatY;
         } else {
             lj["type"] = "objectgroup";
             lj["draworder"] = "topdown";
             json objs = json::array();
-            for (const auto& ob : l.objects) {
-                json oj = {{"id", ob.id},         {"name", ob.name}, {"type", ob.type},      {"x", ob.x},       {"y", ob.y},
-                           {"width", ob.width}, {"height", ob.height}, {"rotation", 0}, {"visible", true}};
-                if (ob.shape == "point") oj["point"] = true;
-                if (ob.shape == "ellipse") oj["ellipse"] = true;
-                if (!ob.props.empty()) oj["properties"] = propsTiledJson(ob.props);
-                objs.push_back(oj);
-            }
+            for (const auto& ob : l.objects) objs.push_back(objectTiledJson(ob));
             lj["objects"] = objs;
         }
         lj["x"] = 0;
         lj["y"] = 0;
         lj["opacity"] = l.opacity;
         lj["visible"] = l.visible;
+        if (l.offsetX != 0) lj["offsetx"] = l.offsetX;
+        if (l.offsetY != 0) lj["offsety"] = l.offsetY;
+        if (l.parallaxX != 1) lj["parallaxx"] = l.parallaxX;
+        if (l.parallaxY != 1) lj["parallaxy"] = l.parallaxY;
+        if (!l.tint.empty()) lj["tintcolor"] = l.tint;
         if (Properties p = layerPropsOut(l); !p.empty()) lj["properties"] = propsTiledJson(p);
         layers.push_back(lj);
     }
@@ -919,8 +1275,18 @@ Map fromTmj(const std::string& text, const fs::path& dir) {
     if (j.is_discarded() || !j.is_object()) throw std::runtime_error("not valid JSON");
     const std::string orient = j.value("orientation", std::string("orthogonal"));
     if (orient != "orthogonal") throw std::runtime_error(orient + " maps aren't supported (only orthogonal)");
-    if (j.value("infinite", false)) throw std::runtime_error("infinite maps aren't supported; turn off Map > Infinite in Tiled");
-    Map m = newMap(j.value("width", 0), j.value("height", 0), j.value("tilewidth", 16), j.value("tileheight", 16));
+    LayerCtx ctx;
+    int width = j.value("width", 0), height = j.value("height", 0);
+    if (j.value("infinite", false)) {
+        int x0 = 1 << 30, y0 = 1 << 30, x1 = -(1 << 30), y1 = -(1 << 30);
+        tiledJsonChunkBounds(j.value("layers", json::array()), x0, y0, x1, y1);
+        if (x1 <= x0 || y1 <= y0) x0 = y0 = 0, x1 = y1 = 1;
+        ctx.originX = x0;
+        ctx.originY = y0;
+        width = x1 - x0;
+        height = y1 - y0;
+    }
+    Map m = newMap(width, height, j.value("tilewidth", 16), j.value("tileheight", 16));
     checkSize(m);
     m.background = j.value("backgroundcolor", std::string());
     m.nextLayerId = j.value("nextlayerid", 1);
@@ -931,7 +1297,7 @@ Map fromTmj(const std::string& text, const fs::path& dir) {
         t.firstGid = tj.value("firstgid", 1u);
         m.tilesets.push_back(std::move(t));
     }
-    tiledJsonLayers(m, j.value("layers", json::array()), dir, true, 1.0);
+    tiledJsonLayers(m, j.value("layers", json::array()), dir, ctx);
     finish(m);
     return m;
 }
@@ -956,13 +1322,43 @@ std::string toPlainJson(const Map& m, const fs::path& dir) {
         json tiles = json::object();
         for (const auto& [id, props] : t.tileProps) tiles[std::to_string(id)] = propsPlain(props);
         tj["tiles"] = tiles;
+        if (!t.animations.empty()) {
+            json anims = json::object();
+            for (const auto& [id, frames] : t.animations) {
+                json fs = json::array();
+                for (const auto& f : frames) fs.push_back({{"tile", f.tile}, {"duration", f.duration}});
+                anims[std::to_string(id)] = fs;
+            }
+            tj["animations"] = anims;
+        }
+        if (!t.tileShapes.empty()) {
+            json shapes = json::object();
+            for (const auto& [id, objs] : t.tileShapes) {
+                json a = json::array();
+                for (const auto& ob : objs) a.push_back(objectTiledJson(ob));
+                shapes[std::to_string(id)] = a;
+            }
+            tj["shapes"] = shapes;
+        }
+        if (!t.wangsets.empty()) tj["wangsets"] = wangsetsJson(t.wangsets);
         ts.push_back(tj);
     }
     j["tilesets"] = ts;
     json layers = json::array();
     for (const auto& l : m.layers) {
-        json lj = {{"name", l.name}, {"type", l.kind == LayerKind::Tiles ? "tiles" : "objects"}, {"visible", l.visible}, {"opacity", l.opacity}};
+        json lj = {{"name", l.name},
+                   {"type", l.kind == LayerKind::Tiles ? "tiles" : l.kind == LayerKind::Image ? "image" : "objects"},
+                   {"visible", l.visible},
+                   {"opacity", l.opacity}};
         if (l.collision) lj["collision"] = true;
+        if (l.offsetX != 0 || l.offsetY != 0) lj["offset"] = {l.offsetX, l.offsetY};
+        if (l.parallaxX != 1 || l.parallaxY != 1) lj["parallax"] = {l.parallaxX, l.parallaxY};
+        if (!l.tint.empty()) lj["tint"] = l.tint;
+        if (l.kind == LayerKind::Image) {
+            lj["image"] = relativeTo(l.image, dir);
+            if (l.repeatX) lj["repeatX"] = true;
+            if (l.repeatY) lj["repeatY"] = true;
+        }
         lj["properties"] = propsPlain(l.props);
         if (l.kind == LayerKind::Tiles) {
             json rows = json::array();
@@ -972,12 +1368,20 @@ std::string toPlainJson(const Map& m, const fs::path& dir) {
                 rows.push_back(row);
             }
             lj["data"] = rows;
-        } else {
+        } else if (l.kind == LayerKind::Objects) {
             json objs = json::array();
             for (const auto& ob : l.objects) {
-                objs.push_back({{"id", ob.id},         {"name", ob.name},     {"type", ob.type},   {"x", ob.x},
-                                {"y", ob.y},           {"width", ob.width}, {"height", ob.height}, {"shape", ob.shape},
-                                {"properties", propsPlain(ob.props)}});
+                json oj = {{"id", ob.id},         {"name", ob.name},     {"type", ob.type},   {"x", ob.x},
+                           {"y", ob.y},           {"width", ob.width}, {"height", ob.height}, {"shape", ob.shape},
+                           {"properties", propsPlain(ob.props)}};
+                if (ob.rotation != 0) oj["rotation"] = ob.rotation;
+                if (ob.gid) oj["gid"] = ob.gid;
+                if (!ob.points.empty()) {
+                    json pts = json::array();
+                    for (const auto& pt : ob.points) pts.push_back({pt.x, pt.y});
+                    oj["points"] = pts;
+                }
+                objs.push_back(oj);
             }
             lj["objects"] = objs;
         }
@@ -1039,14 +1443,39 @@ Map fromPlainJson(const std::string& text, const fs::path& dir) {
         t.tileCount = tj.value("tileCount", 0);
         const json tiles = tj.value("tiles", json::object());
         for (auto it = tiles.begin(); it != tiles.end(); ++it) t.tileProps[std::atoi(it.key().c_str())] = propsFromPlain(it.value());
+        const json anims = tj.value("animations", json::object());
+        for (auto it = anims.begin(); it != anims.end(); ++it) {
+            for (const auto& f : it.value()) t.animations[std::atoi(it.key().c_str())].push_back({f.value("tile", 0), f.value("duration", 100)});
+        }
+        const json shapes = tj.value("shapes", json::object());
+        for (auto it = shapes.begin(); it != shapes.end(); ++it) {
+            for (const auto& o : it.value()) t.tileShapes[std::atoi(it.key().c_str())].push_back(objectFromTiledJson(o));
+        }
+        t.wangsets = wangsetsFromJson(tj.value("wangsets", json::array()));
         attachImage(t);
         m.tilesets.push_back(std::move(t));
     }
     for (const auto& lj : j.value("layers", json::array())) {
         Layer l;
         l.name = lj.value("name", std::string("Layer ") + std::to_string(m.layers.size() + 1));
-        l.kind = lj.value("type", std::string("tiles")) == "objects" ? LayerKind::Objects : LayerKind::Tiles;
+        const std::string type = lj.value("type", std::string("tiles"));
+        l.kind = type == "objects" ? LayerKind::Objects : type == "image" ? LayerKind::Image : LayerKind::Tiles;
         l.visible = lj.value("visible", true);
+        if (lj.contains("offset") && lj["offset"].is_array() && lj["offset"].size() == 2) {
+            l.offsetX = lj["offset"][0].get<double>();
+            l.offsetY = lj["offset"][1].get<double>();
+        }
+        if (lj.contains("parallax") && lj["parallax"].is_array() && lj["parallax"].size() == 2) {
+            l.parallaxX = lj["parallax"][0].get<double>();
+            l.parallaxY = lj["parallax"][1].get<double>();
+        }
+        l.tint = lj.value("tint", std::string());
+        if (l.kind == LayerKind::Image) {
+            l.image = resolveFrom(dir, lj.value("image", std::string()));
+            l.repeatX = lj.value("repeatX", false);
+            l.repeatY = lj.value("repeatY", false);
+            attachLayerImage(l);
+        }
         l.opacity = lj.value("opacity", 1.0);
         l.collision = lj.value("collision", false);
         l.props = propsFromPlain(lj.value("properties", json::object()));
@@ -1061,7 +1490,7 @@ Map fromPlainJson(const std::string& text, const fs::path& dir) {
                 }
                 for (int x = 0; x < m.width && x < static_cast<int>(row.size()); ++x) m.set(l, x, y, row[static_cast<std::size_t>(x)].get<std::uint32_t>());
             }
-        } else {
+        } else if (l.kind == LayerKind::Objects) {
             for (const auto& o : lj.value("objects", json::array())) {
                 MapObject ob;
                 ob.id = o.value("id", 0);
@@ -1072,6 +1501,11 @@ Map fromPlainJson(const std::string& text, const fs::path& dir) {
                 ob.width = o.value("width", 0.0);
                 ob.height = o.value("height", 0.0);
                 ob.shape = o.value("shape", std::string("rect"));
+                ob.rotation = o.value("rotation", 0.0);
+                ob.gid = o.value("gid", 0u);
+                for (const auto& pt : o.value("points", json::array())) {
+                    if (pt.is_array() && pt.size() == 2) ob.points.push_back({pt[0].get<double>(), pt[1].get<double>()});
+                }
                 ob.props = propsFromPlain(o.value("properties", json::object()));
                 l.objects.push_back(std::move(ob));
             }
@@ -1132,6 +1566,10 @@ std::string toLdtk(const Map& m, const fs::path& dir, std::vector<std::string>* 
     // LDtk lists layers top first
     for (std::size_t li = m.layers.size(); li-- > 0;) {
         const Layer& l = m.layers[li];
+        if (l.kind == LayerKind::Image) {
+            if (warnings) warnings->push_back("image layer " + l.name + " was left out (LDtk has level backgrounds, not image layers)");
+            continue;
+        }
         const int layerUid = uid++;
         json inst = {{"__identifier", l.name}, {"__cWid", m.width}, {"__cHei", m.height}, {"__gridSize", grid}, {"__opacity", l.opacity},
                      {"__pxTotalOffsetX", 0}, {"__pxTotalOffsetY", 0}, {"__tilesetDefUid", nullptr}, {"__tilesetRelPath", nullptr},
@@ -1404,6 +1842,341 @@ Map fromLdtk(const std::string& text, const fs::path& dir, const std::string& le
     return m;
 }
 
+// ---- Godot 4 scenes -----------------------------------------------------------------
+
+namespace {
+
+std::string gdString(const std::string& s) {
+    std::string out = "\"";
+    for (char c : s) {
+        if (c == '"' || c == '\\') out += '\\';
+        if (c == '\n') {
+            out += "\\n";
+            continue;
+        }
+        out += c;
+    }
+    return out + "\"";
+}
+
+std::string gdNum(double v) { return num(v); }
+
+std::string gdVec(double x, double y) { return "Vector2(" + gdNum(x) + ", " + gdNum(y) + ")"; }
+
+std::string gdValue(const Property& p) {
+    if (p.type == "bool") return p.value == "true" ? "true" : "false";
+    if (p.type == "int") return std::to_string(std::strtoll(p.value.c_str(), nullptr, 10));
+    if (p.type == "float") return gdNum(std::strtod(p.value.c_str(), nullptr));
+    if (p.type == "color") {
+        if (auto c = Color::parse(p.value)) {
+            return "Color(" + gdNum(c->r / 255.0) + ", " + gdNum(c->g / 255.0) + ", " + gdNum(c->b / 255.0) + ", " + gdNum(c->a / 255.0) + ")";
+        }
+    }
+    return gdString(p.value);
+}
+
+// A node name Godot accepts: no . : @ / " % and unique among its siblings.
+std::string gdName(std::string name, std::set<std::string>& taken, const std::string& fallback) {
+    for (auto& c : name) {
+        if (std::string(".:@/\"%").find(c) != std::string::npos) c = '_';
+    }
+    if (name.empty()) name = fallback;
+    std::string out = name;
+    for (int i = 2; taken.count(out); ++i) out = name + std::to_string(i);
+    taken.insert(out);
+    return out;
+}
+
+std::string gdPoints(const std::vector<ObjPoint>& pts, double dx = 0, double dy = 0) {
+    std::string s = "PackedVector2Array(";
+    for (std::size_t i = 0; i < pts.size(); ++i) s += (i ? ", " : "") + gdNum(pts[i].x + dx) + ", " + gdNum(pts[i].y + dy);
+    return s + ")";
+}
+
+bool truthy(const Properties* p, const std::string& key) {
+    if (!p) return false;
+    auto it = p->find(key);
+    return it != p->end() && (it->second.value == "true" || it->second.value == "1");
+}
+
+}  // namespace
+
+std::string toGodotScene(const Map& m, const fs::path& dir, const std::string& name, std::vector<std::string>* warnings) {
+    auto warn = [&](const std::string& w) {
+        if (warnings) warnings->push_back(w);
+    };
+    std::ostringstream ext, sub, nodes;
+    int extN = 0, subN = 0;
+    std::map<std::string, std::string> textures;  // image path -> ext id
+    auto texture = [&](const std::string& image) {
+        auto it = textures.find(image);
+        if (it != textures.end()) return it->second;
+        const std::string id = std::to_string(++extN) + "_tex";
+        ext << "[ext_resource type=\"Texture2D\" path=" << gdString(relativeTo(image, dir)) << " id=\"" << id << "\"]\n";
+        return textures[image] = id;
+    };
+
+    // which tiles each tileset uses, so the atlas defines them
+    std::map<const Tileset*, std::set<int>> used;
+    bool anyTiles = false;
+    for (const auto& l : m.layers) {
+        if (l.kind != LayerKind::Tiles || l.collision) continue;
+        for (auto c : l.cells) {
+            if (const Tileset* t = m.tilesetFor(c)) used[t].insert(static_cast<int>((c & kGidMask) - t->firstGid));
+        }
+    }
+    std::map<const Tileset*, int> sourceId;
+    std::string tilesetId;
+    bool physics = false;
+    for (const auto& t : m.tilesets) {
+        for (const auto& [id, shapes] : t.tileShapes) physics = physics || !shapes.empty();
+        for (const auto& [id, props] : t.tileProps) physics = physics || truthy(&props, "solid");
+    }
+    {
+        std::ostringstream atlases;
+        int source = 0;
+        for (const auto& t : m.tilesets) {
+            if (t.image.empty()) {
+                if (used.count(&t)) warn("tileset " + t.name + " has no image, so its tiles were left out");
+                continue;
+            }
+            if (!t.animations.empty()) warn("tileset " + t.name + ": tile animations aren't exported (set them up in Godot's TileSet editor)");
+            std::set<int> ids = used.count(&t) ? used[&t] : std::set<int>();
+            for (const auto& [id, shapes] : t.tileShapes) ids.insert(id);
+            for (const auto& [id, props] : t.tileProps) {
+                if (truthy(&props, "solid")) ids.insert(id);
+            }
+            const std::string sid = "TileSetAtlasSource_" + std::to_string(++subN);
+            atlases << "[sub_resource type=\"TileSetAtlasSource\" id=\"" << sid << "\"]\n";
+            atlases << "texture = ExtResource(\"" << texture(t.image) << "\")\n";
+            if (t.margin) atlases << "margins = Vector2i(" << t.margin << ", " << t.margin << ")\n";
+            if (t.spacing) atlases << "separation = Vector2i(" << t.spacing << ", " << t.spacing << ")\n";
+            atlases << "texture_region_size = Vector2i(" << t.tileWidth << ", " << t.tileHeight << ")\n";
+            const double hw = t.tileWidth / 2.0, hh = t.tileHeight / 2.0;
+            for (int id : ids) {
+                if (id < 0 || id >= t.tileCount) continue;
+                const std::string key = std::to_string(id % std::max(1, t.columns)) + ":" + std::to_string(id / std::max(1, t.columns)) + "/0";
+                atlases << key << " = 0\n";
+                int poly = 0;
+                if (auto it = t.tileShapes.find(id); it != t.tileShapes.end()) {
+                    for (const auto& shape : it->second) {
+                        const std::vector<ObjPoint> pts = objectWorldPoints(shape);
+                        if (pts.size() < 3) continue;
+                        atlases << key << "/physics_layer_0/polygon_" << poly++ << "/points = " << gdPoints(pts, -hw, -hh) << "\n";
+                    }
+                }
+                if (poly == 0 && truthy(t.tileProps.count(id) ? &t.tileProps.at(id) : nullptr, "solid")) {
+                    atlases << key << "/physics_layer_0/polygon_0/points = " << gdPoints({{0, 0}, {2 * hw, 0}, {2 * hw, 2 * hh}, {0, 2 * hh}}, -hw, -hh) << "\n";
+                }
+            }
+            atlases << "\n";
+            sourceId[&t] = source++;
+        }
+        sub << atlases.str();
+        tilesetId = "TileSet_" + std::to_string(++subN);
+        sub << "[sub_resource type=\"TileSet\" id=\"" << tilesetId << "\"]\n";
+        sub << "tile_size = Vector2i(" << m.tileWidth << ", " << m.tileHeight << ")\n";
+        if (physics) sub << "physics_layer_0/collision_layer = 1\n";
+        for (const auto& [t, sidx] : sourceId) {
+            (void)t;
+            sub << "sources/" << sidx << " = SubResource(\"TileSetAtlasSource_" << (sidx + 1) << "\")\n";
+        }
+        sub << "\n";
+    }
+
+    std::set<std::string> rootNames;
+    nodes << "[node name=" << gdString(gdName(name, rootNames, "Level")) << " type=\"Node2D\"]\n";
+    if (!m.props.empty()) {
+        for (const auto& [k, v] : m.props) nodes << "metadata/" << k << " = " << gdValue(v) << "\n";
+    }
+    nodes << "\n";
+
+    // one TileMap, a layer per tile layer, in map order; image layers and objects as their own nodes
+    std::ostringstream tilemap;
+    int tmLayer = 0;
+    for (const auto& l : m.layers) {
+        if (l.kind != LayerKind::Tiles || l.collision) continue;
+        anyTiles = true;
+        if (l.offsetX != 0 || l.offsetY != 0) warn("layer " + l.name + ": TileMap layers have no offset, so its offset was dropped");
+        tilemap << "layer_" << tmLayer << "/name = " << gdString(l.name) << "\n";
+        if (!l.visible) tilemap << "layer_" << tmLayer << "/enabled = false\n";
+        if (l.opacity < 1) tilemap << "layer_" << tmLayer << "/modulate = Color(1, 1, 1, " << gdNum(l.opacity) << ")\n";
+        tilemap << "layer_" << tmLayer << "/z_index = " << tmLayer << "\n";
+        tilemap << "layer_" << tmLayer << "/tile_data = PackedInt32Array(";
+        bool first = true;
+        int skipped = 0;
+        for (int y = 0; y < m.height; ++y) {
+            for (int x = 0; x < m.width; ++x) {
+                const std::uint32_t raw = m.at(l, x, y);
+                const Tileset* t = m.tilesetFor(raw);
+                if (!t) continue;
+                auto sit = sourceId.find(t);
+                if (sit == sourceId.end()) {
+                    ++skipped;
+                    continue;
+                }
+                const int id = static_cast<int>((raw & kGidMask) - t->firstGid);
+                const int ax = id % std::max(1, t->columns), ay = id / std::max(1, t->columns);
+                // Godot 4.2+ keeps flips in the alternative id: flip_h 1<<12, flip_v 1<<13, transpose 1<<14
+                const std::uint32_t alt = (raw & kFlipH ? 1u << 12 : 0u) | (raw & kFlipV ? 1u << 13 : 0u) | (raw & kFlipD ? 1u << 14 : 0u);
+                const auto a = static_cast<std::int32_t>((static_cast<std::uint32_t>(y) << 16) | (static_cast<std::uint32_t>(x) & 0xFFFFu));
+                const auto b = static_cast<std::int32_t>(static_cast<std::uint32_t>(sit->second) | (static_cast<std::uint32_t>(ax) << 16));
+                const auto c = static_cast<std::int32_t>(static_cast<std::uint32_t>(ay) | (alt << 16));
+                tilemap << (first ? "" : ", ") << a << ", " << b << ", " << c;
+                first = false;
+            }
+        }
+        tilemap << ")\n";
+        if (skipped) warn("layer " + l.name + ": " + std::to_string(skipped) + " tiles without a tileset image were left out");
+        ++tmLayer;
+    }
+    // image layers below the TileMap keep their order relative to each other
+    for (const auto& l : m.layers) {
+        if (l.kind != LayerKind::Image || l.image.empty()) continue;
+        nodes << "[node name=" << gdString(gdName(l.name, rootNames, "Image")) << " type=\"Sprite2D\" parent=\".\"]\n";
+        if (!l.visible) nodes << "visible = false\n";
+        if (l.opacity < 1 || !l.tint.empty()) {
+            Color tc{255, 255, 255, 255};
+            if (auto c = Color::parse(l.tint); c && !l.tint.empty()) tc = *c;
+            nodes << "modulate = Color(" << gdNum(tc.r / 255.0) << ", " << gdNum(tc.g / 255.0) << ", " << gdNum(tc.b / 255.0) << ", " << gdNum(l.opacity) << ")\n";
+        }
+        nodes << "position = " << gdVec(l.offsetX, l.offsetY) << "\n";
+        nodes << "texture = ExtResource(\"" << texture(l.image) << "\")\n";
+        nodes << "centered = false\n";
+        if (l.repeatX || l.repeatY) {
+            nodes << "texture_repeat = 2\nregion_enabled = true\n";
+            nodes << "region_rect = Rect2(0, 0, " << (l.repeatX ? m.width * m.tileWidth : (l.pixels ? l.pixels->width() : 0)) << ", "
+                  << (l.repeatY ? m.height * m.tileHeight : (l.pixels ? l.pixels->height() : 0)) << ")\n";
+        }
+        nodes << "\n";
+    }
+    if (anyTiles) {
+        nodes << "[node name=" << gdString(gdName("TileMap", rootNames, "TileMap")) << " type=\"TileMap\" parent=\".\"]\n";
+        nodes << "tile_set = SubResource(\"" << tilesetId << "\")\nformat = 2\n" << tilemap.str() << "\n";
+    }
+
+    auto shapeNode = [&](const MapObject& ob, const std::string& parent, std::set<std::string>& names) {
+        if (ob.shape == "rect" || (ob.shape == "ellipse" && std::abs(ob.width - ob.height) > 1e-9)) {
+            if (ob.shape == "ellipse") {
+                std::vector<ObjPoint> pts;
+                MapObject local = ob;
+                local.x = local.y = 0;
+                local.rotation = 0;
+                for (const auto& p : objectWorldPoints(local)) pts.push_back(p);
+                nodes << "[node name=" << gdString(gdName("Shape", names, "Shape")) << " type=\"CollisionPolygon2D\" parent=" << gdString(parent) << "]\n";
+                nodes << "polygon = " << gdPoints(pts) << "\n\n";
+                return;
+            }
+            const std::string sid = "RectangleShape2D_" + std::to_string(++subN);
+            sub << "[sub_resource type=\"RectangleShape2D\" id=\"" << sid << "\"]\nsize = " << gdVec(ob.width, ob.height) << "\n\n";
+            nodes << "[node name=" << gdString(gdName("Shape", names, "Shape")) << " type=\"CollisionShape2D\" parent=" << gdString(parent) << "]\n";
+            nodes << "position = " << gdVec(ob.width / 2, ob.height / 2) << "\nshape = SubResource(\"" << sid << "\")\n\n";
+        } else if (ob.shape == "ellipse") {
+            const std::string sid = "CircleShape2D_" + std::to_string(++subN);
+            sub << "[sub_resource type=\"CircleShape2D\" id=\"" << sid << "\"]\nradius = " << gdNum(ob.width / 2) << "\n\n";
+            nodes << "[node name=" << gdString(gdName("Shape", names, "Shape")) << " type=\"CollisionShape2D\" parent=" << gdString(parent) << "]\n";
+            nodes << "position = " << gdVec(ob.width / 2, ob.height / 2) << "\nshape = SubResource(\"" << sid << "\")\n\n";
+        } else if (ob.shape == "polygon" || ob.shape == "polyline") {
+            nodes << "[node name=" << gdString(gdName("Shape", names, "Shape")) << " type=\"CollisionPolygon2D\" parent=" << gdString(parent) << "]\n";
+            if (ob.shape == "polyline") nodes << "build_mode = 1\n";
+            nodes << "polygon = " << gdPoints(ob.points) << "\n\n";
+        }
+    };
+
+    // collision grids become one StaticBody2D of merged rectangles
+    for (const auto& l : m.layers) {
+        if (l.kind != LayerKind::Tiles || !l.collision) continue;
+        std::vector<bool> solid(l.cells.size());
+        for (std::size_t i = 0; i < l.cells.size(); ++i) solid[i] = (l.cells[i] & kGidMask) != 0;
+        const std::string body = gdName(l.name, rootNames, "Collision");
+        nodes << "[node name=" << gdString(body) << " type=\"StaticBody2D\" parent=\".\"]\n\n";
+        std::set<std::string> names;
+        for (const auto& r : mergeRects(m.width, m.height, solid)) {
+            MapObject ob;
+            ob.width = r.w * m.tileWidth;
+            ob.height = r.h * m.tileHeight;
+            const std::string sid = "RectangleShape2D_" + std::to_string(++subN);
+            sub << "[sub_resource type=\"RectangleShape2D\" id=\"" << sid << "\"]\nsize = " << gdVec(ob.width, ob.height) << "\n\n";
+            nodes << "[node name=" << gdString(gdName("Shape", names, "Shape")) << " type=\"CollisionShape2D\" parent=" << gdString(body) << "]\n";
+            nodes << "position = " << gdVec(r.x * m.tileWidth + ob.width / 2, r.y * m.tileHeight + ob.height / 2) << "\nshape = SubResource(\"" << sid
+                  << "\")\n\n";
+        }
+    }
+
+    // object layers: a Node2D each; points are Marker2D, shapes Area2D (StaticBody2D for collision), tile objects Sprite2D
+    for (const auto& l : m.layers) {
+        if (l.kind != LayerKind::Objects) continue;
+        const std::string group = gdName(l.name, rootNames, "Objects");
+        nodes << "[node name=" << gdString(group) << " type=\"Node2D\" parent=\".\"]\n";
+        if (!l.visible) nodes << "visible = false\n";
+        if (l.offsetX != 0 || l.offsetY != 0) nodes << "position = " << gdVec(l.offsetX, l.offsetY) << "\n";
+        for (const auto& [k, v] : l.props) nodes << "metadata/" << k << " = " << gdValue(v) << "\n";
+        nodes << "\n";
+        std::set<std::string> names;
+        for (const auto& ob : l.objects) {
+            const bool solid = l.collision || ob.type == "collision";
+            std::string type = ob.shape == "point" ? "Marker2D" : solid ? "StaticBody2D" : "Area2D";
+            const Tileset* tt = ob.gid ? m.tilesetFor(ob.gid) : nullptr;
+            if (tt && !tt->image.empty()) type = "Sprite2D";
+            const std::string nm = gdName(ob.name.empty() ? (ob.type.empty() ? "Object" : ob.type) : ob.name, names, "Object");
+            nodes << "[node name=" << gdString(nm) << " type=\"" << type << "\" parent=" << gdString(group) << "]\n";
+            nodes << "position = " << gdVec(ob.x, ob.y) << "\n";
+            if (std::abs(ob.rotation) > 1e-9) nodes << "rotation = " << gdNum(ob.rotation * 3.14159265358979323846 / 180) << "\n";
+            if (type == "Sprite2D") {
+                const int id = static_cast<int>((ob.gid & kGidMask) - tt->firstGid);
+                nodes << "texture = ExtResource(\"" << texture(tt->image) << "\")\ncentered = false\nregion_enabled = true\n";
+                nodes << "region_rect = Rect2(" << tt->tileX(id) << ", " << tt->tileY(id) << ", " << tt->tileWidth << ", " << tt->tileHeight << ")\n";
+                if (ob.width > 0 && ob.height > 0 && (ob.width != tt->tileWidth || ob.height != tt->tileHeight)) {
+                    nodes << "scale = " << gdVec(ob.width / tt->tileWidth, ob.height / tt->tileHeight) << "\n";
+                }
+                if (ob.gid & kFlipH) nodes << "flip_h = true\n";
+                if (ob.gid & kFlipV) nodes << "flip_v = true\n";
+            }
+            if (!ob.type.empty()) nodes << "metadata/type = " << gdString(ob.type) << "\n";
+            for (const auto& [k, v] : ob.props) nodes << "metadata/" << k << " = " << gdValue(v) << "\n";
+            nodes << "\n";
+            if (type == "Area2D" || type == "StaticBody2D") shapeNode(ob, group + "/" + nm, names);
+        }
+    }
+
+    std::ostringstream out;
+    out << "[gd_scene load_steps=" << (extN + subN + 1) << " format=3]\n\n";
+    if (extN) out << ext.str() << "\n";
+    out << sub.str() << nodes.str();
+    return out.str();
+}
+
+// ---- Tiled worlds -------------------------------------------------------------------
+
+std::string toWorldJson(const std::vector<WorldMap>& maps, const fs::path& dir) {
+    json a = json::array();
+    for (const auto& w : maps) {
+        json e = {{"fileName", relativeTo(w.file, dir)}, {"x", w.x}, {"y", w.y}};
+        if (w.width > 0) e["width"] = w.width;
+        if (w.height > 0) e["height"] = w.height;
+        a.push_back(e);
+    }
+    json j = {{"maps", a}, {"onlyShowAdjacentMaps", false}, {"type", "world"}};
+    return j.dump(4) + "\n";
+}
+
+std::vector<WorldMap> fromWorldJson(const std::string& text, const fs::path& dir) {
+    json j = json::parse(text, nullptr, false);
+    if (j.is_discarded() || !j.is_object()) throw std::runtime_error("not a Tiled world file (expected JSON with a maps list)");
+    std::vector<WorldMap> out;
+    for (const auto& e : j.value("maps", json::array())) {
+        WorldMap w;
+        w.file = resolveFrom(dir, e.value("fileName", std::string()));
+        w.x = e.value("x", 0);
+        w.y = e.value("y", 0);
+        w.width = e.value("width", 0);
+        w.height = e.value("height", 0);
+        if (!w.file.empty()) out.push_back(std::move(w));
+    }
+    if (j.contains("patterns") && out.empty()) throw std::runtime_error("world files with regex patterns aren't supported; list the maps instead");
+    return out;
+}
+
 // ---- CSV ----------------------------------------------------------------------------
 
 std::string layerCsv(const Map& m, const Layer& l, bool local) {
@@ -1460,6 +2233,7 @@ std::string formatFor(const fs::path& path) {
     if (ext == ".tmx" || ext == ".xml") return "tmx";
     if (ext == ".tmj") return "tmj";
     if (ext == ".ldtk") return "ldtk";
+    if (ext == ".tscn") return "tscn";
     if (ext == ".csv") return "csv";
     if (ext == ".json") {
         std::error_code ec;
@@ -1484,6 +2258,7 @@ Map loadMap(const fs::path& path) {
     if (format == "tmx") return fromTmx(text, dir);
     if (format == "tmj") return fromTmj(text, dir);
     if (format == "ldtk") return fromLdtk(text, dir);
+    if (format == "tscn") throw std::runtime_error("Godot scenes are export only; open the .tmx/.tmj/.json the scene was made from");
     if (format == "json") {
         json j = json::parse(text, nullptr, false);
         if (j.is_object() && j.contains("tiledversion")) return fromTmj(text, dir);
@@ -1499,6 +2274,7 @@ void saveMap(const Map& map, const fs::path& path, const std::string& format, co
     else if (format == "tmj") writeFile(path, toTmj(map, dir, encoding));
     else if (format == "json") writeFile(path, toPlainJson(map, dir));
     else if (format == "ldtk") writeFile(path, toLdtk(map, dir));
+    else if (format == "tscn") writeFile(path, toGodotScene(map, dir, path.stem().string()));
     else if (format == "png") {
         RenderOptions o;
         o.scale = scale;

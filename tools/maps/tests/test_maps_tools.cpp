@@ -1,6 +1,7 @@
 // Tests for the maps toolset added on top of the basics: feature and vertex
 // editing, overlays, dissolve, select by location, track tools, FIT and OSM
 // files, routing, search, bookmarks, the view and maps.hit.
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -497,6 +498,14 @@ void testViewAndHit(const fs::path& dir) {
     CHECK(run(s, "maps.save doc=" + m + " path=" + q(dir / "paris.wwmap")).ok);
     CHECK(run(s, "maps.bookmark_delete doc=" + m + " name=all").ok);
     CHECK(!run(s, "maps.bookmark_delete doc=" + m + " name=all").ok);
+    // a layer's area gets a 6% margin of its longer side, however small the layer
+    {
+        const BBox lb = map.layer("pins")->bounds();
+        CHECK(run(s, "maps.bookmark doc=" + m + " name=pins layer=pins").ok);
+        const double pad = std::max(lb.width(), lb.height()) * 0.06;
+        CHECK(near(map.bookmarks.back().box.minX, lb.minX - pad, 1e-9) && near(map.bookmarks.back().box.maxY, lb.maxY + pad, 1e-9));
+        CHECK(run(s, "maps.bookmark_delete doc=" + m + " name=pins").ok);
+    }
     CHECK(run(s, "maps.view doc=" + m + " reset=true").ok && !map.view);
     r = run(s, "maps.open path=" + q(dir / "paris.wwmap"));
     CHECK(r.ok);

@@ -63,8 +63,9 @@ std::optional<BBox> areaFrom(const Map& m, const Params& p, std::string& error) 
             error = "'" + l->name + "' is empty";
             return std::nullopt;
         }
-        const double mx = std::max(b.width() * 0.06, 0.002), my = std::max(b.height() * 0.06, 0.002);
-        return BBox{b.minX - mx, b.minY - my, b.maxX + mx, b.maxY + my};
+        // a 6% margin of the longer side (a lone point gets about 200 m)
+        const double size = std::max(b.width(), b.height()), pad = size > 1e-9 ? size * 0.06 : 0.002;
+        return BBox{b.minX - pad, b.minY - pad, b.maxX + pad, b.maxY + pad};
     }
     return std::nullopt;
 }

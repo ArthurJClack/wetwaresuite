@@ -102,9 +102,13 @@ void registerFileCommands(Session& session) {
             });
 
     reg.add({"circuit.open", "Open Circuit",
-             "Open a .circuit.json file, or import a KiCad netlist (.net): its parts are mapped to library symbols (R, C, LED, "
-             "Conn_01xN ...; anything else becomes a generic IC), laid out on a grid and joined with net labels.",
-             {{"path", ParamType::String, "file to open (.circuit.json, .json or .net)", true}, previewParam()},
+             "Open a .circuit.json file or a KiCad 6/7/8 design: a schematic (.kicad_sch; sub-sheets are flattened onto one sheet and "
+             "the .kicad_pcb beside it is loaded too), a board on its own (.kicad_pcb; parts get boxed symbols labelled with their "
+             "nets), a project (.kicad_pro) or a netlist (.net: parts mapped to library symbols, laid out on a grid, joined with labels). "
+             "KiCad's own symbol and footprint drawings are kept.",
+             {{"path", ParamType::String, "file to open (.circuit.json, .json, .kicad_sch, .kicad_pcb, .kicad_pro or .net)", true},
+              {"board", ParamType::Bool, ".kicad_sch: also load the .kicad_pcb of the same name when there is one", false, {}, true},
+              previewParam()},
              false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
@@ -114,7 +118,21 @@ void registerFileCommands(Session& session) {
                         auto doc = std::make_shared<CircuitDoc>();
                         std::vector<std::string> warnings;
                         const std::string ext = lower(path.extension().string());
-                        if (ext == ".net" || text.find("(export") != std::string::npos) {
+                        fs::path sch = path;
+                        if (ext == ".kicad_pro") sch = fs::path(path).replace_extension(".kicad_sch");
+                        const std::string head = text.substr(0, std::min<std::size_t>(text.size(), 200));
+                        if (ext == ".kicad_pro" || ext == ".kicad_sch" || head.find("(kicad_sch") != std::string::npos) {
+                            doc->circuit = fromKicadSchematic(sch == path ? text : readFile(sch), sch.string(), &warnings);
+                            const fs::path pcb = fs::path(sch).replace_extension(".kicad_pcb");
+                            std::error_code ec;
+                            if (boolParam(p, "board", true) && fs::exists(pcb, ec)) {
+                                mergeKicadPcb(doc->circuit, readFile(pcb), &warnings);
+                                warnings.insert(warnings.begin(), "board loaded from " + pcb.string());
+                            }
+                        } else if (ext == ".kicad_pcb" || head.find("(kicad_pcb") != std::string::npos) {
+                            doc->circuit = fromKicadPcb(text, &warnings);
+                            if (doc->circuit.title.empty()) doc->circuit.title = path.stem().string();
+                        } else if (ext == ".net" || text.find("(export") != std::string::npos) {
                             doc->circuit = fromKicadNetlist(text, &warnings);
                         } else {
                             doc->circuit = fromJson(text);
@@ -129,16 +147,40 @@ void registerFileCommands(Session& session) {
                 });
             });
 
-    reg.add({"circuit.save", "Save Circuit", "Save the circuit (schematic and board) as .circuit.json; reopen it with circuit.open.",
-             {docParam(), {"path", ParamType::String, "output file, e.g. blinky.circuit.json", true}}, false},
+    reg.add({"circuit.save", "Save Circuit",
+             "Save the circuit (schematic and board) as .circuit.json, or for KiCad 7+: .kicad_sch (the schematic, symbols "
+             "embedded), .kicad_pcb (the board: footprints, tracks, vias, pours, outline) or .kicad_pro (a project with both).",
+             {docParam(), {"path", ParamType::String, "output file, e.g. blinky.circuit.json or blinky.kicad_pro", true}}, false},
             circuitCommand(
                 session,
                 [](CircuitDoc& doc, const Params& p) {
                     const fs::path path = stringParam(p, "path");
+                    const std::string ext = lower(path.extension().string());
                     std::string error;
-                    if (!writeFile(path, toJson(doc.circuit), error)) return Result::failure(error);
-                    doc.path = path.string();
-                    return edited("saved " + path.string(), p).with("path", path.string());
+                    std::vector<std::string> written;
+                    auto put = [&](const fs::path& f, const std::string& data) {
+                        if (!writeFile(f, data, error)) return false;
+                        written.push_back(f.string());
+                        return true;
+                    };
+                    bool ok = true;
+                    if (ext == ".kicad_sch") {
+                        ok = put(path, toKicadSchematic(doc.circuit));
+                    } else if (ext == ".kicad_pcb") {
+                        ok = put(path, toKicadPcb(doc.circuit));
+                    } else if (ext == ".kicad_pro") {
+                        const std::string name = path.filename().string();
+                        ok = put(path, "{\n  \"meta\": {\n    \"filename\": \"" + name + "\",\n    \"version\": 1\n  }\n}\n") &&
+                             put(fs::path(path).replace_extension(".kicad_sch"), toKicadSchematic(doc.circuit)) &&
+                             put(fs::path(path).replace_extension(".kicad_pcb"), toKicadPcb(doc.circuit));
+                    } else {
+                        ok = put(path, toJson(doc.circuit));
+                        doc.path = path.string();
+                    }
+                    if (!ok) return Result::failure(error);
+                    std::string files;
+                    for (const auto& f : written) files += (files.empty() ? "" : ", ") + f;
+                    return edited("saved " + files, p).with("path", path.string());
                 },
                 View::Schematic, false));
 

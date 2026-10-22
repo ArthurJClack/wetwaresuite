@@ -58,6 +58,14 @@ inline std::string lower(std::string s) {
     return s;
 }
 
+// A footprint read from a KiCad board that some part already uses, by name (null if none).
+inline std::shared_ptr<const Footprint> importedFootprint(const Circuit& c, const std::string& name) {
+    for (const auto& part : c.parts) {
+        if (part.customFootprint && part.customFootprint->name == name) return part.customFootprint;
+    }
+    return nullptr;
+}
+
 inline ParamSpec docParam() { return {"doc", ParamType::String, "id of an open circuit, e.g. ckt1", true}; }
 inline ParamSpec previewParam() { return {"preview", ParamType::Bool, "attach a PNG of the result (schematic or board)", false, {}, false}; }
 

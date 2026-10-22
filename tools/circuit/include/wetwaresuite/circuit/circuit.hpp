@@ -101,6 +101,14 @@ struct FootprintEntry {
 const std::vector<FootprintEntry>& footprintCatalog();
 // "R_0805", "SOIC-8", "DIP-14", "PinHeader_1x04", "PinHeader_2x10", ... Null when unknown.
 std::shared_ptr<const Footprint> findFootprint(const std::string& name);
+// A boxed symbol with one pin per (number, name), half left and half right, for parts that come
+// from a board file with no schematic.
+Symbol makeBoxSymbol(const std::string& name, const std::string& prefix, const std::string& value,
+                     const std::vector<std::pair<std::string, std::string>>& pins);
+// Fills in a symbol's bounds after its shapes and pins are set.
+void finishSymbol(Symbol& s);
+// Same for a footprint's courtyard.
+void finishFootprint(Footprint& f);
 
 // ---- the document model ---------------------------------------------------------------
 
@@ -120,6 +128,11 @@ struct Part {
     bool mirror = false;
     std::map<std::string, std::string> fields;  // mpn, note, ... (go to the BOM)
     PcbPlace pcb;
+    // a symbol or footprint that isn't in the built-in library (read from a KiCad file); `symbol` and
+    // `footprint` then hold their names. Shared and never changed, so copies (undo) stay cheap.
+    std::shared_ptr<const Symbol> customSymbol;
+    std::shared_ptr<const Footprint> customFootprint;
+    int unit = 0;  // multi-unit KiCad parts: 1, 2 ... share one ref (and one footprint, on unit 1)
 };
 
 struct Wire {
@@ -129,6 +142,7 @@ struct Wire {
 struct Label {
     std::string name;
     Pt pos;
+    std::string kind;  // "" (local) or "global": both join every label of the same name (one sheet)
 };
 
 // Copper layers: 0 = F.Cu (top), 1 = B.Cu (bottom), 2 = In1.Cu, 3 = In2.Cu (4-layer boards).
@@ -264,6 +278,17 @@ std::string netlistJson(const Circuit& c, const Netlist& nl);
 // name matches (R, C, LED, ...), others as generic ICs, laid out on a grid and
 // joined with net labels. `warnings` collects what didn't map.
 Circuit fromKicadNetlist(const std::string& text, std::vector<std::string>* warnings);
+
+// KiCad 6/7/8 files. Reading keeps KiCad's own symbol and footprint drawings (as custom symbols and
+// footprints on the parts); hierarchical sheets are flattened onto one sheet. `path` lets the schematic
+// reader find sub-sheet files. They throw std::runtime_error on files they can't read.
+Circuit fromKicadSchematic(const std::string& text, const std::string& path, std::vector<std::string>* warnings);
+// A board on its own: parts get a boxed symbol whose pins are labelled with the pads' nets.
+Circuit fromKicadPcb(const std::string& text, std::vector<std::string>* warnings);
+// Puts a KiCad board (footprints, tracks, vias, zones, outline) onto a circuit whose parts match by reference.
+void mergeKicadPcb(Circuit& c, const std::string& text, std::vector<std::string>* warnings);
+std::string toKicadSchematic(const Circuit& c);
+std::string toKicadPcb(const Circuit& c);
 
 // ---- schematic editing helpers ------------------------------------------------------
 

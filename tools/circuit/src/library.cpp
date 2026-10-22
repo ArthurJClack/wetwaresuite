@@ -941,4 +941,24 @@ std::shared_ptr<const Symbol> findSymbol(const std::string& name, int pins, cons
     return ptr;
 }
 
+void finishSymbol(Symbol& s) { computeBounds(s); }
+
+Symbol makeBoxSymbol(const std::string& name, const std::string& prefix, const std::string& value,
+                     const std::vector<std::pair<std::string, std::string>>& pins) {
+    std::vector<std::string> left, right;
+    std::size_t longest = 1;
+    for (std::size_t i = 0; i < pins.size(); ++i) {
+        const std::string entry = pins[i].first + ":" + (pins[i].second.empty() ? pins[i].first : pins[i].second);
+        longest = std::max(longest, pins[i].second.size());
+        (i < (pins.size() + 1) / 2 ? left : right).push_back(entry);
+    }
+    const double hw = std::clamp(std::round(1.0 + static_cast<double>(longest) * 0.45), 2.0, 6.0);
+    Symbol s = block(name, value, prefix, value, "", left, right, hw);
+    s.joinSameName = false;
+    s.category = "ic";
+    for (auto& p : s.pins) p.type = PinType::Passive;
+    computeBounds(s);
+    return s;
+}
+
 }  // namespace wetwaresuite::circuit

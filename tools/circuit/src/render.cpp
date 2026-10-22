@@ -233,7 +233,9 @@ void drawSymbol(SheetPainter& sp, const Part& part, const Symbol& sym, const She
         placeLabel(sym.valuePos, part.value, 0.65, kBody);
         return;
     }
-    placeLabel(sym.refPos, part.ref, 0.7, kText);
+    // units of one part: U1A, U1B ...
+    const std::string unit = part.unit > 0 && part.unit <= 26 ? std::string(1, static_cast<char>('A' + part.unit - 1)) : "";
+    placeLabel(sym.refPos, part.ref + unit, 0.7, kText);
     placeLabel(sym.valuePos, part.value, 0.65, kText);
 }
 

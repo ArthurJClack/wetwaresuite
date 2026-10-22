@@ -610,4 +610,6 @@ std::shared_ptr<const Footprint> findFootprint(const std::string& name) {
     return f;
 }
 
+void finishFootprint(Footprint& f) { finish(f); }
+
 }  // namespace wetwaresuite::circuit

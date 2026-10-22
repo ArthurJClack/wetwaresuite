@@ -68,6 +68,7 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".scene.json", {"model", "render.open"}}, {".anim.json", {"model", "animate.open"}},
         // game
         {".tmx", {"game", "levels.open"}}, {".tmj", {"game", "levels.open"}}, {".ldtk", {"game", "levels.open"}},
+        {".world", {"game", "levels.world_open"}}, {".aseprite", {"game", "forge.sprite_open"}}, {".ase", {"game", "forge.sprite_open"}},
         // cad
         {".stl", {"cad", "slicer.load"}}, {".3mf", {"cad", "slicer.load"}}, {".dxf", {"cad", "blueprint.open"}},
         {".gcode", {"cad", ""}}, {".step", {"cad", ""}}, {".stp", {"cad", ""}}, {".wwcad", {"cad", "cad.open"}}, {".wwfit", {"cad", "fit.open"}},

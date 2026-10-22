@@ -99,7 +99,9 @@ std::vector<const CommandInfo*> toolCommands(const std::string& tool, const std:
 // ---- opening files ---------------------------------------------------------
 
 // Which "<tool>.open" commands to try for a file, best guess first: tools whose
-// open command mentions the file's extension come before the rest.
+// open command mentions the file's extension come before the rest. Commands
+// named "<tool>.<thing>_open" that take path= and mention the extension (such
+// as forge.sprite_open for .aseprite) are tried too.
 std::vector<std::string> openCandidates(const std::string& path, const std::vector<std::string>& tools,
                                         const std::vector<CommandInfo>& commands);
 

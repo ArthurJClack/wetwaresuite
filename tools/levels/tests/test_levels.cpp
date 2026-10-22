@@ -839,8 +839,22 @@ void testGodotAndWorld(const fs::path& dir) {
     CHECK(run(s, "levels.layer_add doc=lvl1 name=deco").ok);
     CHECK(run(s, "levels.fill_rect doc=lvl1 layer=deco x=0 y=0 width=3 height=2 tile=0 tileset=blob").ok);
     CHECK(run(s, "levels.autotile doc=lvl1 layer=deco mode=blob tileset=blob edges=empty").ok);
-    const Map& m1 = mapOf(s, "lvl1");
+    const std::string lvl1 = "lvl1";
+    const Map& m1 = mapOf(s, lvl1);
     CHECK(m1.at(m1.layers[1], 0, 0) == m1.tilesets[1].firstGid + static_cast<std::uint32_t>(blobIndex(4 | 8 | 16)));
+    // what the window's tile picker reads
+    {
+        Result tp = run(s, "levels.tileset_preview doc=lvl1 tileset=blob");
+        CHECK(tp.ok && intField(tp, "tiles") == 47 && intField(tp, "columns") == 8 && intField(tp, "first_gid") == 17);
+        CHECK(tp.attachments.size() == 1);
+        const raster::Image sheet = raster::decode(tp.attachments[0].bytes);
+        CHECK(sheet.width() == 8 * 16 && sheet.height() == 6 * 16);
+        CHECK(sheet.at(1, 1) == m1.tilesets[1].pixels->at(1, 1));
+        CHECK(!run(s, "levels.tileset_preview doc=lvl1 tileset=nope").ok);
+        Result info = run(s, "levels.info doc=lvl1");
+        const Value* kinds = info.field("layer_kinds");
+        CHECK(kinds && toText(*kinds) == "tiles,tiles");
+    }
     // random brush
     r = run(s, "levels.fill_rect doc=lvl1 layer=deco x=4 y=2 width=4 height=3 random=1,2 seed=3");
     CHECK(r.ok && intField(r, "changed") == 12);

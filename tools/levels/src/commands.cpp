@@ -472,14 +472,19 @@ void registerFileCommands(Session& session) {
                 r.message += "\nlayers (bottom first):";
                 for (std::size_t i = 0; i < m.layers.size(); ++i) r.message += "\n  " + layerLine(m, i);
                 if (!m.props.empty()) r.message += "\nproperties: " + propsText(m.props);
-                std::string layers, tilesets;
-                for (const auto& l : m.layers) layers += (layers.empty() ? "" : ",") + l.name;
+                std::string layers, kinds, tilesets;
+                for (const auto& l : m.layers) {
+                    layers += (layers.empty() ? "" : ",") + l.name;
+                    kinds += std::string(kinds.empty() ? "" : ",") +
+                             (l.kind == LayerKind::Objects ? "objects" : l.kind == LayerKind::Image ? "image" : l.collision ? "collision" : "tiles");
+                }
                 for (const auto& t : m.tilesets) tilesets += (tilesets.empty() ? "" : ",") + t.name;
                 r.with("width", static_cast<std::int64_t>(m.width))
                     .with("height", static_cast<std::int64_t>(m.height))
                     .with("tile_width", static_cast<std::int64_t>(m.tileWidth))
                     .with("tile_height", static_cast<std::int64_t>(m.tileHeight))
                     .with("layers", layers)
+                    .with("layer_kinds", kinds)
                     .with("tilesets", tilesets)
                     .with("objects", static_cast<std::int64_t>(m.objectCount()));
                 return r;
@@ -2100,6 +2105,47 @@ void registerTerrainCommands(Session& session) {
                 Result r = edited(t->name + ":" + std::to_string(tile) + " now has " + plural(shapes.size(), "collision shape"), p);
                 return r.with("shapes", static_cast<std::int64_t>(shapes.size()));
             }));
+
+    reg.add({"levels.tileset_preview", "Preview Tileset",
+             "Render a tileset's tiles as a PNG attachment, packed in its columns with no margin or spacing (tile n "
+             "at column n % columns, row n / columns), so a click on the picture names a tile. Tiles without an image "
+             "draw as their placeholder colours. Returns tileset, tiles, columns, tile_width, tile_height, first_gid.",
+             {docParam(), tilesetParam(), {"scale", ParamType::Int, "whole-number enlargement", false, {}, std::int64_t{1}}}, false, true},
+            levelCommand(session, [](LevelDoc& doc, const Params& p) {
+                std::string error;
+                Tileset* t = tilesetArg(doc.map, p, error);
+                if (!t) return Result::failure(error);
+                const int cols = std::max(1, std::min(t->columns > 0 ? t->columns : 8, std::max(1, t->tileCount)));
+                const int rows = std::max(1, (t->tileCount + cols - 1) / cols);
+                const int tw = std::max(1, t->tileWidth), th = std::max(1, t->tileHeight);
+                const int scale = clampInt(intParam(p, "scale", 1), 1, 16);
+                if (static_cast<long long>(cols) * tw * scale > 16384 || static_cast<long long>(rows) * th * scale > 16384)
+                    return Result::failure("the tileset is too big to preview at that scale");
+                Image out(cols * tw * scale, rows * th * scale);
+                for (int id = 0; id < t->tileCount; ++id) {
+                    const int ox = (id % cols) * tw, oy = (id / cols) * th;
+                    const Color flat = placeholderColor(t->firstGid + static_cast<std::uint32_t>(id));
+                    for (int y = 0; y < th; ++y) {
+                        for (int x = 0; x < tw; ++x) {
+                            Color c = flat;
+                            if (t->pixels) {
+                                const int sx = t->tileX(id) + x, sy = t->tileY(id) + y;
+                                c = sx < t->pixels->width() && sy < t->pixels->height() ? t->pixels->at(sx, sy) : Color{0, 0, 0, 0};
+                            }
+                            for (int dy = 0; dy < scale; ++dy)
+                                for (int dx = 0; dx < scale; ++dx) out.set((ox + x) * scale + dx, (oy + y) * scale + dy, c);
+                        }
+                    }
+                }
+                Result r = Result::success(t->name + ": " + std::to_string(t->tileCount) + " tiles in " + std::to_string(cols) + " columns");
+                r.attach({"image/png", raster::encodePng(out), "tileset.png"});
+                return r.with("tileset", t->name)
+                    .with("tiles", static_cast<std::int64_t>(t->tileCount))
+                    .with("columns", static_cast<std::int64_t>(cols))
+                    .with("tile_width", static_cast<std::int64_t>(tw))
+                    .with("tile_height", static_cast<std::int64_t>(th))
+                    .with("first_gid", static_cast<std::int64_t>(t->firstGid));
+            }, false));
 }
 
 // ---- worlds ------------------------------------------------------------------------

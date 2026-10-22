@@ -310,6 +310,7 @@ void Shell::toolPanelView() {
 }
 
 int Shell::tickMs() const {
+    if (canvas_.game.playing && !showHome_) return 20;  // a sprite animation is playing (game_view.cpp)
     if (!panels_) return 0;
     const bool visible = !showHome_;
     int ms = 0;

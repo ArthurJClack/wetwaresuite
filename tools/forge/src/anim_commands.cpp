@@ -521,8 +521,16 @@ void registerAnimFileCommands(Session& session) {
                                      (t.repeat ? ", " + std::to_string(t.repeat) + " times" : "");
                     }
                     if (!sp.palette.empty()) r.message += "\npalette: " + colorsText(sp.palette);
-                    std::string tags;
-                    for (const auto& t : sp.tags) tags += (tags.empty() ? "" : ",") + t.name;
+                    std::string tags, ranges, names, shown;
+                    for (const auto& t : sp.tags) {
+                        tags += (tags.empty() ? "" : ",") + t.name;
+                        ranges += (ranges.empty() ? "" : ",") + std::to_string(t.from) + "-" + std::to_string(t.to);
+                    }
+                    for (const auto& l : sp.layers) {
+                        names += (names.empty() ? "" : ",") + l.name;
+                        shown += std::string(shown.empty() ? "" : ",") + (l.visible ? "1" : "0");
+                    }
+                    r.with("layer_names", names).with("layer_visible", shown).with("tag_ranges", ranges);
                     r.with("width", static_cast<std::int64_t>(sp.width))
                         .with("height", static_cast<std::int64_t>(sp.height))
                         .with("frames", static_cast<std::int64_t>(sp.frames()))

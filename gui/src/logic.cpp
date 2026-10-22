@@ -407,14 +407,29 @@ std::vector<std::string> openCandidates(const std::string& path, const std::vect
     auto slash = path.find_last_of("/\\");
     if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) ext = lower(path.substr(dot + 1));
     std::vector<std::string> first, rest;
+    auto mentions = [&](const CommandInfo& c) {
+        const std::string desc = lower(c.description + " " + c.title);
+        return !ext.empty() && (wholeWord(desc, ext) || (ext == "jpeg" && wholeWord(desc, "jpg")) || (ext == "jpg" && wholeWord(desc, "jpeg")));
+    };
+    // "<tool>.<thing>_open" (forge.sprite_open, levels.world_open) when it names the extension and needs only path=
+    auto pathOnly = [](const CommandInfo& c) {
+        bool path = false;
+        for (const auto& p : c.params) {
+            if (p.name == "path") path = true;
+            else if (p.required) return false;
+        }
+        return path;
+    };
     for (const auto& tool : tools) {
         const std::string id = tool + ".open";
         auto it = std::find_if(commands.begin(), commands.end(), [&](const CommandInfo& c) { return c.id == id; });
-        if (it == commands.end()) continue;
-        const std::string desc = lower(it->description + " " + it->title);
-        bool mentions = !ext.empty() && (wholeWord(desc, ext) || (ext == "jpeg" && wholeWord(desc, "jpg")) ||
-                                         (ext == "jpg" && wholeWord(desc, "jpeg")));
-        (mentions ? first : rest).push_back(id);
+        if (it != commands.end()) (mentions(*it) ? first : rest).push_back(id);
+        for (const auto& c : commands) {
+            const std::string prefix = tool + ".";
+            if (c.id.rfind(prefix, 0) == 0 && c.id.size() > 5 && c.id.compare(c.id.size() - 5, 5, "_open") == 0 && pathOnly(c) && mentions(c)) {
+                first.push_back(c.id);
+            }
+        }
     }
     first.insert(first.end(), rest.begin(), rest.end());
     return first;

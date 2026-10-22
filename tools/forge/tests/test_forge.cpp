@@ -222,6 +222,14 @@ void testSprites(const fs::path& dir) {
     }
     Result inf = s.run("forge.sprite_info", {{"doc", id}});
     CHECK(inf.ok && intField(inf, "frames") == 4 && intField(inf, "layers") == 2);
+    {
+        const Value* names = inf.field("layer_names");
+        const Value* ranges = inf.field("tag_ranges");
+        const Value* shown = inf.field("layer_visible");
+        CHECK(names && toText(*names) == "Layer 1,top");
+        CHECK(ranges && toText(*ranges) == "0-1,2-3");
+        CHECK(shown && toText(*shown) == "1,1");
+    }
 
     // palette swap recolours an indexed sprite
     const Color before = doc->sprite.flatten(0).at(5, 5);

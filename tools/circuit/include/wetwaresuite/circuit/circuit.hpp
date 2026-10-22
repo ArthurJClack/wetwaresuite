@@ -55,6 +55,8 @@ struct Symbol {
     std::vector<Shape> shapes;
     bool power = false;          // a power/ground symbol: its value names a global net
     bool module = false;         // a dev board: same-named pins are joined, unused pins are fine
+    bool joinSameName = false;   // an IC whose repeated power pins (GND, VCC) are one net, as KiCad's stacked pins
+    bool inBom = true;           // false for mounting holes, test points ...
     bool showPinNumbers = false;
     bool showPinNames = false;
     Pt refPos{0, -1.2}, valuePos{0, 1.6};
@@ -82,7 +84,8 @@ struct PadDef {
     Pt pos;  // mm, footprint space
     double w = 1, h = 1;
     PadShape shape = PadShape::Rect;
-    double drill = 0;  // > 0: plated through hole on both layers; 0: SMD on the part's side
+    double drill = 0;  // > 0: through hole on every copper layer; 0: SMD on the part's side
+    bool plated = true;  // false: a non-plated hole (mounting hole), no copper
 };
 
 struct Footprint {
@@ -128,10 +131,18 @@ struct Label {
     Pt pos;
 };
 
+// Copper layers: 0 = F.Cu (top), 1 = B.Cu (bottom), 2 = In1.Cu, 3 = In2.Cu (4-layer boards).
+// Layer masks use bit (1 << layer); through holes and vias reach every layer (kAllCopper).
+constexpr int kAllCopper = 0xF;
+inline int layerBit(int layer) { return 1 << layer; }
+const char* layerName(int layer);  // "F.Cu", "B.Cu", "In1.Cu", "In2.Cu"
+const char* layerShort(int layer);  // "F", "B", "In1", "In2"
+int parseLayer(const std::string& text);  // F/top/F.Cu, B/bottom, In1, In2; -1 if unknown
+
 struct Trace {
     Pt a, b;
     double width = 0.25;
-    int layer = 0;  // 0 = top (F.Cu), 1 = bottom (B.Cu)
+    int layer = 0;  // see layerName
     std::string net;
 };
 
@@ -146,6 +157,8 @@ struct Zone {
     int layer = 1;
     double clearance = 0.3;
     double minWidth = 0.25;
+    bool thermal = true;  // join pads of its net through four spokes (thermal relief) instead of solidly
+    double spoke = 0.5;   // spoke width, mm
 };
 
 struct Rules {
@@ -160,6 +173,7 @@ struct Rules {
 };
 
 struct Board {
+    int layers = 2;           // copper layers: 2 or 4
     std::vector<Pt> outline;  // closed polygon, mm; empty = no board yet
     std::vector<Trace> traces;
     std::vector<Via> vias;
@@ -274,7 +288,8 @@ struct WorldPad {
     double w = 1, h = 1;  // after rotation
     PadShape shape = PadShape::Rect;
     double drill = 0;
-    int layers = 1;  // bit 0 = top, bit 1 = bottom
+    int layers = 1;  // layer mask: bit 0 = top, bit 1 = bottom, bits 2, 3 = inner layers
+    bool plated = true;  // false: a non-plated hole (no copper, no net)
 };
 
 std::vector<WorldPad> worldPads(const Circuit& c, const Netlist& nl);
@@ -324,11 +339,22 @@ RouteReport autoroute(Circuit& c, const Netlist& nl, const RouteOptions& options
 
 std::vector<Issue> drc(const Circuit& c, const Netlist& nl);
 
+// A trace and a via from every SMD pad of the nets (default: nets with a pour) so they reach a plane
+// on another layer. Pads a plane already reaches, or that already have a via, are left alone.
+struct FanoutReport {
+    int vias = 0, already = 0;
+    std::vector<std::string> failed;  // "U1.4 (GND)"
+};
+FanoutReport fanout(Circuit& c, const Netlist& nl, const std::vector<std::string>& nets);
+
 struct OutFile {
     std::string name, data;
 };
 // Gerber RS-274X (X2 attributes) for copper, mask, paste, silk and edge cuts, plus an Excellon drill file.
 std::vector<OutFile> fabFiles(const Circuit& c, const Netlist& nl, const std::string& base);
+// Pick-and-place (CPL) CSV: Designator,Val,Package,Mid X,Mid Y,Rotation,Layer in mm, y up; origin at the
+// board's bottom-left corner (or the board's own origin when bottomLeftOrigin is false).
+std::string placementCsv(const Circuit& c, bool bottomLeftOrigin = true);
 
 // ---- drawing ------------------------------------------------------------------------
 
@@ -343,12 +369,22 @@ pdf::Page schematicPage(const Circuit& c, const SheetStyle& style = {});
 std::string pageSvg(const pdf::Page& page);
 
 struct PcbStyle {
-    bool top = true, bottom = true, silk = true, ratsnest = true, zones = true, labels = false;
+    bool top = true, bottom = true, inner = true, silk = true, ratsnest = true, zones = true, labels = false;
     bool mirror = false;  // view from below
     std::string highlightNet;
 };
 raster::Image renderPcb(const Circuit& c, const Netlist& nl, double pxPerMm, const PcbStyle& style = {});
 std::string pcbSvg(const Circuit& c, const Netlist& nl, const PcbStyle& style = {});
+
+// The assembled board in 3D (boxes for parts, by package), orthographic, flat shaded.
+struct View3d {
+    double yaw = -25;        // degrees, turning the board counter-clockwise
+    double elevation = 50;   // degrees above the board (90 = straight down)
+    bool fromBelow = false;
+    unsigned maskColor = 0x1d6b3c;  // solder mask (green); 0x202020 black, 0x1a3f9a blue, 0x8a1a1a red
+    unsigned background = 0x1b1d22;
+};
+raster::Image renderBoard3d(const Circuit& c, const Netlist& nl, int width, int height, const View3d& view = {});
 
 // Line strokes of a small vector font (silkscreen text), height h, starting at (x, baseline y).
 std::vector<std::vector<Pt>> strokeText(const std::string& text, double x, double y, double h);

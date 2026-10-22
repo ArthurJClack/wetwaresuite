@@ -83,7 +83,7 @@ void testLibrary() {
         auto s = findSymbol(e.name, 6);
         CHECK(s != nullptr);
         if (!s) continue;
-        CHECK(!s->pins.empty());
+        CHECK(!s->pins.empty() || s->name == "mounting_hole");
         for (const auto& p : s->pins) CHECK(std::abs(p.pos.x - std::round(p.pos.x)) < 1e-9 && std::abs(p.pos.y - std::round(p.pos.y)) < 1e-9);
         if (!s->footprint.empty()) {
             auto f = findFootprint(s->footprint);
@@ -290,14 +290,14 @@ void testBoard(const fs::path& dir) {
     CHECK(run(b, "undo").ok);
     // fabrication files
     r = run(b, "circuit.gerber doc=$c path=" + q(dir / "fab"));
-    CHECK(r.ok && intField(r, "files") == 10);
+    CHECK(r.ok && intField(r, "files") == 12);
     const std::string top = readAll(dir / "fab" / "leds-F_Cu.gtl");
     CHECK(top.find("%FSLAX46Y46*%") != std::string::npos && top.find("M02*") != std::string::npos && top.find("G36*") != std::string::npos);
     CHECK(readAll(dir / "fab" / "leds-Edge_Cuts.gm1").find("D01*") != std::string::npos);
     const std::string drl = readAll(dir / "fab" / "leds.drl");
     CHECK(drl.rfind("M48", 0) == 0 && drl.find("T1C") != std::string::npos && drl.find("M30") != std::string::npos);
     CHECK(run(b, "circuit.gerber doc=$c path=" + q(dir / "fab.zip")).ok);
-    CHECK(raster::readZip(readAll(dir / "fab.zip")).size() == 10);
+    CHECK(raster::readZip(readAll(dir / "fab.zip")).size() == 12);
     CHECK(run(b, "circuit.export doc=$c view=pcb path=" + q(dir / "b.svg")).ok);
     CHECK(run(b, "circuit.export doc=$c view=pcb path=" + q(dir / "b.png")).ok);
     CHECK(fs::file_size(dir / "b.png") > 1000);

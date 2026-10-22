@@ -608,26 +608,33 @@ void drawBoard(Canvas& cv, const Circuit& c, const Netlist& nl, const PcbStyle& 
     const auto pads = worldPads(c, nl);
     const auto fills = style.zones ? fillZones(c, nl) : std::vector<ZoneFill>{};
     if (c.board.outline.size() >= 3) cv.polygon(c.board.outline, rgb(0x0f3d24));
-    const Color layerCol[2] = {rgb(0xd03c3c), rgb(0x3f74d8)};
-    const Color zoneCol[2] = {rgb(0xc03838, 90), rgb(0x3a6cd0, 90)};
+    const Color layerCol[4] = {rgb(0xd03c3c), rgb(0x3f74d8), rgb(0xc8b040), rgb(0x40b8a0)};
+    const Color zoneCol[4] = {rgb(0xc03838, 90), rgb(0x3a6cd0, 90), rgb(0xb8a038, 80), rgb(0x38a890, 80)};
     const Color padCol = rgb(0xd4aa3c);
-    for (int pass = 0; pass < 2; ++pass) {
-        const int layer = style.mirror ? pass : 1 - pass;  // the far side first
-        if ((layer == 0 && !style.top) || (layer == 1 && !style.bottom)) continue;
-        const int bit = layer == 0 ? 1 : 2;
-        cv.beginLayer(layer == (style.mirror ? 0 : 1) ? 0.75 : 0.9);
+    // the far side first: B, In2, In1, F (or the other way round from below)
+    std::vector<int> order = {1};
+    if (c.board.layers == 4) order.push_back(3), order.push_back(2);
+    order.push_back(0);
+    if (style.mirror) std::reverse(order.begin(), order.end());
+    for (int layer : order) {
+        if ((layer == 0 && !style.top) || (layer == 1 && !style.bottom) || (layer >= 2 && !style.inner)) continue;
+        const int bit = layerBit(layer);
+        const bool near = layer == (style.mirror ? 1 : 0);
+        cv.beginLayer(near ? 0.9 : layer >= 2 ? 0.6 : 0.75);
         for (const auto& f : fills) {
-            if (f.layer == layer) zoneFn(f, zoneCol[layer]);
+            if (f.layer == layer) zoneFn(f, zoneCol[std::clamp(layer, 0, 3)]);
         }
         for (const auto& t : c.board.traces) {
             if (t.layer != layer) continue;
             const bool hi = !style.highlightNet.empty() && t.net == style.highlightNet;
-            cv.capsule(t.a, t.b, t.width / 2, hi ? rgb(0xffe040) : layerCol[layer]);
+            cv.capsule(t.a, t.b, t.width / 2, hi ? rgb(0xffe040) : layerCol[std::clamp(layer, 0, 3)]);
         }
         for (const auto& p : pads) {
-            if (!(p.layers & bit)) continue;
+            if (!(p.layers & bit) || !p.plated) continue;
+            if (layer >= 2 && p.drill <= 0) continue;
             const bool hi = !style.highlightNet.empty() && p.net == style.highlightNet;
             drawPad(cv, p, hi ? rgb(0xffe040) : (p.drill > 0 ? padCol : (layer == 0 ? rgb(0xe0a050) : rgb(0x8ab0e8))));
+
         }
         cv.endLayer();
     }

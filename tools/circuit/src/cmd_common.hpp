@@ -159,5 +159,6 @@ void registerSchematicCommands(Session& session);
 void registerSchematicQueryCommands(Session& session);
 void registerPcbCommands(Session& session);
 void registerPcbOutputCommands(Session& session);
+void registerBoardToolCommands(Session& session);
 
 }  // namespace wetwaresuite::circuit::cmd

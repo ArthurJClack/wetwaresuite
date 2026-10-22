@@ -160,10 +160,11 @@ std::string toJson(const Circuit& c) {
     json b;
     json outline = json::array();
     for (const auto& p : c.board.outline) outline.push_back(pt(p));
+    b["layers"] = c.board.layers;
     b["outline"] = std::move(outline);
     json traces = json::array();
     for (const auto& t : c.board.traces) {
-        traces.push_back({{"a", pt(t.a)}, {"b", pt(t.b)}, {"width", t.width}, {"layer", t.layer == 0 ? "F" : "B"}, {"net", t.net}});
+        traces.push_back({{"a", pt(t.a)}, {"b", pt(t.b)}, {"width", t.width}, {"layer", layerShort(t.layer)}, {"net", t.net}});
     }
     b["traces"] = std::move(traces);
     json vias = json::array();
@@ -171,7 +172,7 @@ std::string toJson(const Circuit& c) {
     b["vias"] = std::move(vias);
     json zones = json::array();
     for (const auto& z : c.board.zones) {
-        zones.push_back({{"net", z.net}, {"layer", z.layer == 0 ? "F" : "B"}, {"clearance", z.clearance}, {"min_width", z.minWidth}});
+        zones.push_back({{"net", z.net}, {"layer", layerShort(z.layer)}, {"clearance", z.clearance}, {"min_width", z.minWidth}, {"thermal", z.thermal}, {"spoke", z.spoke}});
     }
     b["zones"] = std::move(zones);
     const Rules& r = c.board.rules;
@@ -229,12 +230,13 @@ Circuit fromJson(const std::string& text) {
         }
         if (j.contains("board")) {
             const auto& b = j["board"];
+            c.board.layers = b.value("layers", 2) == 4 ? 4 : 2;
             if (b.contains("outline")) {
                 for (const auto& p : b["outline"]) c.board.outline.push_back(readPt(p));
             }
             if (b.contains("traces")) {
                 for (const auto& t : b["traces"]) {
-                    c.board.traces.push_back({readPt(t["a"]), readPt(t["b"]), t.value("width", 0.25), t.value("layer", "F") == "B" ? 1 : 0, t.value("net", "")});
+                    c.board.traces.push_back({readPt(t["a"]), readPt(t["b"]), t.value("width", 0.25), std::max(0, parseLayer(t.value("layer", "F"))), t.value("net", "")});
                 }
             }
             if (b.contains("vias")) {
@@ -242,7 +244,10 @@ Circuit fromJson(const std::string& text) {
             }
             if (b.contains("zones")) {
                 for (const auto& z : b["zones"]) {
-                    c.board.zones.push_back({z.value("net", ""), z.value("layer", "B") == "F" ? 0 : 1, z.value("clearance", 0.3), z.value("min_width", 0.25)});
+                    Zone zone{z.value("net", ""), std::max(0, parseLayer(z.value("layer", "B"))), z.value("clearance", 0.3), z.value("min_width", 0.25)};
+                    zone.thermal = z.value("thermal", true);
+                    zone.spoke = z.value("spoke", 0.5);
+                    c.board.zones.push_back(zone);
                 }
             }
             if (b.contains("rules")) {

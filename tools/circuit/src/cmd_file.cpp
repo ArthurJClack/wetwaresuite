@@ -41,8 +41,9 @@ SheetStyle sheetStyle(const Params& p) {
 PcbStyle pcbStyle(const Params& p) {
     PcbStyle s;
     const std::string layers = lower(stringParam(p, "layers", "both"));
-    s.top = layers != "bottom" && layers != "b";
-    s.bottom = layers != "top" && layers != "f";
+    s.top = layers == "both" || layers == "all" || layers == "top" || layers == "f";
+    s.bottom = layers == "both" || layers == "all" || layers == "bottom" || layers == "b";
+    s.inner = layers == "both" || layers == "all" || layers == "inner";
     s.mirror = boolParam(p, "from_below", false);
     s.ratsnest = boolParam(p, "ratsnest", true);
     s.labels = boolParam(p, "net_names", false);
@@ -51,13 +52,35 @@ PcbStyle pcbStyle(const Params& p) {
 }
 
 std::vector<ParamSpec> viewParams() {
-    return {{"view", ParamType::String, "what to draw", false, {"schematic", "pcb"}, std::string("schematic")},
+    return {{"view", ParamType::String, "what to draw: the schematic, the board's copper (pcb) or the assembled board in 3D (3d)", false,
+             {"schematic", "pcb", "3d"}, std::string("schematic")},
             {"grid", ParamType::Bool, "schematic: draw the 0.1 in grid", false, {}, false},
             {"highlight", ParamType::String, "net name to draw in a highlight colour", false},
-            {"layers", ParamType::String, "pcb: top, bottom or both", false, {"both", "top", "bottom"}, std::string("both")},
+            {"layers", ParamType::String, "pcb: top, bottom, inner or both (all)", false, {"both", "top", "bottom", "inner"}, std::string("both")},
             {"from_below", ParamType::Bool, "pcb: mirror to look from the bottom side", false, {}, false},
             {"ratsnest", ParamType::Bool, "pcb: draw unrouted connections", false, {}, true},
-            {"net_names", ParamType::Bool, "pcb: write net names on pads", false, {}, false}};
+            {"net_names", ParamType::Bool, "pcb: write net names on pads", false, {}, false},
+            {"angle", ParamType::Number, "3d: turn the board by this many degrees", false, {}, -25.0},
+            {"tilt", ParamType::Number, "3d: view elevation in degrees (90 = from straight above)", false, {}, 50.0},
+            {"mask", ParamType::String, "3d: solder mask colour", false, {"green", "black", "blue", "red", "white", "purple"}, std::string("green")}};
+}
+
+View3d view3d(const Params& p) {
+    View3d v;
+    v.yaw = numberParam(p, "angle", -25);
+    v.elevation = numberParam(p, "tilt", 50);
+    v.fromBelow = boolParam(p, "from_below", false);
+    const std::string m = lower(stringParam(p, "mask", "green"));
+    if (m == "black") v.maskColor = 0x222222;
+    else if (m == "blue") v.maskColor = 0x1a3f9a;
+    else if (m == "red") v.maskColor = 0x9a1c1c;
+    else if (m == "white") v.maskColor = 0xe8e8e8;
+    else if (m == "purple") v.maskColor = 0x5a2a8a;
+    return v;
+}
+
+Attachment board3dPng(const Circuit& c, const Params& p, int w, int h) {
+    return {"image/png", raster::encodePng(renderBoard3d(c, buildNetlist(c), w, h, view3d(p))), "board3d.png"};
 }
 
 }  // namespace
@@ -138,7 +161,8 @@ void registerFileCommands(Session& session) {
                         if (part.pcb.placed) ++placed;
                     }
                     if (withFp) r.message += "\nfootprints on the board: " + std::to_string(placed) + " of " + std::to_string(withFp);
-                    for (const auto& z : c.board.zones) r.message += "\npour: " + z.net + " on " + (z.layer ? "B.Cu" : "F.Cu");
+                    if (c.board.outline.size() >= 3) r.message += "\ncopper layers: " + std::to_string(c.board.layers);
+                    for (const auto& z : c.board.zones) r.message += "\npour: " + z.net + " on " + layerName(z.layer) + (z.thermal ? "" : " (solid pads)");
                     r.with("parts", static_cast<std::int64_t>(c.parts.size()))
                         .with("nets", static_cast<std::int64_t>(nl.nets.size()))
                         .with("wires", static_cast<std::int64_t>(c.wires.size()))
@@ -227,8 +251,8 @@ void registerFileCommands(Session& session) {
             });
 
     reg.add({"circuit.preview", "Preview Circuit",
-             "Render the schematic or the board to a PNG without changing anything. view=pcb draws copper (top red, bottom blue), "
-             "pads, vias, silkscreen, pours and the ratsnest.",
+             "Render the schematic or the board to a PNG without changing anything. view=pcb draws copper (top red, bottom blue, "
+             "inner layers yellow and teal), pads, vias, silkscreen, pours and the ratsnest; view=3d draws the assembled board.",
              [] {
                  std::vector<ParamSpec> v = {docParam()};
                  for (auto& s : viewParams()) v.push_back(s);
@@ -241,19 +265,21 @@ void registerFileCommands(Session& session) {
                 [](CircuitDoc& doc, const Params& p) {
                     const double size = static_cast<double>(std::clamp<std::int64_t>(intParam(p, "size", 1400), 200, 6000));
                     Result r = edited("preview of " + stringParam(p, "doc"), p);
-                    if (stringParam(p, "view", "schematic") == "pcb") r.attach(pcbPng(doc.circuit, pcbStyle(p), size));
+                    const std::string view = stringParam(p, "view", "schematic");
+                    if (view == "3d") r.attach(board3dPng(doc.circuit, p, static_cast<int>(size), static_cast<int>(size * 0.72)));
+                    else if (view == "pcb") r.attach(pcbPng(doc.circuit, pcbStyle(p), size));
                     else r.attach(schematicPng(doc.circuit, sheetStyle(p), size));
                     return r;
                 },
                 View::Schematic, false));
 
     reg.add({"circuit.export", "Export Drawing",
-             "Write the schematic or the board as a picture: .svg, .pdf (schematic only) or .png; the extension picks the "
-             "format. For fabrication files use circuit.gerber.",
+             "Write the schematic or the board as a picture: .svg, .pdf (schematic only) or .png (view=3d: the assembled board); "
+             "the extension picks the format. For fabrication files use circuit.gerber, for KiCad circuit.save to .kicad_sch.",
              [] {
                  std::vector<ParamSpec> v = {docParam(), {"path", ParamType::String, "output file (.svg, .pdf, .png)", true}};
                  for (auto& s : viewParams()) v.push_back(s);
-                 v.push_back({"scale", ParamType::Number, "png: pixels per grid unit (schematic) or per mm (pcb)", false});
+                 v.push_back({"scale", ParamType::Number, "png: pixels per grid unit (schematic), per mm (pcb), or the width (3d)", false});
                  return v;
              }(),
              false},
@@ -264,7 +290,11 @@ void registerFileCommands(Session& session) {
                     const std::string ext = lower(path.extension().string());
                     const bool pcb = stringParam(p, "view", "schematic") == "pcb";
                     std::string data;
-                    if (pcb) {
+                    if (stringParam(p, "view", "schematic") == "3d") {
+                        if (ext != ".png") return Result::failure("the 3D view exports as .png");
+                        const int w = has(p, "scale") ? static_cast<int>(std::clamp(numberParam(p, "scale"), 200.0, 8000.0)) : 2000;
+                        data = board3dPng(doc.circuit, p, w, static_cast<int>(w * 0.72)).bytes;
+                    } else if (pcb) {
                         const Netlist nl = buildNetlist(doc.circuit);
                         if (ext == ".svg") data = pcbSvg(doc.circuit, nl, pcbStyle(p));
                         else if (ext == ".png") data = raster::encodePng(renderPcb(doc.circuit, nl, has(p, "scale") ? numberParam(p, "scale") : pcbScale(doc.circuit, 2000), pcbStyle(p)));

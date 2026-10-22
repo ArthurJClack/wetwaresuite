@@ -32,6 +32,35 @@ std::string at(Pt p) { return "(" + mm(p.x) + ", " + mm(p.y) + ")"; }
 
 }  // namespace
 
+const char* layerName(int layer) {
+    switch (layer) {
+        case 0: return "F.Cu";
+        case 1: return "B.Cu";
+        case 2: return "In1.Cu";
+        case 3: return "In2.Cu";
+        default: return "?";
+    }
+}
+
+const char* layerShort(int layer) {
+    switch (layer) {
+        case 0: return "F";
+        case 1: return "B";
+        case 2: return "In1";
+        case 3: return "In2";
+        default: return "?";
+    }
+}
+
+int parseLayer(const std::string& text) {
+    const std::string l = upper(text);
+    if (l == "F" || l == "TOP" || l == "F.CU" || l == "FRONT" || l == "0") return 0;
+    if (l == "B" || l == "BOTTOM" || l == "B.CU" || l == "BACK" || l == "1") return 1;
+    if (l == "IN1" || l == "IN1.CU" || l == "INNER1" || l == "2") return 2;
+    if (l == "IN2" || l == "IN2.CU" || l == "INNER2" || l == "3") return 3;
+    return -1;
+}
+
 bool isPowerName(const std::string& netIn) {
     const std::string n = upper(netIn);
     if (n.empty()) return false;
@@ -107,7 +136,7 @@ std::vector<Item> copperItems(const Circuit& c, const std::vector<WorldPad>& pad
         it.kind = Item::Trace;
         it.index = static_cast<int>(i);
         it.shape = capsule(t.a, t.b, t.width / 2);
-        it.layers = t.layer == 0 ? 1 : 2;
+        it.layers = layerBit(t.layer);
         it.net = t.net;
         items.push_back(std::move(it));
     }
@@ -117,7 +146,7 @@ std::vector<Item> copperItems(const Circuit& c, const std::vector<WorldPad>& pad
         it.kind = Item::Via;
         it.index = static_cast<int>(i);
         it.shape = capsule(v.pos, v.pos, v.diameter / 2);
-        it.layers = 3;
+        it.layers = kAllCopper;
         it.net = v.net;
         items.push_back(std::move(it));
     }
@@ -164,7 +193,7 @@ Islands islands(const Circuit& c, const std::vector<WorldPad>& pads, const std::
                 ++next;
             }
         }
-        const int bit = f.layer == 0 ? 1 : 2;
+        const int bit = layerBit(f.layer);
         for (std::size_t i = 0; i < out.items.size(); ++i) {
             const Item& it = out.items[i];
             if (it.net != f.net || !(it.layers & bit)) continue;
@@ -213,7 +242,9 @@ std::vector<WorldPad> worldPads(const Circuit& c, const Netlist& nl) {
             w.h = (r == 90 || r == 270) ? pad.w : pad.h;
             w.shape = pad.shape;
             w.drill = pad.drill;
-            w.layers = pad.drill > 0 ? 3 : (part.pcb.bottom ? 2 : 1);
+            w.plated = pad.plated || pad.drill <= 0;
+            w.layers = pad.drill > 0 ? kAllCopper : (part.pcb.bottom ? 2 : 1);
+            if (!w.plated) w.net.clear();
             out.push_back(std::move(w));
         }
     }
@@ -273,7 +304,18 @@ int placeFootprints(Circuit& c, const Netlist& nl, bool replaceAll, double spaci
         auto fp = footprintOf(*p);
         area += (fp->x1 - fp->x0 + spacing) * (fp->y1 - fp->y0 + spacing);
     }
-    const double margin = 3;
+    // mounting holes go in the corners; everything else is packed inside them
+    std::vector<Part*> holes;
+    double holeR = 0;
+    for (Part* p : order) {
+        if (canonicalSymbol(p->symbol) == "mounting_hole") {
+            holes.push_back(p);
+            auto fp = footprintOf(*p);
+            holeR = std::max(holeR, std::max(fp->x1 - fp->x0, fp->y1 - fp->y0) / 2);
+        }
+    }
+    std::erase_if(order, [](Part* p) { return canonicalSymbol(p->symbol) == "mounting_hole"; });
+    const double margin = holes.empty() ? 3 : 2 * holeR + 2;
     const bool haveBoard = c.board.outline.size() >= 3;
     double bx0 = 0, by0 = 0, bx1 = 0, by1 = 0;
     if (haveBoard) boardBounds(c.board, bx0, by0, bx1, by1);
@@ -283,29 +325,50 @@ int placeFootprints(Circuit& c, const Netlist& nl, bool replaceAll, double spaci
         rowWidth = std::max(rowWidth, fp->x1 - fp->x0);
     }
     const double ox = haveBoard ? bx0 + margin : margin, oy = haveBoard ? by0 + margin : margin;
-    double x = 0, y = 0, rowH = 0, maxX = 0;
+    // skyline packing: each footprint goes where its top lands highest up, then furthest left,
+    // so tall parts (DIPs, modules) get small parts packed beside them
+    const double res = 0.5;
+    const int cols = std::max(1, static_cast<int>(std::ceil(rowWidth / res)));
+    std::vector<double> sky(static_cast<std::size_t>(cols), 0.0);
+    double maxX = 0, maxY = 0;
     auto snap = [](double v) { return std::round(v / 1.27) * 1.27; };
     for (Part* p : order) {
         auto fp = footprintOf(*p);
         const double w = fp->x1 - fp->x0, h = fp->y1 - fp->y0;
-        if (x > 0 && x + w > rowWidth) {
-            x = 0;
-            y += rowH + spacing;
-            rowH = 0;
+        const int wc = std::min(cols, std::max(1, static_cast<int>(std::ceil((w + spacing) / res))));
+        int bestS = 0;
+        double bestY = 1e18;
+        for (int s = 0; s + wc <= cols; ++s) {
+            double y = 0;
+            for (int k = s; k < s + wc; ++k) y = std::max(y, sky[static_cast<std::size_t>(k)]);
+            if (y + 1e-9 < bestY) bestY = y, bestS = s;
         }
+        for (int k = bestS; k < bestS + wc; ++k) sky[static_cast<std::size_t>(k)] = bestY + h + spacing;
+        const double x = bestS * res;
         p->pcb.placed = true;
         p->pcb.rot = 0;
         p->pcb.bottom = false;
-        p->pcb.pos = {snap(ox + x - fp->x0), snap(oy + y - fp->y0)};
-        x += w + spacing;
-        maxX = std::max(maxX, x);
-        rowH = std::max(rowH, h);
+        p->pcb.pos = {snap(ox + x - fp->x0), snap(oy + bestY - fp->y0)};
+        maxX = std::max(maxX, x + w + spacing);
+        maxY = std::max(maxY, bestY + h);
     }
     if (!haveBoard) {
-        const double W = std::ceil(maxX - spacing + 2 * margin), H = std::ceil(y + rowH + 2 * margin);
+        const double W = std::ceil(std::max(maxX - spacing, 0.0) + 2 * margin), H = std::ceil(maxY + 2 * margin);
         c.board.outline = {{0, 0}, {W, 0}, {W, H}, {0, H}};
     }
-    return static_cast<int>(order.size());
+    if (!holes.empty()) {
+        boardBounds(c.board, bx0, by0, bx1, by1);
+        const double in = holeR + 1;
+        const Pt corners[4] = {{bx0 + in, by0 + in}, {bx1 - in, by1 - in}, {bx1 - in, by0 + in}, {bx0 + in, by1 - in}};
+        for (std::size_t i = 0; i < holes.size(); ++i) {
+            Part* h = holes[i];
+            h->pcb.placed = true;
+            h->pcb.rot = 0;
+            h->pcb.bottom = false;
+            h->pcb.pos = i < 4 ? corners[i] : Pt{(bx0 + bx1) / 2, by0 + in};
+        }
+    }
+    return static_cast<int>(order.size() + holes.size());
 }
 
 std::vector<Airwire> ratsnest(const Circuit& c, const Netlist& nl) {
@@ -402,9 +465,34 @@ std::vector<ZoneFill> fillZones(const Circuit& c, const Netlist& nl) {
                 }
             }
         };
+        const int bit = layerBit(z.layer);
+        if (z.thermal) {
+            // thermal reliefs: a clearance ring around each pad of the zone's net, crossed by four spokes
+            const std::vector<std::uint8_t> inside = f.cells;
+            for (const auto& it : items) {
+                if (it.kind != geom::Item::Pad || it.net != z.net || !(it.layers & bit)) continue;
+                clearAround(it.shape, z.clearance + half);
+                const Pt c0 = pads[static_cast<std::size_t>(it.index)].pos;
+                const double hx = (it.shape.x1() - it.shape.x0()) / 2, hy = (it.shape.y1() - it.shape.y0()) / 2;
+                const double sw = std::max(z.spoke, f.cell) / 2, reachX = hx + z.clearance + 0.4, reachY = hy + z.clearance + 0.4;
+                auto spoke = [&](double x0, double y0, double x1, double y1) {
+                    const int xa = std::max(0, static_cast<int>(std::floor((x0 - f.x0) / f.cell)));
+                    const int xb = std::min(f.nx - 1, static_cast<int>(std::floor((x1 - f.x0) / f.cell)));
+                    const int ya = std::max(0, static_cast<int>(std::floor((y0 - f.y0) / f.cell)));
+                    const int yb = std::min(f.ny - 1, static_cast<int>(std::floor((y1 - f.y0) / f.cell)));
+                    for (int y = ya; y <= yb; ++y) {
+                        for (int x = xa; x <= xb; ++x) {
+                            const std::size_t k = static_cast<std::size_t>(y) * f.nx + x;
+                            if (inside[k]) f.cells[k] = 1;
+                        }
+                    }
+                };
+                spoke(c0.x - reachX, c0.y - sw, c0.x + reachX, c0.y + sw);
+                spoke(c0.x - sw, c0.y - reachY, c0.x + sw, c0.y + reachY);
+            }
+        }
         const double edge = std::max(c.board.rules.edgeClearance, z.clearance) + half;
         for (std::size_t i = 0; i < poly.size(); ++i) clearAround(geom::capsule(poly[i], poly[(i + 1) % poly.size()], 0), edge);
-        const int bit = z.layer == 0 ? 1 : 2;
         for (const auto& it : items) {
             if (!(it.layers & bit)) continue;
             if (!it.net.empty() && it.net == z.net) continue;
@@ -473,9 +561,28 @@ std::vector<Issue> drc(const Circuit& c, const Netlist& nl) {
     for (std::size_t i = 0; i < c.board.traces.size(); ++i) {
         const auto& t = c.board.traces[i];
         if (t.width + 1e-9 < r.minTrace) {
-            out.push_back({"error", "trace_width", "trace on " + std::string(t.layer ? "B.Cu" : "F.Cu") + " at " + at(t.a) + " is " + mm(t.width) +
+            out.push_back({"error", "trace_width", "trace on " + std::string(layerName(t.layer)) + " at " + at(t.a) + " is " + mm(t.width) +
                                                        " mm wide (minimum " + mm(r.minTrace) + ")"});
         }
+        if (t.layer < 0 || t.layer >= c.board.layers) {
+            out.push_back({"error", "bad_layer", "trace at " + at(t.a) + " is on " + layerName(t.layer) + ", but the board has " +
+                                                     std::to_string(c.board.layers) + " copper layers"});
+        }
+    }
+    for (const auto& z : c.board.zones) {
+        if (z.layer < 0 || z.layer >= c.board.layers) {
+            out.push_back({"error", "bad_layer", "pour " + z.net + " is on " + layerName(z.layer) + ", but the board has " +
+                                                     std::to_string(c.board.layers) + " copper layers"});
+        }
+    }
+    for (const auto& p : pads) {
+        const double ring = (std::min(p.w, p.h) - p.drill) / 2;
+        if (p.drill > 0 && p.plated && ring <= 1e-9) {
+            out.push_back({"error", "annular_ring", "pad " + p.ref + "." + p.number + " is no bigger than its hole"});
+        } else if (p.drill > 0 && p.plated && ring + 1e-9 < r.minAnnular) {
+            out.push_back({"error", "annular_ring", "pad " + p.ref + "." + p.number + " annular ring " + mm(ring) + " mm < " + mm(r.minAnnular)});
+        }
+        if (p.drill > 0 && p.drill + 1e-9 < r.minDrill) out.push_back({"error", "drill", "pad " + p.ref + "." + p.number + " drill " + mm(p.drill) + " mm < " + mm(r.minDrill)});
     }
     for (const auto& v : c.board.vias) {
         if (v.drill + 1e-9 < r.minDrill) out.push_back({"error", "drill", "via at " + at(v.pos) + " drill " + mm(v.drill) + " mm < " + mm(r.minDrill)});
@@ -486,7 +593,10 @@ std::vector<Issue> drc(const Circuit& c, const Netlist& nl) {
     int clearanceErrors = 0;
     const int maxListed = 40;
     auto describe = [&](const geom::Item& it) {
-        if (it.kind == geom::Item::Pad) return "pad " + pads[static_cast<std::size_t>(it.index)].ref + "." + pads[static_cast<std::size_t>(it.index)].number;
+        if (it.kind == geom::Item::Pad) {
+            const auto& pd = pads[static_cast<std::size_t>(it.index)];
+            return pd.plated ? "pad " + pd.ref + "." + pd.number : "hole " + pd.ref;
+        }
         if (it.kind == geom::Item::Via) return "via at " + at(c.board.vias[static_cast<std::size_t>(it.index)].pos);
         const auto& t = c.board.traces[static_cast<std::size_t>(it.index)];
         return std::string("trace ") + (t.net.empty() ? "" : "(" + t.net + ") ") + at(t.a) + "-" + at(t.b);

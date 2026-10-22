@@ -324,7 +324,7 @@ Netlist buildNetlist(const Circuit& c) {
             const int id = pointId(pinPos(part, pin));
             ++touches[static_cast<std::size_t>(id)];
             pins.push_back({&part, &pin, id, sym->power, sym->module});
-            if (sym->module) {
+            if (sym->module || sym->joinSameName) {
                 auto [it, fresh] = sameName.emplace(pin.name, id);
                 if (!fresh) uf.unite(it->second, id);
             }
@@ -552,7 +552,7 @@ std::string bomCsv(const Circuit& c, bool grouped) {
     for (const auto& p : c.parts) {
         auto sym = symbolOf(p);
         if (sym && (sym->power || ((sym->name == "vsource" || sym->name == "isource") && p.footprint.empty()))) continue;
-        if (p.fields.count("dnp")) continue;
+        if (p.fields.count("dnp") || (sym && !sym->inBom)) continue;
         parts.push_back(&p);
         for (const auto& [k, v] : p.fields) fieldKeys.insert(k);
     }

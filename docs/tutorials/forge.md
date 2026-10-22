@@ -3,9 +3,10 @@
 `forge` gets assets ready for a game engine. It has two halves:
 
 - **Meshes**: open a model (STL, OBJ, PLY, OFF, glTF/GLB, 3MF), fix its up axis and scale, put it on the floor, cut its triangle count, recompute normals, give it UVs, write a chain of LOD files, or do all of that to a whole folder in one command.
+- **Animated pixel art**: Aseprite-style sprites with frames, durations, layers, animation tags and a palette (optionally indexed colour). Open and save `.aseprite`/`.ase`, draw pixels, and export sprite sheets with Aseprite JSON, Godot SpriteFrames and animated GIFs.
 - **Textures and 2D art**: pack sprite sheets with a JSON atlas engines can read, cut sheets back into frames, make normal maps, make textures tile, reduce pictures to pixel-art palettes, outline sprites, resize to powers of two, pack greyscale maps into one texture's channels (ORM maps) and trim transparent borders.
 
-There is no GUI yet; the GUI that comes later will call these same commands. Each task below is shown three ways:
+In the window, an open sprite gets pixel tools on the canvas (Pencil, Eraser, Line, Box, Ellipse, Bucket, Pick) with frames, onion skin, playback, layers and palette swatches beside it; every click runs the same commands shown here. Meshes and textures have no canvas tools yet. Each task below is shown three ways:
 
 - **CLI**: single `wetwaresuite` commands that read files and write files.
 - **Batch**: a script for multi-step work with `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
@@ -446,6 +447,100 @@ With a fixed palette, `colors` reports how many of its colours the picture actua
 
 Claude calls `photo_open`, `photo_resize` with `width=160`, `forge_palette` with `colors=16` and `preview=true`, `forge_upscale` with `factor=4` and `preview=true`, then `undo` twice and repeats with `dither=true`, and saves the one you pick with `photo_save`.
 
+## Task 5: an animated pixel-art sprite, Aseprite style
+
+A sprite document (`spr1`) holds what an Aseprite file does: a canvas size, frames with their own durations in ms, layers (bottom first) with a picture (a *cel*) per frame, animation tags such as `idle` and `hit`, and a palette. With `color_mode=indexed` every pixel stays on the palette, so swapping the palette recolours the whole animation. Every edit is one undo step.
+
+**Batch.** A 16 x 16 slime on the PICO-8 palette: draw one frame, copy it into a four-frame bounce, add a two-frame hit flash, tag both, then save the `.aseprite`, a GIF of the idle loop, and a sheet with its JSON and a Godot SpriteFrames resource:
+
+```text
+# slime.txt: a 16x16 slime with a bouncing idle loop and a hit flash, on the PICO-8 palette
+forge.sprite_new width=16 height=16 duration=120 color_mode=indexed palette=pico8 -> s
+forge.draw doc=$s tool=fill_ellipse points=2,6,13,15 color=#00e436
+forge.draw doc=$s tool=ellipse points=2,6,13,15 color=#008751
+forge.draw doc=$s tool=line points=5,9,5,10 color=#000000
+forge.draw doc=$s tool=line points=10,9,10,10 color=#000000
+# three more frames: down 1 px, down 2 px, down 1 px
+forge.frame_add doc=$s count=3 copy=0
+forge.sprite_transform doc=$s frame=1 dy=1
+forge.sprite_transform doc=$s frame=2 dy=2
+forge.sprite_transform doc=$s frame=3 dy=1
+# two pale frames for the hit flash
+forge.frame_add doc=$s count=2 copy=0
+forge.draw doc=$s frame=4 tool=replace from_color=#00e436 color=#fff1e8
+forge.draw doc=$s frame=5 tool=replace from_color=#00e436 color=#fff1e8
+forge.tag_add doc=$s name=idle from=0 to=3
+forge.tag_add doc=$s name=hit from=4 to=5 color=#ff004d
+forge.frame_duration doc=$s tag=hit ms=60
+forge.sprite_info doc=$s
+forge.sprite_save doc=$s path=slime/slime.aseprite
+forge.sprite_save doc=$s path=slime/idle.gif tag=idle scale=4
+forge.sprite_export doc=$s output=slime/slime_sheet.png godot=slime/slime.tres
+# a recoloured variant from the DawnBringer 16 palette, then back
+forge.sprite_palette doc=$s action=preset name=db16 remap=true
+forge.sprite_save doc=$s path=slime/slime_db16.gif scale=4
+undo
+```
+
+```sh
+$ wetwaresuite batch slime.txt
+created spr1: 16x16 sprite, 1 frame, 1 layer, indexed 17 colours
+...
+fill_ellipse on Layer 1 frame 0: 96 pixels changed
+...
+added 3 frames at 1 (4 frames now)
+...
+replace on Layer 1 frame 4: 64 pixels changed
+...
+2 frames now last 60 ms
+doc: spr1
+16x16 sprite, 6 frames, 1 layer, tags idle,hit, indexed 17 colours
+frames: 6 (120,120,120,120,60,60 ms; 600 ms in all)
+layers (bottom first):
+  0: Layer 1 (6 cels)
+tags:
+  idle: frames 0..3, forward
+  hit: frames 4..5, forward
+palette: #00000000,#000000,#1d2b53,#7e2553,#008751,#ab5236,#5f574f,#c2c3c7,#fff1e8,#ff004d,#ffa300,#ffec27,#00e436,#29adff,#83769c,#ff77a8,#ffccaa
+...
+saved slime/slime.aseprite
+...
+exported 6 frames to 96x16 slime/slime_sheet.png + slime/slime_sheet.json + slime/slime.tres
+...
+palette: #00000000,#140c1c,#442434,#30346d,#4e4a4e,#854c30,#346524,#d04648,#757161,#597dce,#d27d2c,#8595a1,#6daa2c,#d2aa99,#6dc2ca,#dad45e,#deeed6
+colors: 17
+saved slime/slime_db16.gif
+...
+undone
+```
+
+- Indexed palettes keep entry 0 as "transparent" (the `#00000000` above), as Aseprite does. Colours you draw with snap to the nearest palette entry; `index=12` picks an entry by number instead of `color=`.
+- `forge.draw` tools: `pencil` (dots joined by lines, `points=x1,y1,x2,y2,...`, like a mouse drag), `line`, `rect`, `fill_rect`, `ellipse`, `fill_ellipse` (two corners), `bucket` (fills the touching pixels of one colour), `erase`, and `replace` (one colour for another; `all_frames=true` does the whole animation). `frame=` and `layer=` pick the cel; the default is frame 0 on the top layer.
+- `slime_sheet.json` is in Aseprite's own export format (frames with `frame`, `spriteSourceSize`, `sourceSize` and `duration`, plus `meta.frameTags` and `meta.layers`), which Phaser, PixiJS, Godot importers and Unity's Aseprite tooling read. `format=array` writes the frames as an array; `layout=grid`, `vertical` or `packed trim=true` change how they sit on the sheet.
+- `slime.tres` is a Godot 4 `SpriteFrames` resource with one animation per tag (looping at the frames' speed): keep the sheet next to it and give it to an `AnimatedSprite2D`.
+- `sprite_palette action=preset ... remap=true` keeps each pixel's palette *index* and swaps the colours, so the same art comes out in a new palette. `action=set_color index=12 color=#...` changes one entry, `action=load path=my.gpl` reads a GIMP/JASC palette, `action=save path=my.gpl` writes one.
+- `forge.sprite_preview doc=$s frame=2 onion_before=1 onion_after=1` attaches a picture of a frame with its neighbours faintly in red (before) and blue (after), the way Aseprite's onion skin shows motion.
+
+**CLI.** Each `wetwaresuite` run is a new process, so feed short scripts to `batch` on stdin. Re-export the idle loop as a trimmed, packed sheet with an array JSON, and the hit flash as a big GIF:
+
+```sh
+$ printf 'forge.sprite_open path=slime/slime.aseprite -> s\nforge.sprite_export doc=$s output=export/slime.png layout=packed trim=true format=array tag=idle\nforge.sprite_save doc=$s path=export/hit.gif tag=hit scale=8\n' | wetwaresuite batch
+opened spr1: 16x16 sprite, 6 frames, 1 layer, tags idle,hit, indexed 17 colours, slime/slime.aseprite
+...
+exported 4 frames to 12x36 export/slime.png + export/slime.json
+...
+saved export/hit.gif
+...
+```
+
+`forge.sprite_open` also reads a sprite sheet (`path=sheet.png columns=6`, or `cell_width=`/`cell_height=`), a folder of frame images (`input_dir=`) or a list (`files=`), so loose frames from another tool become one animation to tag and export.
+
+**Claude.**
+
+> Make me a 32x32 pixel-art coin on the DB16 palette that spins in 6 frames at 80 ms, save it as coin.aseprite and a GIF, and give me a sheet with Godot SpriteFrames.
+
+Claude calls `forge_sprite_new` with `palette=db16`, draws with `forge_draw` (checking each step with `preview=true`), adds frames with `forge_frame_add`, tags them with `forge_tag_add`, and saves with `forge_sprite_save` and `forge_sprite_export godot=coin.tres`.
+
 ## More texture helpers
 
 ```sh
@@ -639,6 +734,36 @@ Not undoable (writes files).
 | `skip_empty` | boolean | no | true | skip fully transparent frames |
 | `format` | `png`, `tga`, `bmp` | no | `png` | frame format |
 
+### Animated sprites
+
+Sprite documents (`spr1`, ...) are Aseprite-style animations. Edits are undoable; `frame` is 0-based and `layer` is a name or index (0 = bottom). Editing commands take `preview=true` to attach a strip of the frames.
+
+| Command | Parameters (defaults) | What it does |
+| --- | --- | --- |
+| `forge.sprite_new` | `width`, `height`, `frames` (1), `duration` (100 ms), `color_mode` (`rgba` or `indexed`), `palette` (preset, `.gpl`/`.pal` file or `#a,#b,...`), `background` | new sprite with one layer; not undoable |
+| `forge.sprite_open` | `path` (`.aseprite`/`.ase` or an image), `cell_width`/`cell_height` or `columns`/`rows`, `count`, `input_dir`, `files`, `duration` (100) | open a sprite, a sheet cut into frames, or loose frames |
+| `forge.sprite_save` | `path` (`.aseprite`, `.ase`, `.gif`, `.png`...), `frame` (png), `tag` (gif), `scale` (1) | write an Aseprite file, an animated GIF or one flattened frame |
+| `forge.sprite_export` | `output` (sheet png), `data` (json; `none` skips), `format` (`hash`/`array`), `layout` (`horizontal`, `vertical`, `grid`, `packed`), `columns`, `padding` (0), `trim` (false), `scale` (1), `tag`, `godot` (.tres), `frames_dir` | sheet + Aseprite JSON, optional Godot SpriteFrames and one PNG per frame |
+| `forge.sprite_info` | | size, frames and durations, layers, tags, palette; also returns `layer_names`, `layer_visible`, `tag_ranges` |
+| `forge.sprite_preview` | `frame` (0), `onion_before` (0), `onion_after` (0), `onion_opacity` (96), `scale` (about 256 px) | one frame as a picture, with onion skin |
+| `forge.sprite_close` | | close it |
+| `forge.frame_add` | `at` (end), `count` (1), `copy` (frame before), `empty` (false), `duration` | add copies of a frame or empty frames; tags spanning `at` grow |
+| `forge.frame_remove` | `frame`, `count` (1) | delete frames; tags shrink |
+| `forge.frame_move` | `frame`, `to` | move a frame |
+| `forge.frame_duration` | `ms`, `frames` (all) or `tag` | set frame durations |
+| `forge.sprite_layer_add` | `name`, `index` (top), `copy` | add a layer, empty or a copy |
+| `forge.sprite_layer_set` | `layer`, `name`, `visible`, `opacity` (0..255), `blend` (`normal`, `multiply`, `screen`, `overlay`, `darken`, `lighten`, `difference`, `addition`), `index` | layer settings |
+| `forge.sprite_layer_remove` | `layer` | delete a layer |
+| `forge.tag_add` | `name`, `from`, `to`, `direction` (`forward`, `reverse`, `pingpong`, `pingpong_reverse`), `repeat` (0 = loop), `color` | name an animation; re-adding a name changes it |
+| `forge.tag_remove` | `name` | delete a tag (frames stay) |
+| `forge.draw` | `frame`, `layer`, `tool` (`pencil`, `line`, `rect`, `fill_rect`, `ellipse`, `fill_ellipse`, `bucket`, `erase`, `replace`), `points`, `color` or `index`, `from_color`, `all_frames` | draw pixels |
+| `forge.cel_paste` | `frame`, `layer`, `input` (image file or id) or `from_frame`/`from_layer`, `x`, `y`, `replace` | paste a picture or another cel |
+| `forge.cel_clear` | `frame`, `layer`, `all_frames` | empty a cel |
+| `forge.sprite_transform` | `frame`, `layer` (both optional), `flip_h`, `flip_v`, `rotate` (90/180/270), `dx`, `dy`, `wrap` | flip, turn or shift cels |
+| `forge.sprite_resize` | `scale`, or `width`/`height` with `anchor` (`center`, `top_left`, ...) | enlarge pixels or change the canvas |
+| `forge.sprite_palette` | `action` (`preset`, `load`, `set`, `from_sprite`, `quantize`, `set_color`, `add`, `remove`, `save`), `name`, `path`, `colors`, `index`, `color`, `count`, `remap` | edit the palette; presets `pico8`, `db16`, `db32`, `gameboy`, `grayscale4` |
+| `forge.sprite_color_mode` | `mode` (`rgba`/`indexed`), `count` (32) | switch colour mode; going indexed snaps pixels to the palette |
+
 ### Textures
 
 The six editing commands take `doc` (edit an open image in place, undoable) or `input` + `output` (files); `output` with `doc` also writes the result. They return `width` and `height` (and `doc` when editing one).
@@ -666,4 +791,6 @@ These make a new image (opened as a new document, written to `output` when given
 - Decimation is vertex clustering: quick and fine for LODs and props, but rougher than edge-collapse tools, it can leave non-manifold edges, and it drops UVs (`uv=` regenerates them).
 - UV projections are simple; they don't unwrap. For characters and hero props, unwrap in a modelling program.
 - `forge.seamless` blends; it doesn't synthesise new texture, so strong features near the edges ghost.
-- Sprite sheets don't rotate frames to pack tighter, and the atlas is written in one format (TexturePacker JSON hash, which most importers read).
+- Sprite sheets don't rotate frames to pack tighter. `forge.sprite_sheet` writes TexturePacker JSON hash; `forge.sprite_export` writes Aseprite's JSON (hash or array).
+- `.aseprite` files: tilemap layers open empty, linked cels become copies, cel opacity is multiplied into the pixels, and slices and user data are not kept. Sprites are written as 32-bit RGBA or 8-bit indexed (never greyscale) with zlib-compressed cels.
+- Blend modes other than normal, multiply, screen, overlay, darken, lighten, difference and addition are kept in the file but draw as normal. GIFs use one palette for the whole animation (up to 255 colours plus transparent).

@@ -32,6 +32,37 @@ struct Texture {
 enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur, Pick, Anchor };
 enum class SelectShape { Rect, Ellipse, Lasso, Wand };
 
+// Click tools for game levels (levels.*) and pixel-art sprites (forge.sprite_*), game_view.cpp.
+enum class GameTool { Move, Paint, Rect, Erase, Fill, Object, Pick, Pencil, Eraser, Line, Box, Ellipse, Bucket };
+
+struct GameCanvas {
+    std::string doc, kind;       // the document the state is for; kind "level" or "sprite"
+    std::uint64_t seen = ~0ull;  // Shell change count the info was read at
+    GameTool tool = GameTool::Move;
+    bool dragging = false;
+    ImVec2 dragFrom{0, 0}, dragTo{0, 0};  // picture px
+    std::vector<double> points;           // level: cells x,y; sprite: pixels x,y
+    std::string error;
+    // level
+    int mapW = 0, mapH = 0, tileW = 16, tileH = 16;
+    std::vector<std::string> layers, layerKinds, tilesets;
+    int layer = 0, tileset = 0, tile = 0;
+    Texture tilesetTex;
+    std::string tilesetFor;  // doc/tileset/change the texture shows
+    int tsColumns = 1, tsTiles = 0, tsTileW = 16, tsTileH = 16;
+    bool grid = true;
+    // sprite
+    int frame = 0, frames = 1, spriteLayer = 0, width = 0, height = 0;
+    std::vector<std::string> spriteLayers, palette, tags, tagRanges;
+    std::vector<bool> layerShown;
+    std::vector<int> durations;
+    bool onion = false, playing = false, filled = false;
+    double playClock = 0;
+    float color[4] = {0, 0, 0, 1};
+    std::vector<std::uint8_t> picture;  // the frame on the canvas, RGBA, for the colour picker
+    int pictureW = 0, pictureH = 0;
+};
+
 // A retouch command waiting to run: it runs on the frame after it is queued, so the
 // window first shows "Working..." over the canvas.
 struct PendingRetouch {
@@ -108,6 +139,8 @@ struct Canvas {
     int vecDrag = 0;                  // 0 none, 1 move, 2 scale handle, 3 anchor part
     int vecHandle = 0;                // scale: handle 0..7; anchor: node * 3 + part (0 anchor, 1 in, 2 out)
     ImVec2 vecStart{0, 0}, vecNow{0, 0};
+
+    GameCanvas game;
 };
 
 // The play bar's view of playback (transport.cpp), read back from <tool>.playhead.
@@ -224,6 +257,7 @@ private:
 
     // canvas (canvas.cpp)
     void canvasView();
+    void canvasArea();
     void canvasToolbar();
     void refreshCanvas();
     void beginStroke(ImVec2 screen, float pressure, bool pen, bool eraser);
@@ -307,6 +341,20 @@ private:
     void vectorRelease();
     void vectorKeys();
     void drawVector(ImDrawList* dl, ImVec2 origin);
+
+    // game levels and sprites on the canvas (game_view.cpp)
+    bool gameActive() const;  // the current document is a level or sprite with its commands here
+    void gameSync();          // re-read the document's layers, tilesets, frames, palette
+    std::string gamePicture();  // PNG for the canvas, empty when not a game document
+    void gameToolbar();
+    void gameSide();
+    void gameInput(ImDrawList* dl, ImVec2 origin, bool hovered, bool active);
+    bool gamePainting() const;
+    void gameRun(const std::string& id, Params params, const std::string& title);
+    void gameLevelSide();
+    void gameSpriteSide();
+    void gameLevelRelease();
+    void gameSpriteRelease();
 
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);

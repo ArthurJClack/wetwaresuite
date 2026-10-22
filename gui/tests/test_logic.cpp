@@ -187,6 +187,18 @@ void testRealCommands() {
         {"office.reopen", "Reopen", "no path here", {}, false}};
     cands = openCandidates("/x/budget.csv", {"office"}, office);
     CHECK(cands.size() == 2 && cands[0] == "office.sheet_open" && cands[1] == "office.doc_open");
+    // "<tool>.<thing>_open" commands that name the extension are tried first
+    {
+        std::vector<CommandInfo> game = all;
+        game.push_back({"forge.sprite_open", "Open sprite", "Open an Aseprite .aseprite/.ase file.",
+                        {{"path", ParamType::String, "file", false}}, false, true});
+        game.push_back({"forge.other_open", "Open other", "Open an aseprite thing.",
+                        {{"path", ParamType::String, "file", true}, {"size", ParamType::Int, "px", true}}, false, true});
+        auto sprite = openCandidates("hero.aseprite", {"photo", "forge"}, game);
+        CHECK(!sprite.empty() && sprite[0] == "forge.sprite_open");
+        CHECK(std::find(sprite.begin(), sprite.end(), "forge.other_open") == sprite.end());
+        CHECK(openCandidates("hero.ase", {"forge"}, game).size() == 1);
+    }
 }
 
 void testColoursRecentMessages() {

@@ -128,9 +128,11 @@ void Shell::refreshCanvas() {
         if (showLevel(renderer_, canvas_.texture, mc, zoom, true)) return;
     }
     mipCaches().erase(this);
+    // a level or sprite: the picture its click tools work on (game_view.cpp)
+    std::string png = gamePicture();
+    const bool game = !png.empty();
     // anything else: the document's own preview, else the tool's preview command
-    std::string png;
-    if (doc->kind() == "vector" && find("vector.preview")) {  // sharper than the small built-in preview, for zooming in
+    if (png.empty() && doc->kind() == "vector" && find("vector.preview")) {  // sharper than the small built-in preview, for zooming in
         Result r = session_.run("vector.preview", {{"doc", currentDoc_}, {"size", std::int64_t{1400}}});
         if (r.ok && !r.attachments.empty()) png = r.attachments[0].bytes;
     }
@@ -162,7 +164,13 @@ void Shell::refreshCanvas() {
     }
     try {
         raster::Image pic = raster::decode(png);
+        if (game) {  // crisp pixels when zoomed in, and the colours for the picker
+            canvas_.game.picture.assign(pic.data(), pic.data() + static_cast<std::size_t>(pic.width()) * pic.height() * 4);
+            canvas_.game.pictureW = pic.width();
+            canvas_.game.pictureH = pic.height();
+        }
         if (!canvas_.texture.upload(renderer_, pic.data(), pic.width(), pic.height())) canvas_.texture.reset();
+        else if (game) SDL_SetTextureScaleMode(canvas_.texture.tex, SDL_SCALEMODE_NEAREST);
     } catch (const std::exception&) {
         canvas_.texture.reset();
     }
@@ -190,6 +198,10 @@ void Shell::canvasToolbar() {
     }
     if (mapsDoc()) {
         mapsToolbar();
+        return;
+    }
+    if (gameActive()) {
+        gameToolbar();
         return;
     }
     const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
@@ -376,6 +388,24 @@ void Shell::onEvent(const SDL_Event& e) {
 }
 
 void Shell::canvasView() {
+    if (!gameActive()) {
+        canvasArea();
+        return;
+    }
+    // a level or sprite: the canvas, with its layers, tiles, frames and colours beside it
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float side = std::min(ImGui::GetFontSize() * 16, avail.x * 0.4f);
+    const ImGuiWindowFlags still = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    ImGui::BeginChild("game_canvas", {std::max(32.0f, avail.x - side - ImGui::GetStyle().ItemSpacing.x), avail.y}, ImGuiChildFlags_None, still);
+    canvasArea();
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("game_side", {0, avail.y}, ImGuiChildFlags_Borders);
+    gameSide();
+    ImGui::EndChild();
+}
+
+void Shell::canvasArea() {
     if (canvas_.pending && canvas_.pending->shown) runPendingRetouch();  // the busy sign is on screen: run it now
     refreshCanvas();
     ImGuiIO& io = ImGui::GetIO();
@@ -406,7 +436,8 @@ void Shell::canvasView() {
     }
     const float w = static_cast<float>(t.srcWidth), h = static_cast<float>(t.srcHeight);
     if (canvas_.fit) {
-        canvas_.zoom = std::min({size.x * 0.95f / w, size.y * 0.95f / h, 8.0f});
+        // pixel art is tiny: let fit zoom further in on levels and sprites
+        canvas_.zoom = std::min({size.x * 0.95f / w, size.y * 0.95f / h, gameActive() ? 48.0f : 8.0f});
         canvas_.pan = {(size.x - w * canvas_.zoom) / 2, (size.y - h * canvas_.zoom) / 2};
         canvas_.fit = false;
     }
@@ -415,8 +446,10 @@ void Shell::canvasView() {
         canvas_.zoom = std::clamp(canvas_.zoom * std::pow(1.15f, io.MouseWheel), 0.02f, 64.0f);
         canvas_.pan = {io.MousePos.x - v0.x - img.x * canvas_.zoom, io.MousePos.y - v0.y - img.y * canvas_.zoom};
     }
-    const bool painting = toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
-                          !canvas_.pending;
+    const bool game = gameActive();
+    const bool painting = game ? gamePainting() && !ImGui::IsKeyDown(ImGuiKey_Space)
+                               : toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
+                                     !canvas_.pending;
     const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
                                     (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking && ((!circuitEditing() && !mapsEditing()) || ImGui::IsKeyDown(ImGuiKey_Space))));
     if (dragPan) {
@@ -430,6 +463,11 @@ void Shell::canvasView() {
     dl->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 255));
     dl->AddImage(t.id(), p0, p1);
     dl->AddRect({p0.x - 1, p0.y - 1}, {p1.x + 1, p1.y + 1}, ImGui::GetColorU32(ImGuiCol_Border));
+    if (game) {
+        gameInput(dl, p0, hovered && painting, active);
+        dl->PopClipRect();
+        return;
+    }
 
     // painting
     const bool retouch = canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove;

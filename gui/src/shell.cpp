@@ -133,7 +133,7 @@ Result Shell::run(const std::string& id, const Params& params) {
             }
         }
         auto path = params.find("path");
-        if (path != params.end() && id.size() > 5 && (id.compare(id.size() - 5, 5, ".open") == 0)) {
+        if (path != params.end() && id.size() > 5 && (id.compare(id.size() - 5, 5, ".open") == 0 || id.compare(id.size() - 5, 5, "_open") == 0)) {
             if (auto p = std::get_if<std::string>(&path->second)) {
                 recent_ = pushRecent(recent_, *p);
                 saveRecent();

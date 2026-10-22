@@ -112,6 +112,12 @@ Root: HKA; Subkey: "Software\Classes\.tmj\OpenWithProgids"; ValueType: string; V
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-game.exe\SupportedTypes"; ValueType: string; ValueName: ".tmj"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.ldtk\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.game"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-game.exe\SupportedTypes"; ValueType: string; ValueName: ".ldtk"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.world\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.game"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-game.exe\SupportedTypes"; ValueType: string; ValueName: ".world"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.aseprite\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.game"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-game.exe\SupportedTypes"; ValueType: string; ValueName: ".aseprite"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.ase\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.game"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-game.exe\SupportedTypes"; ValueType: string; ValueName: ".ase"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.stl\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.cad"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-cad.exe\SupportedTypes"; ValueType: string; ValueName: ".stl"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.3mf\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.cad"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes

@@ -416,7 +416,9 @@ std::vector<std::string> openCandidates(const std::string& path, const std::vect
             const bool plain = c.id == tool + ".open";
             const bool named = c.id.size() > 5 && c.id.compare(c.id.size() - 5, 5, "_open") == 0;
             const bool takesPath = std::any_of(c.params.begin(), c.params.end(), [](const ParamSpec& p) { return p.name == "path"; });
-            if ((plain || named) && takesPath) openers.insert(plain ? openers.begin() : openers.end(), &c);
+            // a named opener must need nothing but the path (forge.sprite_open, levels.world_open)
+            const bool pathOnly = std::none_of(c.params.begin(), c.params.end(), [](const ParamSpec& p) { return p.required && p.name != "path"; });
+            if ((plain || (named && pathOnly)) && takesPath) openers.insert(plain ? openers.begin() : openers.end(), &c);
         }
         for (const CommandInfo* it : openers) {
             const std::string desc = lower(it->description + " " + it->title);

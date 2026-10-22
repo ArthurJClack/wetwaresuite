@@ -19,7 +19,7 @@ Hands-on guides to the suite. Every example was run against the real binaries: t
 - [3D view](3d-view.md): turn any cad part, model, sculpt, scan fit or print around in the window, and the same angles from the command line and Claude with `app.view`.
 - [CAD](cad.md): parametric parts with expressions, holes, patterns, booleans, fillets, chamfers and shells; a bracket you resize by changing one number, STEP and STL in and out, measuring.
 - [Convert](convert.md): images, SVG, audio, video, office documents and markup, one file or a whole folder.
-- [Asset forge](forge.md): game assets: models to glb with the right up axis, scale and LODs, sprite sheets and atlases, tileable textures and normal maps, pixel art.
+- [Asset forge](forge.md): game assets: models to glb with the right up axis, scale and LODs, Aseprite-style animated sprites (.aseprite, sheets with Aseprite JSON, Godot SpriteFrames, GIF), sprite sheets and atlases, tileable textures and normal maps, pixel art.
 - [Audio](audio.md): clean up a voice recording to podcast loudness, build an episode from music and voice tracks with ducking and fades, batch-normalize samples, spectrograms, pitch and tempo changes.
 - [Playback](playback.md): hear clips, project mixes, songs and video edits through your speakers from the window, the command line, scripts and Claude: pause, seek, loop, volume and output devices.
 - [Office](office.md): a budget spreadsheet with formulas and a chart, CSV cleanup with VLOOKUP, a report exported to PDF, a slide deck from bullet points, merging and splitting PDFs.
@@ -30,7 +30,7 @@ Hands-on guides to the suite. Every example was run against the real binaries: t
 - [Capture](capture.md): screenshots of a screen, monitor or region, screen recordings with a microphone, webcam snapshots, OBS-style scenes (screen, window, webcam, image, text) with start/stop recording, and how Claude looks at your screen.
 - [Toolkit](toolkit.md): identify any file from its contents, hex dumps, the standalone `wetwaresuite-toolkit`.
 - [Library](library.md): index an asset drive, tag and rate, find duplicates and similar images, smart collections, thumbnails and contact sheets, asking Claude to find files.
-- [Levels](levels.md): game levels and tilemaps: caves, dungeons and overworlds from a seed, auto-tiling, painting and stamping, entities with properties, collision, Tiled TMX/TMJ, LDtk, JSON and CSV.
+- [Levels](levels.md): game levels and tilemaps: caves, dungeons and overworlds from a seed, auto-tiling (4-bit, blob and Tiled Wang sets), animated tiles, painting and stamping, entities with properties, collision with slopes, worlds of several maps, Tiled TMX/TMJ, Godot scenes, LDtk, JSON and CSV.
 - [Automate](automate.md): scripts with variables, pipelines over folders, watch folders that process dropped files, the Python client, cron and Task Scheduler, pipelines from Claude.
 - [Model](model.md): polygon modeling like Blender: edit mode with extrude, inset, bevel, loop cut and knife; a table with mirror and bevel modifiers, a box-modelled mug with subdivision surface, windows cut by a boolean, UV unwrap and textures, a bouncing animation; OBJ, glTF, FBX and STL out.
 - [Sculpt](sculpt.md): a creature head from a sphere with mirrored strokes, a cad part made organic and sent to the slicer, retopology and LODs for games, relief tiles from heightmaps, aiming strokes on a preview.

@@ -37,5 +37,9 @@ inline void makeParent(const fs::path& file) {
 void registerMeshCommands(Session& session);
 void registerImageCommands(Session& session);
 void registerSpriteCommands(Session& session);
+void registerAnimFileCommands(Session& session);
+void registerAnimFrameCommands(Session& session);
+void registerAnimDrawCommands(Session& session);
+void registerAnimPaletteCommands(Session& session);
 
 }  // namespace wetwaresuite::forge::detail

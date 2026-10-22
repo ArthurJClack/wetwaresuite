@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <variant>
 #include <vector>
 
@@ -51,7 +52,16 @@ struct ImageOp {
     std::shared_ptr<const ImageData> image;
 };
 
-using Op = std::variant<TextOp, RectOp, LineOp, ImageOp>;
+// A polygon or polyline (shapes on slides): filled and/or outlined.
+struct PathOp {
+    std::vector<std::pair<double, double>> points;
+    bool closed = true;
+    std::optional<Color> fill;
+    std::optional<Color> stroke;
+    double lineWidth = 1;
+};
+
+using Op = std::variant<TextOp, RectOp, LineOp, ImageOp, PathOp>;
 
 struct Page {
     double width = 595.28, height = 841.89;  // A4 portrait
@@ -62,6 +72,8 @@ struct Page {
               double lineWidth = 1);
     void line(double x1, double y1, double x2, double y2, Color color, double width = 1);
     void image(double x, double y, double w, double h, std::shared_ptr<const ImageData> img);
+    void path(std::vector<std::pair<double, double>> points, bool closed, std::optional<Color> fill, std::optional<Color> stroke = std::nullopt,
+              double lineWidth = 1);
 };
 
 struct DocInfo {

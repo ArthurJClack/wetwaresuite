@@ -124,6 +124,22 @@ raster::Image renderPage(const Page& page, double s, Color background) {
             }
         } else if (auto l = std::get_if<LineOp>(&op)) {
             raster::drawLine(img, l->x1 * s, l->y1 * s, l->x2 * s, l->y2 * s, l->color, std::max(0.75, l->width * s));
+        } else if (auto pa = std::get_if<PathOp>(&op)) {
+            if (pa->points.size() < 2) continue;
+            if (pa->closed && pa->fill && pa->fill->a > 0) {
+                std::vector<raster::Point> pts;
+                for (const auto& [x, y] : pa->points) pts.push_back({x * s, y * s});
+                raster::fillPolygon(img, pts, *pa->fill);
+            }
+            if (pa->stroke && pa->stroke->a > 0) {
+                const double w = std::max(0.75, pa->lineWidth * s);
+                const std::size_t n = pa->points.size();
+                for (std::size_t i = 0; i + (pa->closed ? 0 : 1) < n; ++i) {
+                    const auto& a = pa->points[i];
+                    const auto& b = pa->points[(i + 1) % n];
+                    raster::drawLine(img, a.first * s, a.second * s, b.first * s, b.second * s, *pa->stroke, w);
+                }
+            }
         } else if (auto im = std::get_if<ImageOp>(&op)) {
             if (!im->image || im->image->pixels.empty()) continue;
             const int w = std::max(1, static_cast<int>(std::lround(im->w * s)));

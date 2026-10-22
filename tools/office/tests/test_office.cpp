@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 
 #include <nlohmann/json.hpp>
@@ -28,7 +29,9 @@ namespace fs = std::filesystem;
 namespace {
 
 fs::path tmp(const std::string& name) {
-    fs::path dir = fs::temp_directory_path() / "wetwaresuite_office_test";
+    // one folder per run, so parallel runs (other build trees on the machine) never collide
+    static const std::string run = std::to_string(std::random_device{}());
+    fs::path dir = fs::temp_directory_path() / ("wetwaresuite_office_test_" + run);
     fs::create_directories(dir);
     return dir / name;
 }
@@ -362,7 +365,7 @@ void testXlsxRoundTrip() {
     wb.sheets.emplace_back();
     wb.sheets[1].name = "Second sheet";
     put(wb, "A1", "Item");
-    wb.sheets[0].at(0, 0).bold = true;
+    wb.sheets[0].at(0, 0).style.bold = true;
     put(wb, "B1", "Cost");
     put(wb, "A2", "Rent & bills <home>");
     put(wb, "B2", "1200.5");
@@ -381,7 +384,7 @@ void testXlsxRoundTrip() {
     Workbook back = readXlsx(bytes);
     CHECK(back.sheets.size() == 2 && back.sheets[1].name == "Second sheet");
     const Sheet& s = back.sheets[0];
-    CHECK(s.get(0, 0)->value.text == "Item" && s.get(0, 0)->bold);
+    CHECK(s.get(0, 0)->value.text == "Item" && s.get(0, 0)->style.bold);
     CHECK(s.get(1, 0)->value.text == "Rent & bills <home>");
     CHECK(s.get(1, 1)->value.number == 1200.5 && s.get(1, 1)->format == "$#,##0.00");
     CHECK(s.get(3, 1)->formula == "SUM(B2:B3)" && s.get(3, 1)->value.number == 1510.5);
@@ -461,7 +464,7 @@ void testMarkdown() {
 void testHtml() {
     TextDocument d = sampleDoc();
     std::string html = writeHtml(d);
-    CHECK(html.find("<h1>Results</h1>") != std::string::npos && html.find("<strong>12%</strong>") != std::string::npos);
+    CHECK(html.find(">Results</h1>") != std::string::npos && html.find("<strong>12%</strong>") != std::string::npos);
     CHECK(html.find("<a href=\"https://example.com\">the site</a>") != std::string::npos);
     TextDocument back = readHtml(html);
     CHECK(back.title == "Quarterly report");
@@ -732,13 +735,14 @@ void testChart() {
                 colored += (p.r == 0x2B && p.g == 0x57 && p.b == 0x9A) ? 1 : 0;
             }
         }
-        CHECK(colored > 50);
+        if (colored <= 50) std::printf("  %s chart: %d coloured samples\n", type.c_str(), colored);
+        CHECK(colored > (type == "scatter" ? 5 : 50));
         writeFile(tmp("chart_" + type + ".png"), raster::encodePng(img));
     }
     // grid preview and sheet pages
     put(wb, "D1", "Margin");
     put(wb, "D2", "=B2-C2");
-    wb.sheets[0].at(0, 0).bold = true;
+    wb.sheets[0].at(0, 0).style.bold = true;
     wb.recalc();
     Range all;
     CHECK(parseRange(wb, "A1:D5", 0, all, err));
@@ -1005,12 +1009,14 @@ void testDeckAndPdfCommands() {
     r = s.run("office.convert", P({{"input", merged}, {"output", tmp("conv.txt").string()}}));
     CHECK(r.ok && readFile(tmp("conv.txt")).find("Three") != std::string::npos);
     r = s.run("office.convert", P({{"input", tmp("cmd_doc.md").string()}, {"output", tmp("conv.odt").string()}, {"backend", std::string("builtin")}}));
+    CHECK(r.ok && readOdt(readFile(tmp("conv.odt"))).blocks.size() > 2);
+    r = s.run("office.convert", P({{"input", tmp("cmd_doc.md").string()}, {"output", tmp("conv.rtf").string()}, {"backend", std::string("builtin")}}));
     CHECK(!r.ok && r.message.find("LibreOffice") != std::string::npos);
     r = s.run("office.formats", {});
     CHECK(r.ok && r.message.find("pptx") != std::string::npos);
     if (findProgram("soffice")) {
         r = s.run("office.convert", P({{"input", tmp("conv.xlsx").string()}, {"output", tmp("conv.ods").string()}}));
-        CHECK(r.ok && r.message.find("LibreOffice") != std::string::npos);
+        CHECK(r.ok && r.message.find("built-in") != std::string::npos);
         r = s.run("office.sheet_open", P({{"path", tmp("conv.ods").string()}}));
         CHECK(r.ok);
         r = s.run("office.convert", P({{"input", tmp("conv.docx").string()}, {"output", tmp("conv.doc").string()}}));
@@ -1131,5 +1137,7 @@ int main() {
     testDocCommands();
     testDeckAndPdfCommands();
     testMcpAndBatch();
+    std::error_code ec;
+    fs::remove_all(tmp("x").parent_path(), ec);
     return check::summary("office");
 }

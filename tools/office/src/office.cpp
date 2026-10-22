@@ -50,6 +50,8 @@ std::string SheetDoc::summary() const {
 }
 
 bool SheetDoc::grid(CellGrid& out) const {
+    painter_.reset();
+    painterSheet_ = -1;
     out.docParam = "doc";
     out.sheets.clear();
     for (const auto& sh : data.sheets) out.sheets.push_back(sh.name);
@@ -64,13 +66,48 @@ bool SheetDoc::grid(CellGrid& out) const {
 
 bool SheetDoc::gridCell(int sheet, int row, int col, GridCell& out) const {
     if (sheet < 0 || sheet >= static_cast<int>(data.sheets.size())) return false;
-    const Cell* c = data.sheets[static_cast<std::size_t>(sheet)].get(row, col);
-    if (!c || c->blank()) return false;
-    out.text = formatValue(c->value, c->format);
-    out.input = inputText(*c);
-    out.bold = c->bold;
-    out.number = c->value.type == CellValue::Number;
-    out.error = c->value.isError();
+    const Sheet& sh = data.sheets[static_cast<std::size_t>(sheet)];
+    bool merged = false;
+    for (const auto& m : sh.merges) {
+        if (row < m.r1 || row > m.r2 || col < m.c1 || col > m.c2) continue;
+        if (row != m.r1 || col != m.c1) {
+            out.covered = true;
+            return true;
+        }
+        out.spanRows = m.r2 - m.r1 + 1;
+        out.spanCols = m.c2 - m.c1 + 1;
+        merged = true;
+    }
+    const Cell* c = sh.get(row, col);
+    if ((!c || c->blank()) && !merged && sh.condFormats.empty()) return false;
+    CellStyle st = c ? c->style : CellStyle{};
+    if (!sh.condFormats.empty()) {
+        if (!painter_ || painterSheet_ != sheet) {
+            painter_ = std::make_shared<CellPainter>(data, sheet);
+            painterSheet_ = sheet;
+        }
+        double bar = -1;
+        std::uint32_t barColor = 0;
+        st = painter_->style(row, col, &bar, &barColor);
+        out.bar = static_cast<float>(bar);
+        out.barColor = barColor;
+    }
+    if (!c && !merged && st.plain() && out.bar < 0) return false;
+    if (c) {
+        out.text = formatValue(c->value, c->format);
+        out.input = inputText(*c);
+        out.number = c->value.type == CellValue::Number;
+        out.error = c->value.isError();
+        const std::uint32_t fc = formatColor(c->value, c->format);
+        if (fc && !hasColor(st.color)) st.color = fc;
+    }
+    out.bold = st.bold;
+    out.italic = st.italic;
+    out.underline = st.underline;
+    out.strike = st.strike;
+    out.align = st.align;
+    out.color = st.color;
+    out.fill = st.fill;
     return true;
 }
 
@@ -128,7 +165,22 @@ std::string DeckDoc::summary() const {
 
 std::unique_ptr<Attachment> DeckDoc::preview() const {
     if (data.slides.empty()) return nullptr;
-    return std::make_unique<Attachment>(png(pdf::renderPage(layoutSlide(data, 0), 800.0 / data.width), "slide1.png"));
+    if (data.slides.size() == 1) return std::make_unique<Attachment>(png(pdf::renderPage(layoutSlide(data, 0), 800.0 / data.width), "slide1.png"));
+    // a slide sorter: every slide as a numbered thumbnail, hidden ones faded
+    const std::size_t n = std::min<std::size_t>(data.slides.size(), 48);
+    const int cols = 3, tw = 300, gap = 16, label = 20;
+    const int th = static_cast<int>(std::lround(tw * data.height / data.width));
+    const int rows = static_cast<int>((n + cols - 1) / cols);
+    raster::Image sheet(cols * tw + (cols + 1) * gap, rows * (th + label) + (rows + 1) * gap, raster::Color{0xE6, 0xE7, 0xEA, 255});
+    for (std::size_t i = 0; i < n; ++i) {
+        const int x = gap + static_cast<int>(i % cols) * (tw + gap), y = gap + static_cast<int>(i / cols) * (th + label + gap);
+        raster::Image thumb = pdf::renderPage(layoutSlide(data, i), static_cast<double>(tw) / data.width);
+        raster::blendOnto(sheet, thumb, x, y, raster::Blend::Normal, data.slides[i].hidden ? 0.35 : 1.0);
+        const std::string tag = std::to_string(i + 1) + (data.slides[i].hidden ? " (hidden)" : "") +
+                                (data.slides[i].transition.empty() ? "" : "  " + data.slides[i].transition);
+        pdf::drawText(sheet, x, y + th + 15, tag, pdf::Font{pdf::Family::Sans, false, false}, 13, raster::Color{0x44, 0x44, 0x48, 255});
+    }
+    return std::make_unique<Attachment>(png(sheet, "slides.png"));
 }
 
 Result CloseAction::apply() {
@@ -356,13 +408,13 @@ namespace {
 
 const std::set<std::string> kSheetNative = {"csv", "tsv", "tab", "xlsx", "xlsm", "ods"};
 const std::set<std::string> kSheetLoIn = {"xls", "xlsb", "fods", "numbers", "dbf", "sxc", "xlt", "xltx"};
-const std::set<std::string> kSheetOut = {"xlsx", "csv", "tsv", "pdf", "html"};
-const std::set<std::string> kSheetLoOut = {"ods", "xls", "fods"};
+const std::set<std::string> kSheetOut = {"xlsx", "ods", "csv", "tsv", "pdf", "html"};
+const std::set<std::string> kSheetLoOut = {"xls", "fods"};
 
 const std::set<std::string> kDocNative = {"docx", "md", "markdown", "txt", "html", "htm", "odt"};
 const std::set<std::string> kDocLoIn = {"doc", "rtf", "docm", "dotx", "dot", "wpd", "fodt", "wps", "sxw", "pages", "lwp"};
-const std::set<std::string> kDocOut = {"docx", "md", "markdown", "html", "htm", "txt", "pdf"};
-const std::set<std::string> kDocLoOut = {"odt", "rtf", "doc", "fodt", "epub"};
+const std::set<std::string> kDocOut = {"docx", "odt", "md", "markdown", "html", "htm", "txt", "pdf"};
+const std::set<std::string> kDocLoOut = {"rtf", "doc", "fodt", "epub"};
 
 const std::set<std::string> kDeckNative = {"pptx", "md", "markdown"};
 const std::set<std::string> kDeckLoIn = {"ppt", "odp", "pps", "ppsx", "pptm", "potx", "fodp", "key", "sxi"};
@@ -422,7 +474,7 @@ std::string sheetHtml(const Workbook& wb, int only) {
                     std::string v = cell ? formatValue(cell->value, cell->format) : "";
                     const bool num = cell && cell->value.type == CellValue::Number;
                     out += std::string("<td") + (num ? " class=\"n\"" : "") + ">";
-                    if (cell && cell->bold) out += "<b>" + xml::escape(v) + "</b>";
+                    if (cell && cell->style.bold) out += "<b>" + xml::escape(v) + "</b>";
                     else out += xml::escape(v);
                     out += "</td>";
                 }
@@ -437,13 +489,18 @@ std::string sheetHtml(const Workbook& wb, int only) {
 }  // namespace
 
 Workbook loadWorkbook(const std::string& path, char delimiter) {
+    CsvOptions o;
+    o.delimiter = delimiter;
+    return loadWorkbook(path, o);
+}
+
+Workbook loadWorkbook(const std::string& path, const CsvOptions& csv) {
     const std::string ext = extOf(path);
     Workbook wb;
     if (ext == "csv" || ext == "tsv" || ext == "tab" || ext == "txt") {
-        std::string text = readBytes(path);
-        if (text.size() >= 3 && text.compare(0, 3, "\xEF\xBB\xBF") == 0) text = text.substr(3);
-        char d = delimiter ? delimiter : (ext == "tsv" || ext == "tab") ? '\t' : sniffDelimiter(text);
-        wb = readCsv(text, d);
+        CsvOptions o = csv;
+        if (!o.delimiter && (ext == "tsv" || ext == "tab")) o.delimiter = '\t';
+        wb = readCsv(readBytes(path), o);
         if (!wb.sheets.empty()) {
             std::string stem = pathFromUtf8(path).stem().string();
             if (!stem.empty()) wb.sheets[0].name = stem.substr(0, 31);
@@ -467,6 +524,8 @@ void saveWorkbook(const Workbook& wb, const std::string& path, int sheet) {
     const int active = std::clamp(sheet >= 0 ? sheet : wb.active, 0, std::max(0, static_cast<int>(wb.sheets.size()) - 1));
     if (ext == "xlsx" || ext == "xlsm") {
         writeBytes(path, writeXlsx(wb));
+    } else if (ext == "ods") {
+        writeBytes(path, writeOds(wb));
     } else if (ext == "csv" || ext == "tsv" || ext == "tab" || ext == "txt") {
         if (wb.sheets.empty()) throw std::runtime_error("the workbook has no sheets");
         writeBytes(path, writeCsv(wb.sheets[static_cast<std::size_t>(active)], ext == "csv" ? ',' : '\t'));
@@ -484,7 +543,7 @@ void saveWorkbook(const Workbook& wb, const std::string& path, int sheet) {
         std::string error;
         if (!libreOfficeWrite(writeXlsx(wb), "xlsx", path, error)) throw std::runtime_error(error);
     } else {
-        throw std::runtime_error("can't save a spreadsheet as ." + ext + " (xlsx, csv, tsv, pdf, html; ods and xls through LibreOffice)");
+        throw std::runtime_error("can't save a spreadsheet as ." + ext + " (xlsx, ods, csv, tsv, pdf, html; xls and fods through LibreOffice)");
     }
 }
 
@@ -514,6 +573,8 @@ void saveTextDocument(const TextDocument& doc, const std::string& path) {
     const std::string ext = extOf(path);
     if (ext == "docx") {
         writeBytes(path, writeDocx(doc));
+    } else if (ext == "odt") {
+        writeBytes(path, writeOdt(doc));
     } else if (ext == "md" || ext == "markdown") {
         std::vector<MediaFile> media;
         std::string text = writeMarkdown(doc, mediaPrefixFor(path), media);
@@ -529,7 +590,7 @@ void saveTextDocument(const TextDocument& doc, const std::string& path) {
         std::string error;
         if (!libreOfficeWrite(writeDocx(doc), "docx", path, error)) throw std::runtime_error(error);
     } else {
-        throw std::runtime_error("can't save a document as ." + ext + " (docx, md, html, txt, pdf; odt, rtf and doc through LibreOffice)");
+        throw std::runtime_error("can't save a document as ." + ext + " (docx, odt, md, html, txt, pdf; rtf and doc through LibreOffice)");
     }
 }
 
@@ -609,9 +670,9 @@ void registerConvertCommands(Session& session) {
     (void)session;
     reg.add({"office.convert", "Convert Office File",
              "Convert an office file in one step; the output's extension picks the format. Built in (no LibreOffice): "
-             "spreadsheets csv/tsv/xlsx/ods -> xlsx/csv/tsv/pdf/html; documents docx/md/html/odt/txt -> docx/md/html/txt/pdf; "
+             "spreadsheets csv/tsv/xlsx/ods -> xlsx/csv/tsv/pdf/html; documents docx/md/html/odt/txt -> docx/odt/md/html/txt/pdf; "
              "decks pptx or a Markdown outline -> pptx/pdf/md; pdf -> txt (text extraction). Everything else (doc, xls, ppt, rtf, "
-             "odt/ods/odp output, ...) goes through LibreOffice when it is installed. backend=libreoffice forces LibreOffice.",
+             "ods/odp output, ...) goes through LibreOffice when it is installed. backend=libreoffice forces LibreOffice.",
              {str("input", "file to convert", true), str("output", "file to write; its extension sets the format", true),
               str("backend", "auto uses the built-in engines when they handle the pair", false, std::string("auto"), {"auto", "builtin", "libreoffice"}),
               integer("sheet", "spreadsheet to csv/tsv: which sheet (1-based; default the active one)"),

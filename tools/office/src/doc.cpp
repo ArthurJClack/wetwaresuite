@@ -27,6 +27,7 @@ const char* kindName(Block::Kind kind) {
         case Block::PageBreak: return "page_break";
         case Block::Code: return "code";
         case Block::Quote: return "quote";
+        case Block::Toc: return "toc";
     }
     return "paragraph";
 }
@@ -34,8 +35,8 @@ const char* kindName(Block::Kind kind) {
 void mergeRuns(Runs& runs) {
     Runs out;
     for (auto& r : runs) {
-        if (r.text.empty()) continue;
-        if (!out.empty() && out.back().sameStyle(r)) out.back().text += r.text;
+        if (r.text.empty() && r.footnote.empty()) continue;
+        if (!out.empty() && out.back().sameStyle(r) && r.footnote.empty()) out.back().text += r.text;
         else out.push_back(std::move(r));
     }
     runs = std::move(out);
@@ -65,6 +66,7 @@ std::string blockText(const Block& b) {
         }
         case Block::Image: return b.alt;
         case Block::PageBreak: return "";
+        case Block::Toc: return plainText(b.runs).empty() ? std::string("Contents") : plainText(b.runs);
         default: return plainText(b.runs);
     }
 }
@@ -90,23 +92,126 @@ namespace {
 bool isPunct(char c) { return std::ispunct(static_cast<unsigned char>(c)) != 0; }
 bool isAlnum(char c) { return std::isalnum(static_cast<unsigned char>(c)) != 0 || (static_cast<unsigned char>(c) >= 0x80); }
 
+// The look set by <span style=...>, <mark>, <sup>, <sub>, <s> and ~~ around text.
+struct SpanLook {
+    std::string tag;
+    bool strike = false;
+    int vertical = 0;
+    std::uint32_t color = 0, highlight = 0;
+    double size = 0;
+    std::string font;
+};
+
+// "color:#c00000;background:#ffff00;font-size:14pt;font-family:serif" -> look
+void parseCss(const std::string& css, SpanLook& look) {
+    std::size_t i = 0;
+    while (i < css.size()) {
+        std::size_t semi = css.find(';', i);
+        if (semi == std::string::npos) semi = css.size();
+        const std::string decl = css.substr(i, semi - i);
+        i = semi + 1;
+        const auto colon = decl.find(':');
+        if (colon == std::string::npos) continue;
+        const std::string key = lower(trimCopy(decl.substr(0, colon)));
+        const std::string v = trimCopy(decl.substr(colon + 1));
+        std::uint32_t c = 0;
+        if (key == "color" && parseColor(v, c)) look.color = c;
+        else if ((key == "background" || key == "background-color") && parseColor(v, c)) look.highlight = c;
+        else if (key == "font-size") {
+            double pt = std::atof(v.c_str());
+            if (endsWith(v, "px")) pt *= 0.75;
+            if (pt > 0) look.size = pt;
+        } else if (key == "font-family") {
+            const std::string f = lower(v);
+            look.font = f.find("mono") != std::string::npos || f.find("courier") != std::string::npos ? "mono"
+                        : f.find("sans") != std::string::npos || f.find("arial") != std::string::npos || f.find("helvetica") != std::string::npos ? "sans"
+                        : f.find("serif") != std::string::npos || f.find("times") != std::string::npos || f.find("georgia") != std::string::npos ? "serif"
+                                                                                                                                     : "";
+        } else if (key == "text-decoration" && v.find("line-through") != std::string::npos) {
+            look.strike = true;
+        } else if (key == "vertical-align") {
+            look.vertical = v == "super" ? 1 : v == "sub" ? -1 : 0;
+        }
+    }
+}
+
 struct InlineParser {
     const std::string& s;
     Runs out;
     std::string buf;
-    bool bold = false, italic = false, underline = false;
+    bool bold = false, italic = false, underline = false, strike = false;
     std::string link;
+    std::vector<SpanLook> looks;
+
+    void style(Run& r) const {
+        r.bold = bold;
+        r.italic = italic;
+        r.underline = underline;
+        r.strike = strike;
+        r.link = link;
+        for (const auto& l : looks) {
+            if (l.strike) r.strike = true;
+            if (l.vertical) r.vertical = l.vertical;
+            if (l.color) r.color = l.color;
+            if (l.highlight) r.highlight = l.highlight;
+            if (l.size > 0) r.size = l.size;
+            if (!l.font.empty()) r.font = l.font;
+        }
+    }
 
     void flush() {
         if (buf.empty()) return;
         Run r;
         r.text = buf;
-        r.bold = bold;
-        r.italic = italic;
-        r.underline = underline;
-        r.link = link;
+        style(r);
         out.push_back(std::move(r));
         buf.clear();
+    }
+
+    // <span ...>, <mark>, <sup>, <sub>, <s>, <del>, <strike> and their closing tags; false when it isn't one.
+    bool lookTag(std::size_t& i) {
+        const std::size_t gt = s.find('>', i);
+        if (gt == std::string::npos) return false;
+        const std::string inside = s.substr(i + 1, gt - i - 1);
+        const std::string l = lower(inside);
+        const bool closing = !l.empty() && l[0] == '/';
+        std::string name = closing ? l.substr(1) : l;
+        const auto sp = name.find(' ');
+        if (sp != std::string::npos) name = name.substr(0, sp);
+        static const char* tags[] = {"span", "mark", "sup", "sub", "s", "del", "strike", "font"};
+        if (std::find_if(std::begin(tags), std::end(tags), [&](const char* t) { return name == t; }) == std::end(tags)) return false;
+        flush();
+        if (closing) {
+            for (std::size_t k = looks.size(); k-- > 0;) {
+                if (looks[k].tag == name) {
+                    looks.erase(looks.begin() + static_cast<std::ptrdiff_t>(k));
+                    break;
+                }
+            }
+        } else {
+            SpanLook look;
+            look.tag = name;
+            if (name == "mark") look.highlight = 0xFFFF00 | kColorSet;
+            else if (name == "sup") look.vertical = 1;
+            else if (name == "sub") look.vertical = -1;
+            else if (name == "s" || name == "del" || name == "strike") look.strike = true;
+            const auto st = l.find("style=");
+            if (st != std::string::npos && st + 6 < inside.size()) {
+                const char q = inside[st + 6];
+                const std::size_t start = st + 7, end = q == '"' || q == '\'' ? inside.find(q, start) : std::string::npos;
+                if (end != std::string::npos) parseCss(inside.substr(start, end - start), look);
+            }
+            const auto co = l.find("color=");
+            if (name == "font" && co != std::string::npos) {
+                std::string v = inside.substr(co + 6);
+                if (!v.empty() && (v[0] == '"' || v[0] == '\'')) v = v.substr(1, v.find(v[0], 1) - 1);
+                std::uint32_t c = 0;
+                if (parseColor(v, c)) look.color = c;
+            }
+            looks.push_back(look);
+        }
+        i = gt;
+        return true;
     }
 
     // finds the closing ']' for the '[' at i
@@ -166,10 +271,9 @@ struct InlineParser {
                     Run r;
                     r.text = s.substr(i + n, close - i - n);
                     if (r.text.size() >= 2 && r.text.front() == ' ' && r.text.back() == ' ') r.text = r.text.substr(1, r.text.size() - 2);
+                    style(r);
                     r.code = true;
-                    r.bold = bold;
-                    r.italic = italic;
-                    r.link = link;
+                    r.underline = false;
                     out.push_back(r);
                     i = close + n - 1;
                     continue;
@@ -177,6 +281,18 @@ struct InlineParser {
                 buf += fence;
                 i += n - 1;
                 continue;
+            }
+            if (c == '^' && i + 1 < s.size() && s[i + 1] == '[') {
+                const std::size_t close = closeBracket(i + 1);
+                if (close != std::string::npos) {
+                    flush();
+                    Run r;
+                    style(r);
+                    r.footnote = s.substr(i + 2, close - i - 2);
+                    out.push_back(r);
+                    i = close;
+                    continue;
+                }
             }
             if ((c == '[' || (c == '!' && i + 1 < s.size() && s[i + 1] == '[')) && link.empty()) {
                 const bool image = c == '!';
@@ -195,6 +311,8 @@ struct InlineParser {
                             sub.bold = bold;
                             sub.italic = italic;
                             sub.underline = underline;
+                            sub.strike = strike;
+                            sub.looks = looks;
                             sub.link = target;
                             sub.run();
                             for (auto& r : sub.out) out.push_back(std::move(r));
@@ -223,6 +341,7 @@ struct InlineParser {
                     i = s.find('>', i);
                     continue;
                 }
+                if (lookTag(i)) continue;
                 std::size_t gt = s.find('>', i);
                 if (gt != std::string::npos && link.empty()) {
                     std::string inside = s.substr(i + 1, gt - i - 1);
@@ -230,10 +349,9 @@ struct InlineParser {
                         inside.find(' ') == std::string::npos) {
                         flush();
                         Run r;
+                        style(r);
                         r.text = startsWith(inside, "mailto:") ? inside.substr(7) : inside;
                         r.link = inside;
-                        r.bold = bold;
-                        r.italic = italic;
                         out.push_back(r);
                         i = gt;
                         continue;
@@ -241,7 +359,11 @@ struct InlineParser {
                 }
             }
             if (c == '~' && i + 1 < s.size() && s[i + 1] == '~') {
-                ++i;  // strikethrough isn't kept: drop the markers
+                if (strike || hasCloser("~~", i + 2)) {
+                    flush();
+                    strike = !strike;
+                }
+                ++i;
                 continue;
             }
             if (c == '*' || c == '_') {
@@ -284,7 +406,8 @@ std::string escapeMd(const std::string& t) {
     std::string out;
     for (std::size_t i = 0; i < t.size(); ++i) {
         char c = t[i];
-        if (c == '\\' || c == '`' || c == '*' || c == '[' || c == ']' || (c == '<' && i + 1 < t.size() && std::isalpha(static_cast<unsigned char>(t[i + 1]))) ||
+        if (c == '\\' || c == '`' || c == '*' || c == '[' || c == ']' || (c == '~' && i + 1 < t.size() && t[i + 1] == '~') ||
+            (c == '^' && i + 1 < t.size() && t[i + 1] == '[') || (c == '<' && i + 1 < t.size() && std::isalpha(static_cast<unsigned char>(t[i + 1]))) ||
             (c == '_' && (i == 0 || !isAlnum(t[i - 1]) || i + 1 >= t.size() || !isAlnum(t[i + 1])))) {
             out += '\\';
         }
@@ -306,6 +429,10 @@ std::string inlineMarkdown(const Runs& runs) {
     std::string out;
     for (std::size_t i = 0; i < runs.size(); ++i) {
         const Run& r = runs[i];
+        if (!r.footnote.empty()) {
+            out += "^[" + r.footnote + "]";
+            continue;
+        }
         if (r.text.empty()) continue;
         if (!r.link.empty()) {
             // neighbours with the same link form one [text](url)
@@ -349,6 +476,17 @@ std::string inlineMarkdown(const Runs& runs) {
         else if (r.bold) body = "**" + body + "**";
         else if (r.italic) body = "*" + body + "*";
         if (r.underline) body = "<u>" + body + "</u>";
+        if (r.strike) body = "~~" + body + "~~";
+        if (r.vertical) body = (r.vertical > 0 ? "<sup>" : "<sub>") + body + (r.vertical > 0 ? "</sup>" : "</sub>");
+        std::string css;
+        if (r.color) css += "color:" + colorName(r.color) + ";";
+        if (r.highlight) css += "background:" + colorName(r.highlight) + ";";
+        if (r.size > 0) css += "font-size:" + textNumber(r.size) + "pt;";
+        if (!r.font.empty()) css += "font-family:" + r.font + ";";
+        if (!css.empty()) {
+            css.pop_back();
+            body = "<span style=\"" + css + "\">" + body + "</span>";
+        }
         out += lead + body + trail;
     }
     return out;
@@ -472,6 +610,95 @@ bool isTableSeparator(const std::string& line) {
     return t.find("--") != std::string::npos || t.find("-|") != std::string::npos;
 }
 
+// Moves "[^label]: text" definitions into the references as inline notes "^[text]".
+std::vector<std::string> inlineFootnotes(const std::vector<std::string>& lines) {
+    std::map<std::string, std::string> defs;
+    std::vector<std::string> body;
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        const std::string t = trimCopy(lines[i]);
+        if (startsWith(t, "[^")) {
+            const auto close = t.find("]:");
+            if (close != std::string::npos) {
+                std::string text = trimCopy(t.substr(close + 2));
+                while (i + 1 < lines.size() && (startsWith(lines[i + 1], "    ") || startsWith(lines[i + 1], "\t")) && !trimCopy(lines[i + 1]).empty()) {
+                    text += " " + trimCopy(lines[++i]);
+                }
+                defs[t.substr(2, close - 2)] = text;
+                continue;
+            }
+        }
+        body.push_back(lines[i]);
+    }
+    if (defs.empty()) return body;
+    for (auto& line : body) {
+        std::string out;
+        for (std::size_t i = 0; i < line.size(); ++i) {
+            if (line[i] == '[' && i + 1 < line.size() && line[i + 1] == '^' && (i == 0 || line[i - 1] != '\\')) {
+                const auto close = line.find(']', i);
+                if (close != std::string::npos) {
+                    auto it = defs.find(line.substr(i + 2, close - i - 2));
+                    if (it != defs.end()) {
+                        out += "^[" + it->second + "]";
+                        i = close;
+                        continue;
+                    }
+                }
+            }
+            out += line[i];
+        }
+        line = out;
+    }
+    return body;
+}
+
+// The other way: inline notes "^[text]" become numbered references, with the notes listed in `notes`.
+std::string footnoteRefs(const std::string& md, std::vector<std::string>& notes) {
+    std::string out;
+    bool fenced = false;
+    for (std::size_t i = 0; i < md.size(); ++i) {
+        if ((i == 0 || md[i - 1] == '\n') && md.compare(i, 3, "```") == 0) fenced = !fenced;
+        if (fenced) {
+            out += md[i];
+            continue;
+        }
+        if (md[i] == '`') {  // code spans stay as they are
+            std::size_t n = 0;
+            while (i + n < md.size() && md[i + n] == '`') ++n;
+            const std::size_t close = md.find(std::string(n, '`'), i + n);
+            if (close != std::string::npos && md.find('\n', i) > close) {
+                out += md.substr(i, close + n - i);
+                i = close + n - 1;
+                continue;
+            }
+        }
+        if (md[i] == '\\' && i + 1 < md.size()) {
+            out += md[i];
+            out += md[++i];
+            continue;
+        }
+        if (md[i] == '^' && i + 1 < md.size() && md[i + 1] == '[') {
+            int depth = 0;
+            std::size_t k = i + 1;
+            for (; k < md.size(); ++k) {
+                if (md[k] == '\\') {
+                    ++k;
+                    continue;
+                }
+                if (md[k] == '[') ++depth;
+                if (md[k] == ']' && --depth == 0) break;
+            }
+            if (k < md.size()) {
+                notes.push_back(md.substr(i + 2, k - i - 2));
+                out += "[^" + std::to_string(notes.size()) + "]";
+                i = k;
+                continue;
+            }
+        }
+        out += md[i];
+    }
+    return out;
+}
+
 bool isPageBreakLine(const std::string& t) {
     std::string l = lower(trimCopy(t));
     return l == "<!-- pagebreak -->" || l == "\\pagebreak" || l == "\\newpage" || l == "<div style=\"page-break-after: always\"></div>" ||
@@ -482,7 +709,7 @@ bool isPageBreakLine(const std::string& t) {
 
 TextDocument readMarkdown(const std::string& text, const std::string& baseDir) {
     TextDocument doc;
-    std::vector<std::string> lines = splitLines(text);
+    std::vector<std::string> lines = inlineFootnotes(splitLines(text));
     std::size_t i = 0;
     // YAML front matter title
     if (!lines.empty() && trimCopy(lines[0]) == "---") {
@@ -554,6 +781,16 @@ TextDocument readMarkdown(const std::string& text, const std::string& baseDir) {
             flushPara();
             Block b;
             b.kind = Block::PageBreak;
+            doc.blocks.push_back(b);
+            ++i;
+            continue;
+        }
+        if (lower(t) == "[toc]" || lower(t) == "<!-- toc -->" || lower(t) == "\\toc" || lower(t) == "\\tableofcontents") {
+            flushPara();
+            Block b;
+            b.kind = Block::Toc;
+            b.level = 3;
+            b.runs = parseInline("Contents");
             doc.blocks.push_back(b);
             ++i;
             continue;
@@ -691,6 +928,7 @@ TextDocument readMarkdown(const std::string& text, const std::string& baseDir) {
                         while (indents.size() > 1 && ind < indents.back()) indents.pop_back();
                     }
                     if (indents.size() == 1 && ord != b.ordered && !b.items.empty()) break;  // a different list starts
+                    if (b.items.empty() && ord) b.start = std::max(0, std::atoi(trimCopy(l).c_str()));  // "3. third" starts at 3
                     ListItem it;
                     it.level = static_cast<int>(indents.size()) - 1;
                     it.runs = parseInline(txt);
@@ -753,9 +991,14 @@ std::string writeMarkdown(const TextDocument& doc, const std::string& mediaPrefi
                 sep();
                 out += "<!-- pagebreak -->\n";
                 break;
+            case Block::Toc:
+                sep();
+                out += "[TOC]\n";
+                break;
             case Block::List: {
                 sep();
                 std::vector<int> counters(10, 0);
+                counters[0] = b.start - 1;
                 for (const auto& it : b.items) {
                     const int lv = std::clamp(it.level, 0, 9);
                     for (int k = lv + 1; k < 10; ++k) counters[static_cast<std::size_t>(k)] = 0;
@@ -771,7 +1014,9 @@ std::string writeMarkdown(const TextDocument& doc, const std::string& mediaPrefi
                 for (const auto& r : b.rows) cols = std::max(cols, r.size());
                 auto cell = [](const Runs& r) {
                     std::string s = inlineMarkdown(r), o;
-                    for (char c : s) {
+                    for (std::size_t k = 0; k < s.size(); ++k) {
+                        const char c = s[k];
+                        if (c == '\\' && k + 1 < s.size() && s[k + 1] == '\n') continue;  // a hard break is <br> here
                         if (c == '|') o += "\\|";
                         else if (c == '\n') o += "<br>";
                         else o += c;
@@ -802,6 +1047,12 @@ std::string writeMarkdown(const TextDocument& doc, const std::string& mediaPrefi
             }
         }
     }
+    std::vector<std::string> notes;
+    out = footnoteRefs(out, notes);
+    if (!notes.empty()) {
+        out += "\n";
+        for (std::size_t n = 0; n < notes.size(); ++n) out += "[^" + std::to_string(n + 1) + "]: " + notes[n] + "\n";
+    }
     return out;
 }
 
@@ -829,6 +1080,11 @@ std::string writeText(const TextDocument& doc) {
                 break;
             }
             case Block::PageBreak: out += "\f\n"; break;
+            case Block::Toc: {
+                out += blockText(b) + "\n";
+                for (const auto& [lv, t] : outline(doc, b.level)) out += std::string(static_cast<std::size_t>(lv - 1) * 2, ' ') + t + "\n";
+                break;
+            }
             case Block::Image: out += "[image" + (b.alt.empty() ? std::string() : ": " + b.alt) + "]\n"; break;
             case Block::Quote: out += "    " + plainText(b.runs) + "\n"; break;
             default: out += blockText(b) + "\n";
@@ -855,20 +1111,51 @@ std::string htmlEscape(const std::string& s) {
     return o;
 }
 
-std::string htmlRuns(const Runs& runs) {
+std::string htmlRuns(const Runs& runs, std::vector<std::string>* notes = nullptr) {
     std::string o;
     for (const auto& r : runs) {
+        if (!r.footnote.empty()) {
+            if (notes) {
+                notes->push_back(r.footnote);
+                const std::string n = std::to_string(notes->size());
+                o += "<sup class=\"fn\"><a href=\"#fn" + n + "\" id=\"fnref" + n + "\">" + n + "</a></sup>";
+            }
+            continue;
+        }
         std::string t = htmlEscape(r.text), br;
         for (char c : t) br += c == '\n' ? std::string("<br>") : std::string(1, c);
         t = br;
         if (r.code) t = "<code>" + t + "</code>";
         if (r.underline) t = "<u>" + t + "</u>";
+        if (r.strike) t = "<s>" + t + "</s>";
+        if (r.vertical) t = (r.vertical > 0 ? "<sup>" : "<sub>") + t + (r.vertical > 0 ? "</sup>" : "</sub>");
         if (r.italic) t = "<em>" + t + "</em>";
         if (r.bold) t = "<strong>" + t + "</strong>";
+        std::string css;
+        if (r.color) css += "color:" + colorName(r.color) + ";";
+        if (r.highlight) css += "background:" + colorName(r.highlight) + ";";
+        if (r.size > 0) css += "font-size:" + textNumber(r.size) + "pt;";
+        if (r.font == "serif") css += "font-family:Georgia,serif;";
+        else if (r.font == "mono") css += "font-family:Courier,monospace;";
+        else if (r.font == "sans") css += "font-family:Helvetica,Arial,sans-serif;";
+        if (!css.empty()) t = "<span style=\"" + css + "\">" + t + "</span>";
         if (!r.link.empty()) t = "<a href=\"" + htmlEscape(r.link) + "\">" + t + "</a>";
         o += t;
     }
     return o;
+}
+
+std::string htmlParaStyle(const ParaFormat& f) {
+    std::string css;
+    if (f.align) css += std::string("text-align:") + (f.align == 'c' ? "center" : f.align == 'r' ? "right" : f.align == 'j' ? "justify" : "left") + ";";
+    if (f.indent) css += "margin-left:" + textNumber(f.indent) + "pt;";
+    if (f.indentRight) css += "margin-right:" + textNumber(f.indentRight) + "pt;";
+    if (f.firstLine) css += "text-indent:" + textNumber(f.firstLine) + "pt;";
+    if (f.before >= 0) css += "margin-top:" + textNumber(f.before) + "pt;";
+    if (f.after >= 0) css += "margin-bottom:" + textNumber(f.after) + "pt;";
+    if (f.lineSpacing > 0) css += "line-height:" + textNumber(f.lineSpacing) + ";";
+    if (f.pageBreakBefore) css += "page-break-before:always;";
+    return css.empty() ? std::string() : " style=\"" + css + "\"";
 }
 
 }  // namespace
@@ -882,24 +1169,52 @@ std::string writeHtml(const TextDocument& doc) {
          "table{border-collapse:collapse;margin:1em 0}td,th{border:1px solid #999;padding:.3em .6em;vertical-align:top}th{background:#eee}\n"
          "pre{background:#f4f4f4;padding:.8em;overflow:auto}code{font-family:Courier,monospace}blockquote{border-left:4px solid #ccc;margin-left:0;padding-left:1em;color:#555}\n"
          "img{max-width:100%}\n@media print{.page-break{page-break-after:always}}\n</style>\n</head>\n<body>\n";
+    std::vector<std::string> notes;
+    int headingNo = 0;
     for (const auto& b : doc.blocks) {
+        const std::string ps = htmlParaStyle(b.fmt);
         switch (b.kind) {
             case Block::Heading: {
                 std::string n = std::to_string(std::clamp(b.level, 1, 6));
-                o += "<h" + n + ">" + htmlRuns(b.runs) + "</h" + n + ">\n";
+                o += "<h" + n + " id=\"h" + std::to_string(++headingNo) + "\"" + ps + ">" + htmlRuns(b.runs, &notes) + "</h" + n + ">\n";
                 break;
             }
-            case Block::Paragraph: o += "<p>" + htmlRuns(b.runs) + "</p>\n"; break;
-            case Block::Quote: o += "<blockquote><p>" + htmlRuns(b.runs) + "</p></blockquote>\n"; break;
+            case Block::Paragraph: {
+                std::string cls;
+                if (!b.style.empty() && b.style != "Normal") cls = " class=\"" + htmlEscape(b.style) + "\"";
+                if (b.style == "Title") o += "<h1 class=\"Title\"" + ps + ">" + htmlRuns(b.runs, &notes) + "</h1>\n";
+                else o += "<p" + cls + ps + ">" + htmlRuns(b.runs, &notes) + "</p>\n";
+                break;
+            }
+            case Block::Toc: {
+                o += "<nav class=\"toc\"><p><strong>" + htmlRuns(b.runs) + "</strong></p>\n";
+                int k = 0;
+                for (const auto& x : doc.blocks) {
+                    if (x.kind != Block::Heading) continue;
+                    ++k;
+                    if (x.level > b.level) continue;
+                    o += "<p style=\"margin:0 0 0 " + std::to_string((x.level - 1) * 18) + "pt\"><a href=\"#h" + std::to_string(k) + "\">" +
+                         htmlEscape(plainText(x.runs)) + "</a></p>\n";
+                }
+                o += "</nav>\n";
+                break;
+            }
+            case Block::Quote: o += "<blockquote><p" + ps + ">" + htmlRuns(b.runs, &notes) + "</p></blockquote>\n"; break;
             case Block::Code: o += "<pre><code>" + htmlEscape(plainText(b.runs)) + "</code></pre>\n"; break;
             case Block::PageBreak: o += "<div class=\"page-break\" style=\"page-break-after: always\"></div>\n"; break;
             case Block::List: {
                 const std::string tag = b.ordered ? "ol" : "ul";
+                std::string listType;
+                if (b.numbering == "lowerLetter") listType = " type=\"a\"";
+                else if (b.numbering == "upperLetter") listType = " type=\"A\"";
+                else if (b.numbering == "lowerRoman") listType = " type=\"i\"";
+                else if (b.numbering == "upperRoman") listType = " type=\"I\"";
+                if (b.ordered && b.start != 1) listType += " start=\"" + std::to_string(b.start) + "\"";
                 int depth = -1;
                 for (const auto& it : b.items) {
                     const int lv = std::min(std::max(0, it.level), depth + 1);
                     if (lv > depth) {
-                        o += "<" + tag + ">\n";
+                        o += "<" + tag + (depth < 0 ? listType : std::string()) + ">\n";
                         depth = lv;
                     } else {
                         o += "</li>\n";
@@ -908,7 +1223,7 @@ std::string writeHtml(const TextDocument& doc) {
                             --depth;
                         }
                     }
-                    o += "<li>" + htmlRuns(it.runs);
+                    o += "<li>" + htmlRuns(it.runs, &notes);
                 }
                 if (depth >= 0) o += "</li>\n";
                 while (depth > 0) {
@@ -920,10 +1235,31 @@ std::string writeHtml(const TextDocument& doc) {
             }
             case Block::Table: {
                 o += "<table>\n";
+                auto spanAt = [&](int r, int c) -> const CellSpan* {
+                    for (const auto& m : b.merges) {
+                        if (r >= m.row && r < m.row + m.rows && c >= m.col && c < m.col + m.cols) return &m;
+                    }
+                    return nullptr;
+                };
                 for (std::size_t r = 0; r < b.rows.size(); ++r) {
                     const bool head = r == 0 && b.header;
                     o += "<tr>";
-                    for (const auto& c : b.rows[r]) o += (head ? "<th>" : "<td>") + htmlRuns(c) + (head ? "</th>" : "</td>");
+                    for (std::size_t c = 0; c < b.rows[r].size(); ++c) {
+                        const CellSpan* m = spanAt(static_cast<int>(r), static_cast<int>(c));
+                        if (m && (m->row != static_cast<int>(r) || m->col != static_cast<int>(c))) continue;
+                        std::string attrs;
+                        if (m && m->rows > 1) attrs += " rowspan=\"" + std::to_string(m->rows) + "\"";
+                        if (m && m->cols > 1) attrs += " colspan=\"" + std::to_string(m->cols) + "\"";
+                        if (r < b.cellFormats.size() && c < b.cellFormats[r].size()) {
+                            const CellFormat& f = b.cellFormats[r][c];
+                            std::string css;
+                            if (f.fill) css += "background:" + colorName(f.fill) + ";";
+                            if (f.align) css += std::string("text-align:") + (f.align == 'c' ? "center" : f.align == 'r' ? "right" : "left") + ";";
+                            if (f.valign) css += std::string("vertical-align:") + (f.valign == 'm' ? "middle" : "bottom") + ";";
+                            if (!css.empty()) attrs += " style=\"" + css + "\"";
+                        }
+                        o += (head ? "<th" : "<td") + attrs + ">" + htmlRuns(b.rows[r][c], &notes) + (head ? "</th>" : "</td>");
+                    }
                     o += "</tr>\n";
                 }
                 o += "</table>\n";
@@ -937,6 +1273,13 @@ std::string writeHtml(const TextDocument& doc) {
                 break;
             }
         }
+    }
+    if (!notes.empty()) {
+        o += "<section class=\"footnotes\"><hr>\n<ol>\n";
+        for (std::size_t n = 0; n < notes.size(); ++n) {
+            o += "<li id=\"fn" + std::to_string(n + 1) + "\">" + htmlRuns(parseInline(notes[n])) + " <a href=\"#fnref" + std::to_string(n + 1) + "\">&#8617;</a></li>\n";
+        }
+        o += "</ol>\n</section>\n";
     }
     o += "</body>\n</html>\n";
     return o;
@@ -992,7 +1335,7 @@ struct HtmlReader {
     TextDocument doc;
     std::string baseDir;
     Runs runs;
-    int bold = 0, italic = 0, underline = 0, code = 0, pre = 0;
+    int bold = 0, italic = 0, underline = 0, code = 0, pre = 0, strike = 0, sup = 0, sub = 0, mark = 0;
     std::vector<std::string> links;
     enum Ctx { None, Para, Heading, Quote };
     int headingLevel = 0;
@@ -1035,6 +1378,9 @@ struct HtmlReader {
         r.italic = italic > 0;
         r.underline = underline > 0;
         r.code = code > 0 && !pre;
+        r.strike = strike > 0;
+        r.vertical = sup > 0 ? 1 : sub > 0 ? -1 : 0;
+        if (mark > 0) r.highlight = 0xFFFF00 | kColorSet;
         if (!links.empty()) r.link = links.back();
         runs.push_back(r);
     }
@@ -1096,6 +1442,10 @@ struct HtmlReader {
         if (n == "b" || n == "strong") bold += t.closing ? -1 : 1;
         else if (n == "i" || n == "em") italic += t.closing ? -1 : 1;
         else if (n == "u" || n == "ins") underline += t.closing ? -1 : 1;
+        else if (n == "s" || n == "del" || n == "strike") strike += t.closing ? -1 : 1;
+        else if (n == "sup") sup += t.closing ? -1 : 1;
+        else if (n == "sub") sub += t.closing ? -1 : 1;
+        else if (n == "mark") mark += t.closing ? -1 : 1;
         else if (n == "code" || n == "kbd" || n == "samp" || n == "tt") code += t.closing ? -1 : 1;
         else if (n == "a") {
             if (t.closing) {

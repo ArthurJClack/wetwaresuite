@@ -103,6 +103,13 @@ struct GridCell {
     bool bold = false;
     bool number = false;  // right-aligned
     bool error = false;
+    bool italic = false, underline = false, strike = false;
+    char align = 0;                          // 0 by type, 'l', 'c' or 'r'
+    std::uint32_t color = 0, fill = 0;       // 0xRRGGBB plus 0x1000000 when set; 0 = default
+    float bar = -1;                          // data bar length 0..1, or -1 for none
+    std::uint32_t barColor = 0;
+    int spanRows = 1, spanCols = 1;          // top-left of a merged area: its size
+    bool covered = false;                    // inside a merged area, but not its top-left
 };
 
 struct CellGrid {

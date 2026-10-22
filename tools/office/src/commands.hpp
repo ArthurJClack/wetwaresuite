@@ -34,6 +34,11 @@ public:
     bool gridCell(int sheet, int row, int col, GridCell& out) const override;
     double gridColumnChars(int sheet, int col) const override;
     std::vector<std::string> gridSetCommand(int sheet, int row, int col, const std::string& input) const override;
+
+private:
+    // conditional formats for the window's grid, rebuilt on every grid() call (once per frame)
+    mutable std::shared_ptr<CellPainter> painter_;
+    mutable int painterSheet_ = -1;
 };
 
 class TextDoc : public Document {
@@ -212,6 +217,7 @@ void registerConvertCommands(Session& session);
 
 // Shared by convert and the per-kind open/save commands.
 Workbook loadWorkbook(const std::string& path, char delimiter = 0);  // throws
+Workbook loadWorkbook(const std::string& path, const CsvOptions& csv);  // CSV import options; throws
 void saveWorkbook(const Workbook& wb, const std::string& path, int sheet);  // throws
 TextDocument loadTextDocument(const std::string& path);  // throws
 void saveTextDocument(const TextDocument& doc, const std::string& path);  // throws

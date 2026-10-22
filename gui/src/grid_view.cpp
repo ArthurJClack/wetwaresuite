@@ -196,21 +196,39 @@ void Shell::gridView(const CellGrid& layout) {
     const ImVec2 body{origin.x + headW, origin.y + headH};
     dl->AddRectFilled(body, {origin.x + size.x, origin.y + size.y}, bg);
 
-    // cells
+    // cells: fills and data bars under the grid lines, text (and merged areas) over them
     const float pad = 4;
+    auto rgb = [](std::uint32_t c, int alpha = 255) { return IM_COL32((c >> 16) & 255, (c >> 8) & 255, c & 255, alpha); };
+    auto luma = [](std::uint32_t c) { return 0.299f * ((c >> 16) & 255) + 0.587f * ((c >> 8) & 255) + 0.114f * (c & 255); };
+    const float bgLuma = darkLook() ? 40.0f : 230.0f;
+    constexpr std::uint32_t kSet = 0x1000000;
+    struct Shown {
+        int r, c;
+        GridCell cell;
+    };
+    std::vector<Shown> shown;
+    auto spanRect = [&](int r, int c, const GridCell& cell, ImVec2& a, ImVec2& b) {
+        a = cellMin(r, c);
+        const int ce = std::min(cols, c + std::max(1, cell.spanCols));
+        b = {a.x + colX[static_cast<std::size_t>(ce)] - colX[static_cast<std::size_t>(c)], a.y + rowH * static_cast<float>(std::max(1, cell.spanRows))};
+    };
     for (int r = r0; r < r1; ++r) {
         for (int c = c0; c < c1; ++c) {
             GridCell cell;
-            if (!doc->gridCell(st.sheet, r, c, cell) || cell.text.empty()) continue;
-            const ImVec2 a = cellMin(r, c);
-            const float w = colX[static_cast<std::size_t>(c) + 1] - colX[static_cast<std::size_t>(c)];
-            const ImVec4 clip{std::max(a.x, body.x), std::max(a.y, body.y), a.x + w - 1, a.y + rowH};
-            const float tw = ImGui::CalcTextSize(cell.text.c_str()).x;
-            const float x = cell.number ? a.x + w - pad - tw : a.x + pad;
-            const ImVec2 p{x, a.y + (rowH - unit) * 0.5f};
-            const ImU32 col = cell.error ? errorCol : text;
-            dl->AddText(nullptr, 0, p, col, cell.text.c_str(), nullptr, 0, &clip);
-            if (cell.bold) dl->AddText(nullptr, 0, {p.x + 1, p.y}, col, cell.text.c_str(), nullptr, 0, &clip);
+            if (!doc->gridCell(st.sheet, r, c, cell) || cell.covered) continue;
+            ImVec2 a, b;
+            spanRect(r, c, cell, a, b);
+            const ImVec2 ca{std::max(a.x, body.x), std::max(a.y, body.y)};
+            if (ca.x < b.x && ca.y < b.y) {
+                if (cell.fill & kSet) dl->AddRectFilled(ca, b, rgb(cell.fill));
+                if (cell.bar >= 0) {
+                    const float bw = (b.x - a.x - 4) * std::clamp(cell.bar, 0.0f, 1.0f);
+                    dl->PushClipRect(ca, b, true);
+                    dl->AddRectFilled({a.x + 2, a.y + 3}, {a.x + 2 + bw, b.y - 3}, rgb(cell.barColor & kSet ? cell.barColor : 0x638EC6, 110));
+                    dl->PopClipRect();
+                }
+            }
+            if (!cell.text.empty() || cell.spanRows > 1 || cell.spanCols > 1) shown.push_back({r, c, std::move(cell)});
         }
     }
     // grid lines
@@ -221,6 +239,37 @@ void Shell::gridView(const CellGrid& layout) {
     for (int r = r0; r <= r1; ++r) {
         const float y = origin.y + headH + rowH * static_cast<float>(r) - scrollY;
         if (y >= body.y) dl->AddLine({body.x, y}, {origin.x + size.x, y}, line);
+    }
+    for (const auto& [r, c, cell] : shown) {
+        ImVec2 a, b;
+        spanRect(r, c, cell, a, b);
+        const bool merged = cell.spanRows > 1 || cell.spanCols > 1;
+        const ImVec4 clip{std::max(a.x, body.x), std::max(a.y, body.y), b.x - 1, b.y};
+        if (merged && clip.x < clip.z && clip.y < clip.w) {
+            // cover the lines inside the merged area
+            dl->AddRectFilled({std::max(a.x + 1, body.x), std::max(a.y + 1, body.y)}, {b.x, b.y}, cell.fill & kSet ? rgb(cell.fill) : bg);
+        }
+        if (cell.text.empty()) continue;
+        ImU32 col = cell.error ? errorCol : text;
+        if (!cell.error) {
+            const float under = cell.fill & kSet ? luma(cell.fill) : bgLuma;
+            if (cell.color & kSet) {
+                if (std::abs(luma(cell.color) - under) > 60) col = rgb(cell.color);
+                else if (cell.fill & kSet) col = under > 128 ? IM_COL32(0, 0, 0, 255) : IM_COL32(255, 255, 255, 255);
+            } else if (cell.fill & kSet) {
+                col = under > 128 ? IM_COL32(20, 20, 20, 255) : IM_COL32(240, 240, 240, 255);
+            }
+        }
+        const float tw = ImGui::CalcTextSize(cell.text.c_str()).x;
+        const char align = cell.align ? cell.align : merged ? 'c' : cell.number ? 'r' : 'l';
+        const float x = align == 'r' ? b.x - pad - tw : align == 'c' ? (a.x + b.x - tw) * 0.5f : a.x + pad;
+        const ImVec2 p{x, merged ? (a.y + b.y - unit) * 0.5f : a.y + (rowH - unit) * 0.5f};
+        dl->AddText(nullptr, 0, p, col, cell.text.c_str(), nullptr, 0, &clip);
+        if (cell.bold) dl->AddText(nullptr, 0, {p.x + 1, p.y}, col, cell.text.c_str(), nullptr, 0, &clip);
+        dl->PushClipRect({clip.x, clip.y}, {clip.z, clip.w}, true);
+        if (cell.underline) dl->AddLine({p.x, p.y + unit}, {p.x + tw, p.y + unit}, col);
+        if (cell.strike) dl->AddLine({p.x, p.y + unit * 0.55f}, {p.x + tw, p.y + unit * 0.55f}, col);
+        dl->PopClipRect();
     }
     // selection
     {

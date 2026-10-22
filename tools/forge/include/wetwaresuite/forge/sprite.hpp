@@ -74,7 +74,7 @@ int nearestIndex(const std::vector<Color>& palette, Color c, int skip = -1);
 void snapToPalette(Sprite& sprite);
 // Distinct colours used across all cels.
 std::vector<Color> spriteColors(const Sprite& sprite);
-// Built-in palettes: pico8, db16, db32, gameboy, nes (approximate), grayscale4.
+// Built-in palettes: pico8, db16, db32, gameboy, grayscale4.
 std::vector<Color> presetPalette(const std::string& name);
 // GIMP .gpl / JASC .pal / hex-per-line files.
 std::vector<Color> loadPalette(const std::string& path);

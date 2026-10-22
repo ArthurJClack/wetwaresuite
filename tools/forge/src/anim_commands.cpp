@@ -530,7 +530,6 @@ void registerAnimFileCommands(Session& session) {
                         names += (names.empty() ? "" : ",") + l.name;
                         shown += std::string(shown.empty() ? "" : ",") + (l.visible ? "1" : "0");
                     }
-                    r.with("layer_names", names).with("layer_visible", shown).with("tag_ranges", ranges);
                     r.with("width", static_cast<std::int64_t>(sp.width))
                         .with("height", static_cast<std::int64_t>(sp.height))
                         .with("frames", static_cast<std::int64_t>(sp.frames()))
@@ -538,7 +537,10 @@ void registerAnimFileCommands(Session& session) {
                         .with("tags", tags)
                         .with("durations", durs)
                         .with("palette", colorsText(sp.palette))
-                        .with("indexed", sp.indexed);
+                        .with("indexed", sp.indexed)
+                        .with("layer_names", names)
+                        .with("layer_visible", shown)
+                        .with("tag_ranges", ranges);
                     return r;
                 },
                 false));

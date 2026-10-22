@@ -211,6 +211,10 @@ Root: HKA; Subkey: "Software\Classes\.wwmap"; ValueType: string; ValueName: ""; 
 Root: HKA; Subkey: "Software\Classes\.achmap\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.maps"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-maps.exe\SupportedTypes"; ValueType: string; ValueName: ".achmap"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.achmap"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite.maps"; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.fit\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.maps"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-maps.exe\SupportedTypes"; ValueType: string; ValueName: ".fit"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.osm\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.maps"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-maps.exe\SupportedTypes"; ValueType: string; ValueName: ".osm"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.c\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.system"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-system.exe\SupportedTypes"; ValueType: string; ValueName: ".c"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.h\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.system"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes

@@ -40,7 +40,7 @@ MIME = {
     ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     ".odp": "application/vnd.oasis.opendocument.presentation", ".pdf": "application/pdf",
     ".geojson": "application/geo+json", ".kml": "application/vnd.google-earth.kml+xml", ".gpx": "application/gpx+xml",
-    ".shp": "application/x-esri-shape",
+    ".shp": "application/x-esri-shape", ".fit": "application/vnd.ant.fit", ".osm": "application/vnd.openstreetmap.data+xml",
     ".c": "text/x-csrc", ".h": "text/x-chdr", ".cpp": "text/x-c++src", ".hpp": "text/x-c++hdr", ".cc": "text/x-c++src",
     ".cxx": "text/x-c++src", ".hh": "text/x-c++hdr", ".hxx": "text/x-c++hdr", ".m": "text/x-objcsrc", ".mm": "text/x-objc++src",
     ".rs": "text/rust", ".go": "text/x-go", ".zig": "text/x-zig", ".py": "text/x-python", ".pyw": "text/x-python",

@@ -148,7 +148,7 @@ void registerAppearanceCommands(Session& session) {
                     const auto before = s.effects.size();
                     if (!what.empty() && std::isdigit(static_cast<unsigned char>(what[0]))) {
                         const std::size_t k = static_cast<std::size_t>(std::atoi(what.c_str()));
-                        if (k < s.effects.size()) s.effects.erase(s.effects.begin() + static_cast<long>(k));
+                        if (k < s.effects.size()) s.effects.erase(s.effects.begin() + static_cast<std::ptrdiff_t>(k));
                     } else {
                         s.effects.erase(std::remove_if(s.effects.begin(), s.effects.end(), [&](const Effect& e) { return e.type == what; }), s.effects.end());
                     }

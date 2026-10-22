@@ -190,7 +190,7 @@ void registerAnchorCommands(Session& session) {
                 std::sort(nodes.rbegin(), nodes.rend());
                 for (int n : nodes) {
                     std::size_t s = 0, k = 0;
-                    if (locate(bp, n, s, k)) bp[s].nodes.erase(bp[s].nodes.begin() + static_cast<long>(k));
+                    if (locate(bp, n, s, k)) bp[s].nodes.erase(bp[s].nodes.begin() + static_cast<std::ptrdiff_t>(k));
                 }
                 bp.erase(std::remove_if(bp.begin(), bp.end(), [](const SubPath& sp) { return sp.nodes.size() < 2; }), bp.end());
                 if (bp.empty()) return Result::failure("that would leave no path; use vector.delete to remove the shape");

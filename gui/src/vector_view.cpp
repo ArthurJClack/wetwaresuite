@@ -294,7 +294,7 @@ void Shell::drawVector(ImDrawList* dl, ImVec2 origin) {
     const auto& n = canvas_.vecNodes;
     for (std::size_t i = 0; i + 5 < n.size(); i += 6) {
         float v[6];
-        std::copy(n.begin() + static_cast<long>(i), n.begin() + static_cast<long>(i) + 6, v);
+        std::copy(n.begin() + static_cast<std::ptrdiff_t>(i), n.begin() + static_cast<std::ptrdiff_t>(i) + 6, v);
         if (canvas_.vecDrag == 3 && static_cast<int>(i / 6) == canvas_.vecHandle / 3) {
             const int part = canvas_.vecHandle % 3;
             if (part == 0) {

@@ -137,7 +137,7 @@ void registerPathOpCommands(Session& session) {
                 SubPath& sp = bp[sub];
                 Shape& s = doc.shapes[static_cast<std::size_t>(idx)];
                 if (sp.closed) {
-                    std::rotate(sp.nodes.begin(), sp.nodes.begin() + static_cast<long>(k), sp.nodes.end());
+                    std::rotate(sp.nodes.begin(), sp.nodes.begin() + static_cast<std::ptrdiff_t>(k), sp.nodes.end());
                     Node end = sp.nodes.front();
                     sp.nodes.front().in = sp.nodes.front().p;
                     end.out = end.p;
@@ -149,13 +149,13 @@ void registerPathOpCommands(Session& session) {
                 }
                 if (k == 0 || k + 1 >= sp.nodes.size()) return Result::failure("that's an end of the path already; nothing to split");
                 SubPath second;
-                second.nodes.assign(sp.nodes.begin() + static_cast<long>(k), sp.nodes.end());
-                sp.nodes.erase(sp.nodes.begin() + static_cast<long>(k) + 1, sp.nodes.end());
+                second.nodes.assign(sp.nodes.begin() + static_cast<std::ptrdiff_t>(k), sp.nodes.end());
+                sp.nodes.erase(sp.nodes.begin() + static_cast<std::ptrdiff_t>(k) + 1, sp.nodes.end());
                 sp.nodes.back().out = sp.nodes.back().p;
                 second.nodes.front().in = second.nodes.front().p;
                 BezierPath rest{second};
                 for (std::size_t i = sub + 1; i < bp.size(); ++i) rest.push_back(bp[i]);
-                bp.erase(bp.begin() + static_cast<long>(sub) + 1, bp.end());
+                bp.erase(bp.begin() + static_cast<std::ptrdiff_t>(sub) + 1, bp.end());
                 storePath(s, bp);
                 Shape copy = s;
                 copy.id.clear();

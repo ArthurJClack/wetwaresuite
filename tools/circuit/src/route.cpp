@@ -73,7 +73,7 @@ RouteReport autoroute(Circuit& c, const Netlist& nl, const RouteOptions& options
     }
     const Rules& rules = c.board.rules;
     const auto start = std::chrono::steady_clock::now();
-    const int layers = std::clamp(options.layers, 1, 2);
+    const int layers = options.layers >= 4 && c.board.layers == 4 ? 4 : std::clamp(options.layers, 1, 2);
     const auto pads = worldPads(c, nl);
 
     // which nets, in which order (short ones first)
@@ -148,7 +148,7 @@ RouteReport autoroute(Circuit& c, const Netlist& nl, const RouteOptions& options
         }
         const int edgeNet = -999998;
         for (std::size_t i = 0; i < c.board.outline.size(); ++i) {
-            f.stamp(geom::capsule(c.board.outline[i], c.board.outline[(i + 1) % c.board.outline.size()], 0), 3, edgeNet, reach,
+            f.stamp(geom::capsule(c.board.outline[i], c.board.outline[(i + 1) % c.board.outline.size()], 0), kAllCopper, edgeNet, reach,
                     rules.edgeClearance - rules.clearance);
         }
         // the edge must never count as "own net": give d2 the same value
@@ -183,13 +183,13 @@ RouteReport autoroute(Circuit& c, const Netlist& nl, const RouteOptions& options
                 for (const auto& t : c.board.traces) {
                     if (t.net != net) continue;
                     cu.shapes.push_back(geom::capsule(t.a, t.b, t.width / 2));
-                    cu.layers.push_back(t.layer == 0 ? 1 : 2);
+                    cu.layers.push_back(layerBit(t.layer));
                     cu.padIndex.push_back(-1);
                 }
                 for (const auto& v : c.board.vias) {
                     if (v.net != net) continue;
                     cu.shapes.push_back(geom::capsule(v.pos, v.pos, v.diameter / 2));
-                    cu.layers.push_back(3);
+                    cu.layers.push_back(kAllCopper);
                     cu.padIndex.push_back(-1);
                 }
                 geom::Uf uf(cu.shapes.size());
@@ -298,11 +298,14 @@ RouteReport autoroute(Circuit& c, const Netlist& nl, const RouteOptions& options
                             if (dirOf[k] != 255 && dirOf[k] != d) cost += 0.35f;
                             relax(nk, cost, static_cast<std::uint8_t>(d));
                         }
-                        if (layers == 2) {
-                            const std::size_t other = f.idx(x, y, 1 - l);
+                        if (layers >= 2) {
                             const double vr = rules.viaDiameter / 2;
-                            if (f.dist(f.idx(x, y, 0), nid) >= rules.clearance + vr && f.dist(f.idx(x, y, 1), nid) >= rules.clearance + vr) {
-                                relax(other, gk + static_cast<float>(options.viaCost), 8);
+                            bool fits = true;
+                            for (int ol = 0; ol < layers && fits; ++ol) fits = f.dist(f.idx(x, y, ol), nid) >= rules.clearance + vr;
+                            if (fits) {
+                                for (int ol = 0; ol < layers; ++ol) {
+                                    if (ol != l) relax(f.idx(x, y, ol), gk + static_cast<float>(options.viaCost), 8);
+                                }
                             }
                         }
                     }
@@ -379,11 +382,11 @@ RouteReport autoroute(Circuit& c, const Netlist& nl, const RouteOptions& options
                 flush(runStart, pts.size() - 1);
                 for (const auto& t : newTraces) {
                     c.board.traces.push_back(t);
-                    f.stamp(geom::capsule(t.a, t.b, t.width / 2), t.layer == 0 ? 1 : 2, nid, reach);
+                    f.stamp(geom::capsule(t.a, t.b, t.width / 2), layerBit(t.layer), nid, reach);
                 }
                 for (const auto& v : newVias) {
                     c.board.vias.push_back(v);
-                    f.stamp(geom::capsule(v.pos, v.pos, v.diameter / 2), 3, nid, reach);
+                    f.stamp(geom::capsule(v.pos, v.pos, v.diameter / 2), kAllCopper, nid, reach);
                 }
                 r.segments += static_cast<int>(newTraces.size());
                 r.vias += static_cast<int>(newVias.size());

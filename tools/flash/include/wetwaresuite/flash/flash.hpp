@@ -103,5 +103,7 @@ std::string unescape(const std::string& text);
 std::string printable(const std::string& bytes);
 
 void registerCommands(Session& session);
+// flash.toolchains, flash.sketch, flash.compile (part of registerCommands).
+void registerBuildCommands(Session& session);
 
 }  // namespace wetwaresuite::flash

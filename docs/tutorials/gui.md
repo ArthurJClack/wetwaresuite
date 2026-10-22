@@ -272,6 +272,24 @@ Effects...) only change the inside. **Deselect** (Ctrl+D), **Invert** (Ctrl+Shif
 Ctrl+Z brings back the previous selection. See [the photo tutorial](photo.md#task-8-selections-masks-curves-and-free-transform)
 for masks, curves and free transform.
 
+### Circuits: click on the schematic and the board
+
+In the electronics app a circuit (`.circuit.json`, or a KiCad `.kicad_sch`, `.kicad_pcb` or `.kicad_pro`)
+gets its own row above the picture:
+
+1. **Show** picks **Schematic**, **Board** or **3D** (the assembled board; drag to look around).
+2. **Tool** on the schematic: **Select** (click anything to hear what it is: a pin and its net, a wire,
+   a label, a part), **Place** (choose the part in the list beside it, type a value if you like, then
+   click where it goes), **Wire** (click where the wire starts, then at each corner; it ends on a pin,
+   or press Esc or right-click), **Move** (click a part, then where it goes) and **Delete**.
+3. **Tool** on the board: **Select**, **Move** (footprints), **Trace** (pick the copper layer; clicks on
+   a pad snap to its centre) and **Via**. **Place parts**, **Route** and **Check** are one click each;
+   on the schematic, **Check** runs the electrical check.
+
+Each click is one step in the history (Ctrl+Z takes it back) and runs the same `circuit.*` command a
+script or Claude would, so you can mix clicking, forms and batch scripts on one design. The
+[circuit tutorial](circuit.md#task-10-draw-in-the-window) has the whole list.
+
 ## 8. Sending your work to another app
 
 The apps are separate programs, but you can hand work from one to the next without hunting for

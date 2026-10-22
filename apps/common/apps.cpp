@@ -74,7 +74,8 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".achcad", {"cad", "cad.open"}},  // .ach*: files saved before the rename
         // electronics
         {".hex", {"electronics", ""}}, {".elf", {"electronics", ""}}, {".ino", {"electronics", ""}},
-        {".gbr", {"electronics", ""}}, {".drl", {"electronics", ""}}, {".kicad_sch", {"electronics", ""}},
+        {".gbr", {"electronics", ""}}, {".drl", {"electronics", ""}}, {".kicad_sch", {"electronics", "circuit.open"}},
+        {".kicad_pcb", {"electronics", "circuit.open"}}, {".kicad_pro", {"electronics", "circuit.open"}},
         {".circuit.json", {"electronics", "circuit.open"}},
         // sound
         {".wav", {"sound", "audio.open"}}, {".mp3", {"sound", "audio.open"}}, {".flac", {"sound", "audio.open"}},

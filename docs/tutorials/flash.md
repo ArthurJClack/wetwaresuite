@@ -20,7 +20,7 @@ If you already use avrdude, esptool, STM32CubeProgrammer, st-flash or dfu-util, 
 
 **No board on your desk?** Every command works against simulated boards: `sim:uno`, `sim:nano`, `sim:nano-old`, `sim:pro-mini`, `sim:mega2560`, `sim:leonardo`, `sim:micro`, `sim:esp32`, `sim:esp32-s2`, `sim:esp32-s3`, `sim:esp32-c3`, `sim:esp32-c6`, `sim:esp8266`, `sim:stm32` (an F103 "Blue Pill") and `sim:stm32f4` (an F411). They speak the real protocols byte for byte, model the auto-reset wiring, and "run" the firmware afterwards by printing a line about it. Every CLI and batch example below was run against the real binary with these simulated boards; the outputs are copied from those runs.
 
-There is no GUI yet; the GUI that comes later will call these same commands. Each task below is shown three ways: one CLI command, a batch script, and asking Claude over MCP.
+It can also **build** firmware, like the Arduino IDE's Verify and Upload, with whichever toolchain you have installed (arduino-cli, PlatformIO or avr-gcc; see [task 7](#task-7-build-a-sketch-and-upload-it)). The electronics window lists every command on the left; there is no special flashing panel. Each task below is shown three ways: one CLI command, a batch script, and asking Claude over MCP.
 
 ## Defaults you should know about
 
@@ -418,6 +418,66 @@ flash.send port=/dev/ttyACM0 text="temp?" newline=lf read_seconds=0.5
 
 Claude calls `flash_send` three times with `baud=9600 newline=lf` and reads the replies.
 
+## Task 7: build a sketch and upload it
+
+flash doesn't ship a compiler. `flash.compile` runs the one you have: **arduino-cli** for Arduino sketches (a folder holding `name/name.ino`, or the `.ino`), **PlatformIO** (`pio`) for a folder with a `platformio.ini`, or **avr-gcc** for plain `.c`/`.cpp` files for AVR boards. It picks the tool from the source, works out the Arduino board id (FQBN) from the board preset (`uno` is `arduino:avr:uno`, `esp32` is `esp32:esp32:esp32`; pass a full FQBN to choose yourself), and with `port=` uploads the result with the native flasher. When the tool isn't installed nothing runs, and the reply says how to get it; `dry_run=true` shows the commands either way.
+
+### CLI
+
+```sh
+$ wetwaresuite flash.toolchains
+1 toolchain(s) installed
+arduino-cli: not installed (Arduino sketches (.ino) for every board with an Arduino core)
+pio: not installed (PlatformIO projects (platformio.ini))
+avr-gcc: not installed (plain C/C++ for AVR boards (Uno, Nano, Mega, Leonardo))
+avr-objcopy: not installed (turns avr-gcc's ELF into an Intel HEX file)
+arm-none-eabi-gcc: not installed (bare-metal STM32 builds (from your own Makefile))
+xtensa-esp32-elf-gcc: not installed (ESP-IDF builds (use idf.py))
+idf.py: not installed (ESP-IDF projects)
+make: /usr/bin/make (Makefile projects)
+...
+
+$ wetwaresuite flash.sketch path=blink
+wrote blink/blink.ino
+
+$ wetwaresuite flash.compile source=blink board=esp32 dry_run=true
+would run (arduino-cli, not installed):
+  arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir blink/build blink
+firmware: blink/build/blink.ino.bin
+...
+
+$ wetwaresuite flash.compile source=blink board=uno
+arduino-cli isn't installed, so nothing was built: install arduino-cli (https://arduino.github.io/arduino-cli) and its core, e.g. arduino-cli core install arduino:avr. The commands would be:
+  arduino-cli compile --fqbn arduino:avr:uno --output-dir blink/build blink
+```
+
+`flash.sketch` starts from `template=blink` (the on-board LED, pin 2 on ESP boards), `serial` (echoes what it hears, for `flash.send`) or `empty`.
+
+### Batch
+
+With arduino-cli and its AVR core installed:
+
+```text
+# build.txt: verify, upload, then watch it run
+flash.sketch path=blink template=blink
+flash.compile source=blink board=uno port=/dev/ttyACM0
+flash.monitor port=/dev/ttyACM0 seconds=3
+```
+
+A plain C program for an Uno goes through avr-gcc and avr-objcopy (`-mmcu` and `F_CPU` come from the board; `defines=LED=13,DEBUG` adds more):
+
+```text
+flash.compile source=main.c,uart.c board=uno port=/dev/ttyUSB0
+```
+
+A PlatformIO project builds with `flash.compile source=myproject env=uno`; PlatformIO decides where the firmware goes, so check the reply's `firmware` before uploading.
+
+### Ask Claude
+
+> Make me a sketch that echoes serial input, build it for my Nano and upload it to /dev/ttyUSB0, then check it answers "hi".
+
+Claude calls `flash_sketch` with `template=serial`, `flash_compile` with `board=nano port=/dev/ttyUSB0`, then `flash_send` with `text=hi`. Without a toolchain it reports what to install instead.
+
 ## Using the external tools
 
 ```sh
@@ -472,8 +532,11 @@ note: esptool isn't installed (not on PATH)
 | `flash.tools` | | which external tools are installed |
 | `flash.monitor` | `port`, `seconds=3`, `baud=115200`, `reset=false`, `max_bytes=65536` | read the serial output |
 | `flash.send` | `port`, `text`, `baud=115200`, `read_seconds=1`, `newline=none` | write text, read the reply |
+| `flash.toolchains` | | which build toolchains are installed |
+| `flash.sketch` | `path`, `template=blink` (blink, serial, empty), `board=uno`, `overwrite=false` | start an Arduino sketch folder |
+| `flash.compile` | `source`, `board=uno` (or an FQBN), `tool=auto` (arduino-cli, pio, avr-gcc), `out_dir`, `env`, `defines`, `dry_run=false`, `port` | build, and upload when `port` is given |
 
-Over MCP the same commands are the tools `flash_ports`, `flash_detect`, `flash_boards`, `flash_inspect`, `flash_command`, `flash_tools`, `flash_flash`, `flash_monitor` and `flash_send`.
+Over MCP the same commands are the tools `flash_ports`, `flash_detect`, `flash_boards`, `flash_inspect`, `flash_command`, `flash_tools`, `flash_flash`, `flash_monitor`, `flash_send`, `flash_toolchains`, `flash_sketch` and `flash_compile`.
 
 ## Limitations
 
@@ -485,4 +548,5 @@ Over MCP the same commands are the tools `flash_ports`, `flash_detect`, `flash_b
 - On macOS ports are identified by name, not by VID:PID.
 - On Linux only standard baud rates work (no 74880 for the ESP8266 boot log).
 - Detect probing resets the board and may need the BOOT button held on boards without auto-reset; boards running a sketch that holds the port can't be probed.
+- Builds need an installed toolchain (and, for arduino-cli, the board's core). Plain C builds are AVR only; ESP-IDF, STM32 Makefiles and CMake projects aren't driven (run them yourself and flash the result). Libraries for a sketch are installed with arduino-cli itself (`arduino-cli lib install`).
 - The simulated boards model the classic ESP auto-reset circuit only (not the USB-Serial-JTAG peripheral) and their flash lasts only as long as the process.

@@ -10,6 +10,11 @@ Root: HKA; Subkey: "Software\Classes\wetwaresuite.draw\DefaultIcon"; ValueType: 
 Root: HKA; Subkey: "Software\Classes\wetwaresuite.draw\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\wetwaresuite-draw.exe"" open ""%1"""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-draw.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-draw.exe\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\wetwaresuite-draw.exe"" open ""%1"""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\wetwaresuite.electronics"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite electronics file"; Flags: uninsdeletekey; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\wetwaresuite.electronics\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\wetwaresuite-electronics.exe,0"; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\wetwaresuite.electronics\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\wetwaresuite-electronics.exe"" open ""%1"""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-electronics.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-electronics.exe\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\wetwaresuite-electronics.exe"" open ""%1"""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\wetwaresuite.game"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite game file"; Flags: uninsdeletekey; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\wetwaresuite.game\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\wetwaresuite-game.exe,0"; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\wetwaresuite.game\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\wetwaresuite-game.exe"" open ""%1"""; Tasks: filetypes
@@ -129,6 +134,12 @@ Root: HKA; Subkey: "Software\Classes\.wwfit"; ValueType: string; ValueName: ""; 
 Root: HKA; Subkey: "Software\Classes\.achcad\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.cad"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-cad.exe\SupportedTypes"; ValueType: string; ValueName: ".achcad"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.achcad"; ValueType: string; ValueName: ""; ValueData: "wetwaresuite.cad"; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.kicad_sch\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.electronics"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-electronics.exe\SupportedTypes"; ValueType: string; ValueName: ".kicad_sch"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.kicad_pcb\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.electronics"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-electronics.exe\SupportedTypes"; ValueType: string; ValueName: ".kicad_pcb"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.kicad_pro\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.electronics"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-electronics.exe\SupportedTypes"; ValueType: string; ValueName: ".kicad_pro"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.wav\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.sound"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-sound.exe\SupportedTypes"; ValueType: string; ValueName: ".wav"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.mp3\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.sound"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes

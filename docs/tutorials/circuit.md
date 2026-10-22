@@ -2,10 +2,10 @@
 
 `circuit` designs small electronics boards, headless, from schematic to the files a PCB fab needs. One **circuit** document holds both halves:
 
-- the **schematic**: parts from a built-in symbol library (resistors, capacitors, LEDs, transistors, op-amps, regulators, switches, headers, generic ICs and dev boards such as the Arduino Nano), wires, net labels and power symbols. It checks itself (ERC), exports a netlist and a bill of materials, and draws to SVG, PDF and PNG;
-- the **board**: an outline, footprints placed from the schematic, a ratsnest, traces and vias on two copper layers drawn by hand or by the autorouter, a copper pour, design rule checks (DRC) and Gerber RS-274X plus Excellon drill files, as a zip ready to upload or as a folder.
+- the **schematic**: parts from a built-in symbol library (resistors, capacitors, LEDs, diodes, Zeners, transistors, op-amps, regulators, the 555, switches, connectors, ATmega328P, ATtiny85, RP2040 and ESP32 chips, generic ICs and dev boards such as the Arduino Nano and Raspberry Pi Pico), wires, net labels and power symbols. It checks itself (ERC), exports a netlist and a bill of materials, and draws to SVG, PDF and PNG;
+- the **board**: an outline, footprints placed from the schematic, a ratsnest, traces and vias on two or four copper layers drawn by hand or by the autorouter, copper pours and planes with thermal reliefs, plane fan-out, mounting holes, design rule checks (DRC), Gerber RS-274X plus Excellon drill files and the assembly files (pick-and-place and BOM), as a zip ready to upload or as a folder, and a 3D picture of the assembled board.
 
-There is also a small simulator (DC operating point and transient) for the analog parts, and KiCad netlists open directly. Designs save as `.circuit.json`.
+There is also a small simulator (DC operating point and transient) for the analog parts. KiCad 6/7/8 schematics (`.kicad_sch`, sub-sheets included), boards (`.kicad_pcb`), projects and netlists open directly, and designs save back to KiCad as well as to `.circuit.json`. In the electronics window you can click on the schematic and the board to place parts, draw wires and traces and move things.
 
 Each task below is shown three ways:
 
@@ -670,6 +670,136 @@ Removing the pour and every trace and routing again fixes all of it. `fields=` a
 
 **Claude.** *"Make the blinker blink slower and add a test point on the 555 output, then re-route."* Claude calls `circuit_open`, `circuit_pins ref=U1`, `circuit_edit` on R2 (it may run the 555 formula to pick the value), `circuit_place` and `circuit_net` for the test point, `circuit_erc`, `circuit_pcb_place`, `circuit_drc`, sees the stale-net shorts, `circuit_unroute`, `circuit_route`, `circuit_pour` and `circuit_drc` again.
 
+## Task 8: a four-layer board with ground and power planes
+
+Four layers put whole copper planes inside the board: `In1.Cu` for ground and `In2.Cu` for power is the usual stack. Through-hole pads reach the planes on their own; SMD pads need a short trace and a via each, which `circuit.fanout` adds. The planes connect pads through **thermal reliefs** (four spokes) so they stay easy to solder; `thermal=false` connects them solidly. A `mounting_hole` is a non-plated hole: `circuit.pcb_place` puts holes in the board's corners.
+
+**Batch**
+
+```text
+# four.txt: an ATtiny85 board on four layers, with ground and power planes
+circuit.new title=tiny4 -> c
+circuit.place doc=$c symbol=attiny85 x=0 y=0
+circuit.place doc=$c symbol=capacitor value=100n x=-12 y=-4
+circuit.place doc=$c symbol=resistor value=330 x=12 y=-4
+circuit.place doc=$c symbol=led x=18 y=-4
+circuit.place doc=$c symbol=header pins=3 ref=J1 x=20 y=6
+circuit.place doc=$c symbol=mounting_hole x=30 y=0
+circuit.net doc=$c name=LED pins=U1.PB0,R1.1
+circuit.connect doc=$c from=R1.2 to=D1.A
+circuit.net doc=$c name=IN pins=U1.PB3,J1.3
+circuit.power doc=$c symbol=gnd pins=U1.GND,C1.2,D1.K,J1.1
+circuit.power doc=$c symbol=+5v pins=U1.VCC,C1.1,J1.2
+circuit.no_connect doc=$c pins=U1.PB5,U1.PB1,U1.PB2,U1.PB4
+circuit.erc doc=$c
+circuit.board doc=$c width=40 height=30 layers=4
+circuit.pcb_place doc=$c
+circuit.pour doc=$c net=GND layer=In1
+circuit.pour doc=$c net=+5V layer=In2
+circuit.fanout doc=$c
+circuit.route doc=$c skip=GND,+5V
+circuit.drc doc=$c
+circuit.export doc=$c view=3d path=tiny4-3d.png
+circuit.gerber doc=$c path=tiny4.zip
+circuit.save doc=$c path=tiny4.kicad_pro
+```
+
+```sh
+$ wetwaresuite batch four.txt
+...
+board 40 x 30 mm, 4 copper layers
+placed 6 footprints; board 40 x 30 mm
+poured GND on In1.Cu, 1086.66 mm2 of copper
+...
+added 3 vias
+routed 3 of 3 connections (12 segments, 0 vias)
+DRC: 0 errors, 0 warnings
+wrote tiny4-3d.png (239518 bytes)
+wrote 15 files to tiny4.zip
+saved tiny4.kicad_pro, tiny4.kicad_sch, tiny4.kicad_pcb
+```
+
+The zip holds four copper layers (`tiny4-F_Cu.gtl`, `tiny4-In1_Cu.g2`, `tiny4-In2_Cu.g3`, `tiny4-B_Cu.gbl`), mask, paste, silkscreen, the outline, `tiny4.drl` (plated holes), `tiny4-NPTH.drl` (the mounting hole), `tiny4-pos.csv` (pick-and-place) and `tiny4-bom.csv`, which is what an assembly service asks for. `circuit.placement path=pos.csv` writes the placement file on its own. The 3D picture turns with `angle=` and `tilt=`, `from_below=true` shows the underside and `mask=black` (or blue, red, white, purple) changes the solder mask colour.
+
+**Claude**
+
+> Make the ATtiny LED board on four layers with a ground plane and a 5 V plane, fan out the SMD parts, route the rest and show me the board in 3D.
+
+Claude calls `circuit_board` with `layers=4`, `circuit_pour` twice (`layer=In1`, `layer=In2`), `circuit_fanout`, `circuit_route` with `skip=GND,+5V`, `circuit_drc` and `circuit_preview` with `view=3d`.
+
+## Task 9: open a KiCad schematic, lay out its board and give it back to KiCad
+
+`circuit.open` reads KiCad 6, 7 and 8 schematics. Parts keep KiCad's own symbol drawings; the ones it knows (R, C, LED, Conn_01x04 ...) also become library parts, so the simulator and the 3D view understand them. Sub-sheets are flattened onto one sheet, to the right of their parent: the sheet's pins become labels named `Sheet/PIN`, and local labels inside a sub-sheet are prefixed with its name. Multi-unit parts (a dual op-amp) keep one reference with their units drawn `U1A`, `U1B`; hidden power pins join their nets (`VCC`) as KiCad does. A `.kicad_pcb` next to the schematic is loaded too (`board=false` skips it), and `.kicad_pro` opens both.
+
+**Batch** (`demo.kicad_sch` has a resistor, an LED, a dual gate and a sub-sheet `sub.kicad_sch` with one more resistor)
+
+```text
+# kicad2.txt: a KiCad schematic with a sub-sheet, checked, laid out and handed back to KiCad
+circuit.open path=demo.kicad_sch -> k
+circuit.parts doc=$k
+circuit.nets doc=$k
+circuit.erc doc=$k
+circuit.board doc=$k width=40 height=25
+circuit.pcb_place doc=$k
+circuit.route doc=$k
+circuit.save doc=$k path=demo-out.kicad_pro
+circuit.open path=demo-out.kicad_pcb -> b
+circuit.info doc=$b
+circuit.unroute doc=$k
+circuit.import_board doc=$k path=demo-out.kicad_pcb
+```
+
+```sh
+$ wetwaresuite batch kicad2.txt
+opened demo.kicad_sch as ckt1: 5 parts, 8 nets, 4 wires (demo.kicad_sch)
+warning: hierarchical sheets were flattened onto one sheet (local labels are prefixed with the sheet name)
+8 parts:
+#PWR01: power:+5V +5V at 40,17
+R1: resistor 330 [R_0805] at 40,20; MPN=RC0805FR-07330RL
+D1: led red [LED_0805] at 40,25 rot 90
+#PWR02: power:GND GND at 40,27.5
+U1: test:DUAL DUAL [SOIC-8] at 60,20
+U1: test:DUAL DUAL at 60,30
+R2: resistor 10k [R_0805] at 75,17 rot 90
+#PWR03: power:GND GND at 76.5,17
+8 nets:
++5V: R1.1
+Sub/IN: R1.2 D1.2 R2.1
+GND: D1.1 R2.2
+...
+VCC: U1.8
+ERC: 0 errors, 1 warnings
+warning [multiple_names] one net has several names: Sub/IN, LED_A (it is called Sub/IN)
+...
+placed 4 footprints; board 40 x 25 mm
+routed 3 of 3 connections (12 segments, 0 vias)
+saved demo-out.kicad_pro, demo-out.kicad_sch, demo-out.kicad_pcb
+opened demo-out.kicad_pcb as ckt2: 4 parts, 11 nets, 7 wires; board 40.0 x 25.0 mm, 12 traces, 0 vias (demo-out.kicad_pcb)
+...
+removed 12 traces and 0 vias
+imported demo-out.kicad_pcb: 4 footprints, 12 track segments, 0 vias, 0 pours, 2 copper layers
+```
+
+- **Saving** to `.kicad_sch` writes one flat KiCad 7 sheet with every symbol embedded (so KiCad needs no library to show it), junctions where wires meet, and the footprint names; `.kicad_pcb` writes footprints with their pads and nets, tracks, vias, pours (as zones over the whole board) and the outline; `.kicad_pro` writes a project holding both. Symbols and footprints are linked the way KiCad links them, so its "Update PCB from Schematic" pairs them up.
+- **A board on its own** (`circuit.open path=x.kicad_pcb`) keeps KiCad's footprints and copper; each part gets a boxed symbol whose pins are labelled with the pads' nets (pads with no net get a no-connect mark), so ERC, DRC, routing and Gerbers all work on it.
+- **`circuit.import_board`** puts a KiCad board onto the schematic you already have: footprints go to the parts with the same reference, the outline, tracks, vias and pours replace this board's, and KiCad's net names are matched to the schematic's through the pads. It is one undo step.
+
+**Claude**
+
+> Open ~/kicad/sensor/sensor.kicad_pro, tell me what ERC finds, route whatever isn't routed and save it back for KiCad.
+
+Claude calls `circuit_open` (schematic and board together), `circuit_erc`, `circuit_ratsnest`, `circuit_route`, `circuit_drc` and `circuit_save` with `path=~/kicad/sensor/sensor-routed.kicad_pro`.
+
+## Task 10: draw in the window
+
+Open a `.circuit.json`, `.kicad_sch`, `.kicad_pcb` or `.kicad_pro` in the electronics app (or make one with **New Circuit**). Above the picture:
+
+- **Show: Schematic, Board, 3D** switches the picture (`circuit.view`). In 3D, drag to move around and scroll to zoom.
+- **Tool** (schematic): **Select** says what you clicked (a pin and its net, a wire, a label, a part); **Place** puts the part chosen in the list next to it (type a value too) where you click; **Wire** draws from one click to the next, across then down, and keeps going until you click a pin or press Esc (or right-click); **Move** picks a part up with one click and puts it down with the next; **Delete** removes the part or wire you click. **Check** runs ERC.
+- **Tool** (board): **Select**, **Move** (footprints), **Trace** (on the layer you pick; clicks on a pad land on its centre) and **Via**. **Place parts**, **Route** and **Check** (DRC) are one click each.
+
+Every click asks `circuit.hit` what is under the mouse and then runs the ordinary command (`circuit.place`, `circuit.wire`, `circuit.move`, `circuit.remove`, `circuit.unwire`, `circuit.footprint_move`, `circuit.trace`, `circuit.via`), so each one shows in the history, Undo takes it back, and a batch script or Claude can do exactly the same. Scroll zooms, a right or middle drag (or Space and drag) moves around, and **Fit** shows it all.
+
 ## Looking things up
 
 ```sh
@@ -698,7 +828,7 @@ footprint: SOIC-8
 
 ### Symbols
 
-`circuit.symbols` lists all 28:
+`circuit.symbols` lists all 47:
 
 | symbol | aliases | pins | default footprint |
 |---|---|---|---|
@@ -709,20 +839,39 @@ footprint: SOIC-8
 | `potentiometer` | pot, rv | 1, 2 = wiper, 3 | Pot_THT |
 | `crystal` | xtal, y | 1, 2 | HC49 |
 | `diode` | d | 1 = K, 2 = A | D_SOD-123 |
+| `zener` | dz | 1 = K, 2 = A; value = breakdown voltage | D_SOD-123 |
+| `schottky` | d_schottky | 1 = K, 2 = A | D_SOD-123 |
 | `led` | | 1 = K, 2 = A | LED_0805 |
+| `fuse` | f, polyfuse | 1, 2 | Fuse_1206 |
+| `ferrite_bead` | fb, ferrite | 1, 2 | L_0805 |
+| `buzzer` | bz, piezo | 1 = +, 2 | Buzzer_12mm |
 | `npn`, `pnp` | transistor, q_npn, q_pnp | 1 = B, 2 = E, 3 = C | SOT-23 |
 | `nmos`, `pmos` | mosfet, q_nmos, q_pmos | 1 = G, 2 = S, 3 = D | SOT-23 |
 | `opamp` | op-amp | 2 = -, 3 = +, 6 = OUT, 7 = V+, 4 = V- | SOIC-8 |
 | `regulator` | vreg, 7805 | 1 = IN, 2 = GND, 3 = OUT | TO-220 |
+| `ams1117` | ldo_sot223, lm1117 | 1 = GND/ADJ, 2 = OUT, 3 = IN | SOT-223 |
+| `lm317` | | 1 = ADJ, 2 = OUT, 3 = IN | TO-220 |
+| `ne555` | 555, timer | 1 GND, 2 TR, 3 Q, 4 R, 5 CV, 6 THR, 7 DIS, 8 VCC | DIP-8 |
+| `lm358` | dual_opamp | 1 OUTA, 2 -A, 3 +A, 4 V-, 5 +B, 6 -B, 7 OUTB, 8 V+ | SOIC-8 |
+| `atmega328p` | atmega328, mega328 | 28 pins, also named D0..D13, A0..A5, RX, TX | DIP-28 |
+| `atmega328p_au` | atmega328p-au | 32 pins, TQFP | TQFP-32 |
+| `attiny85` | tiny85 | 8 pins (PB0..PB5, VCC, GND) | DIP-8 |
+| `rp2040` | | 57 pins (GPIO0..29, QSPI, USB, power; pad 57 = ground pad) | QFN-56 |
 | `ic` | chip | `pins=N`, names from `pin_names=` | DIP-N |
 | `switch` | button, sw, pushbutton | 1, 2 (normally open) | SW_PUSH_6mm |
 | `switch_spdt` | spdt, toggle | 1, 2 = common, 3 | SW_SPDT |
 | `header` | conn, connector, j | `pins=N`, one row | PinHeader_1xNN |
 | `header2` | conn2 | `pins=N` total, two rows | PinHeader_2xNN |
+| `screw_terminal` | terminal | `pins=N`, 5.08 mm | TerminalBlock_1xNN |
+| `usb_micro` | usb | VBUS, D-, D+, ID, GND, shield | USB_Micro-B |
+| `test_point` | tp | 1 (not on the BOM) | TestPoint_Pad_1.5mm |
+| `mounting_hole` | hole | no pins (not on the BOM) | MountingHole_3.2mm |
 | `arduino_uno` | uno | 32: power header, A0..A5, D0..D13, AREF, SDA, SCL | Arduino_Uno_Shield |
 | `arduino_nano` | nano | 30 pins as on the board | Arduino_Nano |
 | `esp32_devkit` | esp32 | 30 pins, DOIT V1 | ESP32_DevKit |
 | `bluepill` | stm32, blue_pill | 40 pins | BluePill |
+| `esp32_wroom` | wroom, esp32-wroom-32 | 38 pads + ground pad | ESP32-WROOM-32 |
+| `rpi_pico` | pico | 40 pins as on the board | RPi_Pico |
 | `gnd` | ground | net GND | none |
 | `power` | vcc, +5v, +3v3, +12v, vdd | net named by the value | none |
 | `vsource` | v | 1 = +, 2 = - | none |
@@ -731,7 +880,7 @@ footprint: SOIC-8
 
 ### Footprints
 
-`circuit.footprints` lists the families: `R_0603/0805/1206`, `C_0603/0805/1206`, `L_0805/1206`, `LED_0603/0805/1206` (pad 1 = cathode), `D_SOD-123`, `D_0805`, `R_THT`/`L_THT` (axial, 10.16 mm), `D_THT` (DO-41), `C_THT` (disc, 5.08 mm), `CP_THT` (radial, 2.54 mm), `LED_THT` (5 mm), `HC49`, `SOT-23`, `SOT-223`, `TO-92`, `TO-220`, `SOIC-N`, `DIP-N`, `PinHeader_1xNN`, `PinHeader_2xNN`, `SW_PUSH_6mm`, `SW_SPDT`, `Pot_THT`, `Arduino_Uno_Shield`, `Arduino_Nano`, `ESP32_DevKit`, `BluePill`.
+`circuit.footprints` lists the 38 families: `R/C/L/LED_0402/0603/0805/1206` (LED pad 1 = cathode), `Fuse_0805/1206`, `D_SOD-123`, `D_SOD-323`, `D_SMA`, `D_0805`, `R_THT`/`L_THT` (axial, 10.16 mm), `D_THT` (DO-41), `C_THT` (disc, 5.08 mm), `CP_THT` (radial, 2.54 mm), `LED_THT` (5 mm), `HC49`, `SOT-23`, `SOT-23-5`, `SOT-23-6`, `SOT-223`, `TO-92`, `TO-220`, `SOIC-N`, `TSSOP-N` (0.65 mm), `TQFP-N` (32/44 at 0.8 mm, 48/64/100 at 0.5 mm; `LQFP-N` too), `QFN-N` (with the exposed pad as pad N+1), `DIP-N`, `PinHeader_1xNN`, `PinHeader_2xNN`, `TerminalBlock_1xNN`, `USB_Micro-B`, `TestPoint_Pad_1.5mm`, `MountingHole_2.2/2.7/3.2/4.3mm` (non-plated, for M2 to M4), `Buzzer_12mm`, `SW_PUSH_6mm`, `SW_SPDT`, `Pot_THT`, `Arduino_Uno_Shield`, `Arduino_Nano`, `ESP32_DevKit`, `BluePill`, `RPi_Pico`, `ESP32-WROOM-32`. KiCad library names such as `Package_SO:SOIC-8_3.9x4.9mm_P1.27mm` map onto them.
 
 ## Command reference
 
@@ -742,15 +891,18 @@ footprint: SOIC-8
 | command | parameters | notes |
 |---|---|---|
 | `circuit.new` | `title` | an empty circuit; prints its id |
-| `circuit.open` | `path` (required) | `.circuit.json` / `.json`, or a KiCad `.net` |
-| `circuit.save` | `path` (required) | `.circuit.json` |
+| `circuit.open` | `path` (required), `board` (default true) | `.circuit.json` / `.json`, KiCad `.kicad_sch` (with the `.kicad_pcb` beside it unless `board=false`), `.kicad_pcb`, `.kicad_pro` or `.net` |
+| `circuit.save` | `path` (required) | `.circuit.json`, or KiCad `.kicad_sch`, `.kicad_pcb`, `.kicad_pro` (all three files) |
+| `circuit.import_board` | `path` (required) | a KiCad `.kicad_pcb` onto this circuit's parts (undoable) |
+| `circuit.view` | `view` (required: schematic, pcb, 3d) | what the window shows |
+| `circuit.hit` | `x`, `y` (required, pixels of the window's picture), `view` | what is there: pin, label, wire, part; pad, via, trace, footprint; with the point in grid units or mm |
 | `circuit.close` | | |
 | `circuit.info` | | parts, nets, wires, board, traces, vias, pours |
 | `circuit.symbols` | `category`: passive, semiconductor, ic, switch, connector, module, power, source | |
 | `circuit.symbol_info` | `symbol` (required), `pins`, `pin_names` | pin positions relative to the part |
 | `circuit.footprints` | | |
-| `circuit.preview` | `view` (schematic, pcb), `grid`, `highlight` (a net), `layers` (both, top, bottom), `from_below`, `ratsnest` (default true), `net_names`, `size` (default 1400 px) | a PNG for Claude; writes nothing |
-| `circuit.export` | `path` (required), `view`, `grid`, `highlight`, `layers`, `from_below`, `ratsnest`, `net_names`, `scale` (px per grid unit or per mm) | `.svg`, `.png`, or `.pdf` (schematic only) |
+| `circuit.preview` | `view` (schematic, pcb, 3d), `grid`, `highlight` (a net), `layers` (both, top, bottom, inner), `from_below`, `ratsnest` (default true), `net_names`, `angle`, `tilt`, `mask` (3d), `size` (default 1400 px) | a PNG for Claude; writes nothing |
+| `circuit.export` | `path` (required), `view`, `grid`, `highlight`, `layers`, `from_below`, `ratsnest`, `net_names`, `angle`, `tilt`, `mask`, `scale` (px per grid unit or per mm; the width for 3d) | `.svg`, `.png`, or `.pdf` (schematic only); 3d is `.png` |
 
 ### Schematic
 
@@ -786,37 +938,42 @@ footprint: SOIC-8
 
 | command | parameters | notes |
 |---|---|---|
-| `circuit.board` | `width`, `height`, `x`, `y` (top-left, default 0,0) or `points` (polygon) | mm |
-| `circuit.pcb_place` | `all` (default false), `spacing` (default 2 mm) | makes an outline if there is none |
+| `circuit.board` | `width`, `height`, `x`, `y` (top-left, default 0,0) or `points` (polygon), `layers` (2 or 4) | mm; `layers` alone keeps the outline |
+| `circuit.pcb_place` | `all` (default false), `spacing` (default 2 mm) | packs footprints by connection, mounting holes to the corners; makes an outline if there is none |
 | `circuit.footprint_move` | `ref` (required), `x`, `y` (centre) or `dx`, `dy`, `rot`, `side` (top, bottom) | |
 | `circuit.pads` | `ref`, `net` | positions in mm, sizes, layers, nets |
-| `circuit.trace` | `points` (required, mm), `layer` (F, B; default F), `width`, `net` | |
+| `circuit.trace` | `points` (required, mm), `layer` (F, B, In1, In2; default F), `width`, `net` | |
 | `circuit.via` | `x`, `y` (required), `net`, `drill`, `diameter` | |
-| `circuit.route` | `nets`, `skip`, `layers` (1 or 2; default 2), `via_cost` (default 8), `time_limit` (default 60 s) | keeps existing copper |
-| `circuit.unroute` | `net`, `layer` | all copper when neither is given |
-| `circuit.pour` | `net` (default GND), `layer` (F, B, both; default B), `clearance` (default 0.3 mm) | refilled whenever the board changes |
+| `circuit.route` | `nets`, `skip`, `layers` (1, 2 or 4; default 2), `via_cost` (default 8), `time_limit` (default 60 s) | keeps existing copper |
+| `circuit.unroute` | `net`, `layer` (F, B, In1, In2) | all copper when neither is given |
+| `circuit.pour` | `net` (default GND), `layer` (F, B, both, In1, In2; default B), `clearance` (default 0.3 mm), `thermal` (default true), `spoke` (default 0.5 mm) | refilled whenever the board changes |
+| `circuit.fanout` | `nets` (default: nets with a pour) | a trace and a via from each SMD pad to its plane |
 | `circuit.unpour` | `net` | |
 | `circuit.rules` | `trace` (0.25), `power_trace` (0.5), `clearance` (0.2), `min_trace` (0.15), `via_drill` (0.4), `via_diameter` (0.8), `min_drill` (0.3), `edge_clearance` (0.3), `grid` (0.127) | mm; defaults in brackets suit cheap 2-layer fabs |
 | `circuit.ratsnest` | | unrouted connections |
 | `circuit.drc` | | see below |
-| `circuit.gerber` | `path` (required; `.zip` or a folder), `name` (file prefix, default the title) | |
+| `circuit.gerber` | `path` (required; `.zip` or a folder), `name` (file prefix, default the title), `assembly` (default true: also the pick-and-place and BOM CSVs) | |
+| `circuit.placement` | `path` | pick-and-place CSV (Designator, Val, Package, Mid X, Mid Y, Rotation, Layer; mm, y up from the bottom-left corner); printed when no path |
 
 ### ERC and DRC checks
 
 **ERC** errors: unconnected pins (not on a module, not marked no-connect), two power names on one net (`+5V` shorted to `GND`), duplicate or missing references, outputs driving each other, a footprint with fewer pads than the symbol has pins. Warnings: labels that reach only one pin, dangling wire ends, power input pins with nothing driving the net.
 
-**DRC** errors: shorts and clearance between different nets (pads, traces, vias, pours), traces under `min_trace`, drills under `min_drill`, annular ring under 0.13 mm, copper closer than `edge_clearance` to or outside the outline, overlapping footprints, parts not on the board, unrouted connections.
+**DRC** errors: shorts and clearance between different nets (pads, traces, vias, pours), traces under `min_trace`, drills under `min_drill`, annular ring (vias and through-hole pads) under `min_annular`, copper closer than `edge_clearance` to or outside the outline, copper on a layer the board doesn't have, overlapping footprints, parts not on the board, unrouted connections.
 
 ### Gerber files
 
 | file | layer |
 |---|---|
 | `NAME-F_Cu.gtl`, `NAME-B_Cu.gbl` | copper, top and bottom |
+| `NAME-In1_Cu.g2`, `NAME-In2_Cu.g3` | inner copper (4-layer boards) |
 | `NAME-F_Mask.gts`, `NAME-B_Mask.gbs` | solder mask openings |
 | `NAME-F_Paste.gtp`, `NAME-B_Paste.gbp` | paste (SMD pads) |
 | `NAME-F_Silkscreen.gto`, `NAME-B_Silkscreen.gbo` | silkscreen: outlines and references |
 | `NAME-Edge_Cuts.gm1` | board outline |
 | `NAME.drl` | Excellon drill file, metric, plated holes |
+| `NAME-NPTH.drl` | non-plated holes (mounting holes), when there are any |
+| `NAME-pos.csv`, `NAME-bom.csv` | pick-and-place and bill of materials, for assembly (`assembly=false` leaves them out) |
 
 RS-274X with X2 file attributes, coordinates in mm (4.6 format). Pours are written as regions.
 
@@ -824,13 +981,14 @@ RS-274X with X2 file attributes, coordinates in mm (4.6 format). Pours are writt
 
 - **Positions of the Arduino Uno and ESP32 DevKit headers are close but not guaranteed**: check them against your actual board before ordering (`circuit.pads ref=A1` prints them). The Nano and Blue Pill follow 2.54 mm grids and are exact for the common clones.
 - **BJT pinout:** `npn`/`pnp` pins are 1 = B, 2 = E, 3 = C to match the SOT-23 footprint. Through-hole parts such as the 2N3904 in TO-92 are E-B-C; with `footprint=TO-92` the TO-92 pads are numbered 1-2-3 left to right, so with `footprint=TO-92` pin 1 (B) lands on the emitter. Use SOT-23 transistors, or check the pad order against the datasheet before ordering.
-- Rotations are multiples of 90 degrees, on the schematic and the board. Text is always horizontal.
-- One unit per symbol (a dual op-amp is two `opamp` parts or a generic `ic`), no hierarchical sheets, no buses.
+- Rotations are multiples of 90 degrees, on the schematic and the board (KiCad parts at other angles are turned to the nearest right angle, with a warning). Text is always horizontal.
+- Built-in symbols have one unit (a dual op-amp is `lm358` with both halves in one symbol); multi-unit parts come only from KiCad. Hierarchical sheets are flattened on import and saved back as one flat sheet. No buses (KiCad bus wires are skipped; the labels on them still join their nets).
 - A pin, label or wire end lying on the middle of a wire connects to it, as in KiCad. `circuit.connect` avoids this, but hand-drawn `circuit.wire` paths can make junctions you didn't mean: check `circuit.nets`.
 - Power and ground symbols can crowd labels next to tightly packed module pins. The connection is right; for a cleaner drawing use `circuit.net name=GND pins=...` there instead.
-- The KiCad import reads netlists only (not `.kicad_sch` or `.kicad_pcb`), lays the parts out on a grid with net labels, and replaces footprints it doesn't know with the symbol's default footprint (with a warning). Exported netlists name the built-in footprints (`R_0805`), not KiCad library footprints, so KiCad's PCB editor will ask you to assign them.
+- KiCad files: pours are whole-board here, so a KiCad zone with its own outline grows to the board's (with a warning); board cut-outs, blind and micro vias, more than four copper layers, curved board edges (kept as short straight pieces) and KiCad's design rules (they live in the `.kicad_pro`) are not carried over. Saved KiCad files embed every symbol and footprint and name built-in footprints `wetwaresuite:R_0805`, so KiCad shows them without a library but "Update PCB from Schematic" will want a library footprint for parts that never had one. A netlist (`.net`) has no drawing, so it is laid out on a grid with net labels.
 - Traces, vias and pours keep the net name they were made with; after renaming a net on the schematic, unroute and re-route it.
 - The autorouter is a grid maze router with a time limit, made for boards with tens of parts. Dense boards may leave connections unrouted; route those by hand or loosen the grid (`circuit.rules grid=0.25`). It doesn't do length matching, differential pairs or impedance.
-- Pours fill on a 0.1 mm raster with solid connections to pads (no thermal reliefs), so hand-soldering large ground pads takes a hotter iron.
-- Two copper layers only. Plated holes only (no non-plated mounting holes; use a header pad).
+- Pours fill the whole board on a 0.1 mm raster (no pour outlines of your own); pads join them through four thermal spokes, or solidly with `thermal=false`.
+- Two or four copper layers. The autorouter uses inner layers only with `layers=4`; planes are usually better there.
+- The 3D view is boxes and cylinders by package, for checking placement and clearances by eye, not a model to export.
 - The simulator handles R, C, L, diodes and LEDs (Shockley model), switches, potentiometers, ideal op-amps and sources. No transistors, no ICs, no AC analysis, no temperature; transient is backward Euler with a fixed step, so make `step` small compared with your time constants.

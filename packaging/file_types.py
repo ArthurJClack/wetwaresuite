@@ -28,6 +28,7 @@ MIME = {
     ".excalidraw": "application/vnd.excalidraw+json", ".drawio": "application/vnd.jgraph.mxfile",
     ".obj": "model/obj", ".ply": "model/x-ply", ".off": "model/x-off", ".glb": "model/gltf-binary", ".gltf": "model/gltf+json",
     ".fbx": "application/x-fbx",
+    ".kicad_sch": "application/x-kicad-schematic", ".kicad_pcb": "application/x-kicad-pcb", ".kicad_pro": "application/x-kicad-project",
     ".tmx": "application/x-tiled-tmx", ".tmj": "application/x-tiled-tmj", ".ldtk": "application/x-ldtk",
     ".stl": "model/stl", ".3mf": "model/3mf", ".dxf": "image/vnd.dxf", ".step": "model/step", ".stp": "model/step",
     ".wav": "audio/x-wav", ".mp3": "audio/mpeg", ".flac": "audio/flac", ".ogg": "audio/ogg", ".opus": "audio/opus",

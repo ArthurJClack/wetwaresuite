@@ -254,6 +254,148 @@ Footprint swPush() {
     return f;
 }
 
+
+Footprint sot23n(int n) {
+    // pins 1..3 along the bottom left to right, the rest along the top right to left
+    Footprint f;
+    f.name = "SOT-23-" + std::to_string(n);
+    f.description = "SOT-23-" + std::to_string(n) + ", 0.95 mm pitch";
+    for (int i = 0; i < 3; ++i) f.pads.push_back({std::to_string(i + 1), {-0.95 + 0.95 * i, 1.1}, 0.6, 1.1, PadShape::Rect, 0});
+    const std::vector<double> topX = n == 5 ? std::vector<double>{0.95, -0.95} : std::vector<double>{0.95, 0, -0.95};
+    for (std::size_t i = 0; i < topX.size(); ++i) f.pads.push_back({std::to_string(4 + i), {topX[i], -1.1}, 0.6, 1.1, PadShape::Rect, 0});
+    silkRect(f, -1.5, -0.45, 1.5, 0.45);
+    f.silk.push_back({{-1.9, 1.1}, {-1.9, 1.7}});
+    finish(f);
+    return f;
+}
+
+// Pads on four sides, numbered counter-clockwise from the top of the left side (QFP, QFN).
+Footprint quad(const std::string& name, const std::string& desc, int n, double pitch, double span, double padLen, double padW, double body, double ep) {
+    Footprint f;
+    f.name = name;
+    f.description = desc;
+    const int side = n / 4;
+    for (int i = 0; i < n; ++i) {
+        const int s = i / side, k = i % side;
+        const double off = (k - (side - 1) / 2.0) * pitch;
+        Pt pos;
+        double w = padLen, h = padW;
+        if (s == 0) pos = {-span / 2, off};                       // left, top to bottom
+        else if (s == 1) pos = {off, span / 2}, w = padW, h = padLen;   // bottom, left to right
+        else if (s == 2) pos = {span / 2, -off};                  // right, bottom to top
+        else pos = {-off, -span / 2}, w = padW, h = padLen;       // top, right to left
+        f.pads.push_back({std::to_string(i + 1), pos, w, h, PadShape::Rect, 0});
+    }
+    if (ep > 0) f.pads.push_back({std::to_string(n + 1), {0, 0}, ep, ep, PadShape::Rect, 0});
+    const double b = body / 2, c = std::min(0.6, body / 6);
+    // corner marks, with pin 1's corner cut
+    f.silk.push_back({{-b + c, -b}, {-b, -b + c}});
+    for (int sx : {-1, 1}) {
+        for (int sy : {-1, 1}) {
+            if (sx < 0 && sy < 0) continue;
+            f.silk.push_back({{sx * b, sy * b}, {sx * (b - c), sy * b}});
+            f.silk.push_back({{sx * b, sy * b}, {sx * b, sy * (b - c)}});
+        }
+    }
+    f.silk.push_back({{-span / 2 - padLen / 2 - 0.4, -(side - 1) / 2.0 * pitch}, {-span / 2 - padLen / 2 - 0.4, -(side - 1) / 2.0 * pitch + 0.01}});
+    finish(f);
+    return f;
+}
+
+Footprint qfn(int n) {
+    // common JEDEC sizes: 16/20/24 pins 3x3 or 4x4 mm, 28/32 5x5, 40/48 6x6/7x7, 56/64 7x7/9x9 at 0.4/0.5 mm
+    n = std::clamp((n + 3) / 4 * 4, 8, 80);
+    double body = 4, pitch = 0.5, ep = 2.6;
+    if (n <= 16) body = 3, ep = 1.7;
+    else if (n <= 24) body = 4, ep = 2.6;
+    else if (n <= 32) body = 5, ep = 3.4;
+    else if (n <= 40) body = 6, ep = 4.5;
+    else if (n <= 48) body = 7, ep = 5.6;
+    else if (n <= 56) body = 7, pitch = 0.4, ep = 3.2;
+    else body = 9, ep = 7.2;
+    char d[96];
+    std::snprintf(d, sizeof d, "QFN-%d %gx%g mm, %g mm pitch, exposed pad %d", n, body, body, pitch, n + 1);
+    return quad("QFN-" + std::to_string(n), d, n, pitch, body - 0.1, 0.85, pitch * 0.5, body, ep);
+}
+
+Footprint tqfp(int n) {
+    n = std::clamp((n + 3) / 4 * 4, 32, 144);
+    double body = 7, pitch = 0.8;
+    if (n == 32) body = 7, pitch = 0.8;
+    else if (n == 44) body = 10, pitch = 0.8;
+    else if (n == 48) body = 7, pitch = 0.5;
+    else if (n == 64) body = 10, pitch = 0.5;
+    else if (n == 100) body = 14, pitch = 0.5;
+    else body = std::ceil(n / 4 * 0.5 + 2), pitch = 0.5;
+    char d[96];
+    std::snprintf(d, sizeof d, "TQFP-%d %gx%g mm, %g mm pitch", n, body, body, pitch);
+    return quad("TQFP-" + std::to_string(n), d, n, pitch, body + 1.5, 1.5, pitch * 0.55, body, 0);
+}
+
+Footprint tssop(int n) {
+    n = std::clamp(n + (n % 2), 4, 64);
+    Footprint f = dualRow("TSSOP-" + std::to_string(n), "TSSOP-" + std::to_string(n) + ", 4.4 mm body, 0.65 mm pitch", n, 0.65, 5.8, 1.5, 0.4, 0,
+                          PadShape::Rect, true);
+    const double ys = (n / 2) * 0.65 / 2 + 0.2;
+    silkRect(f, -1.6, -ys, 1.6, ys);
+    f.silk.push_back({{-3.6, -ys - 0.3}, {-2.3, -ys - 0.3}});
+    finish(f);
+    return f;
+}
+
+Footprint terminalBlock(int n) {
+    char name[48];
+    std::snprintf(name, sizeof name, "TerminalBlock_1x%02d", n);
+    Footprint f = inlinePads(name, std::to_string(n) + "-way screw terminal, 5.08 mm pitch", n, 5.08, 2.6, 2.6, 1.3, PadShape::Circle);
+    const double xs = n * 5.08 / 2;
+    silkRect(f, -xs, -3.6, xs, 4.2);
+    f.silk.push_back({{-xs, 2.6}, {xs, 2.6}});
+    finish(f);
+    return f;
+}
+
+Footprint mountingHole(double drill) {
+    Footprint f;
+    char name[48];
+    std::snprintf(name, sizeof name, "MountingHole_%.1fmm", drill);
+    f.name = name;
+    f.description = "non-plated mounting hole, " + std::to_string(drill).substr(0, 3) + " mm";
+    PadDef p{"", {0, 0}, drill, drill, PadShape::Circle, drill};
+    p.plated = false;
+    f.pads.push_back(p);
+    silkCircle(f, 0, 0, drill / 2 + 1.2);
+    finish(f);
+    return f;
+}
+
+Footprint usbMicroB() {
+    Footprint f;
+    f.name = "USB_Micro-B";
+    f.description = "USB Micro-B receptacle, SMD, 0.65 mm pitch (typical Molex 47346 style; check your part's datasheet)";
+    for (int i = 0; i < 5; ++i) f.pads.push_back({std::to_string(i + 1), {-1.3 + 0.65 * i, -2.675}, 0.4, 1.35, PadShape::Rect, 0});
+    for (double x : {-2.5, 2.5}) f.pads.push_back({"6", {x, -2.45}, 1.4, 1.6, PadShape::Rect, 0});
+    for (double x : {-3.5, 3.5}) f.pads.push_back({"6", {x, 0.2}, 1.6, 1.9, PadShape::Rect, 0});
+    f.silk.push_back({{-3.9, 2.6}, {3.9, 2.6}});
+    finish(f);
+    return f;
+}
+
+Footprint esp32Wroom() {
+    Footprint f;
+    f.name = "ESP32-WROOM-32";
+    f.description = "ESP32-WROOM-32 module 18 x 25.5 mm, castellated pads (antenna end up; keep copper off under it)";
+    for (int i = 0; i < 14; ++i) f.pads.push_back({std::to_string(i + 1), {-8.75, -5.26 + 1.27 * i}, 2.0, 0.9, PadShape::Rect, 0});
+    for (int i = 0; i < 10; ++i) f.pads.push_back({std::to_string(15 + i), {-5.715 + 1.27 * i, 12.5}, 0.9, 2.0, PadShape::Rect, 0});
+    for (int i = 0; i < 14; ++i) f.pads.push_back({std::to_string(25 + i), {8.75, 11.25 - 1.27 * i}, 2.0, 0.9, PadShape::Rect, 0});
+    f.pads.push_back({"39", {-1.0, 2.0}, 5.0, 5.0, PadShape::Rect, 0});
+    silkRect(f, -9, -12.75, 9, 12.75);
+    f.silk.push_back({{-9, -6.75}, {9, -6.75}});
+    finish(f);
+    return f;
+}
+
+std::shared_ptr<const Footprint> build(const std::string& canon);
+
 std::shared_ptr<const Footprint> build(const std::string& canon) {
     Footprint f;
     int n = 0;
@@ -316,6 +458,38 @@ std::shared_ptr<const Footprint> build(const std::string& canon) {
     else if (canon == "esp32_devkit") f = module("ESP32_DevKit", "ESP32 DevKit V1, 2x15 pads, 25.4 mm rows", 15, 25.4, false, 28.0, 51.5);
     else if (canon == "bluepill") f = module("BluePill", "STM32 Blue Pill, 2x20 pads, 15.24 mm rows", 20, 15.24, false, 22.8, 53.0);
     else if (canon == "arduino_uno_shield") f = unoShield();
+    else if (canon == "r_0402") f = smd2("R_0402", "0402 resistor", 1.0, 0.6, 0.6, false);
+    else if (canon == "c_0402") f = smd2("C_0402", "0402 capacitor", 1.0, 0.6, 0.6, false);
+    else if (canon == "l_0402") f = smd2("L_0402", "0402 inductor", 1.0, 0.6, 0.6, false);
+    else if (canon == "led_0402") f = smd2("LED_0402", "0402 LED, pad 1 = cathode", 1.0, 0.6, 0.6, true);
+    else if (canon == "l_0603") f = smd2("L_0603", "0603 inductor", 1.6, 0.9, 0.95, false);
+    else if (canon == "fuse_0805") f = smd2("Fuse_0805", "0805 fuse", 1.9, 1.0, 1.3, false);
+    else if (canon == "fuse_1206") f = smd2("Fuse_1206", "1206 fuse / polyfuse", 3.0, 1.2, 1.75, false);
+    else if (canon == "d_sod-323") f = smd2("D_SOD-323", "SOD-323 diode, pad 1 = cathode", 2.2, 0.6, 0.45, true);
+    else if (canon == "d_sma") f = smd2("D_SMA", "SMA (DO-214AC) diode, pad 1 = cathode", 4.0, 2.5, 1.7, true);
+    else if (canon == "sot-23-5") f = sot23n(5);
+    else if (canon == "sot-23-6") f = sot23n(6);
+    else if (canon == "usb_micro-b") f = usbMicroB();
+    else if (canon == "esp32-wroom-32") f = esp32Wroom();
+    else if (canon == "rpi_pico") f = module("RPi_Pico", "Raspberry Pi Pico, 2x20 pads, 17.78 mm rows, DIP numbering", 20, 17.78, true, 21.0, 51.0);
+    else if (canon == "testpoint_pad_1.5mm") {
+        f.name = "TestPoint_Pad_1.5mm";
+        f.description = "test point, 1.5 mm round SMD pad";
+        f.pads.push_back({"1", {0, 0}, 1.5, 1.5, PadShape::Circle, 0});
+        silkCircle(f, 0, 0, 1.1);
+        finish(f);
+    } else if (canon == "buzzer_12mm") {
+        f = tht2("Buzzer_12mm", "12 mm buzzer, 7.6 mm pitch, pad 1 (square) = +", 7.6, 2.0, 1.0, true);
+        silkCircle(f, 0, 0, 6.1);
+        finish(f);
+    } else if (canon == "mountinghole_2.2mm") f = mountingHole(2.2);
+    else if (canon == "mountinghole_2.7mm") f = mountingHole(2.7);
+    else if (canon == "mountinghole_3.2mm") f = mountingHole(3.2);
+    else if (canon == "mountinghole_4.3mm") f = mountingHole(4.3);
+    else if (num("terminalblock_1x")) f = terminalBlock(n);
+    else if (num("qfn-")) f = qfn(n);
+    else if (num("tqfp-")) f = tqfp(n);
+    else if (num("tssop-")) f = tssop(n);
     else if (num("pinheader_1x")) f = pinHeader(n, false);
     else if (num("pinheader_2x")) f = pinHeader(n, true);
     else if (num("dip-")) f = dip(n);
@@ -328,7 +502,10 @@ std::shared_ptr<const Footprint> build(const std::string& canon) {
 std::string canonicalFootprint(const std::string& name) {
     std::string s = lower(name);
     if (auto colon = s.find(':'); colon != std::string::npos) s = s.substr(colon + 1);
-    static const std::vector<std::string> fixed = {"r_0603", "r_0805", "r_1206", "c_0603", "c_0805", "c_1206", "l_0805", "l_1206",
+    static const std::vector<std::string> fixed = {"r_0402", "c_0402", "l_0402", "led_0402", "l_0603", "fuse_0805", "fuse_1206", "d_sod-323",
+                                                   "d_sma", "sot-23-5", "sot-23-6", "usb_micro-b", "esp32-wroom-32", "rpi_pico",
+                                                   "testpoint_pad_1.5mm", "buzzer_12mm", "mountinghole_2.2mm", "mountinghole_2.7mm",
+                                                   "mountinghole_3.2mm", "mountinghole_4.3mm", "r_0603", "r_0805", "r_1206", "c_0603", "c_0805", "c_1206", "l_0805", "l_1206",
                                                    "led_0603", "led_0805", "led_1206", "d_sod-123", "d_0805", "r_tht", "l_tht", "d_tht",
                                                    "c_tht", "cp_tht", "led_tht", "hc49", "sot-223", "sot-23", "to-92", "to-220",
                                                    "sw_push_6mm", "sw_spdt", "pot_tht", "arduino_nano", "esp32_devkit", "bluepill",
@@ -340,7 +517,8 @@ std::string canonicalFootprint(const std::string& name) {
         if (s.rfind(f, 0) == 0 && (s.size() == f.size() || !std::isdigit(static_cast<unsigned char>(s[f.size()])))) return f;
     }
     // patterns with a pin count, keeping only the digits after the prefix
-    for (const std::string prefix : {"pinheader_1x", "pinheader_2x", "pinsocket_1x", "pinsocket_2x", "dip-", "soic-"}) {
+    for (const std::string prefix : {"pinheader_1x", "pinheader_2x", "pinsocket_1x", "pinsocket_2x", "dip-", "soic-", "qfn-", "tqfp-", "lqfp-",
+                                     "tssop-", "terminalblock_1x", "screwterminal_1x"}) {
         if (s.rfind(prefix, 0) != 0) continue;
         std::size_t i = prefix.size();
         std::string digits;
@@ -348,9 +526,29 @@ std::string canonicalFootprint(const std::string& name) {
         if (digits.empty()) continue;
         std::string p = prefix;
         if (p.rfind("pinsocket", 0) == 0) p.replace(0, 9, "pinheader");
+        if (p == "lqfp-") p = "tqfp-";
+        if (p == "screwterminal_1x") p = "terminalblock_1x";
         return p + digits;
     }
     if (s.rfind("arduino_uno", 0) == 0) return "arduino_uno_shield";
+    // KiCad library names for the fixed footprints above
+    if (s.rfind("terminalblock", 0) == 0) {
+        // TerminalBlock_Phoenix_MKDS-1,5-2_1x02_P5.08mm_Horizontal -> terminalblock_1x02
+        if (auto k = s.find("_1x"); k != std::string::npos) {
+            std::string digits;
+            for (std::size_t i = k + 3; i < s.size() && std::isdigit(static_cast<unsigned char>(s[i])); ++i) digits += s[i];
+            if (!digits.empty()) return "terminalblock_1x" + digits;
+        }
+    }
+    if (s.rfind("mountinghole_", 0) == 0) {
+        for (const char* d : {"2.2mm", "2.7mm", "3.2mm", "4.3mm"}) {
+            if (s.rfind(std::string("mountinghole_") + d, 0) == 0) return std::string("mountinghole_") + d;
+        }
+    }
+    if (s.rfind("testpoint", 0) == 0) return "testpoint_pad_1.5mm";
+    if (s.rfind("usb_micro", 0) == 0) return "usb_micro-b";
+    if (s.rfind("esp32-wroom", 0) == 0) return "esp32-wroom-32";
+    if (s.rfind("raspberrypi_pico", 0) == 0 || s.rfind("rpi_pico", 0) == 0) return "rpi_pico";
     return s;
 }
 
@@ -358,11 +556,12 @@ std::string canonicalFootprint(const std::string& name) {
 
 const std::vector<FootprintEntry>& footprintCatalog() {
     static const std::vector<FootprintEntry> list = {
-        {"R_0603 / R_0805 / R_1206", "SMD resistor"},
-        {"C_0603 / C_0805 / C_1206", "SMD capacitor"},
-        {"L_0805 / L_1206", "SMD inductor"},
-        {"LED_0603 / LED_0805 / LED_1206", "SMD LED, pad 1 = cathode"},
-        {"D_SOD-123 / D_0805", "SMD diode, pad 1 = cathode"},
+        {"R_0402 / R_0603 / R_0805 / R_1206", "SMD resistor"},
+        {"C_0402 / C_0603 / C_0805 / C_1206", "SMD capacitor"},
+        {"L_0402 / L_0603 / L_0805 / L_1206", "SMD inductor"},
+        {"LED_0402 / LED_0603 / LED_0805 / LED_1206", "SMD LED, pad 1 = cathode"},
+        {"Fuse_0805 / Fuse_1206", "SMD fuse"},
+        {"D_SOD-123 / D_SOD-323 / D_SMA / D_0805", "SMD diode, pad 1 = cathode"},
         {"R_THT / L_THT", "axial, 10.16 mm pitch"},
         {"D_THT", "DO-41 axial diode, pad 1 = cathode"},
         {"C_THT", "disc capacitor, 5.08 mm pitch"},
@@ -370,13 +569,22 @@ const std::vector<FootprintEntry>& footprintCatalog() {
         {"LED_THT", "5 mm LED"},
         {"HC49", "HC-49 crystal"},
         {"SOT-23", "SOT-23 (3 pads)"},
+        {"SOT-23-5 / SOT-23-6", "SOT-23 with 5 or 6 pads (1-3 bottom, rest top)"},
         {"SOT-223", "SOT-223 regulator (tab = pad 2)"},
         {"TO-92", "TO-92, 2.54 mm in line"},
         {"TO-220", "TO-220 vertical"},
         {"SOIC-N", "SOIC with N pads, e.g. SOIC-8, SOIC-14"},
+        {"TSSOP-N", "TSSOP with N pads, 0.65 mm pitch, e.g. TSSOP-20"},
+        {"TQFP-N", "TQFP with N pads: 32/44 at 0.8 mm, 48/64/100 at 0.5 mm"},
+        {"QFN-N", "QFN with N pads and an exposed pad N+1, e.g. QFN-20, QFN-32, QFN-56"},
         {"DIP-N", "DIP with N pads, e.g. DIP-8, DIP-28"},
         {"PinHeader_1xNN", "1-row header, e.g. PinHeader_1x04"},
         {"PinHeader_2xNN", "2-row header, e.g. PinHeader_2x05 (10 pads)"},
+        {"TerminalBlock_1xNN", "screw terminal, 5.08 mm, e.g. TerminalBlock_1x02"},
+        {"USB_Micro-B", "USB Micro-B receptacle (check your part)"},
+        {"TestPoint_Pad_1.5mm", "1.5 mm round test pad"},
+        {"MountingHole_2.2mm / 2.7mm / 3.2mm / 4.3mm", "non-plated hole for M2, M2.5, M3, M4"},
+        {"Buzzer_12mm", "12 mm buzzer, 7.6 mm pitch"},
         {"SW_PUSH_6mm", "6 mm tactile switch"},
         {"SW_SPDT", "slide switch, 3 pads"},
         {"Pot_THT", "trimmer potentiometer, 3 pads"},
@@ -384,6 +592,8 @@ const std::vector<FootprintEntry>& footprintCatalog() {
         {"Arduino_Nano", "Arduino Nano, 2x15"},
         {"ESP32_DevKit", "ESP32 DevKit V1, 2x15, 25.4 mm rows"},
         {"BluePill", "STM32 Blue Pill, 2x20"},
+        {"RPi_Pico", "Raspberry Pi Pico, 2x20, 17.78 mm rows"},
+        {"ESP32-WROOM-32", "ESP32-WROOM-32 module, 38 castellated pads + ground pad"},
     };
     return list;
 }
@@ -399,5 +609,7 @@ std::shared_ptr<const Footprint> findFootprint(const std::string& name) {
     cache[canon] = f;
     return f;
 }
+
+void finishFootprint(Footprint& f) { finish(f); }
 
 }  // namespace wetwaresuite::circuit

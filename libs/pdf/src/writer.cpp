@@ -48,6 +48,11 @@ void Page::image(double x, double y, double w, double h, std::shared_ptr<const I
     ops.emplace_back(ImageOp{x, y, w, h, std::move(img)});
 }
 
+void Page::path(std::vector<std::pair<double, double>> points, bool closed, std::optional<Color> fill, std::optional<Color> stroke,
+                double lineWidth) {
+    ops.emplace_back(PathOp{std::move(points), closed, fill, stroke, lineWidth});
+}
+
 std::string deflate(const std::string& data, int level) {
     int outLen = 0;
     unsigned char* out = stbi_zlib_compress(reinterpret_cast<unsigned char*>(const_cast<char*>(data.data())),
@@ -233,6 +238,15 @@ std::string writePdf(const std::vector<Page>& pages, const DocInfo& info) {
                 if (l->color.a == 0) continue;
                 c += rgb(l->color) + " RG " + num(l->width) + " w " + num(l->x1) + " " + num(H - l->y1) + " m " + num(l->x2) + " " +
                      num(H - l->y2) + " l S\n";
+            } else if (auto pa = std::get_if<PathOp>(&op)) {
+                const bool fill = pa->closed && pa->fill && pa->fill->a > 0, stroke = pa->stroke && pa->stroke->a > 0;
+                if ((!fill && !stroke) || pa->points.size() < 2) continue;
+                if (fill) c += rgb(*pa->fill) + " rg ";
+                if (stroke) c += rgb(*pa->stroke) + " RG " + num(pa->lineWidth) + " w 1 j ";
+                for (std::size_t i = 0; i < pa->points.size(); ++i) {
+                    c += num(pa->points[i].first) + " " + num(H - pa->points[i].second) + (i == 0 ? " m " : " l ");
+                }
+                c += std::string(pa->closed ? "h " : "") + (fill && stroke ? "B" : fill ? "f" : "S") + "\n";
             } else if (auto im = std::get_if<ImageOp>(&op)) {
                 if (!im->image || im->image->pixels.empty()) continue;
                 const ImageData* key = im->image.get();

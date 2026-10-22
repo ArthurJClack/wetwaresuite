@@ -85,6 +85,53 @@ bool applyText(Shape& s, const Params& p, std::string& error) {
         }
         s.lineHeight = v;
     }
+    if (has(p, "box_width")) s.boxWidth = std::max(0.0, numberParam(p, "box_width"));
+    if (has(p, "box_height")) s.boxHeight = std::max(0.0, numberParam(p, "box_height"));
+    if (has(p, "columns")) {
+        const auto c = intParam(p, "columns", 1);
+        if (c < 1 || c > 32) return error = "columns must be 1..32", false;
+        s.columns = static_cast<int>(c);
+    }
+    if (has(p, "column_gap")) s.columnGap = std::max(0.0, numberParam(p, "column_gap"));
+    if (has(p, "align")) {
+        const std::string a = lower(stringParam(p, "align"));
+        if (a != "left" && a != "center" && a != "right" && a != "justify") return error = "align must be left, center, right or justify", false;
+        s.align = a;
+    }
+    if (has(p, "on_path")) s.onPath = stringParam(p, "on_path") == "none" ? std::string() : stringParam(p, "on_path");
+    if (has(p, "path_offset")) s.pathOffset = numberParam(p, "path_offset");
+    if (has(p, "case")) {
+        const std::string c = lower(stringParam(p, "case"));
+        if (c != "none" && c != "upper" && c != "lower" && c != "title" && c != "small_caps") {
+            return error = "case must be none, upper, lower, title or small_caps", false;
+        }
+        s.textCase = c;
+    }
+    return true;
+}
+
+// The parts of text settings that need the document: the path it runs along and its text style.
+bool finishText(VectorDoc& doc, Shape& s, const Params& p, std::string& error) {
+    if (!s.onPath.empty()) {
+        const int i = doc.find(s.onPath);
+        if (i < 0) return error = "no shape '" + s.onPath + "' to run the text along", false;
+        const Shape& path = doc.shapes[static_cast<std::size_t>(i)];
+        if (path.kind == ShapeKind::Text || path.kind == ShapeKind::Group || path.kind == ShapeKind::Instance) {
+            return error = "text runs along paths and shapes, not a " + std::string(toString(path.kind)), false;
+        }
+        s.onPath = path.id;
+    }
+    if (has(p, "style")) {
+        const std::string name = stringParam(p, "style");
+        if (name == "none") {
+            s.textStyle.clear();
+        } else {
+            auto it = std::find_if(doc.textStyles.begin(), doc.textStyles.end(), [&](const TextStyle& t) { return t.name == name; });
+            if (it == doc.textStyles.end()) return error = "no text style '" + name + "' (vector.text_style defines one)", false;
+            applyTextStyle(s, *it);
+            applyText(s, p, error);  // settings given alongside the style win
+        }
+    }
     return true;
 }
 
@@ -103,6 +150,15 @@ std::vector<ParamSpec> textParams(bool adding) {
          adding ? Value{std::string("start")} : Value{}},
         numParam("letter_spacing", "extra px between letters (negative tightens)", false),
         numParam("line_height", "line spacing, times the size", false),
+        numParam("box_width", "area text: wrap inside a box this wide (x,y is then its top-left); 0 = point text", false),
+        numParam("box_height", "area text: box height (text past it overflows, hidden)", false),
+        {"columns", ParamType::Int, "area text: number of columns", false},
+        numParam("column_gap", "area text: gap between columns in px", false),
+        {"align", ParamType::String, "area text: left, center, right or justify", false},
+        {"on_path", ParamType::String, "run the text along this shape's path (none = back to a straight line)", false},
+        numParam("path_offset", "text on a path: start this many px along the path", false),
+        {"case", ParamType::String, "none, upper, lower, title or small_caps", false},
+        {"style", ParamType::String, "follow a text style (vector.text_style); none = stop following", false},
     };
 }
 
@@ -190,9 +246,9 @@ void registerTextCommands(Session& session) {
                 s.kind = ShapeKind::Text;
                 s.stroke.reset();
                 std::string error;
-                if (!applyText(s, p, error)) return Result::failure(error);
+                if (!applyText(s, p, error) || !finishText(doc, s, p, error)) return Result::failure(error);
                 if (s.text.empty()) return Result::failure("text can't be empty");
-                if (!has(p, "fill")) s.fill = Color{0, 0, 0, 255};
+                if (!has(p, "fill") && (s.textStyle.empty() || !s.fill)) s.fill = Color{0, 0, 0, 255};
                 return addShape(doc, std::move(s), p);
             }));
 
@@ -203,19 +259,25 @@ void registerTextCommands(Session& session) {
                 Shape& s = doc.shapes[static_cast<std::size_t>(idx)];
                 if (s.kind != ShapeKind::Text) return Result::failure(s.id + " is a " + toString(s.kind) + ", not text");
                 std::string error;
-                if (!applyText(s, p, error)) return Result::failure(error);
+                if (!applyText(s, p, error) || !finishText(doc, s, p, error)) return Result::failure(error);
                 if (s.text.empty()) return Result::failure("text can't be empty");
-                return Result::success("updated " + describe(s), s.id).with("shape", s.id);
+                bool overflow = false;
+                if (s.boxWidth > 0) layoutArea(s, &overflow);
+                Result r = Result::success("updated " + describe(s) + (overflow ? " (the text overflows its box)" : ""), s.id);
+                return r.with("shape", s.id).with("overflow", overflow);
             })));
 
     reg.add({"vector.gradient", "Gradient Fill",
-             "Fill a shape with a linear or radial gradient: colors=red,blue spreads colours evenly, or "
-             "stops=0:red,0.3:gold,1:blue places them. Positions are fractions of the shape's box, so the gradient "
-             "follows the shape when it moves or scales. remove=true goes back to the flat fill.",
+             "Fill a shape (or its outline, target=stroke) with a linear or radial gradient: colors=red,blue "
+             "spreads colours evenly, or stops=0:red,0.3:gold,1:blue places them. type=freeform blends colour "
+             "points instead: points=\"0.2,0.2,red 0.8,0.3,gold 0.5,0.9,blue\" (fractions of the shape's box). "
+             "Positions follow the shape when it moves or scales. remove=true goes back to the flat colour.",
              {docParam(), shapeParam(),
-              {"type", ParamType::String, "linear or radial", false, {}, std::string("linear")},
+              {"type", ParamType::String, "linear, radial or freeform", false, {}, std::string("linear")},
+              {"target", ParamType::String, "what the gradient paints", false, {"fill", "stroke"}, std::string("fill")},
               {"colors", ParamType::String, "colours spread evenly, e.g. red,blue or #ff0000,#ffd700,#0000ff", false},
               {"stops", ParamType::String, "offset:colour pairs, e.g. 0:red,0.5:white,1:blue", false},
+              {"points", ParamType::String, "freeform colour points x,y,colour separated by spaces", false},
               numParam("angle", "linear direction in degrees: 0 = left to right, 90 = top to bottom", false, 0.0),
               numParam("cx", "radial centre x, fraction of the shape's width", false, 0.5),
               numParam("cy", "radial centre y, fraction of the shape's height", false, 0.5),
@@ -225,20 +287,98 @@ void registerTextCommands(Session& session) {
              true},
             vectorCommand(session, onShape([](VectorDoc& doc, int idx, const Params& p) {
                 Shape& s = doc.shapes[static_cast<std::size_t>(idx)];
+                const bool stroke = stringParam(p, "target", "fill") == "stroke";
+                std::optional<Gradient>& slot = stroke ? s.strokeGradient : s.gradient;
                 if (boolParam(p, "remove", false)) {
-                    s.gradient.reset();
+                    slot.reset();
                     return Result::success("removed the gradient from " + s.id, s.id).with("shape", s.id);
                 }
                 Gradient g;
                 std::string error;
-                if (!gradientArg(p, g, error)) return Result::failure(error);
-                s.gradient = g;
-                if (!s.fill) s.fill = g.stops.front().color;  // fallback colour for viewers without gradients
-                return Result::success("filled " + s.id + " with a " + (g.radial ? "radial" : "linear") + " gradient (" +
-                                           std::to_string(g.stops.size()) + " stops)",
+                if (lower(stringParam(p, "type", "linear")) == "freeform") {
+                    g.freeform = true;
+                    if (!parseFreeform(stringParam(p, "points", ""), g.points, error)) return Result::failure(error);
+                    g.stops = {{0, g.points.front().color}};
+                } else if (!gradientArg(p, g, error)) {
+                    return Result::failure(error);
+                }
+                slot = g;
+                std::optional<Color>& flat = stroke ? s.stroke : s.fill;
+                if (!flat) flat = g.stops.front().color;  // fallback colour for viewers without gradients
+                const std::string kind = g.freeform ? "freeform" : g.radial ? "radial" : "linear";
+                return Result::success(std::string(stroke ? "stroked " : "filled ") + s.id + " with a " + kind + " gradient (" +
+                                           std::to_string(g.freeform ? g.points.size() : g.stops.size()) + (g.freeform ? " points)" : " stops)"),
                                        s.id)
                     .with("shape", s.id);
             })));
+
+    reg.add({"vector.text_style", "Text Style",
+             "Define or change a named character/paragraph style (font, size, bold, italic, letter_spacing, "
+             "line_height, align, case, fill), or take one from a text shape with from=. Text that follows the "
+             "style (vector.set_text style=NAME, or shapes= here) changes with it. remove=true deletes it.",
+             {docParam(), {"name", ParamType::String, "style name (letters, digits, _ - .)", true},
+              {"from", ParamType::String, "copy the settings of this text shape", false},
+              {"font", ParamType::String, "font", false}, numParam("size", "font size px", false),
+              {"bold", ParamType::Bool, "bold", false}, {"italic", ParamType::Bool, "italic", false},
+              numParam("letter_spacing", "extra px between letters", false), numParam("line_height", "times the size", false),
+              {"align", ParamType::String, "left, center, right or justify", false},
+              {"case", ParamType::String, "none, upper, lower, title or small_caps", false}, paintParam("fill", "text colour", ""),
+              {"shapes", ParamType::String, "text shapes to give the style", false},
+              {"remove", ParamType::Bool, "delete the style (text keeps its look)", false, {}, false}, previewParam()},
+             true},
+            vectorCommand(session, [](VectorDoc& doc, const Params& p) {
+                const std::string name = stringParam(p, "name");
+                if (!validName(name)) return Result::failure("style names use letters, digits, _ - and . only");
+                auto it = std::find_if(doc.textStyles.begin(), doc.textStyles.end(), [&](const TextStyle& t) { return t.name == name; });
+                if (boolParam(p, "remove", false)) {
+                    if (it == doc.textStyles.end()) return Result::failure("no text style '" + name + "'");
+                    doc.textStyles.erase(it);
+                    for (auto& s : doc.shapes) {
+                        if (s.textStyle == name) s.textStyle.clear();
+                    }
+                    return Result::success("deleted text style " + name);
+                }
+                TextStyle t = it == doc.textStyles.end() ? TextStyle{} : *it;
+                t.name = name;
+                std::string error;
+                if (has(p, "from")) {
+                    const int i = doc.find(stringParam(p, "from"));
+                    if (i < 0 || doc.shapes[static_cast<std::size_t>(i)].kind != ShapeKind::Text) return Result::failure("from= must name a text shape");
+                    const Shape& s = doc.shapes[static_cast<std::size_t>(i)];
+                    t.font = s.font, t.size = s.fontSize, t.bold = s.bold, t.italic = s.italic, t.letterSpacing = s.letterSpacing;
+                    t.lineHeight = s.lineHeight, t.align = s.align, t.textCase = s.textCase, t.fill = s.fill;
+                }
+                Shape probe;  // reuse the text param checks
+                probe.font = t.font, probe.fontSize = t.size, probe.bold = t.bold, probe.italic = t.italic, probe.letterSpacing = t.letterSpacing;
+                probe.lineHeight = t.lineHeight, probe.align = t.align, probe.textCase = t.textCase;
+                Params q = p;
+                if (has(p, "size")) q["size"] = numberParam(p, "size");
+                q.erase("x"), q.erase("y"), q.erase("text");
+                if (!applyText(probe, q, error)) return Result::failure(error);
+                t.font = probe.font, t.size = probe.fontSize, t.bold = probe.bold, t.italic = probe.italic, t.letterSpacing = probe.letterSpacing;
+                t.lineHeight = probe.lineHeight, t.align = probe.align, t.textCase = probe.textCase;
+                if (has(p, "fill")) {
+                    std::optional<Color> c;
+                    if (!paintArg(stringParam(p, "fill"), c, error)) return Result::failure(error);
+                    t.fill = c;
+                }
+                if (it == doc.textStyles.end()) doc.textStyles.push_back(t);
+                else *it = t;
+                if (has(p, "shapes")) {
+                    std::vector<int> idx;
+                    if (!shapeList(doc, stringParam(p, "shapes"), idx, error)) return Result::failure(error);
+                    for (int i : idx) {
+                        if (doc.shapes[static_cast<std::size_t>(i)].kind == ShapeKind::Text) doc.shapes[static_cast<std::size_t>(i)].textStyle = name;
+                    }
+                }
+                int count = 0;
+                for (auto& s : doc.shapes) {
+                    if (s.kind == ShapeKind::Text && s.textStyle == name) applyTextStyle(s, t), ++count;
+                }
+                Result r = Result::success("text style " + textStyleText(t) + " (" + std::to_string(count) + " text shapes follow it)", name);
+                r.with("name", name).with("count", static_cast<std::int64_t>(count));
+                return maybePreview(r, doc, p);
+            }));
 
     reg.add({"vector.boolean", "Combine Shapes",
              "Combine filled shapes into one path: union merges them, subtract cuts the later shapes out of the "
@@ -268,20 +408,30 @@ void registerTextCommands(Session& session) {
                 }
                 if (idx.size() < 2) return Result::failure("give at least two different shapes, e.g. shapes=s1,s2");
 
-                Outline acc = outline(doc.shapes[static_cast<std::size_t>(idx[0])], 4.0);
+                auto nz = [&](int i) {
+                    const Shape& sh = doc.shapes[static_cast<std::size_t>(i)];
+                    return sh.kind == ShapeKind::Text || sh.kind == ShapeKind::Group || sh.kind == ShapeKind::Instance || sh.fillRule == "nonzero";
+                };
+                Outline acc = areaOf(doc, idx[0]);
+                bool accNz = nz(idx[0]);
                 for (std::size_t k = 1; k < idx.size(); ++k) {
-                    Outline next = outline(doc.shapes[static_cast<std::size_t>(idx[k])], 4.0);
-                    for (auto& c : next) c.closed = true;
-                    for (auto& c : acc) c.closed = true;
-                    acc = booleanOp(acc, next, op);
+                    acc = booleanOp(acc, areaOf(doc, idx[k]), op, accNz, nz(idx[k]));
+                    accNz = false;
                 }
-
                 Shape result = doc.shapes[static_cast<std::size_t>(idx[0])];
+                if (result.kind == ShapeKind::Group || result.kind == ShapeKind::Instance) result.fill = Color{0, 0, 0, 255};
                 result.kind = ShapeKind::Path;
+                result.onPath.clear();
+                result.clip.clear();
+                result.mask.clear();
+                result.symbol.clear();
+                result.layer = false;
                 result.d = outlinePathData(acc);
                 result.text.clear();
                 result.points.clear();
+                if (!result.transform.identity()) result.strokeWidth *= shapeMatrix(result).scaleFactor();
                 result.transform = Transform{};
+                result.fillRule = "evenodd";
                 if (!result.fill) result.fill = result.stroke;  // an outline-only first shape still shows the area
                 result.id.clear();
                 result.name = has(p, "name") ? stringParam(p, "name") : std::string{};
@@ -292,12 +442,17 @@ void registerTextCommands(Session& session) {
                 doc.shapes.pop_back();
                 int insertAt = idx[0];
                 if (!boolParam(p, "keep", false)) {
-                    std::vector<int> sorted = idx;
-                    std::sort(sorted.rbegin(), sorted.rend());
-                    for (int i : sorted) {
-                        doc.shapes.erase(doc.shapes.begin() + i);
-                        if (i < insertAt) --insertAt;
+                    std::vector<std::string> gone;
+                    for (int i : idx) gone.push_back(doc.shapes[static_cast<std::size_t>(i)].id);
+                    for (const auto& g : gone) {
+                        const int i = doc.find(g);
+                        if (i < 0) continue;
+                        const int n = static_cast<int>(doc.shapes.size());
+                        const int first = i;
+                        eraseSubtree(doc, i);
+                        if (first < insertAt) insertAt -= n - static_cast<int>(doc.shapes.size());
                     }
+                    insertAt = std::max(insertAt, 0);
                 } else {
                     insertAt = *std::max_element(idx.begin(), idx.end()) + 1;
                 }

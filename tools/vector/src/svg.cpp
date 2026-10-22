@@ -754,6 +754,7 @@ private:
         if (skipped(el.name) || depth_ > 32) return;
         if (auto role = el.attr("data-role"); role && *role == "extra") return;
         Style st = resolve(el, parent);
+        st.wrap = parent.wrap;  // the shape inside an appearance wrapper takes the wrapper's opacity and effects
         if (el.name == "g" && el.attr("data-role") && *el.attr("data-role") == "appearance") {
             st.wrap = &el;
             ++depth_;

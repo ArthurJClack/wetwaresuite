@@ -81,21 +81,21 @@ std::vector<std::vector<Point>> loops(const std::vector<std::uint8_t>& mask, int
     return result;
 }
 
-// Pixel corners to a smooth outline: the middles of the edges, lightly averaged.
+// Pixel corners to a smooth outline: the middles of the edges (so staircases become straight
+// slopes), plus the corners where two long straight edges meet (so squares stay square).
 std::vector<Point> soften(const std::vector<Point>& pts) {
     const std::size_t n = pts.size();
-    std::vector<Point> mid;
+    auto edgeLen = [&](std::size_t i) {
+        const Point a = pts[i % n], b = pts[(i + 1) % n];
+        return std::hypot(b.x - a.x, b.y - a.y);
+    };
+    std::vector<Point> out;
     for (std::size_t i = 0; i < n; ++i) {
         const Point a = pts[i], b = pts[(i + 1) % n];
-        const double len = std::hypot(b.x - a.x, b.y - a.y);
-        if (len > 2.5) {  // long straight edges keep their ends so corners stay sharp
-            mid.push_back({a.x + (b.x - a.x) * 0.5 / len * 1.0, a.y + (b.y - a.y) * 0.5 / len * 1.0});
-            mid.push_back({b.x - (b.x - a.x) * 0.5 / len * 1.0, b.y - (b.y - a.y) * 0.5 / len * 1.0});
-        } else {
-            mid.push_back({(a.x + b.x) / 2, (a.y + b.y) / 2});
-        }
+        if (edgeLen(i) >= 3 && edgeLen(i + n - 1) >= 3) out.push_back(a);
+        out.push_back({(a.x + b.x) / 2, (a.y + b.y) / 2});
     }
-    return mid;
+    return out;
 }
 
 }  // namespace
@@ -189,7 +189,7 @@ std::vector<TracedRegion> traceImage(const raster::Image& img, const TraceSettin
                 continue;
             }
             const std::vector<Point> soft = soften(loop);
-            const double corner = 40 + 80 * std::clamp(st.smooth, 0.0, 1.0);  // smoother: fewer corners
+            const double corner = 135 - 65 * std::clamp(st.smooth, 0.0, 1.0);  // smoother: only sharp turns stay corners
             path.push_back(simplify(soft, true, std::max(0.1, st.tolerance), corner));
         }
         if (path.empty()) continue;

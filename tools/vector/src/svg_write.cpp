@@ -448,8 +448,8 @@ std::string toSvg(const VectorDoc& doc, int artboard) {
     out += "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.org/1999/xlink\" "
            "xmlns:inkscape=\"http://www.inkscape.org/namespaces/inkscape\" width=\"" +
            num4(vw) + "\" height=\"" + num4(vh) + "\" viewBox=\"" + num4(vx) + " " + num4(vy) + " " + num4(vw) + " " + num4(vh) + "\"";
-    if (artboard >= 0) out += " data-canvas=\"" + std::to_string(doc.width) + "x" + std::to_string(doc.height) + "\"";
-    if (!doc.artboards.empty()) {
+    // one artboard exported on its own is a drawing of just that area (it opens as such)
+    if (!doc.artboards.empty() && artboard < 0) {
         std::string a;
         for (const auto& b : doc.artboards) a += (a.empty() ? "" : ";") + b.name + ":" + num4(b.x) + "," + num4(b.y) + "," + num4(b.w) + "," + num4(b.h);
         out += " data-artboards=\"" + esc(a) + "\"";

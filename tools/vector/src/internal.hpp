@@ -6,6 +6,10 @@
 #include <cmath>
 #include <cstdio>
 #include <functional>
+#include <map>
+#include <optional>
+#include <string>
+#include <vector>
 
 #include "wetwaresuite/raster/document.hpp"
 #include "wetwaresuite/vector/vector.hpp"
@@ -84,8 +88,30 @@ inline std::vector<ParamSpec> join(std::vector<ParamSpec> a, const std::vector<P
 
 // Applies fill/stroke/stroke_width/opacity/name/visible params that are present.
 inline bool applyStyle(Shape& s, const Params& p, std::string& error) {
-    if (has(p, "fill") && !paintArg(stringParam(p, "fill"), s.fill, error)) return false;
-    if (has(p, "stroke") && !paintArg(stringParam(p, "stroke"), s.stroke, error)) return false;
+    if (has(p, "fill")) {
+        if (!paintArg(stringParam(p, "fill"), s.fill, error)) return false;
+        s.fillSwatch.clear();
+    }
+    if (has(p, "stroke")) {
+        if (!paintArg(stringParam(p, "stroke"), s.stroke, error)) return false;
+        s.strokeSwatch.clear();
+    }
+    if (has(p, "blend")) {
+        auto b = raster::parseBlend(stringParam(p, "blend"));
+        if (!b) {
+            error = "'" + stringParam(p, "blend") + "' isn't a blend mode (normal, multiply, screen, overlay, darken, lighten, ...)";
+            return false;
+        }
+        s.blend = raster::toString(*b);
+    }
+    if (has(p, "fill_rule")) {
+        const std::string r = stringParam(p, "fill_rule");
+        if (r != "evenodd" && r != "nonzero") {
+            error = "fill_rule must be evenodd or nonzero";
+            return false;
+        }
+        s.fillRule = r;
+    }
     if (has(p, "stroke_width")) {
         double w = numberParam(p, "stroke_width");
         if (w < 0) {
@@ -283,7 +309,48 @@ bool parseTextStyle(const std::string& text, TextStyle& t);
 bool validName(const std::string& name);  // letters, digits, _ - . (swatch, symbol, style and artboard names)
 void applyTextStyle(Shape& s, const TextStyle& t);
 
+// Shared by the command files (cmd_util.cpp).
+// Shapes named by a comma-separated list param (ids or names); fails on unknown names or an empty list.
+bool shapeList(const VectorDoc& doc, const std::string& list, std::vector<int>& out, std::string& error);
+// The "shapes" param, or the single "shape" param when shapes isn't given.
+bool selection(const VectorDoc& doc, const Params& p, std::vector<int>& out, std::string& error);
+// Drops shapes that sit inside another listed shape (moving the group moves them already).
+std::vector<int> topmost(const VectorDoc& doc, std::vector<int> idx);
+bool editable(const VectorDoc& doc, int idx, std::string& error);  // not locked (itself or a group around it)
+// A shape's filled area on the canvas, closed contours (text and groups included).
+Outline areaOf(const VectorDoc& doc, int idx, double detail = 4.0);
+// Outer contours each with the holes directly inside them (even-odd nesting).
+std::vector<Outline> pieces(const Outline& area);
+// Moves the listed shapes (with what's inside them) so they sit just before list index `before`
+// (an index into the list as it was); returns where the block starts now.
+int moveBlock(VectorDoc& doc, std::vector<int> idx, int before);
+// Puts shapes into a new group at the stacking place of the topmost one; returns the group id.
+std::string groupShapes(VectorDoc& doc, std::vector<int> idx, const std::string& name);
+// A fresh shape id (the shape isn't added).
+std::string freshId(VectorDoc& doc);
+// Inserts `s` (given a fresh id when it has none) at list index `at`; returns its id.
+std::string insertShape(VectorDoc& doc, Shape s, int at);
+// The leaves of the drawing in paint order (bottom first), hidden, clip and mask shapes left out.
+std::vector<int> paintOrder(const VectorDoc& doc);
+// Topmost visible, unlocked leaf under p (within `tolerance` px of its outline counts), or -1.
+int hitTest(const VectorDoc& doc, Point p, double tolerance);
+// The outermost group around a shape that isn't a layer (what a click selects), or the shape itself.
+int selectable(const VectorDoc& doc, int idx);
+// Snaps p to the grid, guides and anchors as the document's snap settings say, within `radius`.
+Point snapPoint(const VectorDoc& doc, Point p, double radius, std::string* what = nullptr);
+// A path-like shape's anchors on the canvas (its transform applied). Fails for text, groups and instances.
+bool canvasPath(const Shape& s, BezierPath& out, std::string& error);
+// Stores canvas anchors back: the shape becomes a path with no transform (outline width kept as drawn).
+void storePath(Shape& s, const BezierPath& bp);
+// Everything a list param result needs: "s1,s2".
+std::string idText(const VectorDoc& doc, const std::vector<int>& idx);
+
 // Registers the text, gradient, boolean and to-path commands (cmd_text.cpp).
 void registerTextCommands(Session& session);
+void registerPathCommands(Session& session);       // cmd_paths.cpp: anchors, pen, join, split, simplify, offset ...
+void registerRegionCommands(Session& session);     // cmd_regions.cpp: compound, divide, shape builder, paint, clip, mask
+void registerAppearanceCommands(Session& session); // cmd_appearance.cpp: stroke options, appearance, effects, swatches
+void registerOrganizeCommands(Session& session);   // cmd_organize.cpp: layers, groups, align, transform, repeat, hit
+void registerBoardCommands(Session& session);      // cmd_boards.cpp: artboards, guides, symbols, export, trace
 
 }  // namespace wetwaresuite::vector::detail

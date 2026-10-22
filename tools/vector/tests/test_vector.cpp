@@ -694,6 +694,8 @@ void testTextGradientBoolean() {
 
 }  // namespace
 
+void runToolTests();  // test_vector_tools.cpp
+
 int main() {
     testPathParsing();
     testRendering();
@@ -703,5 +705,6 @@ int main() {
     testTextGradientBoolean();
     testBatch();
     testMcp();
+    runToolTests();
     return check::summary("vector");
 }

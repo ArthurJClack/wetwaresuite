@@ -87,14 +87,16 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"vector.open", "Open Drawing",
-             "Open an SVG file as a vector document and return its id. Supports rect, circle, ellipse, line, polyline, "
-             "polygon, path, text and groups with fill/stroke/opacity, linear and radial gradients and transforms; images and filters are skipped.",
-             {{"path", ParamType::String, "path to an .svg file", true}},
+             "Open a drawing as an editable vector document and return its id: SVG (shapes, groups and layers, "
+             "symbols, clip paths, masks, gradients, filters this tool writes), PDF and Illustrator .ai files "
+             "(page= picks the page; paths, text and colours come in as shapes) and EPS/PS.",
+             {{"path", ParamType::String, "path to an .svg, .pdf, .ai, .eps or .ps file", true},
+              {"page", ParamType::Int, "PDF/AI page, 1 = first", false, {}, std::int64_t{1}}},
              false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     try {
-                        return docCreated(session, openSvg(stringParam(p, "path")), "opened");
+                        return docCreated(session, openAny(stringParam(p, "path"), static_cast<int>(intParam(p, "page", 1))), "opened");
                     } catch (const std::exception& e) {
                         return Result::failure(e.what());
                     }
@@ -102,33 +104,65 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"vector.save", "Save Drawing",
-             "Save a vector document. .svg writes real SVG; .png, .jpg, .bmp, .tga or .ppm render it to pixels "
-             "(use scale for higher resolution, e.g. scale=2).",
+             "Save or export a vector document. .svg writes real SVG; .pdf a vector PDF (a page per artboard); "
+             ".eps vector EPS; .png, .jpg, .bmp, .tga or .ppm render pixels (scale=2 for double resolution). "
+             "artboard= exports just that artboard (name or number), or all for one file per artboard "
+             "(name-ARTBOARD.ext).",
              {docParam(),
               {"path", ParamType::String, "output file; the extension picks the format", true},
               numParam("scale", "pixels per unit for raster formats", false, 1.0),
-              {"quality", ParamType::Int, "JPEG quality 1..100", false, {}, std::int64_t{90}}},
+              {"quality", ParamType::Int, "JPEG quality 1..100", false, {}, std::int64_t{90}},
+              {"artboard", ParamType::String, "artboard name or number, or all", false}},
              false},
             vectorCommand(session, [](VectorDoc& doc, const Params& p) {
                 const std::string path = stringParam(p, "path");
                 const double scale = numberParam(p, "scale", 1.0);
                 if (!(scale > 0) || scale > 32) return Result::failure("scale must be between 0 and 32");
-                try {
-                    saveDoc(doc, path, scale, static_cast<int>(std::clamp<std::int64_t>(intParam(p, "quality", 90), 1, 100)));
-                } catch (const std::exception& e) {
-                    return Result::failure(e.what());
-                }
+                const int quality = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "quality", 90), 1, 100));
                 std::filesystem::path fp(path);
                 std::string e = fp.extension().string();
                 for (auto& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-                if (e == ".svg") doc.path = path;
-                return Result::success("saved " + path, path).with("path", path);
+                std::vector<std::string> written;
+                try {
+                    if (!has(p, "artboard")) {
+                        saveDoc(doc, path, scale, quality);
+                        written.push_back(path);
+                    } else if (stringParam(p, "artboard") == "all") {
+                        if (e == ".pdf") {
+                            saveDoc(doc, path, scale, quality, -1);
+                            written.push_back(path);
+                        } else {
+                            for (int k = 0; k < doc.artboardCount(); ++k) {
+                                std::filesystem::path out = fp.parent_path() / (fp.stem().string() + "-" + doc.artboard(k).name + fp.extension().string());
+                                saveDoc(doc, out, scale, quality, k);
+                                written.push_back(out.string());
+                            }
+                        }
+                    } else {
+                        const std::string name = stringParam(p, "artboard");
+                        int k = -1;
+                        for (int i = 0; i < doc.artboardCount(); ++i) {
+                            if (doc.artboard(i).name == name || std::to_string(i + 1) == name) k = i;
+                        }
+                        if (k < 0) return Result::failure("no artboard '" + name + "' (vector.artboards lists them)");
+                        saveDoc(doc, path, scale, quality, k);
+                        written.push_back(path);
+                    }
+                } catch (const std::exception& ex) {
+                    return Result::failure(ex.what());
+                }
+                if (e == ".svg" && !has(p, "artboard")) doc.path = path;
+                std::string list;
+                for (const auto& w : written) list += (list.empty() ? "" : ",") + w;
+                return Result::success("saved " + list, written.front()).with("path", written.front()).with("files", list);
             }, false));
 
     reg.add({"vector.convert", "Convert Drawing",
-             "Render or re-save an SVG file in one step, without opening it first: input=logo.svg output=logo.png. "
-             "The output extension picks the format (svg, png, jpg, bmp, tga, ppm).",
-             {{"input", ParamType::String, "path to an .svg file", true},
+             "Convert a drawing in one step, without opening it first: input=logo.svg output=logo.png, or "
+             "input=art.ai output=art.svg. Reads svg, pdf, ai, eps; the output extension picks the format "
+             "(svg, pdf, eps, png, jpg, bmp, tga, ppm).",
+             {{"input", ParamType::String, "path to an .svg, .pdf, .ai or .eps file", true},
+              {"page", ParamType::Int, "PDF/AI page to read, 1 = first", false, {}, std::int64_t{1}},
               {"output", ParamType::String, "output file; the extension picks the format", true},
               numParam("scale", "pixels per unit for raster formats", false, 1.0),
               {"width", ParamType::Int, "raster output width in px (sets the scale, keeps aspect)", false},
@@ -139,7 +173,7 @@ void registerCommands(Session& session) {
                 return std::make_unique<FunctionAction>([p] {
                     const std::string input = stringParam(p, "input"), output = stringParam(p, "output");
                     try {
-                        auto doc = openSvg(input);
+                        auto doc = openAny(input, static_cast<int>(intParam(p, "page", 1)));
                         double scale = numberParam(p, "scale", 1.0);
                         if (auto w = intParam(p, "width", 0); w > 0 && doc->width > 0) scale = static_cast<double>(w) / doc->width;
                         else if (auto h = intParam(p, "height", 0); h > 0 && doc->height > 0) scale = static_cast<double>(h) / doc->height;
@@ -180,6 +214,15 @@ void registerCommands(Session& session) {
                     text += "\n" + describe(s);
                     ids += (ids.empty() ? "" : ",") + s.id;
                 }
+                for (const auto& a : doc.artboards) text += "\nartboard " + a.name + " " + num(a.x) + "," + num(a.y) + " " + num(a.w) + "x" + num(a.h);
+                for (const auto& y : doc.symbols) text += "\nsymbol " + y.name + " (" + std::to_string(y.shapes.size()) + " shapes)";
+                for (const auto& [n, c] : doc.swatches) text += "\nswatch " + n + " " + colorText(c);
+                for (const auto& t : doc.textStyles) text += "\ntext style " + textStyleText(t);
+                if (!doc.guidesX.empty() || !doc.guidesY.empty()) {
+                    text += "\nguides: " + std::to_string(doc.guidesX.size()) + " vertical, " + std::to_string(doc.guidesY.size()) + " horizontal";
+                }
+                if (doc.gridSize > 0) text += "\ngrid " + num(doc.gridSize);
+                if (!doc.currentLayer.empty()) text += "\ncurrent layer " + doc.currentLayer;
                 Result r = Result::success(text);
                 r.with("doc", stringParam(p, "doc"))
                     .with("width", static_cast<std::int64_t>(doc.width))
@@ -328,11 +371,14 @@ void registerCommands(Session& session) {
     // ---- editing shapes -------------------------------------------------------------
 
     reg.add({"vector.style", "Style Shape",
-             "Change a shape's fill, outline, outline width, opacity, name or visibility. Only the params you give change.",
+             "Change a shape's fill, outline, outline width, opacity, blend mode, fill rule, name or visibility (works on "
+             "groups and layers too). Only the params you give change.",
              {docParam(), shapeParam(), paintParam("fill", "fill colour", ""), paintParam("stroke", "outline colour", ""),
               numParam("stroke_width", "outline width in px", false), numParam("opacity", "opacity 0..1", false),
               {"name", ParamType::String, "new name", false},
               {"visible", ParamType::Bool, "show or hide the shape", false},
+              {"blend", ParamType::String, "blend mode: normal, multiply, screen, overlay, darken, lighten, ...", false},
+              {"fill_rule", ParamType::String, "how overlapping subpaths fill", false, {"evenodd", "nonzero"}},
               previewParam()},
              true},
             vectorCommand(session, onShape([](VectorDoc& doc, int idx, const Params& p) {
@@ -342,89 +388,12 @@ void registerCommands(Session& session) {
                 return Result::success("styled " + s.id + ": " + describe(s), s.id).with("shape", s.id);
             })));
 
-    reg.add({"vector.transform", "Transform Shape",
-             "Move, rotate or scale a shape. dx/dy move it, rotate turns it clockwise by degrees around its centre, "
-             "scale (or scale_x/scale_y) multiplies its size around its centre. Changes add up; reset=true clears "
-             "the transform first.",
-             {docParam(), shapeParam(), numParam("dx", "move right by px (negative = left)", false, 0.0),
-              numParam("dy", "move down by px (negative = up)", false, 0.0),
-              numParam("rotate", "degrees clockwise to add", false, 0.0), numParam("scale", "uniform scale factor", false, 1.0),
-              numParam("scale_x", "horizontal scale factor", false, 1.0), numParam("scale_y", "vertical scale factor", false, 1.0),
-              {"reset", ParamType::Bool, "clear the existing transform before applying these", false, {}, false},
-              previewParam()},
-             true},
-            vectorCommand(session, onShape([](VectorDoc& doc, int idx, const Params& p) {
-                Shape& s = doc.shapes[static_cast<std::size_t>(idx)];
-                const double k = numberParam(p, "scale", 1), kx = numberParam(p, "scale_x", 1), ky = numberParam(p, "scale_y", 1);
-                if (k == 0 || kx == 0 || ky == 0) return Result::failure("scale factors can't be 0");
-                if (boolParam(p, "reset", false)) s.transform = {};
-                Transform& t = s.transform;
-                t.tx += numberParam(p, "dx", 0);
-                t.ty += numberParam(p, "dy", 0);
-                t.rotate = std::fmod(t.rotate + numberParam(p, "rotate", 0), 360.0);
-                t.sx *= k * kx;
-                t.sy *= k * ky;
-                return Result::success("transformed " + s.id + ": " + describe(s), s.id).with("shape", s.id);
-            })));
-
-    reg.add({"vector.align", "Align Shape",
-             "Align a shape's bounding box to the canvas: horizontal left/center/right, vertical top/middle/bottom.",
-             {docParam(), shapeParam(),
-              {"horizontal", ParamType::String, "where to put it across", false, {"none", "left", "center", "right"}, std::string("none")},
-              {"vertical", ParamType::String, "where to put it up/down", false, {"none", "top", "middle", "bottom"}, std::string("none")},
-              numParam("margin", "gap from the canvas edge in px", false, 0.0),
-              previewParam()},
-             true},
-            vectorCommand(session, onShape([](VectorDoc& doc, int idx, const Params& p) {
-                Shape& s = doc.shapes[static_cast<std::size_t>(idx)];
-                Bounds b = bounds(outline(s));
-                if (b.empty) return Result::failure(s.id + " has no area to align");
-                const std::string hz = stringParam(p, "horizontal", "none"), vt = stringParam(p, "vertical", "none");
-                const double m = numberParam(p, "margin", 0);
-                if (hz == "left") s.transform.tx += m - b.x0;
-                else if (hz == "center") s.transform.tx += (doc.width - b.width()) / 2 - b.x0;
-                else if (hz == "right") s.transform.tx += doc.width - m - b.x1;
-                if (vt == "top") s.transform.ty += m - b.y0;
-                else if (vt == "middle") s.transform.ty += (doc.height - b.height()) / 2 - b.y0;
-                else if (vt == "bottom") s.transform.ty += doc.height - m - b.y1;
-                return Result::success("aligned " + s.id + ": " + describe(s), s.id).with("shape", s.id);
-            })));
-
-    reg.add({"vector.delete", "Delete Shape", "Remove a shape from the drawing.", {docParam(), shapeParam(), previewParam()}, true},
+    reg.add({"vector.delete", "Delete Shape", "Remove a shape (a group or layer goes with everything in it).",
+             {docParam(), shapeParam(), previewParam()}, true},
             vectorCommand(session, onShape([](VectorDoc& doc, int idx, const Params&) {
                 std::string id = doc.shapes[static_cast<std::size_t>(idx)].id;
-                doc.shapes.erase(doc.shapes.begin() + idx);
+                eraseSubtree(doc, idx);
                 return Result::success("deleted " + id, id).with("shape", id);
-            })));
-
-    reg.add({"vector.reorder", "Reorder Shape",
-             "Move a shape in the stacking order: front (top), back (bottom), up or down one step.",
-             {docParam(), shapeParam(),
-              {"to", ParamType::String, "where to move it", true, {"front", "back", "up", "down"}},
-              previewParam()},
-             true},
-            vectorCommand(session, onShape([](VectorDoc& doc, int idx, const Params& p) {
-                const std::string to = stringParam(p, "to");
-                auto& v = doc.shapes;
-                const auto i = static_cast<std::size_t>(idx);
-                Shape s = v[i];
-                if (to == "front") {
-                    v.erase(v.begin() + idx);
-                    v.push_back(s);
-                } else if (to == "back") {
-                    v.erase(v.begin() + idx);
-                    v.insert(v.begin(), s);
-                } else if (to == "up" && i + 1 < v.size()) {
-                    std::swap(v[i], v[i + 1]);
-                } else if (to == "down" && i > 0) {
-                    std::swap(v[i], v[i - 1]);
-                }
-                std::size_t pos = static_cast<std::size_t>(doc.find(s.id));
-                return Result::success("moved " + s.id + " to position " + std::to_string(pos + 1) + " of " +
-                                           std::to_string(v.size()) + " (1 = bottom)",
-                                       s.id)
-                    .with("shape", s.id)
-                    .with("index", static_cast<std::int64_t>(pos));
             })));
 
     reg.add({"vector.duplicate", "Duplicate Shape",
@@ -435,19 +404,24 @@ void registerCommands(Session& session) {
               previewParam()},
              true},
             vectorCommand(session, onShape([](VectorDoc& doc, int idx, const Params& p) {
-                Shape copy = doc.shapes[static_cast<std::size_t>(idx)];
+                const std::string from = doc.shapes[static_cast<std::size_t>(idx)].id;
+                const std::string id = duplicateSubtree(doc, idx, doc.shapes[static_cast<std::size_t>(idx)].parent);
+                Shape& copy = doc.shapes[static_cast<std::size_t>(doc.find(id))];
                 copy.name = stringParam(p, "name", copy.name + " copy");
-                copy.transform.tx += numberParam(p, "dx", 0);
-                copy.transform.ty += numberParam(p, "dy", 0);
-                std::string id = doc.add(std::move(copy));
-                Shape moved = std::move(doc.shapes.back());
-                doc.shapes.pop_back();
-                doc.shapes.insert(doc.shapes.begin() + idx + 1, std::move(moved));
-                return Result::success("duplicated " + doc.shapes[static_cast<std::size_t>(idx)].id + " as " + id, id)
-                    .with("shape", id);
+                const double dx = numberParam(p, "dx", 0), dy = numberParam(p, "dy", 0);
+                if (dx != 0 || dy != 0) {
+                    if (copy.kind == ShapeKind::Group) applyMatrix(doc, doc.find(id), Matrix::translate(dx, dy));
+                    else copy.transform.tx += dx, copy.transform.ty += dy;
+                }
+                return Result::success("duplicated " + from + " as " + id, id).with("shape", id);
             })));
 
     detail::registerTextCommands(session);
+    detail::registerPathCommands(session);
+    detail::registerRegionCommands(session);
+    detail::registerAppearanceCommands(session);
+    detail::registerOrganizeCommands(session);
+    detail::registerBoardCommands(session);
 }
 
 }  // namespace wetwaresuite::vector

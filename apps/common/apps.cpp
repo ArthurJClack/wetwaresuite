@@ -61,7 +61,7 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".svg", {"draw", "vector.open"}}, {".ttf", {"draw", "type.open"}}, {".otf", {"draw", "type.open"}},
         {".woff", {"draw", "type.open"}}, {".ufo", {"draw", "type.open"}}, {".excalidraw", {"draw", "board.open"}},
         {".drawio", {"draw", "board.open"}}, {".mmd", {"draw", ""}}, {".board.json", {"draw", "board.open"}},
-        {".ai", {"draw", ""}}, {".eps", {"draw", ""}},
+        {".ai", {"draw", "vector.open"}}, {".eps", {"draw", "vector.open"}},
         // model
         {".obj", {"model", "model.open"}}, {".ply", {"model", "sculpt.open"}}, {".off", {"model", "sculpt.open"}},
         {".glb", {"model", "sculpt.open"}}, {".gltf", {"model", "sculpt.open"}}, {".fbx", {"model", "model.open"}}, {".wwmodel", {"model", "model.open"}},
@@ -216,7 +216,7 @@ std::string toolGuide(const std::string& tool) {
     static const std::map<std::string, std::string> guides = {
         {"photo", "photo_* edits pictures: photo_open or photo_new returns a doc id like img1; pass it as `doc`; photo_preview (or preview=true) shows the result; photo_save writes it. Coordinates are pixels from the top-left; colours accept #rrggbb, rgb(r,g,b) or names."},
         {"paint", "paint_* paints on image documents (paint_new returns img1): strokes take points as a flat [x1,y1,x2,y2,...] list with pressure brushes, plus fills, shapes, gradients and layers; save with photo_save."},
-        {"vector", "vector_* draws shapes, paths and text (vector_new returns vec1); vector_save writes SVG or PNG."},
+        {"vector", "vector_* draws shapes, paths (vector_pen, vector_nodes), text, layers, symbols and effects (vector_new returns vec1); vector_save writes SVG, PDF, EPS or PNG."},
         {"type", "type_* designs fonts and exports TTF/WOFF (type_new returns font1; type_proof shows a specimen)."},
         {"board", "board_* makes whiteboards and diagrams (board_from_mermaid turns Mermaid text into a laid-out diagram; board_export writes PNG/SVG/PDF)."},
         {"model", "model_* is polygon modeling like Blender, z up: model_new returns model1 (a cube, light and camera); model_add adds primitives; model_select (by index, box, rect on the view, normal), model_select_loop and model_pick choose vertices/edges/faces of the active mesh; model_extrude, model_inset, model_bevel, model_loop_cut, model_bisect, model_knife, model_subdivide, model_merge, model_dissolve, model_bridge, model_spin, model_mirror edit it (model_elements lists indices); model_modifier_add stacks mirror/array/subsurf/solidify/bevel/boolean/...; model_uv_unwrap, model_material; model_render path-traces; model_export writes OBJ/glTF/FBX/STL; preview=true on any edit shows the viewport."},

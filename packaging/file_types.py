@@ -24,7 +24,7 @@ here = root / "packaging"
 MIME = {
     ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".bmp": "image/bmp", ".tga": "image/x-tga",
     ".ppm": "image/x-portable-pixmap", ".pgm": "image/x-portable-graymap", ".ora": "image/openraster", ".gif": "image/gif",
-    ".svg": "image/svg+xml", ".ttf": "font/ttf", ".otf": "font/otf", ".woff": "font/woff", ".ufo": "font/x-ufo",
+    ".svg": "image/svg+xml", ".ai": "application/illustrator", ".eps": "application/postscript", ".ttf": "font/ttf", ".otf": "font/otf", ".woff": "font/woff", ".ufo": "font/x-ufo",
     ".excalidraw": "application/vnd.excalidraw+json", ".drawio": "application/vnd.jgraph.mxfile",
     ".obj": "model/obj", ".ply": "model/x-ply", ".off": "model/x-off", ".glb": "model/gltf-binary", ".gltf": "model/gltf+json",
     ".fbx": "application/x-fbx",

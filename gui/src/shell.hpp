@@ -29,7 +29,7 @@ struct Texture {
     ImTextureID id() const { return static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(tex)); }
 };
 
-enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur };
+enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur, Pick, Anchor };
 enum class SelectShape { Rect, Ellipse, Lasso, Wand };
 
 // A retouch command waiting to run: it runs on the frame after it is queued, so the
@@ -98,6 +98,16 @@ struct Canvas {
     int antsVersion = -1;
     int antsStep = 1;                  // picture px per mask cell the outline was traced on
     std::vector<float> ants;           // selection outline, x0,y0,x1,y1 in picture px
+
+    // vector drawings (vector_view.cpp): the picked shape, its box and anchors, in drawing units
+    std::string vecSel;
+    std::uint64_t vecLoaded = ~0ull;  // changes_ when the box and anchors were read
+    bool vecHasBox = false;
+    float vecBox[4] = {0, 0, 0, 0};  // x, y, w, h
+    std::vector<float> vecNodes;      // per anchor: x, y, in x, in y, out x, out y
+    int vecDrag = 0;                  // 0 none, 1 move, 2 scale handle, 3 anchor part
+    int vecHandle = 0;                // scale: handle 0..7; anchor: node * 3 + part (0 anchor, 1 in, 2 out)
+    ImVec2 vecStart{0, 0}, vecNow{0, 0};
 };
 
 // The play bar's view of playback (transport.cpp), read back from <tool>.playhead.
@@ -253,6 +263,14 @@ private:
     void selectRelease(ImVec2 screen);
     void drawSelection(ImDrawList* dl, ImVec2 origin, bool hovered);
     void runSelect(Params params, const char* title);
+    // vector drawings on the canvas (vector_view.cpp): pick, move, scale, anchors, align
+    bool vectorDoc() const;
+    void vectorSettings();
+    void vectorPress(ImVec2 screen);
+    void vectorDrag(ImVec2 screen);
+    void vectorRelease();
+    void vectorKeys();
+    void drawVector(ImDrawList* dl, ImVec2 origin);
 
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);

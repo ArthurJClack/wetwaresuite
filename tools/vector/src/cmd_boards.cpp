@@ -297,6 +297,19 @@ void registerRepeatAndSelectCommands(Session& session) {
                 return Result::success(leaf + (sel != leaf ? " (in " + sel + ")" : ""), sel).with("shape", leaf).with("select", sel);
             }, false));
 
+    reg.add({"vector.bounds", "Shape Bounds", "A shape's (or group's) box on the canvas: x, y, width, height.", {docParam(), shapeParam()}, false, true},
+            vectorCommand(session, onShape([](VectorDoc& doc, int idx, const Params&) {
+                const Bounds b = shapeBounds(doc, idx);
+                if (b.empty) return Result::failure(doc.shapes[static_cast<std::size_t>(idx)].id + " covers nothing");
+                const std::string text = num(b.x0) + "," + num(b.y0) + "," + num(b.width()) + "," + num(b.height());
+                return Result::success(text, text)
+                    .with("x", b.x0)
+                    .with("y", b.y0)
+                    .with("width", b.width())
+                    .with("height", b.height())
+                    .with("kind", std::string(toString(doc.shapes[static_cast<std::size_t>(idx)].kind)));
+            }), false));
+
     reg.add({"vector.select_area", "Select Area",
              "The shapes a drag-box selects: those wholly inside x,y,width,height (touch=true: any that touch it), "
              "as their outermost groups below the layers.",

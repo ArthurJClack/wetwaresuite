@@ -82,6 +82,10 @@ Root: HKA; Subkey: "Software\Classes\.excalidraw\OpenWithProgids"; ValueType: st
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-draw.exe\SupportedTypes"; ValueType: string; ValueName: ".excalidraw"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.drawio\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.draw"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-draw.exe\SupportedTypes"; ValueType: string; ValueName: ".drawio"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.ai\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.draw"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-draw.exe\SupportedTypes"; ValueType: string; ValueName: ".ai"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.eps\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.draw"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-draw.exe\SupportedTypes"; ValueType: string; ValueName: ".eps"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.obj\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.model"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-model.exe\SupportedTypes"; ValueType: string; ValueName: ".obj"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.ply\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.model"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes

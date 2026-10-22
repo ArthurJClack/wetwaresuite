@@ -30,7 +30,7 @@ Params P(std::initializer_list<std::pair<const std::string, Value>> l) { return 
 Value S(const char* s) { return std::string(s); }
 Value I(std::int64_t v) { return v; }
 
-TextDocument& docOf(Session& s, const std::string& id = "doc1") { return s.workspace().getAs<TextDoc>(id)->data; }
+TextDocument& docOf(Session& s, const char* id = "doc1") { return s.workspace().getAs<TextDoc>(id)->data; }
 
 Result run(Session& s, const std::string& id, Params p) {
     Result r = s.run(id, p);

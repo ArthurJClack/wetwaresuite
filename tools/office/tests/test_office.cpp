@@ -1015,7 +1015,7 @@ void testDeckAndPdfCommands() {
     CHECK(r.ok && r.message.find("pptx") != std::string::npos);
     if (findProgram("soffice")) {
         r = s.run("office.convert", P({{"input", tmp("conv.xlsx").string()}, {"output", tmp("conv.ods").string()}}));
-        CHECK(r.ok && r.message.find("LibreOffice") != std::string::npos);
+        CHECK(r.ok && r.message.find("built-in") != std::string::npos);
         r = s.run("office.sheet_open", P({{"path", tmp("conv.ods").string()}}));
         CHECK(r.ok);
         r = s.run("office.convert", P({{"input", tmp("conv.docx").string()}, {"output", tmp("conv.doc").string()}}));

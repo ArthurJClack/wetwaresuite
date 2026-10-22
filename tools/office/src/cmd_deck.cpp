@@ -2,8 +2,9 @@
 #include <algorithm>
 #include <cmath>
 
+#include "wetwaresuite/office/color.hpp"
 #include "wetwaresuite/raster/codec.hpp"
-#include "commands.hpp"
+#include "deck_cmd.hpp"
 #include "text.hpp"
 
 namespace wetwaresuite::office {
@@ -210,7 +211,9 @@ std::vector<ParamSpec> slideSpecs() {
             str("bullets_file", "read the bullets from this file"),
             str("right", "two_column: the right column's bullets"),
             str("image", "picture file (png/jpg) for image layouts"),
-            str("notes", "speaker notes")};
+            str("notes", "speaker notes"),
+            str("background", "this slide's background colour (#rrggbb, a name, accent; none = the layout's)"),
+            flag("hidden", "hide the slide: left out of shows and PDF exports")};
 }
 
 std::vector<ParamSpec> join(std::vector<ParamSpec> a, const std::vector<ParamSpec>& b) {
@@ -225,6 +228,11 @@ bool applySlide(Slide& s, const Params& p, std::string& error) {
     if (hasText(p, "bullets")) s.bullets = parseBullets(textParam(p, "bullets"), &s.numbered);
     if (hasText(p, "right")) s.right = parseBullets(textParam(p, "right"));
     if (hasText(p, "notes")) s.notes = textParam(p, "notes");
+    if (has(p, "background") && !parsePaint(stringParam(p, "background"), s.background)) {
+        error = "background: not a colour: " + stringParam(p, "background");
+        return false;
+    }
+    if (has(p, "hidden")) s.hidden = boolParam(p, "hidden", false);
     if (boolParam(p, "clear_image", false)) {
         s.image.clear();
         s.pixels.reset();
@@ -258,6 +266,11 @@ std::string describe(const Deck& d, std::size_t i) {
     if (!s.right.empty()) t += " + " + std::to_string(s.right.size()) + " right";
     if (!s.image.empty() && s.pixels) t += ", image " + std::to_string(s.pixels->pixels.width()) + "x" + std::to_string(s.pixels->pixels.height());
     if (!s.notes.empty()) t += ", notes";
+    if (!s.objects.empty()) t += ", " + std::to_string(s.objects.size()) + " object(s)";
+    if (!s.background.empty()) t += ", background " + s.background;
+    if (!s.transition.empty()) t += ", " + s.transition + " transition";
+    if (s.advanceAfter > 0) t += ", advances after " + textNumber(s.advanceAfter) + " s";
+    if (s.hidden) t += " (hidden)";
     auto over = slideOverflow(d, i);
     if (!over.empty()) {
         std::string w;
@@ -277,6 +290,23 @@ void slidePreview(Result& r, const Deck& d, std::size_t i, const Params& p) {
 
 bool applyTheme(Deck& d, const Params& p, std::string& error) {
     if (has(p, "theme") && !parseTheme(stringParam(p, "theme"), d.theme, error)) return false;
+    for (const char* key : {"accent", "background", "text_color"}) {
+        if (!has(p, key)) continue;
+        std::uint32_t c = 0;
+        if (!parseColor(stringParam(p, key), c) || !hasColor(c)) {
+            error = std::string(key) + ": not a colour: " + stringParam(p, key);
+            return false;
+        }
+        const pdf::Color col{static_cast<std::uint8_t>(rgbOf(c) >> 16), static_cast<std::uint8_t>((rgbOf(c) >> 8) & 0xFF), static_cast<std::uint8_t>(rgbOf(c) & 0xFF), 255};
+        if (std::string(key) == "accent") {
+            d.theme.accent = col;
+            d.theme.name = colorName(c);
+        } else if (std::string(key) == "background") {
+            d.theme.background = col;
+        } else {
+            d.theme.text = col;
+        }
+    }
     if (has(p, "font")) {
         const std::string f = lower(stringParam(p, "font"));
         if (f == "sans") d.theme.font = pdf::Family::Sans;
@@ -288,6 +318,12 @@ bool applyTheme(Deck& d, const Params& p, std::string& error) {
         }
     }
     return true;
+}
+
+std::string hexOf(pdf::Color c) {
+    char b[8];
+    std::snprintf(b, sizeof b, "%02x%02x%02x", c.r, c.g, c.b);
+    return b;
 }
 
 std::string themeHelp() {
@@ -338,8 +374,9 @@ void registerDeckCommands(Session& session) {
             });
 
     reg.add({"office.deck_open", "Open Slide Deck",
-             "Open a deck: .pptx (titles, subtitles, bullets with levels, the first picture and speaker notes of each slide, theme "
-             "accent colour) or a Markdown outline (.md); .odp and .ppt through LibreOffice.",
+             "Open a deck: .pptx (titles, subtitles, bullets with levels, pictures, text boxes, shapes and lines, speaker notes, "
+             "transitions, hidden slides, theme colours and font, the master's shapes, footer and slide numbers) or a Markdown "
+             "outline (.md); .odp and .ppt through LibreOffice.",
              {str("path", "file to open", true)}, false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p]() -> Result {
@@ -411,13 +448,19 @@ void registerDeckCommands(Session& session) {
                 return Result::success("moved slide " + std::to_string(i + 1) + " to " + describe(d.data, j));
             }));
 
-    reg.add({"office.deck_theme", "Deck Theme", "Change the colour theme (" + themeHelp() + ") and/or the font of the whole deck.",
-             {doc(), str("theme", themeHelp()), str("font", "font family", false, {}, {"sans", "serif", "mono"}), previewSpec()}, true},
+    reg.add({"office.deck_theme", "Deck Theme",
+             "Change the colour theme (" + themeHelp() + ") and/or the font of the whole deck; accent=, background= and text_color= "
+             "set single theme colours (after theme=). Title and section slides use the accent as their background.",
+             {doc(), str("theme", themeHelp()), str("font", "font family", false, {}, {"sans", "serif", "mono"}), str("accent", "accent colour"),
+              str("background", "background colour of content slides"), str("text_color", "body text colour"), previewSpec()},
+             true},
             edit(session, [](DeckDoc& d, const Params& p, const std::string&) -> Result {
                 std::string error;
-                if (!has(p, "theme") && !has(p, "font")) return Result::failure("give theme= and/or font=");
+                if (!has(p, "theme") && !has(p, "font") && !has(p, "accent") && !has(p, "background") && !has(p, "text_color"))
+                    return Result::failure("give theme=, font=, accent=, background= or text_color=");
                 if (!applyTheme(d.data, p, error)) return Result::failure(error);
-                Result r = Result::success("theme " + d.data.theme.name);
+                Result r = Result::success("theme " + d.data.theme.name + ": accent #" + lower(hexOf(d.data.theme.accent)) + ", background #" +
+                                           lower(hexOf(d.data.theme.background)) + ", text #" + lower(hexOf(d.data.theme.text)));
                 slidePreview(r, d.data, 0, p);
                 return r;
             }));
@@ -429,6 +472,11 @@ void registerDeckCommands(Session& session) {
                 std::string t = id + ": " + (d.data.title.empty() ? std::string("(no title)") : "\"" + d.data.title + "\"") + ", " +
                                 std::to_string(d.data.slides.size()) + " slide(s), theme " + d.data.theme.name + ", " +
                                 (d.data.width / d.data.height > 1.5 ? "16:9" : "4:3") + (d.path.empty() || d.path == id ? "" : ", " + d.path);
+                if (!d.data.footer.empty() || !d.data.master.empty() || !d.data.slideNumbers) {
+                    t += "\n  master: " + std::string(d.data.slideNumbers ? "slide numbers" : "no slide numbers") +
+                         (d.data.footer.empty() ? "" : ", footer \"" + d.data.footer + "\"") +
+                         (d.data.master.empty() ? "" : ", " + std::to_string(d.data.master.size()) + " object(s)") + (d.data.masterOnTitle ? ", also on title slides" : "");
+                }
                 for (std::size_t i = 0; i < d.data.slides.size(); ++i) t += "\n  " + describe(d.data, i);
                 if (boolParam(p, "outline", false)) {
                     std::vector<MediaFile> media;
@@ -450,10 +498,12 @@ void registerDeckCommands(Session& session) {
             }));
 
     reg.add({"office.deck_export", "Export Slide Deck",
-             "Export without changing the deck's own file: .pdf, .pptx, .md, .odp/.ppt (LibreOffice), or .png - one slide with "
-             "slide=, otherwise every slide as name-1.png, name-2.png, ...",
+             "Export without changing the deck's own file: .pdf (notes=true: notes pages, the slide above its speaker notes), .pptx, "
+             ".md, .html (a slide show to present from a browser, like office.deck_present), .odp/.ppt (LibreOffice), or .png/.jpg - one "
+             "slide with slide=, otherwise every slide as name-1.png, name-2.png, ... Hidden slides are left out of .pdf and .html.",
              {doc(), fileSpec("slide deck"), str("path", "output file; the extension picks the format", true), integer("slide", "png: only this slide"),
-              integer("width", "png width in pixels", false, std::int64_t{1280})},
+              integer("width", "png width in pixels (html: slide image width, default 1600)", false, std::int64_t{1280}),
+              flag("notes", "pdf: notes pages with the speaker notes", false), flag("loop", "html: start again after the last slide", false)},
              false, false},
             read(session, [](DeckDoc& d, const Params& p, const std::string&) -> Result {
                 const std::string path = stringParam(p, "path");
@@ -484,6 +534,16 @@ void registerDeckCommands(Session& session) {
                                                base.extension().string(),
                                            first)
                         .with("files", static_cast<std::int64_t>(d.data.slides.size()));
+                }
+                if (ext == "html" || ext == "htm") {
+                    writeBytes(path, writeSlideShow(d.data, static_cast<int>(has(p, "width") ? intParam(p, "width") : 1600), boolParam(p, "loop", false)));
+                    return Result::success("exported a slide show to " + path + " (open it in a browser; F full screen, P presenter window, N notes)", path)
+                        .with("path", path);
+                }
+                if (ext == "pdf" && boolParam(p, "notes", false)) {
+                    auto pages = layoutNotesPages(d.data);
+                    writeBytes(path, pdf::writePdf(pages, {d.data.title, d.data.author, "speaker notes"}));
+                    return Result::success("exported notes pages to " + path + " (" + std::to_string(pages.size()) + " pages)", path).with("path", path);
                 }
                 saveDeck(d.data, path);
                 return Result::success("exported " + path + " (" + std::to_string(d.data.slides.size()) + " slides)", path).with("path", path);
@@ -518,6 +578,22 @@ void registerDeckCommands(Session& session) {
                 if (!findDoc<DeckDoc>(session, p, id, error)) return std::make_unique<FunctionAction>([error] { return Result::failure(error); });
                 return std::make_unique<CloseAction>(session, id);
             });
+
+    deckcmd::registerDeckObjectCommands(session);
+    deckcmd::registerDeckShowCommands(session);
 }
+
+namespace deckcmd {
+
+ActionFactory edit(Session& s, Edit fn) { return office::edit(s, std::move(fn)); }
+ActionFactory read(Session& s, Edit fn) { return office::read(s, std::move(fn)); }
+ParamSpec doc() { return office::doc(); }
+bool slideArg(const Deck& d, const Params& p, const char* key, std::size_t& index, std::string& error) {
+    return office::slideArg(d, p, key, index, error);
+}
+std::string describe(const Deck& d, std::size_t index) { return office::describe(d, index); }
+void slidePreview(Result& r, const Deck& d, std::size_t index, const Params& p) { office::slidePreview(r, d, index, p); }
+
+}  // namespace deckcmd
 
 }  // namespace wetwaresuite::office

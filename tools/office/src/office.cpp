@@ -165,7 +165,22 @@ std::string DeckDoc::summary() const {
 
 std::unique_ptr<Attachment> DeckDoc::preview() const {
     if (data.slides.empty()) return nullptr;
-    return std::make_unique<Attachment>(png(pdf::renderPage(layoutSlide(data, 0), 800.0 / data.width), "slide1.png"));
+    if (data.slides.size() == 1) return std::make_unique<Attachment>(png(pdf::renderPage(layoutSlide(data, 0), 800.0 / data.width), "slide1.png"));
+    // a slide sorter: every slide as a numbered thumbnail, hidden ones faded
+    const std::size_t n = std::min<std::size_t>(data.slides.size(), 48);
+    const int cols = 3, tw = 300, gap = 16, label = 20;
+    const int th = static_cast<int>(std::lround(tw * data.height / data.width));
+    const int rows = static_cast<int>((n + cols - 1) / cols);
+    raster::Image sheet(cols * tw + (cols + 1) * gap, rows * (th + label) + (rows + 1) * gap, raster::Color{0xE6, 0xE7, 0xEA, 255});
+    for (std::size_t i = 0; i < n; ++i) {
+        const int x = gap + static_cast<int>(i % cols) * (tw + gap), y = gap + static_cast<int>(i / cols) * (th + label + gap);
+        raster::Image thumb = pdf::renderPage(layoutSlide(data, i), static_cast<double>(tw) / data.width);
+        raster::blendOnto(sheet, thumb, x, y, raster::Blend::Normal, data.slides[i].hidden ? 0.35 : 1.0);
+        const std::string tag = std::to_string(i + 1) + (data.slides[i].hidden ? " (hidden)" : "") +
+                                (data.slides[i].transition.empty() ? "" : "  " + data.slides[i].transition);
+        pdf::drawText(sheet, x, y + th + 15, tag, pdf::Font{pdf::Family::Sans, false, false}, 13, raster::Color{0x44, 0x44, 0x48, 255});
+    }
+    return std::make_unique<Attachment>(png(sheet, "slides.png"));
 }
 
 Result CloseAction::apply() {

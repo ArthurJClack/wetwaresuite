@@ -72,6 +72,17 @@ struct Canvas {
     std::optional<PendingRetouch> pending;
 };
 
+// Clicking on a circuit document (panel_circuit.cpp): the tool and a wire/trace being drawn.
+struct CircuitCanvas {
+    std::string doc, view = "schematic";  // schematic, pcb or 3d
+    std::string tool = "select";          // select, place, wire, move, delete, trace, via
+    std::string symbol = "resistor", value, layer = "F";
+    bool hasStart = false;  // the first click of a wire or trace
+    double startX = 0, startY = 0;  // model point (grid units or mm)
+    ImVec2 startPx{0, 0};           // picture px
+    std::string moving;             // part picked up by the move tool
+};
+
 // Where a native file dialog's answer goes.
 struct ToolPanels;  // tool_panels.hpp
 
@@ -132,6 +143,12 @@ private:
     void endStroke();
     ImVec2 toImage(ImVec2 screen) const;
     bool toolAvailable(CanvasTool tool) const;
+    // circuit documents (panel_circuit.cpp): schematic / board / 3D, and click tools that run circuit.* commands
+    bool circuitDoc() const;
+    bool circuitEditing() const;  // a click tool is on, so a left drag doesn't pan
+    void circuitToolbar();
+    void circuitCanvas(ImDrawList* dl, ImVec2 origin, bool hovered, bool clicked);
+    void circuitClick(ImVec2 picture);
 
     // retouching by painting (retouch.cpp): Heal and Remove
     void retouchSettings();
@@ -268,6 +285,7 @@ private:
     bool scrollToResult_ = false;
 
     Canvas canvas_;
+    CircuitCanvas circuit_;
     float penPressure_ = 1.0f;
     bool penDown_ = false;
     bool penEraser_ = false;

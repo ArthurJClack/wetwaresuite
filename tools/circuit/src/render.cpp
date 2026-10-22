@@ -676,7 +676,10 @@ void drawBoard(Canvas& cv, const Circuit& c, const Netlist& nl, const PcbStyle& 
 
 }  // namespace
 
-raster::Image renderPcb(const Circuit& c, const Netlist& nl, double pxPerMm, const PcbStyle& style) {
+namespace {
+
+// the area a board picture covers (board plus anything placed off it, with a margin) and its scale
+void pcbArea(const Circuit& c, double& pxPerMm, double& ox, double& oy, double& W, double& H) {
     double x0, y0, x1, y1;
     boardBounds(c.board, x0, y0, x1, y1);
     for (const auto& p : c.parts) {
@@ -686,10 +689,17 @@ raster::Image renderPcb(const Circuit& c, const Netlist& nl, double pxPerMm, con
     }
     if (x1 - x0 < 1) x0 = 0, y0 = 0, x1 = 50, y1 = 30;
     const double m = 2;
-    double s = pxPerMm;
-    const double W = (x1 - x0 + 2 * m), H = (y1 - y0 + 2 * m);
-    if (W * s > 6000 || H * s > 6000) s = 6000 / std::max(W, H);
-    RasterCanvas cv(std::max(1, static_cast<int>(std::ceil(W * s))), std::max(1, static_cast<int>(std::ceil(H * s))), s, x0 - m, y0 - m, style.mirror);
+    W = (x1 - x0 + 2 * m), H = (y1 - y0 + 2 * m);
+    if (W * pxPerMm > 6000 || H * pxPerMm > 6000) pxPerMm = 6000 / std::max(W, H);
+    ox = x0 - m, oy = y0 - m;
+}
+
+}  // namespace
+
+raster::Image renderPcb(const Circuit& c, const Netlist& nl, double pxPerMm, const PcbStyle& style) {
+    double s = pxPerMm, ox, oy, W, H;
+    pcbArea(c, s, ox, oy, W, H);
+    RasterCanvas cv(std::max(1, static_cast<int>(std::ceil(W * s))), std::max(1, static_cast<int>(std::ceil(H * s))), s, ox, oy, style.mirror);
     drawBoard(cv, c, nl, style, [&](const ZoneFill& f, Color col) {
         for (int y = 0; y < f.ny; ++y) {
             int x = 0;
@@ -716,6 +726,44 @@ std::string pcbSvg(const Circuit& c, const Netlist& nl, const PcbStyle& style) {
     SvgCanvas cv(x1 - x0 + 2 * m, y1 - y0 + 2 * m, x0 - m, y0 - m, style.mirror);
     drawBoard(cv, c, nl, style, [&](const ZoneFill& f, Color col) { cv.zone(f, col); });
     return cv.str();
+}
+
+namespace {
+
+double schematicPreviewScale(const pdf::Page& page) { return std::clamp(1400.0 / std::max(page.width, page.height), 0.5, 2.5); }
+
+double pcbPreviewScale(const Circuit& c) {
+    const double w = std::max(10.0, boardWidth(c.board)), h = std::max(10.0, boardHeight(c.board));
+    return std::clamp(1200.0 / std::max(w, h), 3.0, 40.0);
+}
+
+}  // namespace
+
+ViewFrame viewFrame(const Circuit& c, const std::string& view) {
+    ViewFrame f;
+    f.view = view;
+    if (view == "pcb") {
+        double s = pcbPreviewScale(c), W, H;
+        pcbArea(c, s, f.origin.x, f.origin.y, W, H);
+        f.scale = s;
+    } else if (view == "3d") {
+        f.scale = 0;
+    } else {
+        f.view = "schematic";
+        const pdf::Page page = schematicPage(c);
+        double x0, y0, x1, y1;
+        sheetBounds(c, x0, y0, x1, y1);
+        f.origin = {x0 - 2, y0 - 2};
+        f.scale = schematicPreviewScale(page) * kUnit;
+    }
+    return f;
+}
+
+raster::Image viewImage(const Circuit& c, const std::string& view) {
+    if (view == "pcb") return renderPcb(c, buildNetlist(c), pcbPreviewScale(c));
+    if (view == "3d") return renderBoard3d(c, buildNetlist(c), 1200, 900);
+    const pdf::Page page = schematicPage(c);
+    return pdf::renderPage(page, schematicPreviewScale(page));
 }
 
 }  // namespace wetwaresuite::circuit

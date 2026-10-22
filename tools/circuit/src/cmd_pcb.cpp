@@ -566,6 +566,7 @@ void registerCommands(Session& session) {
     cmd::registerPcbCommands(session);
     cmd::registerPcbOutputCommands(session);
     cmd::registerBoardToolCommands(session);
+    cmd::registerViewCommands(session);
 }
 
 }  // namespace wetwaresuite::circuit

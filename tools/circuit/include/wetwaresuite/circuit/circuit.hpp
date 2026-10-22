@@ -411,6 +411,17 @@ struct View3d {
 };
 raster::Image renderBoard3d(const Circuit& c, const Netlist& nl, int width, int height, const View3d& view = {});
 
+// The window's picture of a circuit (CircuitDoc::preview): view "schematic", "pcb" or "3d", and how
+// its pixels map back: model point = origin + pixel / scale (grid units on the sheet, mm on the board;
+// scale 0 for 3d, which can't be clicked).
+struct ViewFrame {
+    std::string view = "schematic";
+    double scale = 1;
+    Pt origin;
+};
+ViewFrame viewFrame(const Circuit& c, const std::string& view);
+raster::Image viewImage(const Circuit& c, const std::string& view);
+
 // Line strokes of a small vector font (silkscreen text), height h, starting at (x, baseline y).
 std::vector<std::vector<Pt>> strokeText(const std::string& text, double x, double y, double h);
 double strokeTextWidth(const std::string& text, double h);
@@ -451,6 +462,7 @@ public:
     std::string summary() const override;
     std::unique_ptr<Attachment> preview() const override;
     Circuit circuit;
+    std::string view = "schematic";  // what the window shows: schematic, pcb or 3d (circuit.view)
 };
 
 // One undo step: snapshots the circuit before the edit, restores it on undo or failure.

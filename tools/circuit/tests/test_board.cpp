@@ -454,11 +454,61 @@ void testThermalAndDrc() {
 
 }  // namespace
 
+void testViewAndHit() {
+    // clicks on the window's picture: circuit.hit turns pixels back into parts, pins and pads
+    Session s;
+    registerCommands(s);
+    cli::Batch b(s);
+    CHECK(run(b, "circuit.new title=click -> c").ok);
+    CHECK(run(b, "circuit.place doc=$c symbol=resistor x=0 y=0").ok);
+    CHECK(run(b, "circuit.place doc=$c symbol=led x=10 y=0").ok);
+    CHECK(run(b, "circuit.connect doc=$c from=R1.2 to=D1.A").ok);
+    const Circuit c = circuitOf(s, "ckt1");
+    ViewFrame f = viewFrame(c, "schematic");
+    auto px = [&](Pt model) { return std::to_string((model.x - f.origin.x) * f.scale) + " y=" + std::to_string((model.y - f.origin.y) * f.scale); };
+    const Part* r1 = c.part("R1");
+    const PinDef& pin1 = symbolOf(*r1)->pins[0];
+    Result r = run(b, "circuit.hit doc=$c x=" + px(pinPos(*r1, pin1)));
+    CHECK(r.ok && r.field("kind") && std::get<std::string>(*r.field("kind")) == "pin" && std::get<std::string>(*r.field("part")) == "R1");
+    r = run(b, "circuit.hit doc=$c x=" + px({0.1, 0.1}));
+    CHECK(r.ok && std::get<std::string>(*r.field("kind")) == "part");
+    r = run(b, "circuit.hit doc=$c x=" + px({5, 9}));
+    CHECK(r.ok && std::get<std::string>(*r.field("kind")) == "none");
+    // the picture the window shows matches the frame
+    {
+        auto doc = s.workspace().getAs<CircuitDoc>("ckt1");
+        const raster::Image img = raster::decode(doc->preview()->bytes);
+        const raster::Image direct = viewImage(c, "schematic");
+        CHECK(img.width() == direct.width() && img.height() == direct.height());
+    }
+    // the board view
+    CHECK(run(b, "circuit.board doc=$c width=30 height=20").ok);
+    CHECK(run(b, "circuit.pcb_place doc=$c").ok);
+    r = run(b, "circuit.view doc=$c view=pcb");
+    CHECK(r.ok && s.workspace().getAs<CircuitDoc>("ckt1")->view == "pcb");
+    const Circuit c2 = circuitOf(s, "ckt1");
+    f = viewFrame(c2, "pcb");
+    const auto pads = worldPads(c2, buildNetlist(c2));
+    CHECK(!pads.empty());
+    r = run(b, "circuit.hit doc=$c x=" + px(pads[0].pos));
+    CHECK(r.ok && std::get<std::string>(*r.field("kind")) == "pad" && std::get<std::string>(*r.field("part")) == pads[0].ref);
+    CHECK(std::abs(std::get<double>(*r.field("x")) - pads[0].pos.x) < 1e-9);  // snapped to the pad's centre
+    {
+        auto doc = s.workspace().getAs<CircuitDoc>("ckt1");
+        const raster::Image img = raster::decode(doc->preview()->bytes);
+        CHECK(std::abs(img.width() - static_cast<int>(std::ceil((boardWidth(c2.board) + 4) * f.scale))) <= 2);
+    }
+    CHECK(run(b, "circuit.view doc=$c view=3d").ok);
+    CHECK(!run(b, "circuit.hit doc=$c x=10 y=10").ok);
+    CHECK(!run(b, "circuit.view doc=$c view=side").ok);
+}
+
 int main() {
     const fs::path dir = tempDir();
     testParts();
     testFourLayer(dir);
     testThermalAndDrc();
+    testViewAndHit();
     std::error_code ec;
     fs::remove_all(dir, ec);
     return check::summary("circuit_board");

@@ -156,6 +156,10 @@ void Shell::canvasToolbar() {
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%d%%", static_cast<int>(std::lround(canvas_.zoom * 100)));
+    if (circuitDoc()) {
+        circuitToolbar();
+        return;
+    }
     const CanvasTool editing[] = {CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal, CanvasTool::Remove};
     if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
     ImGui::SameLine();
@@ -342,7 +346,7 @@ void Shell::canvasView() {
     const bool painting = toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
                           !canvas_.pending;
     const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
-                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking));
+                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking && !circuitEditing()));
     if (dragPan) {
         canvas_.pan.x += io.MouseDelta.x;
         canvas_.pan.y += io.MouseDelta.y;
@@ -397,6 +401,7 @@ void Shell::canvasView() {
         dl->AddCircle(io.MousePos, std::max(2.0f, canvas_.size * canvas_.zoom / 2), IM_COL32(128, 128, 128, 255), 0, 1.5f);
     }
     drawRetouch(dl, p0, hovered);
+    if (circuitDoc()) circuitCanvas(dl, p0, hovered, ImGui::IsItemClicked(ImGuiMouseButton_Left));
     dl->PopClipRect();
 }
 

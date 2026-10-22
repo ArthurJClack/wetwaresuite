@@ -546,9 +546,7 @@ std::string CircuitDoc::summary() const {
 }
 
 std::unique_ptr<Attachment> CircuitDoc::preview() const {
-    const pdf::Page page = schematicPage(circuit);
-    const double scale = std::clamp(1400.0 / std::max(page.width, page.height), 0.5, 2.5);
-    return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(pdf::renderPage(page, scale)), "schematic.png"});
+    return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(viewImage(circuit, view)), view + ".png"});
 }
 
 Result CircuitEdit::apply() {

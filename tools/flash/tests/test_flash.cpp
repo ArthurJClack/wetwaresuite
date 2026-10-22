@@ -12,6 +12,8 @@
 #endif
 
 #include "wetwaresuite/core/cli.hpp"
+#include "wetwaresuite/core/process.hpp"
+#include "wetwaresuite/flash/build.hpp"
 #include "wetwaresuite/flash/flash.hpp"
 #include "wetwaresuite/mcp/server.hpp"
 #include "check.hpp"
@@ -468,6 +470,77 @@ void testMcp() {
     fs::remove_all(dir);
 }
 
+// ---- building firmware (no toolchain needed: plans and dry runs; a real build only when one is installed) ----
+
+void testBuild(const fs::path& dir) {
+    Session s;
+    flash::registerCommands(s);
+    cli::Batch b(s);
+    const fs::path sketch = dir / "blink";
+    Result r = b.runLine("flash.sketch path=\"" + sketch.string() + "\"");
+    CHECK(r.ok && fs::exists(sketch / "blink.ino"));
+    {
+        std::ifstream in(sketch / "blink.ino");
+        std::stringstream ss;
+        ss << in.rdbuf();
+        CHECK(contains(ss.str(), "LED_BUILTIN") && contains(ss.str(), "void loop()"));
+    }
+    CHECK(!b.runLine("flash.sketch path=\"" + sketch.string() + "\"").ok);  // no silent overwrite
+    CHECK(b.runLine("flash.sketch path=\"" + sketch.string() + "\" template=serial overwrite=true").ok);
+
+    CompileRequest req;
+    req.source = sketch.string();
+    CompilePlan plan = planCompile(req);
+    CHECK(plan.error.empty() && plan.tool == "arduino-cli" && plan.steps.size() == 1);
+    CHECK(contains(join_(plan.steps[0]), "compile --fqbn arduino:avr:uno"));
+    CHECK(contains(plan.output, "blink.ino.hex") && plan.board == "uno");
+    req.board = "esp32";
+    plan = planCompile(req);
+    CHECK(contains(join_(plan.steps[0]), "esp32:esp32:esp32") && contains(plan.output, "blink.ino.bin"));
+    req.board = "arduino:avr:mega:cpu=atmega2560";  // an FQBN passes straight through
+    CHECK(contains(join_(planCompile(req).steps[0]), "arduino:avr:mega:cpu=atmega2560"));
+    req.board = "uno";
+    req.tool = "avr-gcc";
+    CHECK(!planCompile(req).error.empty());  // a sketch isn't plain C
+
+    std::ofstream(dir / "main.c") << "#include <avr/io.h>\n#include <util/delay.h>\nint main(void) {\n  DDRB |= 1 << 5;\n  for (;;) {\n"
+                                     "    PORTB ^= 1 << 5;\n    _delay_ms(500);\n  }\n}\n";
+    CompileRequest c;
+    c.source = (dir / "main.c").string();
+    c.board = "nano";
+    c.defines = "LED=13";
+    plan = planCompile(c);
+    CHECK(plan.tool == "avr-gcc" && plan.steps.size() == 2);
+    CHECK(contains(join_(plan.steps[0]), "-mmcu=atmega328p") && contains(join_(plan.steps[0]), "-DLED=13"));
+    CHECK(plan.steps[1][0] == "avr-objcopy" && contains(plan.output, "main.hex"));
+    c.board = "esp32";
+    CHECK(contains(planCompile(c).error, "AVR"));
+    c.board = "nano";
+
+    fs::create_directories(dir / "pioproj");
+    std::ofstream(dir / "pioproj" / "platformio.ini") << "[env:uno]\nplatform = atmelavr\nboard = uno\nframework = arduino\n";
+    CompileRequest pio;
+    pio.source = (dir / "pioproj").string();
+    pio.env = "uno";
+    plan = planCompile(pio);
+    CHECK(plan.tool == "pio" && contains(join_(plan.steps[0]), "run -d") && contains(join_(plan.steps[0]), "-e uno"));
+    CompileRequest bad;
+    bad.source = (dir / "nothing.txt").string();
+    CHECK(!planCompile(bad).error.empty());
+
+    // the command: a dry run always works; a real run either builds or says what's missing
+    r = b.runLine("flash.compile source=\"" + sketch.string() + "\" dry_run=true");
+    CHECK(r.ok && contains(r.message, "arduino-cli compile"));
+    CHECK(b.runLine("flash.toolchains").ok);
+    r = b.runLine("flash.compile source=\"" + (dir / "main.c").string() + "\" board=uno port=sim:uno");
+    if (findProgram("avr-gcc") && findProgram("avr-objcopy")) {
+        CHECK(r.ok && contains(r.message, "uploaded"));
+        if (!r.ok) std::printf("  avr build: %s\n", r.message.c_str());
+    } else {
+        CHECK(!r.ok && contains(r.message, "isn't installed") && contains(r.message, "avr-gcc"));
+    }
+}
+
 // ---- CLI / batch --------------------------------------------------------------------------
 
 void testCli() {
@@ -549,6 +622,7 @@ int main() {
     testSend();
     testMcp();
     testCli();
+    testBuild(dir);
     testPty();
     fs::remove_all(dir);
     return check::summary("flash");

@@ -1,5 +1,6 @@
 // Sculpt tests. Meshes stay small (a few thousand triangles at most) so the
 // suite runs fast and in little memory.
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 #include <fstream>

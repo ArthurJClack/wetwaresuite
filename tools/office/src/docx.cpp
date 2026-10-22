@@ -1,4 +1,5 @@
 // DOCX (read and write) and ODT (read) for the block document model.
+#include <algorithm>
 #include <cmath>
 #include <functional>
 #include <map>

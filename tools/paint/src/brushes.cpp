@@ -2,6 +2,7 @@
 // dodge/burn/sponge, smudge, blur/sharpen, colour replacement), pattern fill and
 // gradients. Brushes share one set of settings (preset, size, hardness, flow,
 // spacing, scatter, tip, texture, symmetry) and record only the area they touch.
+#include <algorithm>
 #include <cmath>
 #include <map>
 

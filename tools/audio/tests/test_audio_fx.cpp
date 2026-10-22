@@ -1,5 +1,6 @@
 // The audio tool's effect, restoration, rack, automation, crossfade, marker
 // and export commands, driven the way the CLI and MCP drive them.
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 

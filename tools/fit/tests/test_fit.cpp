@@ -1,6 +1,7 @@
 // Scan fit tests: the algorithms on synthetic "phone scans" (noisy, holey,
 // in metres and Y-up like the apps write them), then the commands end to end
 // and the MCP server. Scans stay a few thousand triangles so this runs fast.
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>

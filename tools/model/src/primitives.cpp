@@ -1,4 +1,5 @@
 // Primitive meshes with quads kept, the shapes Blender's Add menu has.
+#include <algorithm>
 #include <cmath>
 #include <stdexcept>
 

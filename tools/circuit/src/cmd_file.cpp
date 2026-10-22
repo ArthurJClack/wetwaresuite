@@ -1,6 +1,8 @@
 // circuit.* file, library and output commands.
 #include "cmd_common.hpp"
 
+#include <algorithm>
+
 namespace wetwaresuite::circuit::cmd {
 
 namespace {

@@ -1,5 +1,6 @@
 // Fabrication output: Gerber RS-274X with X2 file attributes, and an Excellon drill file.
 // Board y runs down; Gerber y runs up, so every y is negated (the picture is unchanged).
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <map>

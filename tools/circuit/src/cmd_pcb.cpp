@@ -1,5 +1,6 @@
 // circuit.* board commands (outline, placement, traces, routing, pours, rules), checks,
 // fabrication output and the simulator.
+#include <algorithm>
 #include <set>
 #include <sstream>
 

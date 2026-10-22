@@ -1,4 +1,5 @@
 // Text, gradient, boolean and to-path commands for the vector tool.
+#include <algorithm>
 #include <sstream>
 
 #include "internal.hpp"

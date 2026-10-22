@@ -1,4 +1,5 @@
 // Adjustment layers, the filter menu, liquify/warp and select subject, checked pixel by pixel.
+#include <algorithm>
 #include <cmath>
 
 #include "check.hpp"

@@ -2,6 +2,7 @@
 // (highlights, notes, ink, shapes) become real PDF annotations with their own
 // appearance, so other viewers show them and can edit or delete them; text,
 // pictures, white-out, redaction and signatures are drawn into the page.
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <ctime>

@@ -3,6 +3,8 @@
 // the suite stays offline.
 #include "internal.hpp"
 
+#include <algorithm>
+
 namespace wetwaresuite::code::detail {
 
 namespace {

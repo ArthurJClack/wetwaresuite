@@ -3,6 +3,7 @@
 // and looking at rendered pixels.
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>

@@ -2,6 +2,7 @@
 // rasterize and layer styles. Groups are flat (see LayerInfo::depth), so a
 // "block" [groupStart(i), i] is layer i with everything inside it, and every
 // structural command moves or copies whole blocks.
+#include <algorithm>
 #include <cstdio>
 
 #include "common.hpp"

@@ -8,6 +8,7 @@
 #undef _WIN32_WINNT
 #define _WIN32_WINNT 0x0601  // GetIfTable2 needs Vista or later
 #endif
+#include <algorithm>
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>

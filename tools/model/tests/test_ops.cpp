@@ -1,6 +1,7 @@
 // Polygon modeling operations: every operator checked for face counts,
 // validity and (on closed shapes) a closed, consistently wound surface with
 // the right volume.
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <stdexcept>

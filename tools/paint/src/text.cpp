@@ -2,6 +2,7 @@
 // font, size... or the shape and its colours) in their settings, so they stay
 // editable; their pixels are drawn from those settings. Painting on one, or
 // any geometry change, turns it into a plain pixel layer.
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <map>

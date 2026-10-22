@@ -1,4 +1,5 @@
 // circuit.* schematic commands: placing parts, wiring, labels, power symbols, checks and exports.
+#include <algorithm>
 #include <set>
 
 #include "cmd_common.hpp"

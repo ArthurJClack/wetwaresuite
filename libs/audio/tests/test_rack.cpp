@@ -1,5 +1,6 @@
 // The effects rack, automation, restoration tools and the project features
 // built on them, checked on real signals: levels, frequencies and lengths.
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 

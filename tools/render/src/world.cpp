@@ -1,5 +1,6 @@
 // The flattened world both renderers share: triangles, materials, textures,
 // lights, a binned-SAH BVH, shading and the camera.
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <map>

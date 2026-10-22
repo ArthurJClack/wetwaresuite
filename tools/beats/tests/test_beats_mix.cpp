@@ -1,5 +1,6 @@
 // Piano-roll note commands, synth filter modes / unison / LFO, metronome, drum pads,
 // effects racks and automation on songs, moving placements and stems. Signal checks.
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>

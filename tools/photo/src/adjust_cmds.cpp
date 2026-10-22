@@ -1,6 +1,7 @@
 // Adjustment layers (non-destructive levels, curves, hue/saturation... that change
 // everything below them while they're there) and the same adjustments applied
 // once to a layer's pixels.
+#include <algorithm>
 #include <cstdio>
 
 #include "commands.hpp"

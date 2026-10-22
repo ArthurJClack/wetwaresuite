@@ -1,4 +1,5 @@
 // Spreadsheet files: CSV/TSV, XLSX (read and write) and ODS (read).
+#include <algorithm>
 #include <cmath>
 #include <map>
 #include <set>

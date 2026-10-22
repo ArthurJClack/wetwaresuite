@@ -1,4 +1,5 @@
 // TextDocument model helpers plus Markdown, HTML and plain-text files.
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <filesystem>

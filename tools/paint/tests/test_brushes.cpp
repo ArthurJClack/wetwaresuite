@@ -1,4 +1,6 @@
 // Brush settings and the retouching brushes, checked pixel by pixel.
+#include <algorithm>
+
 #include "check.hpp"
 #include "wetwaresuite/paint/paint.hpp"
 #include "wetwaresuite/photo/photo.hpp"

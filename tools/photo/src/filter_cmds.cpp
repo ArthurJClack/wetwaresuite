@@ -1,6 +1,7 @@
 // The Filter menu as commands: blur, sharpen, noise, stylize, render, distort,
 // liquify, plus select subject and refine edge. Pixel filters work on one
 // layer (or all of them) and stay inside the selection when there is one.
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 

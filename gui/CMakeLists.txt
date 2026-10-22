@@ -165,7 +165,7 @@ if(_ww_sdl)
     # the system tools' panels: calculator, code editor, files, terminal, monitor, clock
     src/tool_panels.cpp src/code_editor.cpp src/panel_calc.cpp src/panel_code.cpp src/panel_explorer.cpp
     src/panel_terminal.cpp src/panel_monitor.cpp src/panel_clock.cpp src/pdf_view.cpp
-    src/panel_circuit.cpp)
+    src/panel_circuit.cpp src/maps_view.cpp)
   target_compile_options(wetwaresuite_gui PRIVATE ${WETWARESUITE_GUI_WARNINGS})
   target_link_libraries(wetwaresuite_gui PUBLIC wetwaresuite_gui_logic PRIVATE wetwaresuite_imgui wetwaresuite::raster)
   message(STATUS "gui: window enabled (${_ww_sdl})")

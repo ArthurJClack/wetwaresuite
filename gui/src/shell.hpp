@@ -158,6 +158,18 @@ struct CircuitCanvas {
     std::string moving;             // part picked up by the move tool
 };
 
+// Clicking on a map document (maps_view.cpp): the tool, points being drawn, a feature being moved.
+struct MapsCanvas {
+    std::string doc;
+    std::string tool = "identify";  // pan, identify, measure, point, line, area, move, delete, route
+    std::string layer = "drawn", props, profile = "car", search, bookmark;
+    std::vector<double> points;     // lat,lon pairs clicked so far
+    std::vector<ImVec2> pointsPx;   // the same, picture px
+    std::string movingLayer;        // move tool: what was picked up
+    std::int64_t movingIndex = -1, movingVertex = -1;
+    ImVec2 movingFrom{0, 0};
+};
+
 // Where a native file dialog's answer goes.
 struct ToolPanels;  // tool_panels.hpp
 
@@ -225,6 +237,13 @@ private:
     void circuitToolbar();
     void circuitCanvas(ImDrawList* dl, ImVec2 origin, bool hovered, bool clicked);
     void circuitClick(ImVec2 picture);
+    // map documents (maps_view.cpp): click tools that run maps.* commands, zoom, bookmarks and search
+    bool mapsDoc() const;
+    bool mapsEditing() const;  // a click tool is on, so a left drag doesn't pan
+    void mapsToolbar();
+    void mapsCanvas(ImDrawList* dl, ImVec2 origin, bool hovered, bool clicked);
+    void mapsClick(ImVec2 picture);
+    void mapsFinish();
 
     // the 3D view (orbit.cpp)
     bool probe3d(const Document& doc) const;
@@ -425,6 +444,7 @@ private:
     TimelineState timeline_;
     GridState grid_;
     CircuitCanvas circuit_;
+    MapsCanvas maps_;
     float penPressure_ = 1.0f;
     bool penDown_ = false;
     bool penEraser_ = false;

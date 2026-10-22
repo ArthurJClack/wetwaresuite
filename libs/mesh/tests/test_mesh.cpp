@@ -356,6 +356,14 @@ int main() {
             if (!ok) std::printf("round trip failed for .%s\n", ext.c_str());
             CHECK(ok);
         }
+        // STEP faces whose edges carry points on a straight run (CSG cuts leave them) still come back closed
+        for (const auto& [r, segments] : std::vector<std::pair<double, int>>{{1, 12}, {1.37, 20}, {1, 20}, {3.59, 24}}) {
+            Mesh cut = booleanDifference(box({20, 10, 5}), cylinder(r, 10, segments));
+            Mesh back = readStep(writeStep(cut));
+            const bool ok = isWatertight(back) && approx(volume(back), volume(cut), 1e-5);
+            if (!ok) std::printf("STEP collinear edge points: r %g, %d segments\n", r, segments);
+            CHECK(ok);
+        }
         // FBX: an ASCII file as Blender/Maya write them (Y-up, cm, quads, a translated and scaled model)
         {
             const std::string ascii = R"fbx(; FBX 7.4.0 project file

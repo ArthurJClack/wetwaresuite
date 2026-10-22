@@ -1367,7 +1367,8 @@ private:
         // ear clipping winds counter-clockwise in (u, v), which faces along the surface normal
         for (std::size_t t = 0; t + 2 < tris.size(); t += 3) {
             const Vec3 &a = m.positions[tris[t]], &b = m.positions[tris[t + 1]], &c = m.positions[tris[t + 2]];
-            if (length(cross(b - a, c - a)) < 1e-18) continue;  // collapsed at a pole
+            // collapsed at a pole; a sliver along collinear boundary points stays, or the face would leave a gap
+            if (a == b || b == c || a == c) continue;
             m.addTriangle(tris[t], tris[t + 1], tris[t + 2]);
         }
         return m;

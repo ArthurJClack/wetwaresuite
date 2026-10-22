@@ -15,6 +15,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "wetwaresuite/core/command.hpp"
@@ -296,9 +297,17 @@ struct Layer {
     std::string geometrySummary() const;      // "12 points, 3 polygons"
 };
 
+// A named place to come back to: the area it shows, in lon/lat.
+struct Bookmark {
+    std::string name;
+    BBox box;
+};
+
 struct Map {
     std::string title;
     std::vector<Layer> layers;  // bottom first
+    std::vector<Bookmark> bookmarks;
+    std::optional<BBox> view;   // the area the window and previews show; empty = everything
 
     Layer* layer(const std::string& nameOrIndex);
     const Layer* layer(const std::string& nameOrIndex) const;
@@ -397,9 +406,158 @@ struct HeatmapOptions {
     int resolution = 400;     // cells along the longer side
     std::string weightField;  // property weighting each point, empty = 1
     std::optional<BBox> bbox; // default: the points' extent plus the radius
+    double lineSpacing = -1;  // lines count every this many metres (< 0: a quarter of the radius; 0: one point per feature); > 0 samples polygon outlines too
 };
 // Quartic-kernel density of point features on a Web Mercator grid.
 std::shared_ptr<Grid> heatmap(const std::vector<Feature>& features, const HeatmapOptions& options);
+
+// ---- editing and overlays (edit.cpp) ---------------------------------------------------
+
+// Vertices are numbered across the whole geometry: points, then each line's points, then each
+// polygon's rings (outer first). A ring's first point is not repeated.
+std::vector<Coord> vertices(const Geometry& g);
+Coord* vertexAt(Geometry& g, std::size_t index);
+// Inserts c after vertex `after` (in the same line or ring). False when `after` is out of range.
+bool insertVertex(Geometry& g, std::size_t after, const Coord& c);
+// Removes a vertex; false (with error) when that would leave a line under 2 points or a ring under 3.
+bool removeVertex(Geometry& g, std::size_t index, std::string& error);
+
+// The closest point on a line or ring edge: `vertex` is the edge's first vertex (global number).
+struct EdgeHit {
+    bool found = false;
+    std::size_t vertex = 0;
+    Coord point;
+    double distance = std::numeric_limits<double>::infinity();  // metres
+    double along = 0;  // metres from the start of its line to the point
+};
+EdgeHit nearestEdge(const Geometry& g, double lon, double lat);
+
+// Moves every vertex dx metres east and dy metres north (on a local transverse Mercator).
+void translate(Geometry& g, double dxMetres, double dyMetres);
+// Splits a line geometry at the point of `hit` into two lines (each keeps multi-part pieces on its side).
+std::pair<Geometry, Geometry> splitAt(const Geometry& g, const EdgeHit& hit);
+// One geometry from several: points -> multipoint, polygons -> multipolygon, lines joined end to end
+// where their ends touch (within `snap` metres; reversed when needed), else multi-line.
+Geometry mergeGeometries(const std::vector<const Geometry*>& gs, double snap = 0.5);
+// Do two geometries share any point (touching counts)? Planar on lon/lat, exact for edges.
+bool intersects(const Geometry& a, const Geometry& b);
+// Smallest geodesic distance between two geometries (0 when they intersect), metres.
+double distanceBetween(const Geometry& a, const Geometry& b);
+
+// Polygon overlay on a local metric grid of about `resolution` cells (signed distance fields
+// combined, then traced): edges are good to a small fraction of a cell.
+enum class OverlayOp { Intersection, Union, Difference, SymDifference };
+Geometry overlay(const std::vector<const Geometry*>& a, const std::vector<const Geometry*>& b, OverlayOp op, int resolution = 800);
+// Lines cut by polygons: the parts inside (keepInside) or outside, exactly.
+Geometry clipLinesByPolygons(const Geometry& lines, const std::vector<const Geometry*>& polygons, bool keepInside);
+
+// ---- tracks (tracks.cpp) ----------------------------------------------------------------
+
+// Garmin FIT activity files: the record messages' positions, altitudes and times as one track line
+// per session (laps are not split). Throws std::runtime_error for files that aren't FIT.
+std::vector<Feature> parseFit(const std::string& bytes, std::vector<std::string>* warnings = nullptr);
+
+struct Split {
+    double from = 0, to = 0;       // metres along the track
+    double distance = 0;           // m
+    double duration = kNaN;        // s, NaN without times
+    double gain = 0, loss = 0;     // m
+    double startEle = kNaN, endEle = kNaN;
+};
+// Splits every `every` metres (the last one shorter), with times interpolated at the split points.
+std::vector<Split> trackSplits(const std::vector<const Line*>& segments, double every, double hysteresis = 3.0);
+// Moving average over `window` points of positions and/or elevations (times kept).
+Line smoothLine(const Line& l, int window, bool positions, bool elevation);
+// Drops points that would need more than maxSpeed m/s to reach (GPS jumps). Returns how many went.
+std::size_t removeSpikes(Line& l, double maxSpeed);
+// The part of a line between two distances along it (metres), cut at interpolated points.
+Line trimLine(const Line& l, double from, double to);
+// Distance along a line where it reaches time t (interpolated); NaN without times.
+double distanceAtTime(const Line& l, double t);
+// Splits a line where consecutive points are more than gapSeconds apart in time or gapMetres apart.
+std::vector<Line> splitByGaps(const Line& l, double gapSeconds, double gapMetres);
+// Points every `spacing` metres along a line (both ends included).
+std::vector<Coord> samplePoints(const Line& l, double spacing);
+
+// ---- OpenStreetMap XML (osm.cpp) -------------------------------------------------------
+
+// An .osm file (as exported from openstreetmap.org or JOSM): ways with a highway tag become a
+// "<name> roads" line layer, other closed ways with area tags (building, landuse, natural, ...)
+// "<name> areas" polygons, other ways "<name> lines", and tagged nodes with a name or amenity/shop/
+// tourism/place "<name> places". Every OSM tag becomes a property.
+std::vector<Layer> parseOsmXml(const std::string& text, const std::string& name, std::vector<std::string>* warnings = nullptr);
+
+// ---- routing (routing.cpp) -------------------------------------------------------------
+
+struct RouteStep {
+    std::string instruction;  // "Turn left onto Rue de Rivoli"
+    std::string road;
+    double distance = 0;      // m, until the next step
+    double duration = 0;      // s
+    Coord at;
+};
+struct Route {
+    Line line;
+    double distance = 0, duration = 0;
+    std::vector<RouteStep> steps;
+    std::vector<double> snapped;  // metres from each stop to the road it was snapped to
+};
+struct RouteOptions {
+    std::string profile = "car";  // car, bike, foot
+    bool shortest = false;        // shortest distance instead of quickest time
+    double snapMax = 5000;        // stops further than this from any usable road fail
+    double tolerance = 0.05;      // metres: line ends closer than this join
+};
+// A road network from line features. OSM-style tags are used when present: highway (speeds and
+// access per profile), maxspeed, oneway (+ junction=roundabout, oneway:bicycle), access/foot/bicycle/
+// motor_vehicle = no; lines without tags are roads anyone may use in both directions.
+class RoadGraph {
+public:
+    RoadGraph(const std::vector<Feature>& roads, const RouteOptions& options);
+    std::size_t nodeCount() const { return nodes_.size(); }
+    std::size_t edgeCount() const { return edges_; }
+    // Quickest (or shortest) route through the stops in order. Throws std::runtime_error when there is none.
+    Route route(const std::vector<Coord>& stops) const;
+    // Every road part reachable from `from` within `limit` seconds (or metres when shortest).
+    std::vector<Line> reachable(const Coord& from, double limit) const;
+
+    struct Arc {
+        std::uint32_t to;
+        float cost;      // seconds, or metres when shortest
+        float length;    // metres
+        std::uint32_t road;  // feature index
+    };
+
+private:
+    struct Edge {
+        std::uint32_t a = 0, b = 0, road = 0;
+        float cost = 0, length = 0;
+        bool forward = true, backward = true;
+    };
+    struct Snap {
+        std::size_t edge = 0;
+        double f = 0;  // fraction from the edge's a to b
+        Coord point;
+        double distance = 0;
+    };
+    Snap snap(const Coord& c) const;
+    // One leg: the points passed and, per step between them, the road, length and cost.
+    struct Path {
+        std::vector<Coord> points;
+        std::vector<std::uint32_t> roads;
+        std::vector<double> lengths, costs;
+    };
+    Path search(const Snap& from, const Snap& to) const;
+    RouteOptions options_;
+    std::vector<Coord> nodes_;
+    std::vector<std::vector<Arc>> adj_;
+    std::vector<Edge> edgeList_;
+    std::vector<std::string> roadNames_;  // per feature: what directions call it
+    std::vector<char> roundabout_;        // per feature
+    std::vector<double> roadSpeed_;       // per feature, m/s
+    std::size_t edges_ = 0;
+    double maxSpeed_ = 1;  // m/s, for the A* estimate
+};
 
 // ---- rendering (render.cpp) -----------------------------------------------------------
 
@@ -441,6 +599,16 @@ raster::Image renderImage(const Map& map, const RenderOptions& options, RenderIn
 void lonLatToTile(double lon, double lat, int zoom, double& tx, double& ty);
 void tileToLonLat(double tx, double ty, int zoom, double& lon, double& lat);
 std::filesystem::path defaultTileCache();
+
+// The options MapDoc::preview draws with (the window shows that picture).
+RenderOptions previewOptions(const Map& map);
+// The lon/lat under pixel (x, y) of a render with these options, and the pixel of a lon/lat.
+Coord pixelToLonLat(const Map& map, const RenderOptions& options, double x, double y);
+Coord lonLatToPixel(const Map& map, const RenderOptions& options, double lon, double lat);
+// The lon/lat area a render with these options shows, and its size in pixels.
+BBox shownArea(const Map& map, const RenderOptions& options, int* width = nullptr, int* height = nullptr);
+// Ground metres per pixel at the centre of that render.
+double renderMetresPerPixel(const Map& map, const RenderOptions& options);
 
 // Elevation profile chart of (distance m, elevation m) pairs: png or svg bytes.
 std::string renderProfile(const std::vector<std::pair<double, double>>& profile, int width, int height, const std::string& format,

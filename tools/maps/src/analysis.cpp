@@ -3,8 +3,13 @@
 // statistics and heatmaps.
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdint>
 #include <map>
 #include <stdexcept>
+#include <string>
+#include <utility>
+#include <vector>
 #include <unordered_map>
 
 #include "wetwaresuite/maps/maps.hpp"
@@ -303,26 +308,16 @@ std::vector<P2> ringPlanar(const Ring& r, const Crs& crs) { return projectAll(r,
 
 }  // namespace
 
-Geometry bufferUnion(const std::vector<const Geometry*>& gs, double d, int resolution) {
-    Geometry out;
-    out.type = GeomType::Polygon;
-    BBox ll;
-    bool anyPolygon = false;
-    for (const Geometry* g : gs) {
-        ll.add(bboxOf(*g));
-        anyPolygon = anyPolygon || g->type == GeomType::Polygon;
-    }
-    if (!ll.valid() || (d <= 0 && !anyPolygon) || d == 0) {
-        if (d == 0) {
-            for (const Geometry* g : gs) {
-                for (const auto& p : g->polygons) out.polygons.push_back(p);
-            }
-        }
-        if (out.polygons.empty()) out.type = GeomType::None;
-        return out;
-    }
-    const Crs crs = Crs::localTm((ll.minX + ll.maxX) / 2);
-    FieldBuilder fb;
+namespace {
+
+struct FieldGrid {
+    Crs crs;
+    double ox = 0, oy = 0, cell = 1;
+    int W = 0, H = 0;
+};
+
+// The geometries as planar pieces on crs; returns their planar box.
+BBox collectField(const std::vector<const Geometry*>& gs, const Crs& crs, FieldBuilder& fb) {
     BBox pb;
     for (const Geometry* g : gs) {
         for (const auto& c : g->points) {
@@ -351,15 +346,24 @@ Geometry bufferUnion(const std::vector<const Geometry*>& gs, double d, int resol
             fb.polys.push_back(std::move(rings));
         }
     }
-    const double grow = std::max(d, 0.0);
-    const int res = std::clamp(resolution, 50, 4000);
-    const double extent = std::max(pb.width(), pb.height()) + 2 * grow;
-    double cell = extent / res;
-    if (cell <= 0) cell = std::abs(d) / 20;
-    const double pad = grow + 3 * cell;
-    const double ox = pb.minX - pad, oy = pb.minY - pad;
-    const int W = static_cast<int>(std::ceil((pb.width() + 2 * pad) / cell)) + 1;
-    const int H = static_cast<int>(std::ceil((pb.height() + 2 * pad) / cell)) + 1;
+    return pb;
+}
+
+FieldGrid makeGrid(const Crs& crs, const BBox& pb, double pad, double cell) {
+    FieldGrid g;
+    g.crs = crs;
+    g.cell = cell;
+    g.ox = pb.minX - pad;
+    g.oy = pb.minY - pad;
+    g.W = static_cast<int>(std::ceil((pb.width() + 2 * pad) / cell)) + 1;
+    g.H = static_cast<int>(std::ceil((pb.height() + 2 * pad) / cell)) + 1;
+    return g;
+}
+
+// Signed distance from every grid node to the geometries (planar metres): negative inside polygons.
+std::vector<double> signedDistance(const FieldBuilder& fb, const FieldGrid& grid) {
+    const double ox = grid.ox, oy = grid.oy, cell = grid.cell;
+    const int W = grid.W, H = grid.H;
     const std::size_t N = static_cast<std::size_t>(W) * H;
     auto nodeX = [&](int i) { return ox + i * cell; };
     auto nodeY = [&](int j) { return oy + j * cell; };
@@ -488,13 +492,21 @@ Geometry bufferUnion(const std::vector<const Geometry*>& gs, double d, int resol
             }
         }
     }
-    // field value: positive inside the buffer
-    std::vector<double> val(N);
-    for (std::size_t n = 0; n < N; ++n) {
-        const double s = inside[n] ? -dist[n] : dist[n];
-        double v = d - s;
+    std::vector<double> out(N);
+    for (std::size_t n = 0; n < N; ++n) out[n] = inside[n] ? -dist[n] : dist[n];
+    return out;
+}
+
+// Traces where val crosses zero (positive = inside) back into lon/lat polygons with holes.
+Geometry traceField(const FieldGrid& grid, std::vector<double> val) {
+    Geometry out;
+    out.type = GeomType::Polygon;
+    const double ox = grid.ox, oy = grid.oy, cell = grid.cell;
+    const int W = grid.W, H = grid.H;
+    auto nodeX = [&](int i) { return ox + i * cell; };
+    auto nodeY = [&](int j) { return oy + j * cell; };
+    for (auto& v : val) {
         if (v == 0) v = -1e-9;
-        val[n] = v;
     }
     // marching squares; segments go from an inside->outside crossing to an outside->inside one (inside on the left)
     auto edgeId = [&](int i, int j, bool vertical) { return (static_cast<std::int64_t>(j) * W + i) * 2 + (vertical ? 1 : 0); };
@@ -569,7 +581,7 @@ Geometry bufferUnion(const std::vector<const Geometry*>& gs, double d, int resol
     }
     // tidy: drop near-collinear points, back to lon/lat
     std::vector<Ring> outers, holes;
-    const Crs local = crs;
+    const Crs local = grid.crs;
     for (auto& r : rings) {
         Ring planar;
         for (const auto& p : r) planar.push_back({p.x, p.y});
@@ -612,6 +624,67 @@ Geometry bufferUnion(const std::vector<const Geometry*>& gs, double d, int resol
     out.polygons = std::move(polys);
     if (out.polygons.empty()) out.type = GeomType::None;
     return out;
+}
+
+}  // namespace
+
+Geometry bufferUnion(const std::vector<const Geometry*>& gs, double d, int resolution) {
+    Geometry out;
+    out.type = GeomType::Polygon;
+    BBox ll;
+    bool anyPolygon = false;
+    for (const Geometry* g : gs) {
+        ll.add(bboxOf(*g));
+        anyPolygon = anyPolygon || g->type == GeomType::Polygon;
+    }
+    if (!ll.valid() || (d <= 0 && !anyPolygon) || d == 0) {
+        if (d == 0) {
+            for (const Geometry* g : gs) {
+                for (const auto& p : g->polygons) out.polygons.push_back(p);
+            }
+        }
+        if (out.polygons.empty()) out.type = GeomType::None;
+        return out;
+    }
+    const Crs crs = Crs::localTm((ll.minX + ll.maxX) / 2);
+    FieldBuilder fb;
+    const BBox pb = collectField(gs, crs, fb);
+    const double grow = std::max(d, 0.0);
+    const int res = std::clamp(resolution, 50, 4000);
+    const double extent = std::max(pb.width(), pb.height()) + 2 * grow;
+    double cell = extent / res;
+    if (cell <= 0) cell = std::abs(d) / 20;
+    const FieldGrid grid = makeGrid(crs, pb, grow + 3 * cell, cell);
+    std::vector<double> val = signedDistance(fb, grid);
+    for (auto& v : val) v = d - v;
+    return traceField(grid, std::move(val));
+}
+
+Geometry overlay(const std::vector<const Geometry*>& a, const std::vector<const Geometry*>& b, OverlayOp op, int resolution) {
+    BBox ll;
+    for (const Geometry* g : a) ll.add(bboxOf(*g));
+    for (const Geometry* g : b) ll.add(bboxOf(*g));
+    if (!ll.valid()) return {};
+    const Crs crs = Crs::localTm((ll.minX + ll.maxX) / 2);
+    FieldBuilder fa, fb;
+    BBox pb = collectField(a, crs, fa);
+    pb.add(collectField(b, crs, fb));
+    const double extent = std::max(pb.width(), pb.height());
+    if (!(extent > 0)) return {};
+    const double cell = extent / std::clamp(resolution, 50, 4000);
+    const FieldGrid grid = makeGrid(crs, pb, 3 * cell, cell);
+    const std::vector<double> sa = signedDistance(fa, grid), sb = signedDistance(fb, grid);
+    std::vector<double> val(sa.size());
+    for (std::size_t n = 0; n < val.size(); ++n) {
+        const double inA = -sa[n], inB = -sb[n];
+        switch (op) {
+            case OverlayOp::Intersection: val[n] = std::min(inA, inB); break;
+            case OverlayOp::Union: val[n] = std::max(inA, inB); break;
+            case OverlayOp::Difference: val[n] = std::min(inA, -inB); break;
+            case OverlayOp::SymDifference: val[n] = std::max(std::min(inA, -inB), std::min(inB, -inA)); break;
+        }
+    }
+    return traceField(grid, std::move(val));
 }
 
 Geometry buffer(const Geometry& g, double d, int resolution, int circleSegments) {
@@ -1170,6 +1243,14 @@ std::shared_ptr<Grid> heatmap(const std::vector<Feature>& features, const Heatma
     };
     std::vector<Pt> pts;
     BBox ll;
+    // lines are sampled along their length: explicitly, or (spacing < 0) every quarter radius
+    double spacing = o.lineSpacing;
+    if (spacing < 0) {
+        BBox fb;
+        for (const auto& f : features) fb.add(bboxOf(f.geom));
+        const double ext = fb.valid() ? std::max(geodesicDistance(fb.minX, fb.minY, fb.maxX, fb.minY), geodesicDistance(fb.minX, fb.minY, fb.minX, fb.maxY)) : 0;
+        spacing = std::max((o.radius > 0 ? o.radius : std::max(ext / 20, 50.0)) / 4, 1.0);
+    }
     for (const auto& f : features) {
         double w = 1;
         if (!o.weightField.empty()) {
@@ -1187,6 +1268,19 @@ std::shared_ptr<Grid> heatmap(const std::vector<Feature>& features, const Heatma
         };
         if (f.geom.type == GeomType::Point) {
             for (const auto& c : f.geom.points) addPt(c);
+        } else if (f.geom.type == GeomType::Line && spacing > 0) {
+            // tracks: every stretch of line counts, so busy routes glow
+            for (const auto& l : f.geom.lines) {
+                for (const auto& c : samplePoints(l, spacing)) addPt(c);
+            }
+        } else if (f.geom.type == GeomType::Polygon && o.lineSpacing > 0) {
+            for (const auto& poly : f.geom.polygons) {
+                for (const auto& r : poly) {
+                    Line closed = r;
+                    if (!r.empty()) closed.push_back(r.front());
+                    for (const auto& c : samplePoints(closed, o.lineSpacing)) addPt(c);
+                }
+            }
         } else if (!f.geom.empty()) {
             addPt(centroid(f.geom));
         }

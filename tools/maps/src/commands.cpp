@@ -2,21 +2,22 @@
 // undo step and a failed edit leaves the map as it was.
 #include <algorithm>
 #include <cctype>
+#include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <fstream>
 #include <set>
 #include <sstream>
 
 #include "wetwaresuite/raster/codec.hpp"
-#include "internal.hpp"
+#include "cmd.hpp"
 
 namespace wetwaresuite::maps {
 
-namespace {
+namespace cmd {
 
 namespace fs = std::filesystem;
 using namespace detail;
-using Edit = std::function<Result(MapDoc&, const Params&)>;
 
 bool has(const Params& p, const std::string& key) {
     auto it = p.find(key);
@@ -49,7 +50,7 @@ std::string duration(double s) {
     return buf;
 }
 
-std::vector<std::string> splitList(const std::string& text, char sep = ',') {
+std::vector<std::string> splitList(const std::string& text, char sep) {
     std::vector<std::string> out;
     std::string item;
     for (char c : text + sep) {
@@ -80,11 +81,11 @@ Props parseProps(const std::string& text) {
 
 ParamSpec docParam() { return {"doc", ParamType::String, "id of an open map, e.g. map1", true}; }
 ParamSpec previewParam() { return {"preview", ParamType::Bool, "attach a PNG render of the whole map to the result", false, {}, false}; }
-ParamSpec layerParam(const std::string& what = "layer name or index (0 = bottom); default: the top vector layer") {
+ParamSpec layerParam(const std::string& what) {
     return {"layer", ParamType::String, what, false};
 }
 ParamSpec outputParam(const std::string& what) { return {"output", ParamType::String, what, false}; }
-ParamSpec whereParam(const std::string& what = "only features matching this expression, e.g. \"pop_est > 1e7 and continent == 'Europe'\"") {
+ParamSpec whereParam(const std::string& what) {
     return {"where", ParamType::String, what, false};
 }
 ParamSpec crsParam(const std::string& what) { return {"crs", ParamType::String, what, false}; }
@@ -122,7 +123,7 @@ std::string bboxText(const BBox& b) {
 // ---- lookups ----------------------------------------------------------------------------
 
 // The vector layer a command works on: "layer", else the top vector layer.
-Layer* vectorLayer(Map& m, const Params& p, std::string& error, const std::string& key = "layer") {
+Layer* vectorLayer(Map& m, const Params& p, std::string& error, const std::string& key) {
     if (has(p, key)) {
         Layer* l = m.layer(stringParam(p, key));
         if (!l) error = "no layer called '" + stringParam(p, key) + "' (maps.info lists them)";
@@ -160,7 +161,7 @@ Layer* anyLayer(Map& m, const Params& p, std::string& error) {
     return l;
 }
 
-std::optional<Expr> whereFrom(const Params& p, std::string& error, const std::string& key = "where") {
+std::optional<Expr> whereFrom(const Params& p, std::string& error, const std::string& key) {
     if (!has(p, key) || trim(stringParam(p, key)).empty()) return std::nullopt;
     try {
         return Expr::compile(stringParam(p, key));
@@ -196,7 +197,7 @@ Result edited(const std::string& message, const Params& p) {
     return r;
 }
 
-ActionFactory mapCommand(Session& session, Edit edit, bool undoable = true) {
+ActionFactory mapCommand(Session& session, Edit edit, bool undoable) {
     return [&session, edit, undoable](const Params& p) -> std::unique_ptr<Action> {
         const std::string id = stringParam(p, "doc");
         auto doc = session.workspace().getAs<MapDoc>(id);
@@ -279,7 +280,7 @@ std::string geometryLine(const Geometry& g) {
     }
 }
 
-std::string propsLine(const Props& props, const std::vector<std::string>& only, std::size_t maxLen = 400) {
+std::string propsLine(const Props& props, const std::vector<std::string>& only, std::size_t maxLen) {
     std::string s;
     for (const auto& [k, v] : props) {
         if (!only.empty() && std::find(only.begin(), only.end(), k) == only.end()) continue;
@@ -289,7 +290,7 @@ std::string propsLine(const Props& props, const std::vector<std::string>& only, 
     return s;
 }
 
-Result docCreated(Session& session, std::shared_ptr<MapDoc> doc, const std::string& verb, const Params& p, const std::vector<std::string>& warnings = {}) {
+Result docCreated(Session& session, std::shared_ptr<MapDoc> doc, const std::string& verb, const Params& p, const std::vector<std::string>& warnings) {
     const std::string id = session.workspace().add(doc, "map");
     Result r = Result::success(verb + " " + id + ": " + doc->summary(), id);
     r.with("doc", id).with("layers", static_cast<std::int64_t>(doc->map.layers.size()));
@@ -316,6 +317,7 @@ std::vector<ParamSpec> viewParams() {
             {"bbox", ParamType::NumberList, "area to show as min_lon,min_lat,max_lon,max_lat (default: all visible layers plus a margin)", false},
             {"center", ParamType::NumberList, "lat,lon to centre on (with radius_km)", false},
             {"radius_km", ParamType::Number, "with center: how far to show around it", false},
+            {"bookmark", ParamType::String, "show a bookmarked area (maps.bookmarks lists them)", false},
             {"basemap", ParamType::String,
              "background: auto (an installed map pack, else countries), countries (built-in Natural Earth outlines), none, pack (the most "
              "detailed installed map pack), a .pmtiles file on disk (vector or raster map tiles, read in place, never downloaded), or osm "
@@ -341,6 +343,16 @@ bool viewOptions(const MapDoc& doc, const Params& p, RenderOptions& o, std::stri
     o.height = has(p, "height") ? static_cast<int>(std::clamp<std::int64_t>(intParam(p, "height"), 16, 8000)) : 0;
     o.bbox = bboxFrom(p, "bbox", error);
     if (!error.empty()) return false;
+    if (has(p, "bookmark")) {
+        const std::string name = lower(stringParam(p, "bookmark"));
+        for (const auto& b : doc.map.bookmarks) {
+            if (lower(b.name) == name) o.bbox = b.box;
+        }
+        if (!o.bbox) {
+            error = "no bookmark called '" + stringParam(p, "bookmark") + "' (maps.bookmarks lists them)";
+            return false;
+        }
+    }
     if (has(p, "center")) {
         const NumberList c = listParam(p, "center");
         if (c.size() != 2) {
@@ -420,6 +432,48 @@ Result renderResult(const std::string& message, const RenderInfo& info, const Re
     return r;
 }
 
+Feature* featureAt(Layer& l, const Params& p, std::string& error, const std::string& key) {
+    if (!has(p, key)) {
+        error = "give " + key + "= (maps.features lists the indexes)";
+        return nullptr;
+    }
+    const std::int64_t i = intParam(p, key);
+    if (i < 0 || i >= static_cast<std::int64_t>(l.features.size())) {
+        error = l.features.empty() ? l.name + " has no features" : l.name + " has features 0.." + std::to_string(static_cast<std::int64_t>(l.features.size()) - 1);
+        return nullptr;
+    }
+    return &l.features[static_cast<std::size_t>(i)];
+}
+
+bool latLon(const Params& p, const std::string& key, Coord& out, std::string& error) {
+    if (!has(p, key)) {
+        error = "give " + key + "=lat,lon";
+        return false;
+    }
+    const NumberList v = listParam(p, key);
+    if (v.size() != 2 || !std::isfinite(v[0]) || !std::isfinite(v[1]) || std::abs(v[0]) > 90 || std::abs(v[1]) > 540) {
+        error = key + " needs lat,lon in degrees";
+        return false;
+    }
+    out = Coord{v[1], v[0]};
+    return true;
+}
+
+std::string featureName(const Feature& f) {
+    for (const char* k : {"name", "NAME", "Name", "title", "label", "ref", "id"}) {
+        if (auto it = f.props.find(k); it != f.props.end() && !it->second.isNull() && !it->second.text().empty()) return it->second.text();
+    }
+    return {};
+}
+
+}  // namespace cmd
+
+namespace {
+
+namespace fs = std::filesystem;
+using namespace detail;
+using namespace cmd;
+
 // ---- command groups -------------------------------------------------------------------
 
 void registerFileCommands(Session& session) {
@@ -438,8 +492,9 @@ void registerFileCommands(Session& session) {
 
     reg.add({"maps.open", "Open Map",
              "Open a map: a .wwmap project (layers with styles, saved by maps.save; older .achmap files too), or any data file as a new map with "
-             "it as its layers: .geojson/.json, .kml, .gpx (tracks, routes and waypoints become separate layers), .csv with "
-             "lat/lon columns, .shp (with .dbf/.prj), .wkt, a GeoTIFF or an image with a world file.",
+             "it as its layers: .geojson/.json, .kml, .gpx (tracks, routes and waypoints become separate layers), .fit (Garmin "
+             "and other sports watches), .osm (OpenStreetMap XML: roads, areas and places layers, ready for maps.route), .csv "
+             "with lat/lon columns, .shp (with .dbf/.prj), .wkt, a GeoTIFF or an image with a world file.",
              {{"path", ParamType::String, "file to open", true},
               crsParam("coordinates' system when the file doesn't say (CSV x/y, shapefile without .prj, world files): " + crsHelp()),
               previewParam()},
@@ -515,12 +570,13 @@ void registerFileCommands(Session& session) {
     reg.add({"maps.import", "Import Layer",
              "Add data from a file as new layer(s): GeoJSON (.geojson/.json, any 'crs' member honoured), KML (placemarks, "
              "folders, ExtendedData, gx:Track), GPX (tracks with times and elevation, routes, waypoints as separate layers), "
+             "FIT activities (positions, elevation, times; sport and heart rate as properties), OSM XML (roads, areas, places), "
              "CSV with lat/lon columns (auto-detected: lat/latitude/y and lon/lng/long/longitude/x; or a WKT column; "
              "degrees-minutes-seconds and N/S/E/W suffixes read too), shapefile .shp with .shx/.dbf/.prj (UTM and Web Mercator "
              ".prj are reprojected), or a .wkt file with one geometry per line.",
              {docParam(),
               {"path", ParamType::String, "file to import", true},
-              {"format", ParamType::String, "override the extension", false, {"auto", "geojson", "kml", "gpx", "csv", "shp", "wkt"}, std::string("auto")},
+              {"format", ParamType::String, "override the extension", false, {"auto", "geojson", "kml", "gpx", "fit", "osm", "csv", "shp", "wkt"}, std::string("auto")},
               {"name", ParamType::String, "layer name (default: the file name)", false},
               crsParam("source coordinates' system when the file doesn't say: " + crsHelp()),
               {"lat", ParamType::String, "CSV: latitude (or y/northing) column", false},
@@ -1541,10 +1597,12 @@ void registerSpatialCommands(Session& session) {
 
     reg.add({"maps.heatmap", "Heatmap",
              "Point density as a raster layer (quartic kernel on a Web Mercator grid): radius= in metres (default 1/20 of the "
-             "extent), weight= a numeric field, drawn with the transparent-to-red heat ramp. Save it with maps.raster_save.",
+             "extent), weight= a numeric field, drawn with the transparent-to-red heat ramp. Lines (GPS tracks) count all along "
+             "their length, every spacing= metres, so a layer of many tracks shows the most used routes. Save it with maps.raster_save.",
              {docParam(), layerParam("point layer (default: the top layer with points)"), {"radius", ParamType::Number, "kernel radius in metres", false},
               {"resolution", ParamType::Int, "cells along the longer side", false, {}, std::int64_t{400}},
               {"weight", ParamType::String, "numeric field weighting each point", false}, whereParam(),
+              {"spacing", ParamType::Number, "lines and outlines: a point every this many metres (default: a quarter of the radius; 0 = one point per feature)", false},
               {"bbox", ParamType::NumberList, "grid extent min_lon,min_lat,max_lon,max_lat (default: the points plus the radius)", false},
               {"ramp", ParamType::String, "colour ramp", false, {}, std::string("heat")},
               {"opacity", ParamType::Number, "0..1", false, {}, 0.85}, outputParam("new layer name (default '<layer> heatmap')"), previewParam()}, true},
@@ -1558,6 +1616,7 @@ void registerSpatialCommands(Session& session) {
                 o.radius = numberParam(p, "radius", 0);
                 o.resolution = static_cast<int>(intParam(p, "resolution", 400));
                 o.weightField = stringParam(p, "weight");
+                o.lineSpacing = has(p, "spacing") ? std::max(0.0, numberParam(p, "spacing")) : -1;
                 o.bbox = bboxFrom(p, "bbox", error);
                 if (!error.empty()) return Result::failure(error);
                 std::vector<Feature> pts;
@@ -1805,6 +1864,11 @@ void registerCommands(Session& session) {
     registerTrackCommands(session);
     registerRenderCommands(session);
     registerTilesCommands(session);
+    cmd::registerEditCommands(session);
+    cmd::registerOverlayCommands(session);
+    cmd::registerTrackToolCommands(session);
+    cmd::registerNavCommands(session);
+    cmd::registerPlaceCommands(session);
 }
 
 }  // namespace wetwaresuite::maps

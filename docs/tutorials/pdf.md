@@ -41,7 +41,7 @@ The tools:
 | Sign | Drag a box (or click) and type your name to make a handwriting-style signature. Use **Draw** to sign by hand. |
 | Picture | Click where it goes, then pick the file in the form on the right. |
 
-The colour square picks the colour for the next edit. Ctrl+Z and Ctrl+Y undo and redo any step, including page changes. Every action is also listed on the left under **PDF editor**, with a form for its full set of options.
+The colour square picks the colour for the next edit. Ctrl+Z and Ctrl+Y undo and redo any step, including page changes. Every action is also in the **PDF editor** menu, with a form for its full set of options.
 
 ## From the command line and batch scripts
 

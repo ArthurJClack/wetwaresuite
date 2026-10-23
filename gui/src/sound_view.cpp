@@ -106,6 +106,14 @@ double snapTo(double v, double grid) { return std::round(v / grid) * grid; }
 
 // ---- effects rack and envelope (right panel) ----------------------------------------
 
+bool Shell::hasEffects() const {
+    if (showHome_ || !panel_.empty()) return false;
+    auto doc = session_.workspace().get(currentDoc_);
+    if (!doc || (doc->kind() != "song" && doc->kind() != "audio project")) return false;
+    const std::string tool = doc->kind() == "song" ? "beats" : "audio";
+    return find(tool + ".fx_list") && find(tool + ".fx_add");
+}
+
 void Shell::soundPanel() {
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc) return;
@@ -192,9 +200,6 @@ void Shell::soundPanel() {
         st.length = song ? std::max(4.0, tp::number(lanes, "length", 16)) : std::max(1.0, end);
     }
 
-    ImGui::Spacing();
-    ImGui::Separator();
-    if (!ImGui::CollapsingHeader("Effects", ImGuiTreeNodeFlags_DefaultOpen)) return;
     ImGui::PushID("sound");
     const float unit = ImGui::GetFontSize();
 

@@ -181,6 +181,59 @@ bool brushToolParams(const std::string& tool, const std::string& doc, const std:
                      const std::vector<double>& pressures, const BrushToolSettings& settings, const double* cloneOffset,
                      std::string& command, Params& out, std::string& error);
 
+// ---- the window's layout (layout.cpp) -------------------------------------------
+
+// What an app's window shows on top. Every app has a menu bar; most add a ribbon of
+// labeled buttons (Office, Onshape, Blender). Photo, drawing, game, map, sound and
+// video apps keep it to one compact row, since their tool rail and tool options do
+// most of the work, the way Photoshop, Aseprite, QGIS and Premiere do.
+struct AppLayout {
+    bool ribbon = true;
+    bool compactRibbon = false;
+};
+AppLayout appLayout(const std::string& appId);
+
+// Opening, starting, saving, closing and exporting: these live in the File menu.
+bool fileCommand(const std::string& id);
+
+// A menu or ribbon group's title from a command id's first word: "doc" -> "Document".
+std::string groupTitle(const std::string& key);
+
+// One tool's menu: commands that aren't File commands, the ones sharing a first word
+// (layer_add, layer_set, layer_move...) gathered into a titled submenu when there are 3
+// or more. The first group has an empty title: those go straight in the menu.
+struct MenuGroup {
+    std::string title;
+    std::vector<const CommandInfo*> commands;
+};
+std::vector<MenuGroup> menuGroups(const std::string& tool, const std::vector<CommandInfo>& commands);
+
+// The ribbon: tabs of labeled groups of buttons. Apps have curated tabs modeled on the
+// tools people know; tools without one get a tab of their common actions.
+struct RibbonGroup {
+    std::string title;
+    std::vector<const CommandInfo*> commands;
+    std::vector<std::string> labels;  // one per command: short, like "Crop" for "Crop image"
+};
+struct RibbonTab {
+    std::string title;
+    std::string tool;
+    std::string stem;  // documents opened with <tool>.<stem>_open or _new pick this tab
+    std::vector<RibbonGroup> groups;
+};
+std::vector<RibbonTab> ribbonTabs(const std::string& appId, const std::vector<std::string>& tools, const std::vector<CommandInfo>& commands);
+
+// A button's label with the words its group or tab already says dropped:
+// "Set Cells" in the Cells group -> "Set". The title as is when nothing (or everything) would go.
+std::string shortLabel(const std::string& title, const std::string& group, const std::string& tab);
+// "office.sheet_open" -> "sheet"; "photo.open" -> "".
+std::string openerStem(const std::string& opener);
+// The tab for a document made by `opener`, or -1.
+int ribbonTabFor(const std::vector<RibbonTab>& tabs, const std::string& opener);
+// The command that does `verb` (save, close, info...) to a document made by `opener`:
+// office.sheet_open + save -> office.sheet_save; photo.open + save -> photo.save. Empty if none.
+std::string siblingCommand(const std::string& opener, const std::string& verb, const std::vector<CommandInfo>& commands);
+
 // ---- tools ------------------------------------------------------------------
 
 // A plain-word sentence about a tool for the home screen card.

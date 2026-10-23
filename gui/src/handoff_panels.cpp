@@ -48,17 +48,6 @@ void Shell::launchApp(const std::string& app, const std::string& path) {
     scrollToResult_ = true;
 }
 
-void Shell::sendButton() {
-    if (!handoff_ || !session_.registry().find("app.targets")) return;
-    ImGui::SameLine();
-    if (ImGui::Button("Send to...")) {
-        sendChoices_ = sendChoices(session_.run("app.targets", {{"doc", currentDoc_}}), self_);
-        ImGui::OpenPopup("sendto");
-    }
-    ImGui::SetItemTooltip("Hand this file to another app, in the format that app wants");
-    sendPopup();
-}
-
 void Shell::sendPopup() {
     if (!ImGui::BeginPopup("sendto")) return;
     if (sendChoices_.empty()) {

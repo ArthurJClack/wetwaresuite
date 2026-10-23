@@ -88,6 +88,8 @@ Shell::Shell(Session& session, const AppInfo& app, SDL_Window* window, SDL_Rende
     panels_ = std::make_unique<ToolPanels>();
     hasClock_ = find("clock.due") != nullptr;
     loadPalette();
+    layout_ = appLayout(app_.id);
+    ribbonTabs_ = ribbonTabs(app_.id, tools_, commands_);
 }
 
 Shell::~Shell() {
@@ -128,6 +130,10 @@ Result Shell::run(const std::string& id, const Params& params) {
                 if (*s != currentDoc_) canvas_.fit = true;
                 currentDoc_ = *s;
                 if (!docTool_.count(*s)) docTool_[*s] = id.substr(0, id.find('.'));
+                // what made it decides its ribbon tab and its save and close commands
+                const std::string verb = id.substr(id.find('.') + 1);
+                const bool opener = verb == "open" || verb == "new" || verb == "load" || openerStem(id) != "";
+                if (opener || !docOpener_.count(*s)) docOpener_[*s] = id;
                 showHome_ = false;
                 panel_ = panelForDoc(*s);  // code and terminals open in their panel
             }
@@ -149,6 +155,8 @@ void Shell::select(const std::string& commandId) {
     if (!info) return;
     form_ = buildForm(*info, docIds(), currentDoc_);
     result_.reset();
+    pickProps_ = true;
+    showProps_ = true;
 }
 
 void Shell::runForm() {

@@ -19,7 +19,7 @@ Scripts and Claude drive the same terminals with the same commands. `terminal.ex
 Start the window with `wetwaresuite-system` and click **Open** on the **Terminal** card. You can also click **Terminal here** in the [Files](explorer.md) panel to open one in the folder you are looking at.
 
 - **New terminal** opens another tab. Each tab is named after its folder, and shows **(busy)** while a command runs. Close a tab with its x.
-- In Advanced mode, a **Shell** picker next to it chooses which shell new terminals use.
+- In the advanced view (View > Show advanced options), a **Shell** picker next to it chooses which shell new terminals use.
 - **The prompt** at the bottom shows the folder. Type a command and press **Enter**.
   - **Up** and **Down** bring back earlier commands.
   - **Tab** finishes a file or folder name. When several names fit, they are all listed above the prompt.

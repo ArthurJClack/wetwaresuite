@@ -285,20 +285,6 @@ Result Shell::query(const std::string& id, const Params& params) {
     return session_.run(id, params);
 }
 
-void Shell::panelList() {
-    bool any = false;
-    for (const auto& p : kPanels) any = any || hasPanel(p.tool);
-    if (!any) return;
-    tp::title("Open", 1.1f);
-    for (const auto& p : kPanels) {
-        if (!hasPanel(p.tool)) continue;
-        const bool on = !showHome_ && panel_ == p.tool;
-        if (ImGui::Selectable(pro_ ? p.advanced : p.simple, on)) openPanel(p.tool);
-    }
-    ImGui::Spacing();
-    ImGui::Separator();
-}
-
 void Shell::toolPanelView() {
     if (panel_ == "calc") calcPanel();
     else if (panel_ == "code") codePanel();

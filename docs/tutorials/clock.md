@@ -16,7 +16,7 @@ Each task is shown in the window, on the command line, in batch scripts (see [he
 
 ## The window
 
-Start the window with `wetwaresuite-system` and click **Open** on the **Clock and timers** card (called **Clock** in Advanced mode). To jump to one part directly:
+Start the window with `wetwaresuite-system` and click **Open** on the **Clock and timers** card (called **Clock** in the advanced view). To jump to one part directly:
 
 ```sh
 wetwaresuite-system gui --action clock.world        # also clock.timer_start, clock.stopwatch, clock.alarm_add, clock.calendar
@@ -30,7 +30,7 @@ The tabs:
 - **Stopwatch**: **Start**/**Stop**, **Lap** and **Reset**. Laps are listed with their split times.
 - **Alarms**: a time (`07:30` or `6:15pm`), which days (daily, weekdays, weekends, once, or typed like `mon,wed,fri` or a date) and a label, then **Add alarm**. Each alarm has an on/off tick box and **Remove**.
 - **Calendar**: a month with week numbers and today in [brackets]. **<**, **Today** and **>** move between months.
-- **Dates**: days between two dates (with working days), and a date plus some time. In Advanced mode it also converts a time between places ("9:00 in New York to London|Tokyo").
+- **Dates**: days between two dates (with working days), and a date plus some time. In the advanced view it also converts a time between places ("9:00 in New York to London|Tokyo").
 
 When a timer finishes or an alarm goes off, a message pops up at the top of the window, wherever you are in the app. It has **OK** and **Show the clock** buttons. If the window is in the background, its taskbar or dock icon flashes. The window wakes itself up for this, so it is on time even while you are not touching it.
 

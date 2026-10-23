@@ -235,14 +235,46 @@ public:
     static ImFont* monoFont;  // a fixed-width font for code and terminals (null: the UI font)
 
 private:
+    // the window's frame (chrome.cpp): menu bar, ribbon, file tabs, tool rail,
+    // properties tabs and status bar, laid out per app like the tool it replaces
+    void menuBar();
+    void fileMenu();
+    void editMenu();
+    void viewMenu();
+    void toolMenu(const std::string& tool);
+    void helpMenu();
+    void searchBox();
+    void ribbon();
+    void docTabs();
+    void toolRail();
+    bool railItem(const char* label, const char* key, const char* tip, bool on);  // a rail button; its letter picks it too
+    void railTools();     // the current document's click tools (canvas.cpp)
+    void canvasTools();
+    void circuitTools();  // panel_circuit.cpp
+    void mapsTools();     // maps_view.cpp
+    void gameTools();     // game_view.cpp
+    void propertiesPanel();
+    void statusBar();
+    void shortcuts();
+    void shortcutsPopup();
+    void rootPopups();
+    void pick(const std::string& commandId);  // a menu or ribbon button: runs at once, or shows its settings first
+    bool runOnDoc(const std::string& commandId, const std::string& doc);
+    void saveDoc(bool askWhere);
+    void closeDoc(const std::string& id);
+    void showDoc(const std::string& id);
+    void nextTab(int step);
+    std::string docOpener(const std::string& id) const;
+    bool hasLayers() const;   // layers_view.cpp
+    bool hasEffects() const;  // sound_view.cpp
+
     // panels (panels.cpp)
-    void topBar();
-    void leftPanel();
     void rightPanel();
     void homeView();
     void documentView();
     void formPanel();
     void historyPanel();
+    void resultView();
     void searchPopup();
     void newPopup();
     void settingsPopup();
@@ -379,7 +411,6 @@ private:
     void openPanel(const std::string& tool);
     void openPanelFor(const std::string& commandId);
     bool openFolder(const std::string& path);
-    void panelList();
     void toolPanelView();
     void backgroundTicks();
     void beforeHistoryStep();
@@ -433,7 +464,6 @@ private:
 
     // handing work to other apps (handoff_panels.cpp), all through the app.* commands
     void refreshInbox();
-    void sendButton();
     void sendPopup();
     void inboxBannerView();
     void suggestionBannerView();
@@ -472,6 +502,23 @@ private:
     bool showHome_ = true;
     std::string currentDoc_;
     std::map<std::string, std::string> docTool_;  // doc id -> tool that made it
+    std::map<std::string, std::string> docOpener_;  // doc id -> command that made it (office.sheet_open)
+
+    // the frame (chrome.cpp)
+    AppLayout layout_;
+    std::vector<RibbonTab> ribbonTabs_;
+    int ribbonPick_ = -1;          // select this ribbon tab on the next frame
+    std::string ribbonFor_;        // the document the ribbon last picked its tab for
+    bool showRibbon_ = true, showRail_ = true, showProps_ = true, showStatus_ = true;
+    bool focusMode_ = false;       // Ctrl+Space: only the canvas
+    int railCount_ = 0;            // rail buttons last frame (0: no rail)
+    bool railWas_ = false;
+    bool railDraw_ = false;        // railItem draws (false: only its shortcut letter works)
+    std::string tabShown_;         // what the file tabs last showed: "" start, "panel:<tool>" or a doc id
+    int tabForce_ = 0;             // frames to ignore the tab bar's own pick after we picked for it
+    bool pickProps_ = false;       // bring the Properties tab forward
+    bool pickHistory_ = false;
+    bool openNew_ = false, openSend_ = false, openShortcuts_ = false;
 
     std::string query_;
     bool focusSearch_ = false;

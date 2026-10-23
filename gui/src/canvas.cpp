@@ -176,6 +176,66 @@ void Shell::refreshCanvas() {
     }
 }
 
+namespace {
+
+// The picture and drawing tools in the rail, with their Photoshop letters.
+struct CanvasToolDef {
+    const char* name;
+    CanvasTool tool;
+    const char* key;
+    const char* tip;
+};
+const CanvasToolDef kCanvasTools[] = {
+    {"Move", CanvasTool::Move, "V", "Drag to move around, scroll to zoom"},
+    {"Pick", CanvasTool::Pick, "Q",
+     "Click a shape to pick it, drag to move it, drag a corner or edge handle to resize (Shift keeps the "
+     "proportions). Arrow keys nudge, Delete removes"},
+    {"Anchors", CanvasTool::Anchor, "A",
+     "Click a path to show its anchors and handles, drag them to reshape it (Alt breaks a smooth pair). "
+     "Alt+click on the path adds an anchor"},
+    {"Select", CanvasTool::Select, "M",
+     "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
+     "Alt takes away. Edits then only change inside it"},
+    {"Brush", CanvasTool::Brush, "B", "Paint with the mouse or a pen (pressure works)"},
+    {"Eraser", CanvasTool::Eraser, "E", "Rub out paint on the current layer"},
+    {"Fill", CanvasTool::Fill, "G", "Click to fill an area with the colour, like a paint bucket"},
+    {"Heal", CanvasTool::Heal, "J",
+     "Paint over a spot, pimple or scratch to make it disappear. To copy texture from a clean spot, "
+     "Alt+click it first (Option+click on a Mac)"},
+    {"Remove", CanvasTool::Remove, "R",
+     "Paint over something you don't want (a person, a sign, a wire), then press Remove: the gap is filled "
+     "from the picture around it"},
+    {"Clone", CanvasTool::Clone, "S",
+     "Paint with a copy of another part of the picture: Alt+click (Option+click on a Mac) the spot to copy "
+     "from, then paint"},
+    {"Dodge", CanvasTool::Dodge, "O", "Paint to lighten (like dodging a print)"},
+    {"Burn", CanvasTool::Burn, "", "Paint to darken"},
+    {"Sponge", CanvasTool::Sponge, "", "Paint to wash the colour out"},
+    {"Smudge", CanvasTool::Smudge, "W", "Drag colours along like a finger in wet paint"},
+    {"Blur", CanvasTool::Blur, "U", "Paint to soften (or sharpen) just there"}};
+
+}  // namespace
+
+void Shell::canvasTools() {
+    const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
+                                  CanvasTool::Remove, CanvasTool::Clone, CanvasTool::Dodge, CanvasTool::Smudge, CanvasTool::Blur};
+    if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
+    for (const auto& t : kCanvasTools) {
+        if (!toolAvailable(t.tool)) continue;
+        if (railItem(t.name, t.key, t.tip, canvas_.tool == t.tool)) canvas_.tool = t.tool;
+    }
+}
+
+void Shell::railTools() {
+    auto doc = session_.workspace().get(currentDoc_);
+    if (!doc || canvas_.is3d) return;
+    if (doc->kind() == "pdf" && find("pdf.view")) return;  // the PDF editor has its own tools
+    if (circuitDoc()) return circuitTools();
+    if (mapsDoc()) return mapsTools();
+    if (gameActive()) return gameTools();
+    canvasTools();
+}
+
 void Shell::canvasToolbar() {
     if (canvas_.is3d) {
         orbitToolbar();
@@ -204,53 +264,13 @@ void Shell::canvasToolbar() {
         gameToolbar();
         return;
     }
-    const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
-                                  CanvasTool::Remove, CanvasTool::Clone, CanvasTool::Dodge, CanvasTool::Smudge, CanvasTool::Blur};
-    if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
-    ImGui::SameLine();
-    ImGui::TextUnformatted("  Tool:");
-    const struct {
-        const char* name;
-        CanvasTool tool;
-        const char* tip;
-    } tools[] = {{"Move", CanvasTool::Move, "Drag to move around, scroll to zoom"},
-                 {"Pick", CanvasTool::Pick,
-                  "Click a shape to pick it, drag to move it, drag a corner or edge handle to resize (Shift keeps the "
-                  "proportions). Arrow keys nudge, Delete removes"},
-                 {"Anchors", CanvasTool::Anchor,
-                  "Click a path to show its anchors and handles, drag them to reshape it (Alt breaks a smooth pair). "
-                  "Alt+click on the path adds an anchor"},
-                 {"Select", CanvasTool::Select,
-                  "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
-                  "Alt takes away. Edits then only change inside it"},
-                 {"Brush", CanvasTool::Brush, "Paint with the mouse or a pen (pressure works)"},
-                 {"Eraser", CanvasTool::Eraser, "Rub out paint on the current layer"},
-                 {"Fill", CanvasTool::Fill, "Click to fill an area with the colour, like a paint bucket"},
-                 {"Heal", CanvasTool::Heal,
-                  "Paint over a spot, pimple or scratch to make it disappear. To copy texture from a clean spot, "
-                  "Alt+click it first (Option+click on a Mac)"},
-                 {"Remove", CanvasTool::Remove,
-                  "Paint over something you don't want (a person, a sign, a wire), then press Remove: the gap is filled "
-                  "from the picture around it"},
-                 {"Clone", CanvasTool::Clone,
-                  "Paint with a copy of another part of the picture: Alt+click (Option+click on a Mac) the spot to copy "
-                  "from, then paint"},
-                 {"Dodge", CanvasTool::Dodge, "Paint to lighten (like dodging a print)"},
-                 {"Burn", CanvasTool::Burn, "Paint to darken"},
-                 {"Sponge", CanvasTool::Sponge, "Paint to wash the colour out"},
-                 {"Smudge", CanvasTool::Smudge, "Drag colours along like a finger in wet paint"},
-                 {"Blur", CanvasTool::Blur, "Paint to soften (or sharpen) just there"}};
-    for (const auto& t : tools) {
-        if (!toolAvailable(t.tool)) continue;
-        ImGui::SameLine();
-        // wrap onto the next line instead of running off a narrow window
-        const ImGuiStyle& style = ImGui::GetStyle();
-        const float need = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(t.name).x;
-        if (ImGui::GetContentRegionAvail().x < need) ImGui::NewLine();
-        if (ImGui::RadioButton(t.name, canvas_.tool == t.tool)) canvas_.tool = t.tool;
-        ImGui::SetItemTooltip("%s", t.tip);
-    }
     if (canvas_.tool == CanvasTool::Move || !toolAvailable(canvas_.tool)) return;
+    for (const auto& t : kCanvasTools) {
+        if (t.tool != canvas_.tool) continue;
+        ImGui::SameLine();
+        ImGui::TextUnformatted((std::string("   ") + t.name + ":").c_str());  // the options bar names its tool, like Photoshop's
+        ImGui::SameLine();
+    }
     if (canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor) {
         vectorSettings();
         return;
@@ -267,9 +287,9 @@ void Shell::canvasToolbar() {
         brushToolSettings();
         return;
     }
-    // the tool's settings go on their own line so narrow windows still show them
+    // the tool's settings follow its name on the options bar
     const float unit = ImGui::GetFontSize();
-    bool first = true;
+    bool first = false;
     auto next = [&first] {
         if (!first) ImGui::SameLine();
         first = false;

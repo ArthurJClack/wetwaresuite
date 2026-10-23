@@ -11,6 +11,7 @@ namespace wetwaresuite::layout {
 // ---- faces ---------------------------------------------------------------------
 
 double Face::advance(unsigned cp) const {
+    if (pdfdoc::winAnsi(cp) < 0 && pdfdoc::needsUnicode(cp)) return pdfdoc::builtinSans()->advance(cp);  // set in the built-in font
     if (ttf) return ttf->advance(cp);
     const double w = pdfdoc::standardWidth(font, pdfdoc::winAnsi(cp));
     return w > 0 ? w : 500;
@@ -22,7 +23,7 @@ std::shared_ptr<pdfdoc::TrueType> Face::outlines() const { return ttf ? ttf : pd
 
 unsigned encodable(unsigned cp) {
     if (cp == '\t') return ' ';
-    return pdfdoc::winAnsi(cp) >= 0 ? cp : '?';
+    return pdfdoc::winAnsi(cp) >= 0 || pdfdoc::needsUnicode(cp) ? cp : '?';
 }
 
 std::shared_ptr<const Face> resolveFace(const Layout& doc, const std::string& familyName, bool bold, bool italic) {

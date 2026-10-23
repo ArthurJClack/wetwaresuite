@@ -361,7 +361,8 @@ struct Painter {
                     const double adv = run.face->advance(cp) * unit + run.tracking;
                     if (cp != ' ') {
                         if (tt && emPx >= 2.5) {
-                            for (const auto& contour : tt->outline(cp)) {
+                            const auto& shape = pdfdoc::needsUnicode(cp) ? *pdfdoc::builtinSans() : *tt;
+                            for (const auto& contour : shape.outline(cp)) {
                                 Poly q;
                                 q.reserve(contour.size());
                                 for (const auto& g : contour) q.push_back({x + g.x * unit, line.baseline - g.y * unit});

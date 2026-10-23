@@ -28,6 +28,9 @@ struct Levels {
 Levels measure(const Buffer& b, Range r, bool truePeak = true);
 // Integrated loudness only (LUFS).
 double integratedLoudness(const Buffer& b, Range r);
+// Loudness over time in LUFS, one value per stepSeconds (each the window ending there):
+// windowSeconds 0.4 = momentary, 3 = short-term (EBU R128). Ungated, -70 for silence.
+std::vector<double> loudnessCurve(const Buffer& b, Range r, double windowSeconds = 3.0, double stepSeconds = 1.0);
 
 // ---- pictures ----
 struct WaveformStyle {

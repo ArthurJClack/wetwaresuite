@@ -69,6 +69,7 @@ bool showLevel(SDL_Renderer* renderer, Texture& tex, MipCache& mc, float zoom, b
 
 bool Shell::toolAvailable(CanvasTool tool) const {
     if (tool == CanvasTool::Move) return true;
+    if (tool == CanvasTool::Pick || tool == CanvasTool::Anchor) return vectorDoc();
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc || doc->kind() != "image") return false;
     switch (tool) {
@@ -77,6 +78,13 @@ bool Shell::toolAvailable(CanvasTool tool) const {
         case CanvasTool::Fill: return find("paint.fill") != nullptr;
         case CanvasTool::Heal: return find("photo.heal") != nullptr;
         case CanvasTool::Remove: return find("photo.remove_object") != nullptr;
+        case CanvasTool::Select: return find("photo.select") != nullptr;
+        case CanvasTool::Clone: return find("paint.clone") != nullptr;
+        case CanvasTool::Dodge:
+        case CanvasTool::Burn:
+        case CanvasTool::Sponge: return find("paint.dodge") != nullptr;
+        case CanvasTool::Smudge: return find("paint.smudge") != nullptr;
+        case CanvasTool::Blur: return find("paint.blur_brush") != nullptr;
         default: return false;
     }
 }
@@ -85,6 +93,7 @@ void Shell::refreshCanvas() {
     if (!canvas_.dirty && canvas_.shownDoc == currentDoc_) return;
     canvas_.dirty = false;
     canvas_.shownDoc = currentDoc_;
+    ++canvas_.version;
     canvas_.summary.clear();
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc) {
@@ -93,6 +102,15 @@ void Shell::refreshCanvas() {
         return;
     }
     canvas_.summary = doc->summary();
+    const bool newDoc = canvas_.shown3dDoc != currentDoc_;
+    canvas_.shown3dDoc = currentDoc_;
+    canvas_.is3d = probe3d(*doc);
+    if (canvas_.is3d) {
+        mipCaches().erase(this);
+        if (newDoc) canvas_.orbit = OrbitView{};  // a different model starts from iso
+        canvas_.orbitDirty = true;               // drawn by orbitCanvas at the view's size
+        return;
+    }
     if (auto img = std::dynamic_pointer_cast<raster::ImageDoc>(doc); img && img->image.width > 0 && img->image.height > 0) {
         MipCache& mc = mipCaches()[this];
         const raster::ImageDoc::Changes changes = img->takeChanges();
@@ -110,9 +128,17 @@ void Shell::refreshCanvas() {
         if (showLevel(renderer_, canvas_.texture, mc, zoom, true)) return;
     }
     mipCaches().erase(this);
+    // a level or sprite: the picture its click tools work on (game_view.cpp)
+    std::string png = gamePicture();
+    const bool game = !png.empty();
     // anything else: the document's own preview, else the tool's preview command
-    std::string png;
-    if (auto att = doc->preview()) png = att->bytes;
+    if (png.empty() && doc->kind() == "vector" && find("vector.preview")) {  // sharper than the small built-in preview, for zooming in
+        Result r = session_.run("vector.preview", {{"doc", currentDoc_}, {"size", std::int64_t{1400}}});
+        if (r.ok && !r.attachments.empty()) png = r.attachments[0].bytes;
+    }
+    if (png.empty()) {
+        if (auto att = doc->preview()) png = att->bytes;
+    }
     if (png.empty()) {
         std::vector<std::string> owners;
         if (auto it = docTool_.find(currentDoc_); it != docTool_.end()) owners.push_back(it->second);
@@ -138,13 +164,23 @@ void Shell::refreshCanvas() {
     }
     try {
         raster::Image pic = raster::decode(png);
+        if (game) {  // crisp pixels when zoomed in, and the colours for the picker
+            canvas_.game.picture.assign(pic.data(), pic.data() + static_cast<std::size_t>(pic.width()) * pic.height() * 4);
+            canvas_.game.pictureW = pic.width();
+            canvas_.game.pictureH = pic.height();
+        }
         if (!canvas_.texture.upload(renderer_, pic.data(), pic.width(), pic.height())) canvas_.texture.reset();
+        else if (game) SDL_SetTextureScaleMode(canvas_.texture.tex, SDL_SCALEMODE_NEAREST);
     } catch (const std::exception&) {
         canvas_.texture.reset();
     }
 }
 
 void Shell::canvasToolbar() {
+    if (canvas_.is3d) {
+        orbitToolbar();
+        return;
+    }
     if (ImGui::Button("Fit")) canvas_.fit = true;
     ImGui::SetItemTooltip("Show the whole picture");
     ImGui::SameLine();
@@ -156,7 +192,20 @@ void Shell::canvasToolbar() {
     }
     ImGui::SameLine();
     ImGui::TextDisabled("%d%%", static_cast<int>(std::lround(canvas_.zoom * 100)));
-    const CanvasTool editing[] = {CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal, CanvasTool::Remove};
+    if (circuitDoc()) {
+        circuitToolbar();
+        return;
+    }
+    if (mapsDoc()) {
+        mapsToolbar();
+        return;
+    }
+    if (gameActive()) {
+        gameToolbar();
+        return;
+    }
+    const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
+                                  CanvasTool::Remove, CanvasTool::Clone, CanvasTool::Dodge, CanvasTool::Smudge, CanvasTool::Blur};
     if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
     ImGui::SameLine();
     ImGui::TextUnformatted("  Tool:");
@@ -165,6 +214,15 @@ void Shell::canvasToolbar() {
         CanvasTool tool;
         const char* tip;
     } tools[] = {{"Move", CanvasTool::Move, "Drag to move around, scroll to zoom"},
+                 {"Pick", CanvasTool::Pick,
+                  "Click a shape to pick it, drag to move it, drag a corner or edge handle to resize (Shift keeps the "
+                  "proportions). Arrow keys nudge, Delete removes"},
+                 {"Anchors", CanvasTool::Anchor,
+                  "Click a path to show its anchors and handles, drag them to reshape it (Alt breaks a smooth pair). "
+                  "Alt+click on the path adds an anchor"},
+                 {"Select", CanvasTool::Select,
+                  "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
+                  "Alt takes away. Edits then only change inside it"},
                  {"Brush", CanvasTool::Brush, "Paint with the mouse or a pen (pressure works)"},
                  {"Eraser", CanvasTool::Eraser, "Rub out paint on the current layer"},
                  {"Fill", CanvasTool::Fill, "Click to fill an area with the colour, like a paint bucket"},
@@ -173,7 +231,15 @@ void Shell::canvasToolbar() {
                   "Alt+click it first (Option+click on a Mac)"},
                  {"Remove", CanvasTool::Remove,
                   "Paint over something you don't want (a person, a sign, a wire), then press Remove: the gap is filled "
-                  "from the picture around it"}};
+                  "from the picture around it"},
+                 {"Clone", CanvasTool::Clone,
+                  "Paint with a copy of another part of the picture: Alt+click (Option+click on a Mac) the spot to copy "
+                  "from, then paint"},
+                 {"Dodge", CanvasTool::Dodge, "Paint to lighten (like dodging a print)"},
+                 {"Burn", CanvasTool::Burn, "Paint to darken"},
+                 {"Sponge", CanvasTool::Sponge, "Paint to wash the colour out"},
+                 {"Smudge", CanvasTool::Smudge, "Drag colours along like a finger in wet paint"},
+                 {"Blur", CanvasTool::Blur, "Paint to soften (or sharpen) just there"}};
     for (const auto& t : tools) {
         if (!toolAvailable(t.tool)) continue;
         ImGui::SameLine();
@@ -185,8 +251,20 @@ void Shell::canvasToolbar() {
         ImGui::SetItemTooltip("%s", t.tip);
     }
     if (canvas_.tool == CanvasTool::Move || !toolAvailable(canvas_.tool)) return;
+    if (canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor) {
+        vectorSettings();
+        return;
+    }
     if (canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove) {
         retouchSettings();
+        return;
+    }
+    if (canvas_.tool == CanvasTool::Select) {
+        selectSettings();
+        return;
+    }
+    if (brushTool(canvas_.tool)) {
+        brushToolSettings();
         return;
     }
     // the tool's settings go on their own line so narrow windows still show them
@@ -258,6 +336,10 @@ void Shell::endStroke() {
         retouchRelease();
         return;
     }
+    if (brushTool(canvas_.tool)) {
+        runBrushTool();
+        return;
+    }
     const bool erase = canvas_.tool == CanvasTool::Eraser || canvas_.penErasing;
     const std::string id = erase ? "paint.erase" : "paint.stroke";
     const CommandInfo* info = find(id);
@@ -296,6 +378,7 @@ void Shell::onEvent(const SDL_Event& e) {
         case SDL_EVENT_WINDOW_FOCUS_GAINED:  // another app may have sent something or changed the colours
             refreshInbox();
             paletteStale_ = true;
+            installedStale_ = true;
             break;
         case SDL_EVENT_DROP_FILE:
             if (e.drop.data) openFile(e.drop.data);
@@ -305,6 +388,24 @@ void Shell::onEvent(const SDL_Event& e) {
 }
 
 void Shell::canvasView() {
+    if (!gameActive()) {
+        canvasArea();
+        return;
+    }
+    // a level or sprite: the canvas, with its layers, tiles, frames and colours beside it
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float side = std::min(ImGui::GetFontSize() * 16, avail.x * 0.4f);
+    const ImGuiWindowFlags still = ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse;
+    ImGui::BeginChild("game_canvas", {std::max(32.0f, avail.x - side - ImGui::GetStyle().ItemSpacing.x), avail.y}, ImGuiChildFlags_None, still);
+    canvasArea();
+    ImGui::EndChild();
+    ImGui::SameLine();
+    ImGui::BeginChild("game_side", {0, avail.y}, ImGuiChildFlags_Borders);
+    gameSide();
+    ImGui::EndChild();
+}
+
+void Shell::canvasArea() {
     if (canvas_.pending && canvas_.pending->shown) runPendingRetouch();  // the busy sign is on screen: run it now
     refreshCanvas();
     ImGuiIO& io = ImGui::GetIO();
@@ -319,6 +420,11 @@ void Shell::canvasView() {
     dl->PushClipRect(v0, v1, true);
     dl->AddRectFilled(v0, v1, darkLook() ? IM_COL32(40, 42, 46, 255) : IM_COL32(200, 202, 206, 255));
 
+    if (canvas_.is3d) {
+        orbitCanvas(dl, v0, size, hovered, active);
+        dl->PopClipRect();
+        return;
+    }
     const Texture& t = canvas_.texture;
     if (!t.tex) {
         const std::string text = canvas_.summary.empty() ? "No picture for this file." : canvas_.summary;
@@ -330,7 +436,8 @@ void Shell::canvasView() {
     }
     const float w = static_cast<float>(t.srcWidth), h = static_cast<float>(t.srcHeight);
     if (canvas_.fit) {
-        canvas_.zoom = std::min({size.x * 0.95f / w, size.y * 0.95f / h, 8.0f});
+        // pixel art is tiny: let fit zoom further in on levels and sprites
+        canvas_.zoom = std::min({size.x * 0.95f / w, size.y * 0.95f / h, gameActive() ? 48.0f : 8.0f});
         canvas_.pan = {(size.x - w * canvas_.zoom) / 2, (size.y - h * canvas_.zoom) / 2};
         canvas_.fit = false;
     }
@@ -339,10 +446,12 @@ void Shell::canvasView() {
         canvas_.zoom = std::clamp(canvas_.zoom * std::pow(1.15f, io.MouseWheel), 0.02f, 64.0f);
         canvas_.pan = {io.MousePos.x - v0.x - img.x * canvas_.zoom, io.MousePos.y - v0.y - img.y * canvas_.zoom};
     }
-    const bool painting = toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
-                          !canvas_.pending;
+    const bool game = gameActive();
+    const bool painting = game ? gamePainting() && !ImGui::IsKeyDown(ImGuiKey_Space)
+                               : toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
+                                     !canvas_.pending;
     const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
-                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking));
+                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking && ((!circuitEditing() && !mapsEditing()) || ImGui::IsKeyDown(ImGuiKey_Space))));
     if (dragPan) {
         canvas_.pan.x += io.MouseDelta.x;
         canvas_.pan.y += io.MouseDelta.y;
@@ -354,17 +463,35 @@ void Shell::canvasView() {
     dl->AddRectFilled(p0, p1, IM_COL32(255, 255, 255, 255));
     dl->AddImage(t.id(), p0, p1);
     dl->AddRect({p0.x - 1, p0.y - 1}, {p1.x + 1, p1.y + 1}, ImGui::GetColorU32(ImGuiCol_Border));
+    if (game) {
+        gameInput(dl, p0, hovered && painting, active);
+        dl->PopClipRect();
+        return;
+    }
 
     // painting
     const bool retouch = canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove;
-    const bool stroke = canvas_.tool == CanvasTool::Brush || canvas_.tool == CanvasTool::Eraser || retouch;
+    const bool retouchBrush = brushTool(canvas_.tool);
+    const bool stroke = canvas_.tool == CanvasTool::Brush || canvas_.tool == CanvasTool::Eraser || retouch || retouchBrush;
     if (painting && stroke && ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-        !(retouch && retouchPress(io.MousePos))) {
+        !(retouch && retouchPress(io.MousePos)) && !(retouchBrush && brushToolPress(io.MousePos))) {
         const bool pen = io.MouseSource == ImGuiMouseSource_Pen || penDown_;
         beginStroke(io.MousePos, pen ? penPressure_ : 1.0f, pen, pen && penEraser_);
     }
     if (canvas_.stroking && active) addStrokePoint(io.MousePos, canvas_.usedPen ? penPressure_ : 1.0f);
     if (canvas_.stroking && !active) endStroke();
+    if (painting && canvas_.tool == CanvasTool::Select) {
+        if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) selectPress(io.MousePos);
+        if (canvas_.selecting && active) selectDrag(io.MousePos);
+        if (canvas_.selecting && !active) selectRelease(io.MousePos);
+    }
+    const bool vectorTool = canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor;
+    if (painting && vectorTool) {
+        if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) vectorPress(io.MousePos);
+        if (canvas_.vecDrag && active) vectorDrag(io.MousePos);
+        if (canvas_.vecDrag && !active) vectorRelease();
+        if (hovered) vectorKeys();
+    }
     if (painting && canvas_.tool == CanvasTool::Fill && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         const ImVec2 img = toImage(io.MousePos);
         if (img.x >= 0 && img.y >= 0 && img.x < w && img.y < h && find("paint.fill")) {
@@ -381,7 +508,7 @@ void Shell::canvasView() {
     // the stroke being drawn, before the command runs
     if (canvas_.stroking && canvas_.points.size() >= 2 && !retouch) {
         const bool erasing = canvas_.tool == CanvasTool::Eraser || canvas_.penErasing;
-        const ImU32 col = erasing ? IM_COL32(255, 255, 255, 160)
+        const ImU32 col = erasing || retouchBrush ? IM_COL32(255, 255, 255, 110)
                                   : ImGui::ColorConvertFloat4ToU32({canvas_.color[0], canvas_.color[1], canvas_.color[2],
                                                                     canvas_.color[3] * canvas_.opacity / 100.0f});
         std::vector<ImVec2> pts;
@@ -397,6 +524,21 @@ void Shell::canvasView() {
         dl->AddCircle(io.MousePos, std::max(2.0f, canvas_.size * canvas_.zoom / 2), IM_COL32(128, 128, 128, 255), 0, 1.5f);
     }
     drawRetouch(dl, p0, hovered);
+    drawBrushTool(dl, p0, hovered);
+
+    // the playhead over a waveform; a click (not a drag) moves it there
+    if (playheadFraction_ >= 0) {
+        const float x = p0.x + (p1.x - p0.x) * std::clamp(playheadFraction_, 0.0f, 1.0f);
+        dl->AddLine({x, p0.y}, {x, p1.y}, ImGui::ColorConvertFloat4ToU32(accent_), 2.0f);
+        if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).x == 0 &&
+            ImGui::GetMouseDragDelta(ImGuiMouseButton_Left).y == 0 && io.MousePos.x >= p0.x && io.MousePos.x <= p1.x && transport_.length > 0) {
+            seekTo(transport_.length * (io.MousePos.x - p0.x) / (p1.x - p0.x));
+        }
+    }
+    drawSelection(dl, p0, hovered);
+    if (vectorTool && toolAvailable(canvas_.tool)) drawVector(dl, p0);
+    if (circuitDoc()) circuitCanvas(dl, p0, hovered, ImGui::IsItemClicked(ImGuiMouseButton_Left));
+    if (mapsDoc()) mapsCanvas(dl, p0, hovered, ImGui::IsItemClicked(ImGuiMouseButton_Left));
     dl->PopClipRect();
 }
 

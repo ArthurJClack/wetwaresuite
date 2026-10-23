@@ -2,8 +2,9 @@
 Type=Application
 Name=wetwaresuite
 GenericName=Creative and maker suite
-Comment=Photo, CAD, audio, 3D, circuits and more in one lightweight suite
-Exec=wetwaresuite-gui
+Comment=Pick an app: photo, CAD, audio, 3D, circuits and more, each in its own window
+Exec=wetwaresuite-gui %F
+StartupWMClass=wetwaresuite-launcher
 Icon=wetwaresuite
 Terminal=false
 Categories=Graphics;AudioVideo;Office;Development;Engineering;

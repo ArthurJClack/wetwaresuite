@@ -4,6 +4,8 @@
 // guided by first-hit albedo, normals and depth.
 #include "internal.hpp"
 
+#include <algorithm>
+
 namespace wetwaresuite::render::detail {
 
 namespace {

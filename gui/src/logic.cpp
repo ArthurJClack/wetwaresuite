@@ -407,14 +407,25 @@ std::vector<std::string> openCandidates(const std::string& path, const std::vect
     auto slash = path.find_last_of("/\\");
     if (dot != std::string::npos && (slash == std::string::npos || dot > slash)) ext = lower(path.substr(dot + 1));
     std::vector<std::string> first, rest;
+    // <tool>.open, then the tool's other openers (office.sheet_open, audio.project_open...)
+    // that take a path; ones whose description names the extension go first.
     for (const auto& tool : tools) {
-        const std::string id = tool + ".open";
-        auto it = std::find_if(commands.begin(), commands.end(), [&](const CommandInfo& c) { return c.id == id; });
-        if (it == commands.end()) continue;
-        const std::string desc = lower(it->description + " " + it->title);
-        bool mentions = !ext.empty() && (wholeWord(desc, ext) || (ext == "jpeg" && wholeWord(desc, "jpg")) ||
-                                         (ext == "jpg" && wholeWord(desc, "jpeg")));
-        (mentions ? first : rest).push_back(id);
+        std::vector<const CommandInfo*> openers;
+        for (const auto& c : commands) {
+            if (c.id.rfind(tool + ".", 0) != 0) continue;
+            const bool plain = c.id == tool + ".open";
+            const bool named = c.id.size() > 5 && c.id.compare(c.id.size() - 5, 5, "_open") == 0;
+            const bool takesPath = std::any_of(c.params.begin(), c.params.end(), [](const ParamSpec& p) { return p.name == "path"; });
+            // a named opener must need nothing but the path (forge.sprite_open, levels.world_open)
+            const bool pathOnly = std::none_of(c.params.begin(), c.params.end(), [](const ParamSpec& p) { return p.required && p.name != "path"; });
+            if ((plain || (named && pathOnly)) && takesPath) openers.insert(plain ? openers.begin() : openers.end(), &c);
+        }
+        for (const CommandInfo* it : openers) {
+            const std::string desc = lower(it->description + " " + it->title);
+            bool mentions = !ext.empty() && (wholeWord(desc, ext) || (ext == "jpeg" && wholeWord(desc, "jpg")) ||
+                                             (ext == "jpg" && wholeWord(desc, "jpeg")));
+            (mentions ? first : rest).push_back(it->id);
+        }
     }
     first.insert(first.end(), rest.begin(), rest.end());
     return first;
@@ -533,10 +544,12 @@ std::string toolBlurb(const std::string& tool) {
         {"audio", "Record, clean up and mix sound."},
         {"cut", "Edit videos: trim, join, titles and music."},
         {"capture", "Take screenshots and record the screen."},
-        {"office", "Documents, spreadsheets, slides and PDFs."},
+        {"office", "Documents, spreadsheets and slides."},
+        {"pdf", "Open any PDF to mark it up, edit its text, fill in forms and sign it."},
         {"layout", "Posters, flyers and booklets ready to print."},
         {"library", "Find, tag and sort all your files."},
         {"automate", "Repeat jobs on many files at once."},
+        {"model", "Build 3D models from boxes and loops, like Blender."},
         {"sculpt", "Shape 3D models like clay."},
         {"render", "Make pictures of 3D scenes with light and materials."},
         {"animate", "Make things move: 2D and 3D animation."},
@@ -565,6 +578,7 @@ std::string toolTitle(const std::string& tool) {
     if (tool == "explorer") return "Files";
     if (tool == "monitor") return "System monitor";
     if (tool == "fit") return "Scan fit";
+    if (tool == "pdf") return "PDF editor";
     return capitalise(tool);
 }
 
@@ -681,6 +695,54 @@ bool removeStrokeParams(const std::string& doc, const std::vector<double>& point
                         Params& out, std::string& error) {
     StrokeBox box;
     return strokeArea(doc, points, brushSize, width, height, out, box, error);
+}
+
+bool brushToolParams(const std::string& tool, const std::string& doc, const std::vector<double>& points,
+                     const std::vector<double>& pressures, const BrushToolSettings& settings, const double* cloneOffset,
+                     std::string& command, Params& out, std::string& error) {
+    out.clear();
+    if (points.size() < 2 || points.size() % 2) {
+        error = "Paint a stroke on the picture first.";
+        return false;
+    }
+    out["doc"] = doc;
+    out["points"] = NumberList(points.begin(), points.end());
+    if (!pressures.empty() && pressures.size() == points.size() / 2) out["pressures"] = NumberList(pressures.begin(), pressures.end());
+    out["brush"] = settings.brush;
+    out["size"] = std::max(1.0, settings.size);
+    out["opacity"] = std::clamp(settings.opacity, 0.0, 100.0);
+    const double strength = std::clamp(settings.strength, 0.0, 100.0);
+    if (tool == "clone") {
+        if (!cloneOffset) {
+            error = "Alt+click (Option+click on a Mac) the spot to copy from first, or press Pick source.";
+            return false;
+        }
+        command = "paint.clone";
+        out["source_x"] = points[0] + std::round(cloneOffset[0]);
+        out["source_y"] = points[1] + std::round(cloneOffset[1]);
+        return true;
+    }
+    if (tool == "dodge" || tool == "burn" || tool == "sponge") {
+        command = "paint.dodge";
+        out["tool"] = tool;
+        out["exposure"] = strength;
+        if (tool == "sponge") out["sponge_mode"] = std::string("desaturate");
+        else out["range"] = settings.range;
+        return true;
+    }
+    if (tool == "smudge") {
+        command = "paint.smudge";
+        out["strength"] = strength;
+        return true;
+    }
+    if (tool == "blur" || tool == "sharpen") {
+        command = "paint.blur_brush";
+        out["mode"] = tool;
+        out["strength"] = strength;
+        return true;
+    }
+    error = "'" + tool + "' isn't a brush tool.";
+    return false;
 }
 
 }  // namespace wetwaresuite::gui

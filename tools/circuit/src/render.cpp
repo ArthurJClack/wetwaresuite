@@ -233,7 +233,9 @@ void drawSymbol(SheetPainter& sp, const Part& part, const Symbol& sym, const She
         placeLabel(sym.valuePos, part.value, 0.65, kBody);
         return;
     }
-    placeLabel(sym.refPos, part.ref, 0.7, kText);
+    // units of one part: U1A, U1B ...
+    const std::string unit = part.unit > 0 && part.unit <= 26 ? std::string(1, static_cast<char>('A' + part.unit - 1)) : "";
+    placeLabel(sym.refPos, part.ref + unit, 0.7, kText);
     placeLabel(sym.valuePos, part.value, 0.65, kText);
 }
 
@@ -608,26 +610,33 @@ void drawBoard(Canvas& cv, const Circuit& c, const Netlist& nl, const PcbStyle& 
     const auto pads = worldPads(c, nl);
     const auto fills = style.zones ? fillZones(c, nl) : std::vector<ZoneFill>{};
     if (c.board.outline.size() >= 3) cv.polygon(c.board.outline, rgb(0x0f3d24));
-    const Color layerCol[2] = {rgb(0xd03c3c), rgb(0x3f74d8)};
-    const Color zoneCol[2] = {rgb(0xc03838, 90), rgb(0x3a6cd0, 90)};
+    const Color layerCol[4] = {rgb(0xd03c3c), rgb(0x3f74d8), rgb(0xc8b040), rgb(0x40b8a0)};
+    const Color zoneCol[4] = {rgb(0xc03838, 90), rgb(0x3a6cd0, 90), rgb(0xb8a038, 80), rgb(0x38a890, 80)};
     const Color padCol = rgb(0xd4aa3c);
-    for (int pass = 0; pass < 2; ++pass) {
-        const int layer = style.mirror ? pass : 1 - pass;  // the far side first
-        if ((layer == 0 && !style.top) || (layer == 1 && !style.bottom)) continue;
-        const int bit = layer == 0 ? 1 : 2;
-        cv.beginLayer(layer == (style.mirror ? 0 : 1) ? 0.75 : 0.9);
+    // the far side first: B, In2, In1, F (or the other way round from below)
+    std::vector<int> order = {1};
+    if (c.board.layers == 4) order.push_back(3), order.push_back(2);
+    order.push_back(0);
+    if (style.mirror) std::reverse(order.begin(), order.end());
+    for (int layer : order) {
+        if ((layer == 0 && !style.top) || (layer == 1 && !style.bottom) || (layer >= 2 && !style.inner)) continue;
+        const int bit = layerBit(layer);
+        const bool near = layer == (style.mirror ? 1 : 0);
+        cv.beginLayer(near ? 0.9 : layer >= 2 ? 0.6 : 0.75);
         for (const auto& f : fills) {
-            if (f.layer == layer) zoneFn(f, zoneCol[layer]);
+            if (f.layer == layer) zoneFn(f, zoneCol[std::clamp(layer, 0, 3)]);
         }
         for (const auto& t : c.board.traces) {
             if (t.layer != layer) continue;
             const bool hi = !style.highlightNet.empty() && t.net == style.highlightNet;
-            cv.capsule(t.a, t.b, t.width / 2, hi ? rgb(0xffe040) : layerCol[layer]);
+            cv.capsule(t.a, t.b, t.width / 2, hi ? rgb(0xffe040) : layerCol[std::clamp(layer, 0, 3)]);
         }
         for (const auto& p : pads) {
-            if (!(p.layers & bit)) continue;
+            if (!(p.layers & bit) || !p.plated) continue;
+            if (layer >= 2 && p.drill <= 0) continue;
             const bool hi = !style.highlightNet.empty() && p.net == style.highlightNet;
             drawPad(cv, p, hi ? rgb(0xffe040) : (p.drill > 0 ? padCol : (layer == 0 ? rgb(0xe0a050) : rgb(0x8ab0e8))));
+
         }
         cv.endLayer();
     }
@@ -667,7 +676,10 @@ void drawBoard(Canvas& cv, const Circuit& c, const Netlist& nl, const PcbStyle& 
 
 }  // namespace
 
-raster::Image renderPcb(const Circuit& c, const Netlist& nl, double pxPerMm, const PcbStyle& style) {
+namespace {
+
+// the area a board picture covers (board plus anything placed off it, with a margin) and its scale
+void pcbArea(const Circuit& c, double& pxPerMm, double& ox, double& oy, double& W, double& H) {
     double x0, y0, x1, y1;
     boardBounds(c.board, x0, y0, x1, y1);
     for (const auto& p : c.parts) {
@@ -677,10 +689,17 @@ raster::Image renderPcb(const Circuit& c, const Netlist& nl, double pxPerMm, con
     }
     if (x1 - x0 < 1) x0 = 0, y0 = 0, x1 = 50, y1 = 30;
     const double m = 2;
-    double s = pxPerMm;
-    const double W = (x1 - x0 + 2 * m), H = (y1 - y0 + 2 * m);
-    if (W * s > 6000 || H * s > 6000) s = 6000 / std::max(W, H);
-    RasterCanvas cv(std::max(1, static_cast<int>(std::ceil(W * s))), std::max(1, static_cast<int>(std::ceil(H * s))), s, x0 - m, y0 - m, style.mirror);
+    W = (x1 - x0 + 2 * m), H = (y1 - y0 + 2 * m);
+    if (W * pxPerMm > 6000 || H * pxPerMm > 6000) pxPerMm = 6000 / std::max(W, H);
+    ox = x0 - m, oy = y0 - m;
+}
+
+}  // namespace
+
+raster::Image renderPcb(const Circuit& c, const Netlist& nl, double pxPerMm, const PcbStyle& style) {
+    double s = pxPerMm, ox, oy, W, H;
+    pcbArea(c, s, ox, oy, W, H);
+    RasterCanvas cv(std::max(1, static_cast<int>(std::ceil(W * s))), std::max(1, static_cast<int>(std::ceil(H * s))), s, ox, oy, style.mirror);
     drawBoard(cv, c, nl, style, [&](const ZoneFill& f, Color col) {
         for (int y = 0; y < f.ny; ++y) {
             int x = 0;
@@ -707,6 +726,44 @@ std::string pcbSvg(const Circuit& c, const Netlist& nl, const PcbStyle& style) {
     SvgCanvas cv(x1 - x0 + 2 * m, y1 - y0 + 2 * m, x0 - m, y0 - m, style.mirror);
     drawBoard(cv, c, nl, style, [&](const ZoneFill& f, Color col) { cv.zone(f, col); });
     return cv.str();
+}
+
+namespace {
+
+double schematicPreviewScale(const pdf::Page& page) { return std::clamp(1400.0 / std::max(page.width, page.height), 0.5, 2.5); }
+
+double pcbPreviewScale(const Circuit& c) {
+    const double w = std::max(10.0, boardWidth(c.board)), h = std::max(10.0, boardHeight(c.board));
+    return std::clamp(1200.0 / std::max(w, h), 3.0, 40.0);
+}
+
+}  // namespace
+
+ViewFrame viewFrame(const Circuit& c, const std::string& view) {
+    ViewFrame f;
+    f.view = view;
+    if (view == "pcb") {
+        double s = pcbPreviewScale(c), W, H;
+        pcbArea(c, s, f.origin.x, f.origin.y, W, H);
+        f.scale = s;
+    } else if (view == "3d") {
+        f.scale = 0;
+    } else {
+        f.view = "schematic";
+        const pdf::Page page = schematicPage(c);
+        double x0, y0, x1, y1;
+        sheetBounds(c, x0, y0, x1, y1);
+        f.origin = {x0 - 2, y0 - 2};
+        f.scale = schematicPreviewScale(page) * kUnit;
+    }
+    return f;
+}
+
+raster::Image viewImage(const Circuit& c, const std::string& view) {
+    if (view == "pcb") return renderPcb(c, buildNetlist(c), pcbPreviewScale(c));
+    if (view == "3d") return renderBoard3d(c, buildNetlist(c), 1200, 900);
+    const pdf::Page page = schematicPage(c);
+    return pdf::renderPage(page, schematicPreviewScale(page));
 }
 
 }  // namespace wetwaresuite::circuit

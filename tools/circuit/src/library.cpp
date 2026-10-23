@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <mutex>
 
 #include "wetwaresuite/circuit/circuit.hpp"
@@ -523,6 +524,268 @@ Symbol vsource(bool battery, bool current) {
     return b.s;
 }
 
+
+// ---- more parts ------------------------------------------------------------------------
+
+Symbol diodeVariant(bool zener) {
+    Symbol s = diode(false);
+    s.name = zener ? "zener" : "schottky";
+    s.title = zener ? "Zener diode (1 = K, 2 = A; value = breakdown voltage)" : "Schottky diode (1 = K, 2 = A)";
+    s.value = zener ? "5V1" : "BAT54";
+    // replace the cathode bar with a bent (zener) or S-shaped (schottky) one
+    s.shapes.pop_back();
+    B b{s};
+    if (zener) b.line({{0.3, -0.6}, {0.5, -0.5}, {0.5, 0.5}, {0.7, 0.6}});
+    else b.line({{0.3, -0.35}, {0.3, -0.5}, {0.5, -0.5}, {0.5, 0.5}, {0.7, 0.5}, {0.7, 0.35}});
+    return b.s;
+}
+
+Symbol fuse() {
+    Symbol s = twoPin("fuse", "Fuse", "F", "500mA", "Fuse_1206", 1);
+    B b{s};
+    b.rect({-1, -0.35}, {1, 0.35});
+    b.line({{-1.0, 0}, {1.0, 0}});
+    return b.s;
+}
+
+Symbol ferrite() {
+    Symbol s = twoPin("ferrite_bead", "Ferrite bead", "FB", "600R@100MHz", "L_0805", 1);
+    B b{s};
+    b.line({{-1, 0}, {-0.45, 0}}).line({{0.45, 0}, {1, 0}});
+    b.line({{-0.75, 0.55}, {-0.1, -0.85}, {0.75, -0.45}, {0.1, 0.95}}, true);
+    return b.s;
+}
+
+Symbol buzzer() {
+    Symbol s = twoPin("buzzer", "Buzzer (1 = +)", "BZ", "Buzzer", "Buzzer_12mm", 0.6);
+    B b{s};
+    b.line({{-0.6, 0}, {-0.6, -0.6}, {0.6, -0.6}, {0.6, 0}}).arc({0, -0.6}, 0.6, kPi, 2 * kPi, 10);
+    b.text({-1.2, -0.45}, "+", 0.6);
+    b.s.refPos = {0, -1.8};
+    return b.s;
+}
+
+Symbol testPoint() {
+    B b;
+    b.s.name = "test_point";
+    b.s.title = "Test point (one pad)";
+    b.s.category = "connector";
+    b.s.prefix = "TP";
+    b.s.value = "TP";
+    b.s.footprint = "TestPoint_Pad_1.5mm";
+    b.s.inBom = false;
+    b.pin("1", "1", {0, 1}, {0, 0});
+    b.circle({0, -0.3}, 0.3);
+    b.s.refPos = {1.2, -0.6};
+    b.s.valuePos = {1.2, 0.4};
+    return b.s;
+}
+
+Symbol mountingHole() {
+    B b;
+    b.s.name = "mounting_hole";
+    b.s.title = "Mounting hole (non-plated, no pins; the footprint sets the size)";
+    b.s.category = "connector";
+    b.s.prefix = "H";
+    b.s.value = "M3";
+    b.s.footprint = "MountingHole_3.2mm";
+    b.s.inBom = false;
+    b.circle({0, 0}, 0.8).circle({0, 0}, 0.4);
+    b.s.refPos = {0, -1.3};
+    b.s.valuePos = {0, 1.6};
+    return b.s;
+}
+
+Symbol screwTerminal(int n) {
+    Symbol s = header(n, false);
+    s.name = "screw_terminal";
+    s.title = "Screw terminal 1x" + std::to_string(s.pins.size()) + ", 5.08 mm";
+    s.value = "Screw_Terminal_01x" + std::string(s.pins.size() < 10 ? "0" : "") + std::to_string(s.pins.size());
+    char fp[48];
+    std::snprintf(fp, sizeof fp, "TerminalBlock_1x%02d", static_cast<int>(s.pins.size()));
+    s.footprint = fp;
+    B b{s};
+    for (const auto& p : s.pins) b.circle({-0.2, p.pos.y}, 0.3);
+    return b.s;
+}
+
+// A labelled block: `left` and `right` list "number:name" top to bottom ("" leaves a gap),
+// `bottom` left to right. Repeated power pin names are joined (KiCad's stacked pins).
+Symbol block(const std::string& name, const std::string& title, const std::string& prefix, const std::string& value,
+             const std::string& footprint, const std::vector<std::string>& left, const std::vector<std::string>& right, double halfWidth,
+             const std::vector<std::string>& bottom = {}) {
+    B b;
+    b.s.name = name;
+    b.s.title = title;
+    b.s.category = "ic";
+    b.s.prefix = prefix;
+    b.s.value = value;
+    b.s.footprint = footprint;
+    b.s.showPinNumbers = true;
+    b.s.showPinNames = true;
+    b.s.joinSameName = true;
+    const int rows = static_cast<int>(std::max(left.size(), right.size()));
+    const int top = -(rows - 1) / 2;
+    const double bodyBottom = static_cast<double>(top + rows);
+    b.rect({-halfWidth, top - 1.0}, {halfWidth, bodyBottom});
+    auto type = [](const std::string& n) {
+        std::string u;
+        for (char ch : n.substr(0, n.find('/'))) u += static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+        if (u == "NC") return PinType::NotConnected;
+        if (u.find("GND") != std::string::npos || u == "VSS" || u.find("VDD") != std::string::npos || u.find("VCC") != std::string::npos ||
+            u == "VBUS" || u == "VSYS" || u == "VIN" || u == "VREG_IN" || u == "3V3" || u == "5V" || u == "VBAT" || u == "V+" || u == "V-")
+            return PinType::PowerIn;
+        return PinType::Bidirectional;
+    };
+    auto add = [&](const std::string& entry, Pt pos, Pt end) {
+        const auto colon = entry.find(':');
+        const std::string num = entry.substr(0, colon), nm = colon == std::string::npos ? entry : entry.substr(colon + 1);
+        b.pin(num, nm, pos, end, type(nm));
+    };
+    for (std::size_t i = 0; i < left.size(); ++i) {
+        if (left[i].empty()) continue;
+        const double y = top + static_cast<double>(i);
+        add(left[i], {-halfWidth - 2, y}, {-halfWidth, y});
+    }
+    for (std::size_t i = 0; i < right.size(); ++i) {
+        if (right[i].empty()) continue;
+        const double y = top + static_cast<double>(i);
+        add(right[i], {halfWidth + 2, y}, {halfWidth, y});
+    }
+    const int nb = static_cast<int>(bottom.size());
+    for (int i = 0; i < nb; ++i) {
+        const double x = std::round(2 * i - (nb - 1));
+        add(bottom[static_cast<std::size_t>(i)], {x, bodyBottom + 2}, {x, bodyBottom});
+    }
+    b.s.refPos = {0, top - 1.5};
+    b.s.valuePos = {0, bodyBottom + (nb ? 2.8 : 1.0)};
+    return b.s;
+}
+
+void setType(Symbol& s, const std::string& name, PinType t) {
+    for (auto& p : s.pins) {
+        if (p.name == name) p.type = t;
+    }
+}
+
+Symbol ams1117() {
+    Symbol s = block("ams1117", "LDO regulator AMS1117 (1 = GND/ADJ, 2 = OUT, 3 = IN; SOT-223, tab = OUT)", "U", "AMS1117-3.3", "SOT-223",
+                     {"3:VIN"}, {"2:VOUT"}, 2, {"1:GND"});
+    setType(s, "VOUT", PinType::PowerOut);
+    return s;
+}
+
+Symbol lm317() {
+    Symbol s = block("lm317", "Adjustable regulator LM317 (1 = ADJ, 2 = OUT, 3 = IN; TO-220)", "U", "LM317", "TO-220", {"3:VIN"}, {"2:VOUT"}, 2,
+                     {"1:ADJ"});
+    setType(s, "VOUT", PinType::PowerOut);
+    setType(s, "ADJ", PinType::Input);
+    return s;
+}
+
+Symbol ne555() {
+    Symbol s = block("ne555", "555 timer (DIP-8: 1 GND, 2 TR, 3 Q, 4 R, 5 CV, 6 THR, 7 DIS, 8 VCC)", "U", "NE555", "DIP-8",
+                     {"8:VCC", "4:R", "2:TR", "6:THR", "5:CV"}, {"3:Q", "7:DIS", "", "", ""}, 3, {"1:GND"});
+    setType(s, "Q", PinType::Output);
+    setType(s, "DIS", PinType::OpenCollector);
+    for (const char* n : {"TR", "THR", "R", "CV"}) setType(s, n, PinType::Input);
+    return s;
+}
+
+Symbol lm358() {
+    Symbol s = block("lm358", "Dual op-amp LM358 (DIP/SOIC-8: 1 OUTA, 2 -A, 3 +A, 4 V-, 5 +B, 6 -B, 7 OUTB, 8 V+)", "U", "LM358", "SOIC-8",
+                     {"3:+A", "2:-A", "", "5:+B", "6:-B"}, {"1:OUTA", "", "", "7:OUTB", ""}, 3, {"8:V+", "4:V-"});
+    for (const char* n : {"OUTA", "OUTB"}) setType(s, n, PinType::Output);
+    for (const char* n : {"+A", "-A", "+B", "-B"}) setType(s, n, PinType::Input);
+    return s;
+}
+
+Symbol atmega328p(bool tqfp) {
+    // pin numbers: DIP-28 (ATmega328P-PU) or TQFP-32 (ATmega328P-AU); names carry the Arduino pin numbers as aliases
+    auto n = [&](int dip, int qfp) { return std::to_string(tqfp ? qfp : dip); };
+    std::vector<std::string> left = {n(7, 4) + ":VCC", n(20, 18) + ":AVCC", n(21, 20) + ":AREF", "", n(1, 29) + ":PC6/RESET",
+                                     n(9, 7) + ":PB6/XTAL1", n(10, 8) + ":PB7/XTAL2"};
+    if (tqfp) {
+        left.insert(left.begin() + 1, "6:VCC");
+        left.push_back("");
+        left.push_back("19:ADC6/A6");
+        left.push_back("22:ADC7/A7");
+    }
+    std::vector<std::string> right = {n(14, 12) + ":PB0/D8",       n(15, 13) + ":PB1/D9",      n(16, 14) + ":PB2/SS/D10",  n(17, 15) + ":PB3/MOSI/D11",
+                                      n(18, 16) + ":PB4/MISO/D12", n(19, 17) + ":PB5/SCK/D13", "",                          n(23, 23) + ":PC0/ADC0/A0",
+                                      n(24, 24) + ":PC1/ADC1/A1",  n(25, 25) + ":PC2/ADC2/A2", n(26, 26) + ":PC3/ADC3/A3", n(27, 27) + ":PC4/SDA/A4",
+                                      n(28, 28) + ":PC5/SCL/A5",   "",                         n(2, 30) + ":PD0/RXD/RX/D0",   n(3, 31) + ":PD1/TXD/TX/D1",
+                                      n(4, 32) + ":PD2/INT0/D2",   n(5, 1) + ":PD3/INT1/D3",   n(6, 2) + ":PD4/D4",        n(11, 9) + ":PD5/D5",
+                                      n(12, 10) + ":PD6/D6",       n(13, 11) + ":PD7/D7"};
+    std::vector<std::string> bottom = {n(8, 3) + ":GND", n(22, 5) + ":GND"};
+    if (tqfp) bottom.push_back("21:GND");
+    Symbol s = block(tqfp ? "atmega328p_au" : "atmega328p",
+                     tqfp ? "ATmega328P-AU microcontroller (TQFP-32), the Arduino Nano chip; pins also answer to D0..D13, A0..A7"
+                          : "ATmega328P-PU microcontroller (DIP-28), the Arduino Uno chip; pins also answer to D0..D13, A0..A5",
+                     "U", tqfp ? "ATmega328P-AU" : "ATmega328P-PU", tqfp ? "TQFP-32" : "DIP-28", left, right, 6, bottom);
+    setType(s, "AREF", PinType::Input);
+    return s;
+}
+
+Symbol attiny85() {
+    return block("attiny85", "ATtiny85 microcontroller (DIP-8: 1 PB5/RESET, 2 PB3, 3 PB4, 4 GND, 5 PB0, 6 PB1, 7 PB2, 8 VCC)", "U", "ATtiny85-20PU",
+                 "DIP-8", {"8:VCC", "", "1:PB5/RESET"}, {"5:PB0/MOSI/SDA", "6:PB1/MISO", "7:PB2/SCK/SCL", "2:PB3", "3:PB4"}, 4, {"4:GND"});
+}
+
+Symbol rp2040() {
+    std::vector<std::string> left = {"1:IOVDD", "10:IOVDD", "22:IOVDD", "33:IOVDD", "42:IOVDD", "49:IOVDD", "23:DVDD", "50:DVDD", "44:VREG_IN",
+                                     "45:VREG_VOUT", "43:ADC_AVDD", "48:USB_VDD", "", "46:USB_DM", "47:USB_DP", "", "26:RUN", "19:TESTEN",
+                                     "24:SWCLK", "25:SWD", "", "20:XIN", "21:XOUT", "", "56:QSPI_SS", "52:QSPI_SCLK", "53:QSPI_SD0", "55:QSPI_SD1",
+                                     "54:QSPI_SD2", "51:QSPI_SD3"};
+    std::vector<std::string> right;
+    const int gpioPin[30] = {2, 3, 4, 5, 6, 7, 8, 9, 11, 12, 13, 14, 15, 16, 17, 18, 27, 28, 29, 30, 31, 32, 34, 35, 36, 37, 38, 39, 40, 41};
+    for (int g = 0; g < 30; ++g) {
+        std::string nm = std::to_string(gpioPin[g]) + ":GPIO" + std::to_string(g) + "/GP" + std::to_string(g);
+        if (g >= 26) nm += "/ADC" + std::to_string(g - 26);
+        right.push_back(nm);
+    }
+    Symbol s = block("rp2040", "RP2040 microcontroller (QFN-56, pad 57 = GND); GPIOn also answers to GPn", "U", "RP2040", "QFN-56", left, right, 6,
+                     {"57:GND"});
+    setType(s, "VREG_VOUT", PinType::PowerOut);
+    for (const char* n : {"XIN", "RUN", "TESTEN", "SWCLK"}) setType(s, n, PinType::Input);
+    return s;
+}
+
+Symbol esp32Wroom() {
+    std::vector<std::string> left = {"2:3V3", "3:EN", "", "25:IO0", "35:TXD0/IO1/TX", "24:IO2", "34:RXD0/IO3/RX", "26:IO4", "29:IO5", "",
+                                     "20:CLK/IO6", "21:SD0/IO7", "22:SD1/IO8", "17:SD2/IO9", "18:SD3/IO10", "19:CMD/IO11"};
+    std::vector<std::string> right = {"14:IO12",     "16:IO13",     "13:IO14", "23:IO15", "27:IO16", "28:IO17", "30:IO18", "31:IO19",
+                                      "33:IO21/SDA", "36:IO22/SCL", "37:IO23", "10:IO25", "11:IO26", "12:IO27", "8:IO32",  "9:IO33",
+                                      "6:IO34",      "7:IO35",      "4:SENSOR_VP/IO36",   "5:SENSOR_VN/IO39"};
+    Symbol s = block("esp32_wroom", "ESP32-WROOM-32 module (38 pads + ground pad 39); IO6..IO11 drive the module's flash, leave them free", "U",
+                     "ESP32-WROOM-32", "ESP32-WROOM-32", left, right, 5, {"1:GND", "15:GND", "38:GND", "39:GND", "32:NC"});
+    s.category = "module";
+    s.module = true;
+    return s;
+}
+
+Symbol rpiPico() {
+    std::vector<std::string> left, right;
+    const char* names[40] = {"GP0",  "GP1",  "GND",  "GP2",  "GP3",  "GP4",  "GP5",  "GND",       "GP6",       "GP7",       "GP8",      "GP9",     "GND",
+                             "GP10", "GP11", "GP12", "GP13", "GND",  "GP14", "GP15", "GP16",      "GP17",      "GND",       "GP18",     "GP19",    "GP20",
+                             "GP21", "GND",  "GP22", "RUN",  "GP26/ADC0", "GP27/ADC1", "AGND", "GP28/ADC2", "ADC_VREF", "3V3_OUT/3V3", "3V3_EN", "GND", "VSYS", "VBUS"};
+    for (int i = 0; i < 20; ++i) left.push_back(std::to_string(i + 1) + ":" + names[i]);
+    for (int i = 39; i >= 20; --i) right.push_back(std::to_string(i + 1) + ":" + names[i]);
+    Symbol s = block("rpi_pico", "Raspberry Pi Pico (2x20, 0.7 in rows, numbered like a DIP)", "A", "RPi_Pico", "RPi_Pico", left, right, 5);
+    s.category = "module";
+    s.module = true;
+    return s;
+}
+
+Symbol usbMicro() {
+    Symbol s = block("usb_micro", "USB Micro-B receptacle (1 VBUS, 2 D-, 3 D+, 4 ID, 5 GND, 6 shield)", "J", "USB_B_Micro", "USB_Micro-B", {},
+                     {"1:VBUS", "2:D-", "3:D+", "4:ID", "5:GND", "6:SHIELD"}, 2);
+    s.category = "connector";
+    s.joinSameName = false;
+    for (auto& p : s.pins) p.type = p.name == "VBUS" || p.name == "GND" ? PinType::PowerOut : PinType::Passive;
+    return s;
+}
+
 struct CatalogRow {
     SymbolEntry entry;
     std::vector<std::string> aliases;
@@ -538,21 +801,40 @@ const std::vector<CatalogRow>& rows() {
         {{"crystal", "passive", "crystal (HC49)", "xtal, y"}, {"xtal", "y", "quartz"}},
         {{"diode", "semiconductor", "diode, 1 = K, 2 = A (D_SOD-123)", "d"}, {"d"}},
         {{"led", "semiconductor", "LED, 1 = K, 2 = A (LED_0805)", ""}, {}},
+        {{"zener", "semiconductor", "Zener diode, 1 = K, 2 = A, value = breakdown voltage (D_SOD-123)", "dz"}, {"dz", "d_zener"}},
+        {{"schottky", "semiconductor", "Schottky diode, 1 = K, 2 = A (D_SOD-123)", "d_schottky"}, {"d_schottky", "bat54", "ss14"}},
+        {{"fuse", "passive", "fuse (Fuse_1206)", "f, polyfuse"}, {"f", "polyfuse", "ptc"}},
+        {{"ferrite_bead", "passive", "ferrite bead (L_0805)", "fb, ferrite"}, {"fb", "ferrite", "bead"}},
+        {{"buzzer", "passive", "piezo/magnetic buzzer, 1 = + (Buzzer_12mm)", "bz, piezo"}, {"bz", "piezo", "beeper"}},
         {{"npn", "semiconductor", "NPN BJT, 1 = B, 2 = E, 3 = C (SOT-23)", "transistor, q_npn"}, {"transistor", "q_npn", "bjt"}},
         {{"pnp", "semiconductor", "PNP BJT, 1 = B, 2 = E, 3 = C (SOT-23)", "q_pnp"}, {"q_pnp"}},
         {{"nmos", "semiconductor", "N-channel MOSFET, 1 = G, 2 = S, 3 = D (SOT-23)", "mosfet, q_nmos"}, {"mosfet", "q_nmos", "nfet"}},
         {{"pmos", "semiconductor", "P-channel MOSFET, 1 = G, 2 = S, 3 = D (SOT-23)", "q_pmos"}, {"q_pmos", "pfet"}},
         {{"opamp", "ic", "single op-amp, 2 = -, 3 = +, 6 = out, 7 = V+, 4 = V- (SOIC-8)", "op-amp"}, {"op-amp", "op_amp", "amplifier"}},
         {{"regulator", "ic", "linear regulator, 1 = IN, 2 = GND, 3 = OUT (TO-220)", "vreg, 7805"}, {"vreg", "7805", "ldo", "voltage_regulator"}},
+        {{"ams1117", "ic", "LDO AMS1117, 1 = GND/ADJ, 2 = OUT, 3 = IN (SOT-223)", "ldo_sot223, lm1117"}, {"ldo_sot223", "lm1117", "ams1117-3.3", "ams1117-5.0"}},
+        {{"lm317", "ic", "adjustable regulator LM317, 1 = ADJ, 2 = OUT, 3 = IN (TO-220)", ""}, {"lm317t"}},
+        {{"ne555", "ic", "555 timer, 1 GND, 2 TR, 3 Q, 4 R, 5 CV, 6 THR, 7 DIS, 8 VCC (DIP-8)", "555, timer"}, {"555", "timer", "lm555", "na555"}},
+        {{"lm358", "ic", "dual op-amp LM358, 1 = OUTA ... 8 = V+ (SOIC-8)", "dual_opamp"}, {"dual_opamp", "lm358n"}},
+        {{"atmega328p", "ic", "ATmega328P-PU (DIP-28); pins also D0..D13, A0..A5", "atmega328, mega328"}, {"atmega328", "mega328", "atmega328p-pu"}},
+        {{"atmega328p_au", "ic", "ATmega328P-AU (TQFP-32)", "atmega328p-au"}, {"atmega328p-au"}},
+        {{"attiny85", "ic", "ATtiny85 (DIP-8)", "tiny85"}, {"tiny85", "attiny85-20pu"}},
+        {{"rp2040", "ic", "RP2040 microcontroller (QFN-56)", ""}, {}},
         {{"ic", "ic", "generic IC: pins=N, pin_names=A,B,... (DIP-N)", "chip"}, {"chip", "generic_ic"}},
         {{"switch", "switch", "push button, normally open (SW_PUSH_6mm)", "button, sw, pushbutton"}, {"button", "sw", "pushbutton", "push_button"}},
         {{"switch_spdt", "switch", "SPDT toggle/slide switch, 2 = common (SW_SPDT)", "spdt, toggle"}, {"spdt", "toggle"}},
         {{"header", "connector", "1xN pin header: pins=N (PinHeader_1xNN)", "conn, connector, j"}, {"conn", "connector", "j", "pin_header"}},
         {{"header2", "connector", "2xN pin header: pins=total (PinHeader_2xNN)", "conn2"}, {"conn2", "header_2x"}},
+        {{"screw_terminal", "connector", "1xN screw terminal, 5.08 mm: pins=N (TerminalBlock_1xNN)", "terminal"}, {"terminal", "terminal_block"}},
+        {{"usb_micro", "connector", "USB Micro-B receptacle (USB_Micro-B)", "usb"}, {"usb", "micro_usb", "usb_b_micro"}},
+        {{"test_point", "connector", "test point pad (TestPoint_Pad_1.5mm)", "tp"}, {"tp", "testpoint"}},
+        {{"mounting_hole", "connector", "mounting hole, no pins (MountingHole_3.2mm)", "hole"}, {"hole", "mountinghole"}},
         {{"arduino_uno", "module", "Arduino Uno R3 shield headers", "uno"}, {"uno"}},
         {{"arduino_nano", "module", "Arduino Nano 2x15", "nano"}, {"nano"}},
         {{"esp32_devkit", "module", "ESP32 DevKit V1, 30 pins", "esp32"}, {"esp32", "esp32_devkitc"}},
         {{"bluepill", "module", "STM32F103 Blue Pill 2x20", "stm32, blue_pill"}, {"stm32", "blue_pill", "stm32_bluepill"}},
+        {{"esp32_wroom", "module", "ESP32-WROOM-32 module, 38 pads (ESP32-WROOM-32)", "wroom, esp32-wroom-32"}, {"wroom", "esp32-wroom-32", "esp32_wroom_32"}},
+        {{"rpi_pico", "module", "Raspberry Pi Pico 2x20", "pico"}, {"pico", "raspberry_pi_pico"}},
         {{"gnd", "power", "ground symbol, net GND", "ground"}, {"ground"}},
         {{"power", "power", "power rail symbol; value names the net (VCC, +5V, +3V3, +12V)", "vcc, +5v, +3v3, +12v, vdd"},
          {"vcc", "+5v", "+3v3", "+3.3v", "+12v", "vdd", "5v", "3v3", "12v"}},
@@ -622,6 +904,25 @@ std::shared_ptr<const Symbol> findSymbol(const std::string& name, int pins, cons
     else if (canon == "arduino_nano") s = arduinoNano();
     else if (canon == "esp32_devkit") s = esp32();
     else if (canon == "bluepill") s = bluePill();
+    else if (canon == "zener") s = diodeVariant(true);
+    else if (canon == "schottky") s = diodeVariant(false);
+    else if (canon == "fuse") s = fuse();
+    else if (canon == "ferrite_bead") s = ferrite();
+    else if (canon == "buzzer") s = buzzer();
+    else if (canon == "test_point") s = testPoint();
+    else if (canon == "mounting_hole") s = mountingHole();
+    else if (canon == "screw_terminal") s = screwTerminal(pins <= 0 ? 2 : pins);
+    else if (canon == "ams1117") s = ams1117();
+    else if (canon == "lm317") s = lm317();
+    else if (canon == "ne555") s = ne555();
+    else if (canon == "lm358") s = lm358();
+    else if (canon == "atmega328p") s = atmega328p(false);
+    else if (canon == "atmega328p_au") s = atmega328p(true);
+    else if (canon == "attiny85") s = attiny85();
+    else if (canon == "rp2040") s = rp2040();
+    else if (canon == "esp32_wroom") s = esp32Wroom();
+    else if (canon == "rpi_pico") s = rpiPico();
+    else if (canon == "usb_micro") s = usbMicro();
     else if (canon == "gnd") s = ground();
     else if (canon == "power") {
         std::string v = lower(name);
@@ -638,6 +939,26 @@ std::shared_ptr<const Symbol> findSymbol(const std::string& name, int pins, cons
     auto ptr = std::make_shared<const Symbol>(std::move(s));
     cache[key] = ptr;
     return ptr;
+}
+
+void finishSymbol(Symbol& s) { computeBounds(s); }
+
+Symbol makeBoxSymbol(const std::string& name, const std::string& prefix, const std::string& value,
+                     const std::vector<std::pair<std::string, std::string>>& pins) {
+    std::vector<std::string> left, right;
+    std::size_t longest = 1;
+    for (std::size_t i = 0; i < pins.size(); ++i) {
+        const std::string entry = pins[i].first + ":" + (pins[i].second.empty() ? pins[i].first : pins[i].second);
+        longest = std::max(longest, pins[i].second.size());
+        (i < (pins.size() + 1) / 2 ? left : right).push_back(entry);
+    }
+    const double hw = std::clamp(std::round(1.0 + static_cast<double>(longest) * 0.45), 2.0, 6.0);
+    Symbol s = block(name, value, prefix, value, "", left, right, hw);
+    s.joinSameName = false;
+    s.category = "ic";
+    for (auto& p : s.pins) p.type = PinType::Passive;
+    computeBounds(s);
+    return s;
 }
 
 }  // namespace wetwaresuite::circuit

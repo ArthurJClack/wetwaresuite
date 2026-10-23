@@ -5,7 +5,7 @@
 - **vector layers**: features (points, lines, polygons, and multi-part versions of each) with properties such as `name=Paris` or `pop_est=2100000`. Coordinates are always stored as WGS84 longitude/latitude, so any layer can be measured, joined or drawn against any other.
 - **raster layers**: GeoTIFFs (elevation, densities, or RGB pictures), and PNG/JPG images placed by a world file.
 
-It reads and writes GeoJSON, KML, GPX, CSV with lat/lon columns, Shapefile and WKT with its own code. Its measurements are geodesic on the WGS84 ellipsoid. It reprojects between WGS84, Web Mercator and UTM. It buffers, simplifies, clips, filters, joins and builds heatmaps. It renders PNG, JPG, SVG and PDF maps with a scale bar, north arrow, legend and graticule.
+It reads and writes GeoJSON, KML, GPX, CSV with lat/lon columns, Shapefile and WKT, and reads FIT activities and OpenStreetMap XML, all with its own code. Its measurements are geodesic on the WGS84 ellipsoid. It reprojects between WGS84, Web Mercator and UTM. It buffers, simplifies, clips, filters, joins, dissolves and overlays, and builds heatmaps. It plans car, bike and foot routes on OpenStreetMap roads, searches places, splits and cleans GPS tracks, and edits features vertex by vertex. It renders PNG, JPG, SVG and PDF maps with a scale bar, north arrow, legend and graticule.
 
 **Nothing needs the internet.** The default background is an installed map pack (street-level offline maps from an [offline edition](offline-editions.md), Task 8) when you have one, and otherwise a built-in public-domain Natural Earth 1:110m country map. OpenStreetMap tiles are only downloaded when you ask for `basemap=osm`.
 
@@ -13,9 +13,9 @@ Each task below is shown three ways:
 
 - **CLI**: single `wetwaresuite` commands. A map only lives inside one process, so one-shot commands are for looking at files (`maps.open path=hike.gpx`) and for measurements that need no map (`maps.measure`, `maps.transform`). For short edits, pipe a few lines into `wetwaresuite batch`.
 - **Batch**: a script for multi-step work, using `-> name` captures and `$name` reuse (see [headless and batch](headless-and-batch.md)).
-- **Claude**: a prompt for Claude over MCP, and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools maps` serves the 36 maps tools.
+- **Claude**: a prompt for Claude over MCP, and the tools it calls (see [mcp.md](mcp.md)). `wetwaresuite mcp --tools maps` serves the 62 maps tools.
 
-Every example was run against the real binary in a folder that held three small files: `cafes.csv` (15 Paris cafés with `name,lat,lon,rating,seats`), `trips.csv` (made-up days spent per country, keyed by ISO code) and `hike.gpx` (a 12 km loop near Chamonix with elevation and times). Outputs are copied from those runs. Repeated fields are cut where marked `...`.
+Every example was run against the real binary in a folder that held three small files: `cafes.csv` (15 Paris cafés with `name,lat,lon,rating,seats`), `trips.csv` (made-up days spent per country, keyed by ISO code) and `hike.gpx` (a 12 km loop near Chamonix with elevation and times). Tasks 10 to 14 add three more made-up files, described in Task 10. Outputs are copied from those runs. Repeated fields are cut where marked `...`.
 
 ## How maps works
 
@@ -56,7 +56,7 @@ undone
 0: cafes (15 points)
 ```
 
-`maps.info`, `maps.features`, `maps.measure`, `maps.bbox`, `maps.contains`, `maps.nearest`, `maps.transform`, `maps.track_stats`, `maps.raster_sample` and `maps.preview` only read. `maps.render`, `maps.export`, `maps.save`, `maps.raster_save` and `maps.profile` write files and change nothing in the map.
+`maps.info`, `maps.features`, `maps.measure`, `maps.bbox`, `maps.contains`, `maps.nearest`, `maps.transform`, `maps.track_stats`, `maps.track_splits`, `maps.raster_sample`, `maps.vertices`, `maps.search`, `maps.bookmarks`, `maps.hit` and `maps.preview` only read. `maps.view` changes what is shown but is not an undo step. `maps.render`, `maps.export`, `maps.save`, `maps.raster_save` and `maps.profile` write files and change nothing in the map.
 
 ## Task 1: a world map of where you've been
 
@@ -625,6 +625,393 @@ $ printf 'maps.open path=cafes.csv -> m\nmaps.render doc=$m path=paris-osm.png b
 
 **Claude.** *"Show the cafés on a street map."* Claude calls `maps_preview` with `basemap=osm`. Only ask for this when you are online and happy to fetch tiles: by default everything Claude does with maps stays offline.
 
+## Task 10: routes and search on an OpenStreetMap export, offline
+
+`maps` plans routes along any layer of lines that look like roads, with no server and no internet. The easiest source is an OpenStreetMap export: in a browser, the **Export** button on openstreetmap.org saves the area you are looking at as a `.osm` file (or use any `.osm` file another tool cut for you). `maps.open` reads it as three layers: roads (every `highway=*` way), areas (closed ways and multipolygons such as parks and buildings) and places (tagged nodes such as shops and stations).
+
+The examples in Tasks 10 to 14 use three more made-up files: `oldtown.osm` (a 400 m grid of streets at 47° N 8° E with a one-way Church Street, a 40 km/h High Street, a footway, a path across a park, two buildings and four places), `morning.gpx` (a 1.6 km run with a 12 minute stop) and `ride.fit` (a 2 minute bike ride saved by a sports watch).
+
+**Batch** (`route.txt`):
+
+```text
+# route.txt: routes through a town from an OpenStreetMap export, offline
+maps.open path=oldtown.osm -> m
+maps.search doc=$m query="cafe marche"
+maps.search doc=$m query="bakery"
+maps.route doc=$m from=47.0000,8.0000 to=47.0022,8.0020
+maps.route doc=$m from=47.0000,8.0000 to=47.0009,8.0026 profile=foot
+maps.route doc=$m from=47.0009,8.0040 to=47.0009,8.0005
+maps.route doc=$m from=47.0000,8.0000 to=47.0036,8.0053 via=47.0022,8.0020 profile=bike
+maps.reach doc=$m from=47.0018,8.0026 minutes=2 profile=foot buffer=25
+maps.style doc=$m layer="oldtown places" label=name
+maps.render doc=$m path=town.png width=700
+maps.export doc=$m layer=route path=routes.gpx
+```
+
+```text
+opened oldtown.osm as map1: 3 layers, 18 features
+0: oldtown areas (3 polygons)
+   fields: leisure, name, osm_id, building
+1: oldtown roads (11 lines)
+   fields: highway, name, osm_id, oneway, maxspeed
+2: oldtown places (4 points)
+   fields: amenity, name, osm_id, shop, railway
+...
+1 match for 'cafe marche'
+1. Café du Marché (oldtown places #0) at 47.002248,8.001978
+...
+2 matches for 'bakery'
+1. Old Mill Bakery (oldtown places #1) at 47.002158,8.004352
+2. Baker Lane (oldtown roads #5) at 47.001799,8
+...
+car route on oldtown roads: 351.66 m, 0:00:39 (quickest), 3 steps
+1. Head north on Baker Lane (200 m)
+2. Turn right onto High Street (151.66 m)
+3. Arrive at your destination
+...
+foot route on oldtown roads: 226.43 m, 0:02:43 (quickest), 2 steps
+1. Head north-east on Park Path (226.43 m)
+2. Arrive at your destination
+...
+car route on oldtown roads: 734.55 m, 0:01:20 (quickest), 6 steps
+1. Head east on Church Street (96.66 m)
+2. Turn left onto Hill Road (100 m)
+3. Turn left onto High Street (399.98 m)
+4. Turn left onto Baker Lane (100 m)
+5. Turn left onto Church Street (37.92 m)
+6. Arrive at your destination
+...
+bike route on oldtown roads: 799.98 m, 0:03:03 (quickest), 9 steps
+1. Head north on Baker Lane (100 m)
+2. Turn right onto Church Street (100 m)
+3. Turn left onto School Road (100 m)
+4. Turn right onto High Street (51.66 m)
+5. Reach stop 1
+6. Continue onto High Street (48.33 m)
+7. Turn left onto Station Road (200.01 m)
+8. Turn right onto River Lane (199.99 m)
+9. Arrive at your destination
+...
+reachable within 2 min by foot: 5.585 ha -> reach
+...
+rendered 700x700 png to town.png
+...
+wrote 4 features of route to routes.gpx
+```
+
+What happened:
+
+- **Search** ignores case and accents (`cafe marche` finds `Café du Marché`), matches the start of words, and forgives a typo or two in longer words. Names rank first, then other fields (`shop=bakery` found the bakery, `Baker Lane` came second). Each result gives `lat`/`lon`, so the next command can start or end a route there.
+- **Routes** start and end at the nearest point on a road (up to `snap=` 5 km away), not only at junctions. `profile=car` keeps to roads cars may use, follows `oneway=yes` and drives at `maxspeed=` or a typical speed for the road type. `profile=foot` and `profile=bike` may use footways and paths and ride or walk at their own speeds. Bikes follow one-way streets unless `oneway:bicycle=no` or a contraflow `cycleway=opposite` says otherwise; walkers ignore them. `shortest=true` minimises distance instead of time. The third route starts on one-way Church Street heading west, so the car goes round the block.
+- `via=` adds stops (`lat,lon` pairs, in order). Each route is one feature of the `route` layer (or `output=`) with `profile`, `distance_m`, `duration_s`, `from` and `to` as properties, so `maps.export` writes them as GPX for a phone or a bike computer. The turn-by-turn steps are in the message.
+- **`maps.reach`** draws the area you can reach within `minutes=` (an isochrone): the roads reachable in time, `buffer=` metres either side.
+
+The roads layer is found by itself (the top layer with `highway` tags, else the top layer with lines), or name it with `layer=`. Any line layer works, for example a shapefile of footpaths: lines that share an end point or vertex (within 5 cm) are joined.
+
+**CLI.** Open and route in one short batch:
+
+```sh
+$ printf 'maps.open path=oldtown.osm -> m\nmaps.route doc=$m from=47.0000,8.0000 to=47.0022,8.0020 profile=foot\n' | wetwaresuite batch
+...
+foot route on oldtown roads: 351.66 m, 0:04:17 (quickest), 5 steps
+1. Head north on Baker Lane (100 m)
+2. Turn right onto Church Street (100 m)
+3. Turn left onto School Road (100 m)
+4. Turn right onto High Street (51.66 m)
+5. Arrive at your destination
+...
+```
+
+On a grid, many ways are equally short, and the router takes any of them: it has no penalty for turning, so a walk can zigzag where a person would take one corner.
+
+**Claude.** *"In oldtown.osm, how do I walk from the station to the bakery, and what's within a 5 minute walk of the café?"* Claude calls `maps_open`, `maps_search` twice for the two places, `maps_route profile=foot` between their `lat`/`lon`, then `maps_reach minutes=5` and `maps_preview`.
+
+## Task 11: GPS tracks: splits, cleaning, cutting and FIT files
+
+**Batch** (`run.txt`):
+
+```text
+# run.txt: splits, cleaning and cutting a GPS track
+maps.open path=morning.gpx -> m
+maps.track_stats doc=$m
+maps.track_splits doc=$m every=500 path=splits.csv
+maps.track_smooth doc=$m window=5 max_kmh=30
+maps.track_stats doc=$m
+maps.track_split doc=$m gap_minutes=5
+maps.features doc=$m fields=name,part
+maps.track_join doc=$m
+maps.track_trim doc=$m from=100 to=-100
+maps.profile doc=$m path=run-profile.png title="Morning run"
+maps.save doc=$m path=run.wwmap
+```
+
+```text
+...
+morning: 1.602 km over 105 points
+elevation: +48.3 m / -45 m, 429.4 to 478.6 m
+time: 2026-09-14T07:00:00Z to 2026-09-14T07:20:40Z, 0:20:40 total, 0:08:35 moving
+speed: average 4.65 km/h, moving 11.09 km/h, max 11.11 km/h, pace 5:24 min/km
+...
+morning: 4 splits of 500 m
+1: 500 m  0:02:42  5:24 min/km  11.1 km/h  +11/-0 m
+2: 1 km  0:14:42  29:25 min/km  2 km/h  +37/-0 m
+3: 1.5 km  0:02:42  5:25 min/km  11.1 km/h  +0/-34 m
+4: 1.602 km  0:00:33  5:25 min/km  11.1 km/h  +0/-11 m
+fastest: split 1 (5:24 min/km), slowest: split 2 (29:25 min/km)
+wrote splits.csv
+...
+smoothed 1 track of morning; raw climb 63 m -> 51 m
+...
+morning: 1.56 km over 105 points
+elevation: +47.5 m / -47 m, 429.8 to 478.2 m
+...
+split 1 track of morning into 2 parts
+...
+morning: 2 features
+#0 line, 927.37 m {name=Morning run; part=1}
+#1 line, 617.35 m {name=Morning run; part=2}
+...
+joined 2 track parts in time order into #0 of morning: 1.56 km
+...
+trimmed #0 of morning to 100 m - 1.46 km: 1.36 km (was 1.56 km)
+...
+profile of morning: 1.36 km, 93 points -> run-profile.png
+...
+saved run.wwmap
+```
+
+`splits.csv` has one row per split:
+
+```text
+split,from_m,to_m,distance_m,time_s,pace_min_km,speed_kmh,gain_m,loss_m
+1,0,500,500,162.1,5:24,11.1,11.5,0
+2,500,1000,500,882.3,29:25,2.04,36.8,0
+3,1000,1500,500,162.3,5:25,11.09,0,33.6
+4,1500,1602.1,102.1,33.2,5:25,11.07,0,11.4
+```
+
+What each command does:
+
+- **`maps.track_splits`** cuts a track into `every=` metres (default 1000) and gives time, pace, speed, climb and descent for each, like the laps of a running app. Split 2 holds the 12 minute stop.
+- **`maps.track_smooth`** first drops spikes (points that would need more than `max_kmh=` to reach), then averages positions and elevations over `window=` points. The raw climb (every rise summed) fell from 63 m to 51 m. Smoothing also rounds the corners, which is why the track got 42 m shorter: use a small window on twisty tracks.
+- **`maps.track_split`** cuts a track where the time between two points is more than `gap_minutes=`, or `at=lat,lon`, or at `distance=` metres. Each part gets a `part` number. **`maps.track_join`** puts parts (or any lines, `indexes=`) back together in time order. **`maps.track_trim`** keeps the stretch between `from=` and `to=` metres; negative values count from the end, so `from=100 to=-100` drops the first and last 100 m (handy for hiding where you live before sharing a track). **`maps.track_reverse`** turns a line round.
+- **`maps.track_elevation`** replaces a track's elevations with values read from an elevation GeoTIFF added with `maps.raster_add`, for files with no or poor GPS heights.
+
+**FIT files** from Garmin, Wahoo, Coros and other sports watches open like GPX (`ride.txt`):
+
+```text
+# ride.txt: a FIT file from a sports watch
+maps.open path=ride.fit -> r
+maps.features doc=$r
+maps.track_stats doc=$r
+maps.export doc=$r path=ride.gpx
+```
+
+```text
+opened ride.fit as map1: 1 layer, 1 feature
+0: ride (1 line)
+   fields: avg_hr, max_hr, sport
+...
+#0 line, 401.89 m {avg_hr=132; max_hr=147; sport=cycling}
+...
+ride: 401.89 m over 121 points
+elevation: +0 m / -0 m, 453 to 456.8 m
+time: 2025-09-05T09:46:40Z to 2025-09-05T09:48:40Z, 0:02:00 total, 0:02:00 moving
+speed: average 12.06 km/h, moving 12.06 km/h, max 12.08 km/h, pace 4:58 min/km
+...
+wrote 1 feature of ride to ride.gpx
+```
+
+The climb is 0 because the elevation never rose more than the default 3 m `hysteresis=` (Task 4). Heart rate is kept as the average and maximum of the activity, not per point.
+
+**Claude.** *"Here's my run from this morning (morning.gpx). What were my kilometre splits? Cut off the first and last 200 m and save it as GPX so I can share it."* Claude calls `maps_open`, `maps_track_splits`, `maps_track_trim from=200 to=-200` and `maps_export path=morning-shared.gpx`.
+
+## Task 12: drawing and fixing features
+
+Features can be drawn and corrected point by point, and every change is one undo step.
+
+**Batch** (`edit.txt`):
+
+```text
+# edit.txt: draw and fix features by hand
+maps.new -> m
+maps.feature_add doc=$m layer=paths points=47.0000,8.0000,47.0009,8.0013,47.0018,8.0013 props="name=Park loop; surface=gravel"
+maps.feature_add doc=$m layer=paths points=47.0018,8.0013,47.0018,8.0040 props="name=Hill link"
+maps.vertices doc=$m layer=paths index=0
+maps.vertex_add doc=$m layer=paths index=0 at=47.0005,8.0010
+maps.vertex_move doc=$m layer=paths index=0 vertex=3 to=47.0018,8.0014
+maps.vertex_delete doc=$m layer=paths index=0 vertex=1
+maps.merge doc=$m layer=paths indexes=0,1 snap=10 props="name=Park and hill"
+maps.split doc=$m layer=paths index=0 distance=250
+maps.feature_update doc=$m layer=paths index=1 props="surface=asphalt; lit=true"
+maps.feature_move doc=$m layer=paths index=1 dy=20
+maps.features doc=$m layer=paths
+undo
+maps.vertices doc=$m layer=paths index=1
+```
+
+```text
+...
+added #0 to paths: line, 240.72 m
+...
+added #1 to paths: line, 205.34 m
+...
+#0 of paths: 3 vertices
+0: 47,8
+1: 47.0009,8.0013
+2: 47.0018,8.0013
+...
+added vertex 1 to #0 of paths at 47.0005,8.001
+...
+moved vertex 3 of #0 by 7.61 m
+...
+deleted vertex 1 of #0 (3 vertices left)
+...
+merged 2 features of paths into #0 (1 part, line, 438.75 m)
+...
+split #0 of paths at 47.0018,8.001518: 250 m + 188.75 m (now #0 and #1)
+...
+updated 1 feature of paths: lit=true; surface=asphalt
+...
+moved #1 of paths, now centred at 47.00198,8.002759 (lat,lon)
+...
+paths: 2 features
+#0 line, 250 m {name=Park and hill}
+#1 line, 188.75 m {lit=true; name=Park and hill; surface=asphalt}
+...
+undone
+#1 of paths: 2 vertices
+0: 47.0018,8.001518
+1: 47.0018,8.004
+```
+
+- `maps.vertices` numbers a feature's points (through every part and ring). `maps.vertex_move`, `maps.vertex_add` (after a vertex, or without `after=` into the nearest edge) and `maps.vertex_delete` use those numbers.
+- `maps.merge` joins lines end to end where they meet within `snap=` metres (turning one round when needed); polygons become one multipolygon. `maps.split` cuts a line at `at=lat,lon` or `distance=` metres; both halves keep the properties.
+- `maps.feature_update` edits the attribute table: one feature, `indexes=` or `where=`, and `unset=` removes fields. `maps.feature_move` moves a whole feature by `dx=`/`dy=` metres or `to=lat,lon`, keeping its size on the ground.
+- `undo` took back the move: the second half is on the line again.
+
+**Claude.** *"In paths.geojson, the Hill link should end at the church at 47.0018, 8.0042, and mark it as lit."* Claude calls `maps_open`, `maps_search query="Hill link"` (or `maps_features`), `maps_vertices`, `maps_vertex_move` and `maps_feature_update props="lit=true"`, then `maps_export`.
+
+## Task 13: overlay, dissolve and select by location
+
+**Batch** (`overlay.txt`):
+
+```text
+# overlay.txt: dissolve, overlay and select by location on the built-in countries
+maps.new -> m
+maps.add_countries doc=$m
+maps.dissolve doc=$m layer=countries field=continent sum=pop_est where="continent == 'Europe' or continent == 'Africa'" output=continents
+maps.features doc=$m layer=continents fields=continent,count,pop_est
+maps.feature_add doc=$m layer=city lat=47.37 lon=8.54 props="name=Zurich"
+maps.buffer doc=$m layer=city distance=150000 output="300 km circle"
+maps.overlay doc=$m layer=countries with="300 km circle" op=intersection
+maps.features doc=$m layer="countries intersection" fields=name
+maps.select_location doc=$m layer=countries by=city mode=near distance=200000
+maps.features doc=$m layer="countries selected" fields=name
+maps.render doc=$m path=zurich.png center=47.37,8.54 radius_km=250 width=600
+```
+
+```text
+...
+dissolved countries by continent into continents (2 features)
+...
+continents: 2 features
+#0 2 polygons, 29944859.9 km² {continent=Africa; count=51; pop_est=1306370215.3}
+#1 22 polygons, 23057993.3 km² {continent=Europe; count=39; pop_est=745412452}
+...
+buffered city by 150 km into 300 km circle (1 feature, 70569.1 km²)
+...
+intersection of countries with 300 km circle -> countries intersection (5 features, 70460.3 km²)
+...
+countries intersection: 5 features
+#0 polygon, 6250.6 km² {name=France}
+#1 polygon, 4093.6 km² {name=Austria}
+#2 polygon, 22208.9 km² {name=Germany}
+#3 polygon, 36406.9 km² {name=Switzerland}
+#4 2 polygons, 1500.4 km² {name=Italy}
+...
+5 of 177 features near city -> countries selected
+...
+countries selected: 5 features
+#0 3 polygons, 644858.8 km² {name=France}
+...
+rendered 600x603 png to zurich.png
+```
+
+- **`maps.dissolve`** merges features into one per value of `field=`, removing shared borders, with a `count` and the sum of each `sum=` field.
+- **`maps.overlay`** cuts a layer with the polygons of another (`with=`): `intersection` (the parts inside, carrying both layers' fields), `difference` (the parts outside), `union` and `sym_difference`. The five pieces add up to 70,460 km² of the circle's 70,569 km²: the rest is lake water the 1:110m countries leave out, and a few hundred km² of grid error (see Limitations).
+- **`maps.select_location`** keeps the features that `intersects`, are `within`, `contains`, are `disjoint` from, or are `near` (within `distance=` metres of) a feature of `by=`.
+
+**Claude.** *"How much of each country lies within 150 km of Zurich?"* Claude calls `maps_add_countries`, `maps_feature_add`, `maps_buffer`, `maps_overlay` and reads the `area_m2` of each piece from `maps_features`.
+
+## Task 14: bookmarks and the saved view
+
+A bookmark is a named area, saved in the `.wwmap`. The **view** is what the map window, `maps.preview` and `maps.render` show when you give no `bbox=`; it is saved too, so a map opens where you left it.
+
+**Batch** (`places.txt`):
+
+```text
+# places.txt: bookmarks and the saved view
+maps.open path=oldtown.osm -> m
+maps.bookmark doc=$m name=Market center=47.0022,8.0020 radius_km=0.15
+maps.bookmark doc=$m name=Town layer="oldtown roads"
+maps.bookmarks doc=$m
+maps.view doc=$m bookmark=Market
+maps.view doc=$m zoom=2
+maps.view doc=$m pan=0.5,0
+maps.render doc=$m path=market.png width=500
+maps.render doc=$m path=town-all.png bookmark=Town width=500
+maps.bookmark_delete doc=$m name=Town
+maps.view doc=$m reset=true
+maps.hit doc=$m x=400 y=400
+maps.save doc=$m path=oldtown.wwmap
+```
+
+```text
+...
+added bookmark Market: 8.000028,47.000851,8.003972,47.003549
+...
+2 bookmarks
+Market: 8.000028,47.000851,8.003972,47.003549 (about 300 m across)
+Town: 7.999684,46.999684,8.005591,47.003914 (about 449.29 m across)
+...
+showing 8.000028,47.000851,8.003972,47.003549 (about 300 m across)
+...
+showing 8.001014,47.001525,8.002986,47.002875 (about 150 m across)
+...
+showing 8.002,47.001525,8.003972,47.002875 (about 150 m across)
+...
+rendered 500x502 png to market.png
+...
+rendered 500x525 png to town-all.png
+...
+deleted bookmark Town
+...
+showing the whole map
+...
+oldtown roads #7 Station Road: line, 399.91 m, vertex 2 {highway=residential; name=Station Road; osm_id=8} at 47.001799,8.002637 (lat,lon)
+...
+saved oldtown.wwmap
+```
+
+`zoom=2` zooms in around the middle (or `at=lat,lon`), `pan=0.5,0` moves half a view east. `maps.render bookmark=` draws a bookmark without changing the view. `maps.hit` answers "what is at this pixel?" for the 800 px picture the window shows; the window's click tools use it.
+
+## Task 15: the map window
+
+`wetwaresuite gui` (or opening a `.wwmap`, `.gpx`, `.fit`, `.osm`, ... file) shows the map with a toolbar of click tools. Each tool runs the same commands as above, so everything you click can be undone and Claude sees the same map:
+
+| tool | click | command it runs |
+| --- | --- | --- |
+| Pan | drag to move, scroll to zoom the picture | |
+| Identify | a feature | `maps.hit` |
+| Measure | points; **Area** button after 3 | `maps.measure` |
+| Point, Line, Area | each corner; right-click or Enter finishes; the layer and `name=...` boxes set the layer and properties | `maps.feature_add` |
+| Move | a point or a line's corner, then where it goes | `maps.feature_move`, `maps.vertex_move` |
+| Delete | a feature (Alt+click a corner deletes just the corner) | `maps.feature_delete`, `maps.vertex_delete` |
+| Route | the start, then the end; car, bike or foot | `maps.route` |
+
+Below the tools: **Zoom in**, **Zoom out**, **Show all** and arrow buttons (`maps.view`), a **Bookmarks** list that jumps to a bookmark or adds the current view, and a search box that finds a place (`maps.search`) and centres the map on it. Esc cancels a line, measurement or move in progress.
+
 ## Styling
 
 `maps.style` changes only the parameters you pass:
@@ -654,7 +1041,8 @@ Colours are `#rrggbb`, `#rgb`, `#rrggbbaa` or CSS names such as `red`. Layer ord
 | `path` | required | `.png`, `.jpg`, `.svg` or `.pdf` (`format=` overrides) |
 | `width`, `height` | 1024, from the extent | size in px; PDF pages are sized at `dpi=` (96) |
 | `crs` | `webmercator` | `webmercator`, `wgs84` (plate carrée), `utm33n`..., `EPSG:...`, or `auto` (UTM of the centre) |
-| `bbox` | the visible layers plus a margin | `min_lon,min_lat,max_lon,max_lat` |
+| `bbox` | the saved view (Task 14), else the visible layers plus a margin | `min_lon,min_lat,max_lon,max_lat` |
+| `bookmark` | | draw a bookmark's area |
 | `center`, `radius_km` | | frame an area around `lat,lon` |
 | `basemap` | `auto` | `auto` (an installed map pack, else countries), `countries`, `none`, `pack`, a `.pmtiles` file (all offline), `osm` (online) |
 | `background`, `land` | `#dde8f0`, `#f4f1ea` | sea and land colours of the countries basemap (map packs use their own style) |
@@ -674,6 +1062,9 @@ Colours are `#rrggbb`, `#rgb`, `#rrggbbaa` or CSS names such as `red`. Layer ord
 | `maps.import`, `maps.export` | add a file as layers; write one layer (`crs=`, `precision=`, `where=`) |
 | `maps.add_countries` | the built-in Natural Earth countries (`where=` to pick some) |
 | `maps.feature_add`, `maps.feature_delete` | add a point (`lat=` `lon=`), a WKT geometry or `points=` with `kind=line/polygon`, with `props="name=Home; visits=3"`; delete by `index=` or `where=` |
+| `maps.feature_update`, `maps.feature_move` | edit attributes (`props=`, `unset=`, by `index=`, `indexes=` or `where=`); move by metres or `to=lat,lon` |
+| `maps.vertices`, `maps.vertex_move`, `maps.vertex_add`, `maps.vertex_delete` | list and edit a feature's points (Task 12) |
+| `maps.split`, `maps.merge` | cut a line in two; join lines end to end, polygons into a multipolygon |
 | `maps.layer_move`, `maps.layer_rename`, `maps.layer_remove` | layer order and names |
 | `maps.style` | see [styling](#styling) |
 | `maps.measure`, `maps.transform`, `maps.bbox` | geodesic distance/length/area; coordinate conversion; extents |
@@ -681,15 +1072,21 @@ Colours are `#rrggbb`, `#rgb`, `#rrggbbaa` or CSS names such as `red`. Layer ord
 | `maps.filter`, `maps.calc` | keep matching features (`output=` or `in_place=true`); set or delete a field from an expression |
 | `maps.join`, `maps.spatial_join` | attach CSV columns by key; copy fields by containment or nearness |
 | `maps.buffer`, `maps.simplify`, `maps.clip` | grow or shrink by metres; Douglas-Peucker in metres; cut to a box |
-| `maps.heatmap` | point density raster |
+| `maps.dissolve`, `maps.overlay`, `maps.select_location` | merge by a field; intersection, difference, union, sym_difference with another layer; select by intersects, within, contains, disjoint or near (Task 13) |
+| `maps.heatmap` | point density raster; lines (tracks) count along their length every `spacing=` metres |
 | `maps.track_stats`, `maps.profile` | GPS track statistics; elevation chart |
+| `maps.track_splits`, `maps.track_smooth`, `maps.track_trim` | per-km (or `every=`) splits, optionally to CSV; drop spikes and smooth; cut the ends (Task 11) |
+| `maps.track_split`, `maps.track_join`, `maps.track_reverse`, `maps.track_elevation` | cut at gaps or a point; join in time order; turn round; heights from a DEM raster |
+| `maps.route`, `maps.reach`, `maps.search` | offline routing by car, bike or foot with `via=` stops; the area reachable in `minutes=`; find places by name (Task 10) |
+| `maps.bookmark`, `maps.bookmarks`, `maps.bookmark_delete`, `maps.view` | named areas; what the window and renders show (Task 14) |
+| `maps.hit` | what is at a pixel of the window's picture (used by the click tools) |
 | `maps.raster_add`, `maps.raster_sample`, `maps.raster_save` | add a GeoTIFF or placed image; read values; write GeoTIFF or PNG + world file |
 | `maps.render`, `maps.preview` | draw to a file; draw to an attachment |
 | `maps.tiles_info` | describe a `.pmtiles` file or the installed map packs: area, zooms, format, layers, credit |
 
 ## MCP
 
-`wetwaresuite mcp --tools maps` serves the 36 maps tools (`maps_new`, `maps_import`, ..., `maps_render`). Every edit takes `preview=true`, which attaches a PNG of the whole map to the result. `maps_preview` renders any view without writing a file, and `maps_profile` without `path=` returns the elevation chart as an image. Results carry the numbers as structured fields, so Claude can do arithmetic on distances or areas without parsing text.
+`wetwaresuite mcp --tools maps` serves the 62 maps tools (`maps_new`, `maps_import`, ..., `maps_render`). Every edit takes `preview=true`, which attaches a PNG of the whole map to the result. `maps_preview` renders any view without writing a file, and `maps_profile` without `path=` returns the elevation chart as an image. Results carry the numbers as structured fields, so Claude can do arithmetic on distances or areas without parsing text.
 
 Example prompts:
 
@@ -702,7 +1099,10 @@ Example prompts:
 - **Datum**: WGS84 only. ETRS89 (`EPSG:258xx`) is treated as WGS84, which is within a metre or so in Europe. NAD27, OSGB36, other datums and local grids such as British National Grid or Lambert are not supported. Files that use them import with a warning or need converting first.
 - **Projections**: WGS84 lon/lat, Web Mercator and UTM (plus a local transverse Mercator used internally). There are no equal-area or conic map projections. Transverse Mercator views are cut to about 75° of longitude either side of the central meridian, and Web Mercator to ±85°.
 - **Buffers** of lines and polygons are traced from a grid of `resolution=` cells (600 by default) across the layer's extent. Their edges are accurate to about one cell, so a buffer of a whole country is only good to a few hundred metres. Raise `resolution=` for precision. Point buffers are exact geodesic circles.
-- **Clip** cuts to a lon/lat rectangle only. There is no polygon-by-polygon intersection, union or difference beyond buffer dissolve.
+- **Clip** cuts to a lon/lat rectangle. For polygons, use `maps.overlay`. Polygon results of `maps.overlay` and `maps.dissolve` are traced from a grid of `resolution=` cells (800 by default) like buffers, so edges are good to about one cell (around 0.1 % of the extent) and very thin slivers can vanish. Points and lines are cut exactly.
+- **Routing** builds its road graph from the layer each time and keeps it in memory, which suits a town or a county, not a country. Roads join where they share a point (within 5 cm), so lines that cross without a shared vertex (bridges, or data drawn without snapping) are not connected. There are no turn restrictions, turn costs, traffic, ferries or elevation in the costs; speeds are typical values per road type unless `maxspeed=` is set. Only multipolygon relations are read from `.osm` files; route relations and turn restrictions are skipped.
+- **Search** looks at the features of the open map only: there is no address index or geocoder for the world.
+- **FIT**: positions, elevation, time, the sport and the average and maximum heart rate are read. Per-point heart rate, power, cadence, laps, developer fields and course files are not, and the checksum is not verified.
 - **Areas** are on the authalic sphere (about 0.1 % from the ellipsoidal value), with polygon edges taken as great circles.
 - **The built-in countries** are Natural Earth 1:110m with coordinates rounded to 0.001°. That is right for world and continent maps, but coarse at city scale (coastlines are kilometres off). Use a map pack (Task 8), your own data or `basemap=osm` for close-ups. Disputed borders follow Natural Earth's de-facto choices.
 - **GeoTIFF**: no BigTIFF, no planar-configuration (separate band) files, no JPEG-compressed TIFFs, no overviews. Only the first image is read. GeoKeys are limited to EPSG 4326, 3857 and UTM codes; for anything else, pass `crs=` or the raster is placed by `bbox=`. Rasters are resampled with nearest neighbour.
@@ -710,5 +1110,6 @@ Example prompts:
 - **Feature properties** are kept in alphabetical order of field name, so CSV and DBF exports may reorder columns.
 - **OpenStreetMap tiles** need `curl` and the network, and are drawn at the nearest zoom level, so some scaling blur is possible. Tile servers' usage policies forbid bulk downloading. The tile code has only been tested against a pre-filled cache: the tutorial run had no access to the tile server.
 - **Map packs** are drawn with one built-in style: no road names, shields, icons or points of interest, only place names. Road and boundary lines are drawn per tile, so a dashed border can restart its dash at a tile edge. Place names come from the tiles' `name` field (the local name). The planet pack's deepest detail is zoom 15; beyond that, the map is the same data drawn bigger. The map pack reader and style were tested with packs the tests build themselves: a tiny hand-made one and a zoom 0-3 pack cut from the Natural Earth countries (borders, land, sea and country names, laid out like a Protomaps pack). They have not yet been tested against a pack made by another program, and the run for this tutorial had no full Protomaps pack, so the outputs in Task 8 are examples.
-- **Labels** in PNG and PDF output use the built-in Helvetica font with the Western European (WinAnsi) characters. Other scripts (Cyrillic, Greek, CJK, ...) come out as `?`. SVG output keeps the text and shows it with the viewer's fonts. Labels that would overlap are dropped, not moved.
+- **Labels** in PNG and PDF output use Helvetica for Western European text and the built-in font (Roboto, embedded in PDFs) for Greek and Cyrillic. Other scripts (CJK, Arabic, ...) come out as `?`. SVG output keeps the text and shows it with the viewer's fonts. Labels that would overlap are dropped, not moved.
+- **The map window** was built and its click tools only call the commands above, but it has not been tried on a screen in this round of work.
 - **Size**: everything is in memory, which is fine for tens of thousands of features. Big national datasets are slow to buffer and render.

@@ -1,6 +1,8 @@
 // circuit.* file, library and output commands.
 #include "cmd_common.hpp"
 
+#include <algorithm>
+
 namespace wetwaresuite::circuit::cmd {
 
 namespace {
@@ -41,8 +43,9 @@ SheetStyle sheetStyle(const Params& p) {
 PcbStyle pcbStyle(const Params& p) {
     PcbStyle s;
     const std::string layers = lower(stringParam(p, "layers", "both"));
-    s.top = layers != "bottom" && layers != "b";
-    s.bottom = layers != "top" && layers != "f";
+    s.top = layers == "both" || layers == "all" || layers == "top" || layers == "f";
+    s.bottom = layers == "both" || layers == "all" || layers == "bottom" || layers == "b";
+    s.inner = layers == "both" || layers == "all" || layers == "inner";
     s.mirror = boolParam(p, "from_below", false);
     s.ratsnest = boolParam(p, "ratsnest", true);
     s.labels = boolParam(p, "net_names", false);
@@ -51,13 +54,35 @@ PcbStyle pcbStyle(const Params& p) {
 }
 
 std::vector<ParamSpec> viewParams() {
-    return {{"view", ParamType::String, "what to draw", false, {"schematic", "pcb"}, std::string("schematic")},
+    return {{"view", ParamType::String, "what to draw: the schematic, the board's copper (pcb) or the assembled board in 3D (3d)", false,
+             {"schematic", "pcb", "3d"}, std::string("schematic")},
             {"grid", ParamType::Bool, "schematic: draw the 0.1 in grid", false, {}, false},
             {"highlight", ParamType::String, "net name to draw in a highlight colour", false},
-            {"layers", ParamType::String, "pcb: top, bottom or both", false, {"both", "top", "bottom"}, std::string("both")},
+            {"layers", ParamType::String, "pcb: top, bottom, inner or both (all)", false, {"both", "top", "bottom", "inner"}, std::string("both")},
             {"from_below", ParamType::Bool, "pcb: mirror to look from the bottom side", false, {}, false},
             {"ratsnest", ParamType::Bool, "pcb: draw unrouted connections", false, {}, true},
-            {"net_names", ParamType::Bool, "pcb: write net names on pads", false, {}, false}};
+            {"net_names", ParamType::Bool, "pcb: write net names on pads", false, {}, false},
+            {"angle", ParamType::Number, "3d: turn the board by this many degrees", false, {}, -25.0},
+            {"tilt", ParamType::Number, "3d: view elevation in degrees (90 = from straight above)", false, {}, 50.0},
+            {"mask", ParamType::String, "3d: solder mask colour", false, {"green", "black", "blue", "red", "white", "purple"}, std::string("green")}};
+}
+
+View3d view3d(const Params& p) {
+    View3d v;
+    v.yaw = numberParam(p, "angle", -25);
+    v.elevation = numberParam(p, "tilt", 50);
+    v.fromBelow = boolParam(p, "from_below", false);
+    const std::string m = lower(stringParam(p, "mask", "green"));
+    if (m == "black") v.maskColor = 0x222222;
+    else if (m == "blue") v.maskColor = 0x1a3f9a;
+    else if (m == "red") v.maskColor = 0x9a1c1c;
+    else if (m == "white") v.maskColor = 0xe8e8e8;
+    else if (m == "purple") v.maskColor = 0x5a2a8a;
+    return v;
+}
+
+Attachment board3dPng(const Circuit& c, const Params& p, int w, int h) {
+    return {"image/png", raster::encodePng(renderBoard3d(c, buildNetlist(c), w, h, view3d(p))), "board3d.png"};
 }
 
 }  // namespace
@@ -79,9 +104,13 @@ void registerFileCommands(Session& session) {
             });
 
     reg.add({"circuit.open", "Open Circuit",
-             "Open a .circuit.json file, or import a KiCad netlist (.net): its parts are mapped to library symbols (R, C, LED, "
-             "Conn_01xN ...; anything else becomes a generic IC), laid out on a grid and joined with net labels.",
-             {{"path", ParamType::String, "file to open (.circuit.json, .json or .net)", true}, previewParam()},
+             "Open a .circuit.json file or a KiCad 6/7/8 design: a schematic (.kicad_sch; sub-sheets are flattened onto one sheet and "
+             "the .kicad_pcb beside it is loaded too), a board on its own (.kicad_pcb; parts get boxed symbols labelled with their "
+             "nets), a project (.kicad_pro) or a netlist (.net: parts mapped to library symbols, laid out on a grid, joined with labels). "
+             "KiCad's own symbol and footprint drawings are kept.",
+             {{"path", ParamType::String, "file to open (.circuit.json, .json, .kicad_sch, .kicad_pcb, .kicad_pro or .net)", true},
+              {"board", ParamType::Bool, ".kicad_sch: also load the .kicad_pcb of the same name when there is one", false, {}, true},
+              previewParam()},
              false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
@@ -91,7 +120,21 @@ void registerFileCommands(Session& session) {
                         auto doc = std::make_shared<CircuitDoc>();
                         std::vector<std::string> warnings;
                         const std::string ext = lower(path.extension().string());
-                        if (ext == ".net" || text.find("(export") != std::string::npos) {
+                        fs::path sch = path;
+                        if (ext == ".kicad_pro") sch = fs::path(path).replace_extension(".kicad_sch");
+                        const std::string head = text.substr(0, std::min<std::size_t>(text.size(), 200));
+                        if (ext == ".kicad_pro" || ext == ".kicad_sch" || head.find("(kicad_sch") != std::string::npos) {
+                            doc->circuit = fromKicadSchematic(sch == path ? text : readFile(sch), sch.string(), &warnings);
+                            const fs::path pcb = fs::path(sch).replace_extension(".kicad_pcb");
+                            std::error_code ec;
+                            if (boolParam(p, "board", true) && fs::exists(pcb, ec)) {
+                                mergeKicadPcb(doc->circuit, readFile(pcb), &warnings);
+                                warnings.insert(warnings.begin(), "board loaded from " + pcb.string());
+                            }
+                        } else if (ext == ".kicad_pcb" || head.find("(kicad_pcb") != std::string::npos) {
+                            doc->circuit = fromKicadPcb(text, &warnings);
+                            if (doc->circuit.title.empty()) doc->circuit.title = path.stem().string();
+                        } else if (ext == ".net" || text.find("(export") != std::string::npos) {
                             doc->circuit = fromKicadNetlist(text, &warnings);
                         } else {
                             doc->circuit = fromJson(text);
@@ -106,16 +149,40 @@ void registerFileCommands(Session& session) {
                 });
             });
 
-    reg.add({"circuit.save", "Save Circuit", "Save the circuit (schematic and board) as .circuit.json; reopen it with circuit.open.",
-             {docParam(), {"path", ParamType::String, "output file, e.g. blinky.circuit.json", true}}, false},
+    reg.add({"circuit.save", "Save Circuit",
+             "Save the circuit (schematic and board) as .circuit.json, or for KiCad 7+: .kicad_sch (the schematic, symbols "
+             "embedded), .kicad_pcb (the board: footprints, tracks, vias, pours, outline) or .kicad_pro (a project with both).",
+             {docParam(), {"path", ParamType::String, "output file, e.g. blinky.circuit.json or blinky.kicad_pro", true}}, false},
             circuitCommand(
                 session,
                 [](CircuitDoc& doc, const Params& p) {
                     const fs::path path = stringParam(p, "path");
+                    const std::string ext = lower(path.extension().string());
                     std::string error;
-                    if (!writeFile(path, toJson(doc.circuit), error)) return Result::failure(error);
-                    doc.path = path.string();
-                    return edited("saved " + path.string(), p).with("path", path.string());
+                    std::vector<std::string> written;
+                    auto put = [&](const fs::path& f, const std::string& data) {
+                        if (!writeFile(f, data, error)) return false;
+                        written.push_back(f.string());
+                        return true;
+                    };
+                    bool ok = true;
+                    if (ext == ".kicad_sch") {
+                        ok = put(path, toKicadSchematic(doc.circuit));
+                    } else if (ext == ".kicad_pcb") {
+                        ok = put(path, toKicadPcb(doc.circuit));
+                    } else if (ext == ".kicad_pro") {
+                        const std::string name = path.filename().string();
+                        ok = put(path, "{\n  \"meta\": {\n    \"filename\": \"" + name + "\",\n    \"version\": 1\n  }\n}\n") &&
+                             put(fs::path(path).replace_extension(".kicad_sch"), toKicadSchematic(doc.circuit)) &&
+                             put(fs::path(path).replace_extension(".kicad_pcb"), toKicadPcb(doc.circuit));
+                    } else {
+                        ok = put(path, toJson(doc.circuit));
+                        doc.path = path.string();
+                    }
+                    if (!ok) return Result::failure(error);
+                    std::string files;
+                    for (const auto& f : written) files += (files.empty() ? "" : ", ") + f;
+                    return edited("saved " + files, p).with("path", path.string());
                 },
                 View::Schematic, false));
 
@@ -138,7 +205,8 @@ void registerFileCommands(Session& session) {
                         if (part.pcb.placed) ++placed;
                     }
                     if (withFp) r.message += "\nfootprints on the board: " + std::to_string(placed) + " of " + std::to_string(withFp);
-                    for (const auto& z : c.board.zones) r.message += "\npour: " + z.net + " on " + (z.layer ? "B.Cu" : "F.Cu");
+                    if (c.board.outline.size() >= 3) r.message += "\ncopper layers: " + std::to_string(c.board.layers);
+                    for (const auto& z : c.board.zones) r.message += "\npour: " + z.net + " on " + layerName(z.layer) + (z.thermal ? "" : " (solid pads)");
                     r.with("parts", static_cast<std::int64_t>(c.parts.size()))
                         .with("nets", static_cast<std::int64_t>(nl.nets.size()))
                         .with("wires", static_cast<std::int64_t>(c.wires.size()))
@@ -227,8 +295,8 @@ void registerFileCommands(Session& session) {
             });
 
     reg.add({"circuit.preview", "Preview Circuit",
-             "Render the schematic or the board to a PNG without changing anything. view=pcb draws copper (top red, bottom blue), "
-             "pads, vias, silkscreen, pours and the ratsnest.",
+             "Render the schematic or the board to a PNG without changing anything. view=pcb draws copper (top red, bottom blue, "
+             "inner layers yellow and teal), pads, vias, silkscreen, pours and the ratsnest; view=3d draws the assembled board.",
              [] {
                  std::vector<ParamSpec> v = {docParam()};
                  for (auto& s : viewParams()) v.push_back(s);
@@ -241,19 +309,21 @@ void registerFileCommands(Session& session) {
                 [](CircuitDoc& doc, const Params& p) {
                     const double size = static_cast<double>(std::clamp<std::int64_t>(intParam(p, "size", 1400), 200, 6000));
                     Result r = edited("preview of " + stringParam(p, "doc"), p);
-                    if (stringParam(p, "view", "schematic") == "pcb") r.attach(pcbPng(doc.circuit, pcbStyle(p), size));
+                    const std::string view = stringParam(p, "view", "schematic");
+                    if (view == "3d") r.attach(board3dPng(doc.circuit, p, static_cast<int>(size), static_cast<int>(size * 0.72)));
+                    else if (view == "pcb") r.attach(pcbPng(doc.circuit, pcbStyle(p), size));
                     else r.attach(schematicPng(doc.circuit, sheetStyle(p), size));
                     return r;
                 },
                 View::Schematic, false));
 
     reg.add({"circuit.export", "Export Drawing",
-             "Write the schematic or the board as a picture: .svg, .pdf (schematic only) or .png; the extension picks the "
-             "format. For fabrication files use circuit.gerber.",
+             "Write the schematic or the board as a picture: .svg, .pdf (schematic only) or .png (view=3d: the assembled board); "
+             "the extension picks the format. For fabrication files use circuit.gerber, for KiCad circuit.save to .kicad_sch.",
              [] {
                  std::vector<ParamSpec> v = {docParam(), {"path", ParamType::String, "output file (.svg, .pdf, .png)", true}};
                  for (auto& s : viewParams()) v.push_back(s);
-                 v.push_back({"scale", ParamType::Number, "png: pixels per grid unit (schematic) or per mm (pcb)", false});
+                 v.push_back({"scale", ParamType::Number, "png: pixels per grid unit (schematic), per mm (pcb), or the width (3d)", false});
                  return v;
              }(),
              false},
@@ -264,7 +334,11 @@ void registerFileCommands(Session& session) {
                     const std::string ext = lower(path.extension().string());
                     const bool pcb = stringParam(p, "view", "schematic") == "pcb";
                     std::string data;
-                    if (pcb) {
+                    if (stringParam(p, "view", "schematic") == "3d") {
+                        if (ext != ".png") return Result::failure("the 3D view exports as .png");
+                        const int w = has(p, "scale") ? static_cast<int>(std::clamp(numberParam(p, "scale"), 200.0, 8000.0)) : 2000;
+                        data = board3dPng(doc.circuit, p, w, static_cast<int>(w * 0.72)).bytes;
+                    } else if (pcb) {
                         const Netlist nl = buildNetlist(doc.circuit);
                         if (ext == ".svg") data = pcbSvg(doc.circuit, nl, pcbStyle(p));
                         else if (ext == ".png") data = raster::encodePng(renderPcb(doc.circuit, nl, has(p, "scale") ? numberParam(p, "scale") : pcbScale(doc.circuit, 2000), pcbStyle(p)));

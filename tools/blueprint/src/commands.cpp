@@ -143,7 +143,7 @@ ActionFactory readCommand(Session& session, std::function<Result(Drawing&, const
 
 std::vector<ParamSpec> docOrFile() {
     return {{"doc", ParamType::String, "id of an open blueprint, e.g. bp1 (or use file)", false},
-            {"file", ParamType::String, "a .dxf file to read instead of an open document", false}};
+            {"file", ParamType::String, "a .dxf (or .dwg) file to read instead of an open document", false}};
 }
 
 Vec2 point(const Drawing& doc, const Params& p, const char* x, const char* y) {
@@ -684,10 +684,11 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"blueprint.open", "Open DXF",
-             "Open a DXF drawing (LINE, LWPOLYLINE, POLYLINE, CIRCLE, ARC, TEXT, MTEXT, POINT, DIMENSION, HATCH, SOLID; layers "
-             "with colours and line types). Blocks/INSERT, splines and ellipses are skipped and reported. A DXF saved by this "
-             "tool comes back with its walls, doors, rooms, sheet and title block; any other DXF is fitted to the paper.",
-             join({{"path", ParamType::String, "path to a .dxf file", true},
+             "Open a DXF or DWG drawing (LINE, LWPOLYLINE, POLYLINE, CIRCLE, ARC, ELLIPSE, SPLINE, TEXT, MTEXT, ATTRIB, POINT, "
+             "DIMENSION, HATCH, SOLID; layers with colours and line types; blocks are expanded into plain entities). DWG needs "
+             "LibreDWG (dwg2dxf) or the ODA File Converter on PATH. A DXF saved by this tool comes back with its walls, doors, "
+             "rooms, sheet and title block; any other drawing is fitted to the paper.",
+             join({{"path", ParamType::String, "path to a .dxf or .dwg file", true},
                     strParam("units", "override the drawing units (default: from the file's $INSUNITS, else mm)", false, {},
                              {"mm", "cm", "m", "in", "ft"})},
                   join(pageParams(false), {boolParamSpec("center", "centre the drawing on the paper")})),
@@ -713,20 +714,26 @@ void registerCommands(Session& session) {
     reg.add({"blueprint.save", "Save DXF",
              "Save the drawing as DXF (AutoCAD 2000 ASCII, opens in LibreCAD, FreeCAD, AutoCAD, QCAD...). Dimensions are real "
              "DIMENSION entities; walls, doors, windows and rooms are drawn as lines/arcs/text and stay editable when reopened "
-             "here. sheet=true also writes the border and title block on layer BP_SHEET.",
-             {docParam(), {"path", ParamType::String, "output .dxf file", true},
+             "here. sheet=true also writes the border and title block on layer BP_SHEET. A .dwg path converts the DXF with "
+             "LibreDWG (dxf2dwg) or the ODA File Converter.",
+             {docParam(), {"path", ParamType::String, "output .dxf or .dwg file", true},
               boolParamSpec("sheet", "include the border frame and title block", false)},
              false},
             drawingCommand(session, [](Drawing& doc, const Params& p) {
                 const std::string path = stringParam(p, "path");
                 std::filesystem::path fp(path);
-                if (lower(fp.extension().string()) != ".dxf") {
-                    return Result::failure("blueprint.save writes .dxf; use blueprint.export for .svg, .pdf or .png");
+                const std::string ext = lower(fp.extension().string());
+                if (ext != ".dxf" && ext != ".dwg") {
+                    return Result::failure("blueprint.save writes .dxf or .dwg; use blueprint.export for .svg, .pdf or .png");
                 }
                 try {
-                    std::ofstream out(fp, std::ios::binary);
-                    if (!out) return Result::failure("cannot write " + path);
-                    out << toDxf(doc, boolParam(p, "sheet", false));
+                    if (ext == ".dwg") {
+                        dxfToDwg(toDxf(doc, boolParam(p, "sheet", false)), fp);
+                    } else {
+                        std::ofstream out(fp, std::ios::binary);
+                        if (!out) return Result::failure("cannot write " + path);
+                        out << toDxf(doc, boolParam(p, "sheet", false));
+                    }
                 } catch (const std::exception& e) {
                     return Result::failure(e.what());
                 }
@@ -757,9 +764,9 @@ void registerCommands(Session& session) {
             }, false));
 
     reg.add({"blueprint.convert", "Convert DXF",
-             "One step: read a .dxf and write .pdf, .svg, .png or .dxf, e.g. input=plan.dxf output=plan.pdf paper=A3 scale=1:100. "
-             "Without scale a foreign DXF is fitted to the paper; a DXF saved here keeps its own sheet settings.",
-             join({{"input", ParamType::String, "a .dxf file", true}, {"output", ParamType::String, "output file; the extension picks the format", true}},
+             "One step: read a .dxf or .dwg and write .pdf, .svg, .png, .dxf or .dwg, e.g. input=plan.dwg output=plan.pdf paper=A3 "
+             "scale=1:100. Without scale a foreign drawing is fitted to the paper; a DXF saved here keeps its own sheet settings.",
+             join({{"input", ParamType::String, "a .dxf or .dwg file", true}, {"output", ParamType::String, "output file; the extension picks the format", true}},
                   join(pageParams(false), {boolParamSpec("center", "centre the drawing on the paper"), numParam("dpi", "resolution for raster formats", false, 150.0),
                                            strParam("title", "title block title")})),
              false},

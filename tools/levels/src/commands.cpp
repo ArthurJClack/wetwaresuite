@@ -4,11 +4,13 @@
 #include <cctype>
 #include <cmath>
 #include <fstream>
+#include <array>
 #include <set>
 #include <sstream>
 
 #include "wetwaresuite/levels/levels.hpp"
 #include "wetwaresuite/raster/codec.hpp"
+#include "wetwaresuite/raster/paint.hpp"
 
 namespace wetwaresuite::levels {
 
@@ -70,7 +72,7 @@ Layer* tileLayer(Map& m, const Params& p, std::string& error, const std::string&
     if (has(p, key)) {
         Layer* l = m.layer(stringParam(p, key));
         if (!l) error = "no layer called '" + stringParam(p, key) + "' (levels.info lists them)";
-        else if (l->kind != LayerKind::Tiles) error = "'" + l->name + "' is an object layer, not a tile layer";
+        else if (l->kind != LayerKind::Tiles) error = "'" + l->name + "' is an " + (l->kind == LayerKind::Image ? "image" : "object") + " layer, not a tile layer";
         else return l;
         return nullptr;
     }
@@ -274,16 +276,23 @@ private:
 
 std::string layerLine(const Map& m, std::size_t i) {
     const Layer& l = m.layers[i];
-    std::string s = std::to_string(i) + ": " + l.name + " (" + (l.kind == LayerKind::Tiles ? (l.collision ? "collision grid" : "tiles") : "objects");
+    std::string s = std::to_string(i) + ": " + l.name + " (" +
+                    (l.kind == LayerKind::Tiles ? (l.collision ? "collision grid" : "tiles") : l.kind == LayerKind::Image ? "image" : "objects");
     if (l.kind == LayerKind::Tiles) {
         std::size_t used = 0;
         for (auto c : l.cells) used += (c & kGidMask) ? 1 : 0;
         s += ", " + std::to_string(used) + " cells filled";
+    } else if (l.kind == LayerKind::Image) {
+        s += ", " + (l.image.empty() ? std::string("no image") : fs::path(l.image).filename().string() + (l.pixels ? "" : " (missing)"));
+        if (l.repeatX || l.repeatY) s += std::string(", repeats") + (l.repeatX ? " x" : "") + (l.repeatY ? " y" : "");
     } else {
         s += ", " + plural(l.objects.size(), "object");
     }
     if (!l.visible) s += ", hidden";
     if (l.opacity < 1) s += ", opacity " + num(l.opacity);
+    if (l.offsetX != 0 || l.offsetY != 0) s += ", offset " + num(l.offsetX) + "," + num(l.offsetY);
+    if (l.parallaxX != 1 || l.parallaxY != 1) s += ", parallax " + num(l.parallaxX) + "," + num(l.parallaxY);
+    if (!l.tint.empty()) s += ", tint " + l.tint;
     if (!l.props.empty()) s += ", " + propsText(l.props);
     return s + ")";
 }
@@ -293,8 +302,11 @@ std::string objectLine(const MapObject& o, const std::string& layer) {
     if (!o.name.empty()) s += " " + o.name;
     if (!o.type.empty()) s += " [" + o.type + "]";
     s += " at " + num(o.x) + "," + num(o.y);
-    if (o.shape != "point") s += " size " + num(o.width) + "x" + num(o.height);
+    if (o.shape == "rect" || o.shape == "ellipse") s += " size " + num(o.width) + "x" + num(o.height);
     if (o.shape != "rect") s += " " + o.shape;
+    if (!o.points.empty()) s += " of " + plural(o.points.size(), "point");
+    if (o.rotation != 0) s += " rotated " + num(o.rotation);
+    if (o.gid) s += " tile " + std::to_string(o.gid & kGidMask);
     s += " on " + layer;
     if (!o.props.empty()) s += " {" + propsText(o.props) + "}";
     return s;
@@ -305,7 +317,7 @@ Layer* objectLayer(Map& m, const Params& p, std::string& error) {
     if (has(p, "layer")) {
         if (Layer* l = m.layer(stringParam(p, "layer"))) {
             if (l->kind != LayerKind::Objects) {
-                error = "'" + l->name + "' is a tile layer, not an object layer";
+                error = "'" + l->name + "' is a " + (l->kind == LayerKind::Image ? "n image" : " tile") + " layer, not an object layer";
                 return nullptr;
             }
             return l;
@@ -386,12 +398,14 @@ void registerFileCommands(Session& session) {
 
     reg.add({"levels.save", "Save Level",
              "Save a map; the extension picks the format: .tmx (Tiled XML), .tmj (Tiled JSON), .json (plain JSON: rows "
-             "of gids, tilesets, objects with properties; reopen with levels.open), .ldtk (LDtk-lite project JSON), or "
-             ".png/.jpg/.bmp/.tga for a flattened render of the visible tile layers. Tileset image paths are written "
-             "relative to the saved file. For CSV use levels.export_csv.",
+             "of gids, tilesets, objects with properties; reopen with levels.open), .ldtk (LDtk-lite project JSON), "
+             ".tscn (a Godot 4 scene: TileMap with a TileSet and tile physics, Sprite2D image layers, StaticBody2D "
+             "collision, Marker2D/Area2D objects with metadata; export only), or .png/.jpg/.bmp/.tga for a flattened "
+             "render of the visible layers. Image paths are written relative to the saved file (for Godot, save the "
+             "scene inside the project next to its images). For CSV use levels.export_csv.",
              {docParam(),
               {"path", ParamType::String, "output file", true},
-              {"format", ParamType::String, "override the extension", false, {"auto", "tmx", "tmj", "json", "ldtk", "png"}, std::string("auto")},
+              {"format", ParamType::String, "override the extension", false, {"auto", "tmx", "tmj", "json", "ldtk", "tscn", "png"}, std::string("auto")},
               {"encoding", ParamType::String, "TMX/TMJ tile data: csv (readable), base64, or zlib (smallest)", false, {"csv", "base64", "zlib"},
                std::string("csv")},
               {"scale", ParamType::Number, "image exports: zoom factor", false, {}, 1.0}},
@@ -406,20 +420,21 @@ void registerFileCommands(Session& session) {
                     format = ext == ".json" ? "json" : formatFor(path);
                 }
                 if (format == "csv") return Result::failure("CSV holds one layer: use levels.export_csv");
-                if (format.empty()) return Result::failure("unknown extension on " + path.string() + " (use .tmx, .tmj, .json, .ldtk or .png)");
+                if (format.empty()) return Result::failure("unknown extension on " + path.string() + " (use .tmx, .tmj, .json, .ldtk, .tscn or .png)");
                 std::vector<std::string> warnings;
-                if (format == "ldtk") {
+                if (format == "ldtk" || format == "tscn") {
                     if (auto parent = path.parent_path(); !parent.empty()) {
                         std::error_code ec;
                         fs::create_directories(parent, ec);
                     }
                     std::ofstream out(path, std::ios::binary);
-                    out << toLdtk(doc.map, path.parent_path(), &warnings);
+                    out << (format == "ldtk" ? toLdtk(doc.map, path.parent_path(), &warnings)
+                                             : toGodotScene(doc.map, path.parent_path(), path.stem().string(), &warnings));
                     if (!out) return Result::failure("can't write " + path.string());
                 } else {
                     saveMap(doc.map, path, format, stringParam(p, "encoding", "csv"), numberParam(p, "scale", 1.0));
                 }
-                if (format != "png") doc.path = path.string();
+                if (format != "png" && format != "tscn") doc.path = path.string();
                 Result r = Result::success("saved " + path.string() + " (" + format + ")", path.string());
                 for (const auto& w : warnings) r.message += "\nwarning: " + w;
                 std::error_code ec;
@@ -445,19 +460,31 @@ void registerFileCommands(Session& session) {
                                  std::to_string(t.firstGid) + ".." + std::to_string(t.firstGid + t.tileCount - 1) + "), " +
                                  std::to_string(t.columns) + " columns of " + std::to_string(t.tileWidth) + "x" + std::to_string(t.tileHeight) +
                                  (t.image.empty() ? "" : ", " + t.image) + (t.image.empty() || t.pixels ? "" : " (missing)") +
-                                 (t.tileProps.empty() ? "" : ", " + plural(t.tileProps.size(), "tile") + " with properties");
+                                 (t.tileProps.empty() ? "" : ", " + plural(t.tileProps.size(), "tile") + " with properties") +
+                                 (t.animations.empty() ? "" : ", " + plural(t.animations.size(), "animated tile")) +
+                                 (t.tileShapes.empty() ? "" : ", " + plural(t.tileShapes.size(), "tile") + " with collision shapes");
+                    for (const auto& w : t.wangsets) {
+                        r.message += "\n     wang set " + w.name + " (" + w.type + ", " + plural(w.colors.size(), "colour") + ": ";
+                        for (std::size_t c = 0; c < w.colors.size(); ++c) r.message += (c ? ", " : "") + std::to_string(c + 1) + "=" + w.colors[c].name;
+                        r.message += "; " + plural(w.tiles.size(), "tile") + ")";
+                    }
                 }
                 r.message += "\nlayers (bottom first):";
                 for (std::size_t i = 0; i < m.layers.size(); ++i) r.message += "\n  " + layerLine(m, i);
                 if (!m.props.empty()) r.message += "\nproperties: " + propsText(m.props);
-                std::string layers, tilesets;
-                for (const auto& l : m.layers) layers += (layers.empty() ? "" : ",") + l.name;
+                std::string layers, kinds, tilesets;
+                for (const auto& l : m.layers) {
+                    layers += (layers.empty() ? "" : ",") + l.name;
+                    kinds += std::string(kinds.empty() ? "" : ",") +
+                             (l.kind == LayerKind::Objects ? "objects" : l.kind == LayerKind::Image ? "image" : l.collision ? "collision" : "tiles");
+                }
                 for (const auto& t : m.tilesets) tilesets += (tilesets.empty() ? "" : ",") + t.name;
                 r.with("width", static_cast<std::int64_t>(m.width))
                     .with("height", static_cast<std::int64_t>(m.height))
                     .with("tile_width", static_cast<std::int64_t>(m.tileWidth))
                     .with("tile_height", static_cast<std::int64_t>(m.tileHeight))
                     .with("layers", layers)
+                    .with("layer_kinds", kinds)
                     .with("tilesets", tilesets)
                     .with("objects", static_cast<std::int64_t>(m.objectCount()));
                 return r;
@@ -472,10 +499,12 @@ void registerFileCommands(Session& session) {
               {"grid", ParamType::Bool, "draw cell lines", false, {}, false},
               {"objects", ParamType::Bool, "draw objects", false, {}, true},
               {"collision", ParamType::Bool, "draw collision grids", false, {}, true},
-              {"max_size", ParamType::Int, "longest side of the PNG in px", false, {}, std::int64_t{1024}}},
+              {"max_size", ParamType::Int, "longest side of the PNG in px", false, {}, std::int64_t{1024}},
+              {"time", ParamType::Int, "ms into tile animations (shows the frame playing then)", false, {}, std::int64_t{0}}},
              false, true},
             levelCommand(session, [](LevelDoc& doc, const Params& p) {
                 RenderOptions o;
+                o.time = static_cast<int>(std::max<std::int64_t>(0, intParam(p, "time", 0)));
                 const int big = std::max(doc.map.width * doc.map.tileWidth, doc.map.height * doc.map.tileHeight);
                 o.scale = has(p, "scale") ? numberParam(p, "scale") : (big < 512 ? std::max(1.0, std::floor(512.0 / big)) : 1.0);
                 o.grid = boolParam(p, "grid", false);
@@ -531,21 +560,24 @@ void registerTilesetCommands(Session& session) {
              "Draw a placeholder tileset image, write it to `path` and add it to the map: style=colors gives one "
              "distinct colour per tile (with its id's bits as dots along the top); style=autotile gives the 16 tiles "
              "of the 4-bit auto-tile rule (tile n has a dark rim on each side whose neighbour bit is off: N=1 E=2 S=4 "
-             "W=8), ready for levels.autotile base=<its first tile>. Good for prototyping before the art exists.",
+             "W=8), ready for levels.autotile base=<its first tile>; style=blob the 47 tiles of the 8-bit blob rule "
+             "(levels.autotile mode=blob); style=corner 16 Wang corner tiles with a corner Wang set 'terrain' "
+             "(colour 1 terrain, 2 ground) ready for levels.autotile mode=wang wangset=terrain. Good for prototyping "
+             "before the art exists.",
              {docParam(),
               {"path", ParamType::String, "PNG to write", true},
-              {"style", ParamType::String, "what to draw", false, {"colors", "autotile"}, std::string("colors")},
-              {"tiles", ParamType::Int, "number of tiles (autotile: 16)", false, {}, std::int64_t{16}},
-              {"columns", ParamType::Int, "tiles per row (default 8, autotile 4)", false},
-              {"colors", ParamType::String, "comma-separated colours for the tiles (autotile: the body colour)", false},
+              {"style", ParamType::String, "what to draw", false, {"colors", "autotile", "blob", "corner"}, std::string("colors")},
+              {"tiles", ParamType::Int, "number of tiles (autotile and corner: 16, blob: 47)", false, {}, std::int64_t{16}},
+              {"columns", ParamType::Int, "tiles per row (default 8, autotile/corner 4)", false},
+              {"colors", ParamType::String, "comma-separated colours for the tiles (autotile/blob: the body colour; corner: terrain,ground)", false},
               {"name", ParamType::String, "tileset name (default: the file name)", false},
               previewParam()},
              true},
             levelCommand(session, [](LevelDoc& doc, const Params& p) {
                 Map& m = doc.map;
                 const std::string style = stringParam(p, "style", "colors");
-                const int tiles = style == "autotile" ? 16 : clampInt(intParam(p, "tiles", 16), 1, 4096);
-                const int columns = clampInt(intParam(p, "columns", style == "autotile" ? 4 : std::min(tiles, 8)), 1, 256);
+                const int tiles = style == "autotile" || style == "corner" ? 16 : style == "blob" ? 47 : clampInt(intParam(p, "tiles", 16), 1, 4096);
+                const int columns = clampInt(intParam(p, "columns", style == "autotile" || style == "corner" ? 4 : std::min(tiles, 8)), 1, 256);
                 std::vector<Color> colors;
                 for (const auto& c : splitList(stringParam(p, "colors"))) {
                     auto col = Color::parse(c);
@@ -562,6 +594,14 @@ void registerTilesetCommands(Session& session) {
                 Tileset t = loadTileset(path, m.tileWidth, m.tileHeight, 0, 0, stringParam(p, "name"));
                 t.tileCount = tiles;
                 if (m.tileset(t.name)) return Result::failure("there is already a tileset called '" + t.name + "' (give name=)");
+                if (style == "corner") {
+                    WangSet ws;
+                    ws.name = "terrain";
+                    ws.colors = {{"terrain", colors.empty() ? "#60a048" : colors[0].hex().substr(0, 7), -1, 1},
+                                 {"ground", colors.size() < 2 ? "#b08c60" : colors[1].hex().substr(0, 7), -1, 1}};
+                    wangTemplate(ws, "corner16", 0, 1, 2);
+                    t.wangsets.push_back(std::move(ws));
+                }
                 Tileset& added = addTileset(m, std::move(t));
                 Result r = edited("drew " + std::to_string(tiles) + " " + style + " tiles to " + path.string() + " and added tileset " + added.name +
                                       " (gids " + std::to_string(added.firstGid) + ".." + std::to_string(added.firstGid + added.tileCount - 1) + ")",
@@ -599,23 +639,48 @@ void registerTilesetCommands(Session& session) {
 void registerLayerCommands(Session& session) {
     auto& reg = session.registry();
     reg.add({"levels.layer_add", "Add Layer",
-             "Add a tile layer or an object layer (for entities: spawns, pickups, triggers). New layers go on top "
-             "unless index is given (0 = bottom).",
+             "Add a tile layer, an object layer (for entities: spawns, pickups, triggers) or an image layer (a "
+             "background or foreground picture: image=path, optionally repeated). New layers go on top unless index "
+             "is given (0 = bottom).",
              {docParam(),
               {"name", ParamType::String, "layer name", true},
-              {"kind", ParamType::String, "what the layer holds", false, {"tiles", "objects"}, std::string("tiles")},
+              {"kind", ParamType::String, "what the layer holds", false, {"tiles", "objects", "image"}, std::string("tiles")},
               {"index", ParamType::Int, "position, 0 = bottom (default: top)", false},
-              {"collision", ParamType::Bool, "tile layers: mark as a collision grid (drawn as an overlay)", false, {}, false}},
+              {"collision", ParamType::Bool, "tile layers: mark as a collision grid (drawn as an overlay)", false, {}, false},
+              {"image", ParamType::String, "image layers: the picture file", false},
+              {"repeat_x", ParamType::Bool, "image layers: tile the picture across", false, {}, false},
+              {"repeat_y", ParamType::Bool, "image layers: tile the picture down", false, {}, false},
+              {"offset_x", ParamType::Number, "px to shift the layer right", false}, {"offset_y", ParamType::Number, "px to shift the layer down", false},
+              previewParam()},
              true},
             levelCommand(session, [](LevelDoc& doc, const Params& p) {
                 const std::string name = stringParam(p, "name");
                 if (!validName(name)) return Result::failure("layer names can't be empty or contain quotes, <, > or &");
                 if (doc.map.layer(name)) return Result::failure("there is already a layer called '" + name + "'");
-                const LayerKind kind = stringParam(p, "kind", "tiles") == "objects" ? LayerKind::Objects : LayerKind::Tiles;
+                const std::string k = stringParam(p, "kind", "tiles");
+                const LayerKind kind = k == "objects" ? LayerKind::Objects : k == "image" ? LayerKind::Image : LayerKind::Tiles;
+                if (kind == LayerKind::Image && !has(p, "image")) return Result::failure("image layers need image=<picture file>");
+                std::string image;
+                if (kind == LayerKind::Image) {
+                    std::error_code ec;
+                    const fs::path ip = stringParam(p, "image");
+                    if (!fs::exists(ip, ec)) return Result::failure("no image at " + ip.string());
+                    auto abs = fs::absolute(ip, ec);
+                    image = (ec ? ip : abs).lexically_normal().string();
+                }
                 Layer& l = doc.map.addLayer(name, kind, has(p, "index") ? static_cast<int>(intParam(p, "index")) : -1);
                 l.collision = boolParam(p, "collision", false) && kind == LayerKind::Tiles;
-                Result r = edited("added " + std::string(kind == LayerKind::Tiles ? "tile" : "object") + " layer " + name + " at index " +
-                                      std::to_string(doc.map.layerIndex(name)),
+                l.offsetX = numberParam(p, "offset_x", 0);
+                l.offsetY = numberParam(p, "offset_y", 0);
+                if (kind == LayerKind::Image) {
+                    l.image = image;
+                    l.repeatX = boolParam(p, "repeat_x", false);
+                    l.repeatY = boolParam(p, "repeat_y", false);
+                    attachLayerImage(l);
+                    if (!l.pixels) return Result::failure("can't read " + image + " as an image");
+                }
+                Result r = edited("added " + std::string(kind == LayerKind::Tiles ? "tile" : kind == LayerKind::Image ? "image" : "object") + " layer " + name +
+                                      " at index " + std::to_string(doc.map.layerIndex(name)),
                                   p);
                 return r.with("layer", name).with("index", static_cast<std::int64_t>(doc.map.layerIndex(name)));
             }));
@@ -671,11 +736,20 @@ void registerLayerCommands(Session& session) {
                 return r.with("index", static_cast<std::int64_t>(to));
             }));
 
-    reg.add({"levels.layer_set", "Layer Settings", "Change a layer's visibility, opacity or collision flag.",
+    reg.add({"levels.layer_set", "Layer Settings",
+             "Change a layer's visibility, opacity, collision flag, offset (px), parallax factor (for engines that "
+             "scroll layers at different speeds), tint colour, or an image layer's picture and repeat.",
              {docParam(), {"layer", ParamType::String, "layer name or index", true},
               {"visible", ParamType::Bool, "shown in renders and marked visible in exports", false},
               {"opacity", ParamType::Number, "0..1", false},
-              {"collision", ParamType::Bool, "tile layers: treat as a collision grid", false}, previewParam()},
+              {"collision", ParamType::Bool, "tile layers: treat as a collision grid", false},
+              {"offset_x", ParamType::Number, "px to shift the layer right", false}, {"offset_y", ParamType::Number, "px to shift the layer down", false},
+              {"parallax_x", ParamType::Number, "horizontal scroll factor (1 = with the map, 0.5 = half speed, far away)", false},
+              {"parallax_y", ParamType::Number, "vertical scroll factor", false},
+              {"tint", ParamType::String, "colour multiplied into the layer, e.g. #8080ff; empty removes it", false},
+              {"image", ParamType::String, "image layers: a new picture file", false},
+              {"repeat_x", ParamType::Bool, "image layers: tile across", false}, {"repeat_y", ParamType::Bool, "image layers: tile down", false},
+              previewParam()},
              true},
             levelCommand(session, [](LevelDoc& doc, const Params& p) {
                 Layer* l = doc.map.layer(stringParam(p, "layer"));
@@ -683,6 +757,28 @@ void registerLayerCommands(Session& session) {
                 if (has(p, "visible")) l->visible = boolParam(p, "visible");
                 if (has(p, "opacity")) l->opacity = std::clamp(numberParam(p, "opacity"), 0.0, 1.0);
                 if (has(p, "collision")) l->collision = boolParam(p, "collision") && l->kind == LayerKind::Tiles;
+                if (has(p, "offset_x")) l->offsetX = numberParam(p, "offset_x");
+                if (has(p, "offset_y")) l->offsetY = numberParam(p, "offset_y");
+                if (has(p, "parallax_x")) l->parallaxX = numberParam(p, "parallax_x");
+                if (has(p, "parallax_y")) l->parallaxY = numberParam(p, "parallax_y");
+                if (has(p, "tint")) {
+                    const std::string t = stringParam(p, "tint");
+                    if (!t.empty() && !Color::parse(t)) return Result::failure("not a colour: " + t);
+                    l->tint = t;
+                }
+                if (has(p, "image") || has(p, "repeat_x") || has(p, "repeat_y")) {
+                    if (l->kind != LayerKind::Image) return Result::failure("'" + l->name + "' isn't an image layer");
+                    if (has(p, "image")) {
+                        std::error_code ec;
+                        const fs::path ip = stringParam(p, "image");
+                        auto abs = fs::absolute(ip, ec);
+                        l->image = (ec ? ip : abs).lexically_normal().string();
+                        attachLayerImage(*l);
+                        if (!l->pixels) return Result::failure("can't read " + ip.string() + " as an image");
+                    }
+                    if (has(p, "repeat_x")) l->repeatX = boolParam(p, "repeat_x");
+                    if (has(p, "repeat_y")) l->repeatY = boolParam(p, "repeat_y");
+                }
                 return edited("layer " + layerLine(doc.map, static_cast<std::size_t>(doc.map.layerIndex(l->name))), p);
             }));
 
@@ -713,6 +809,53 @@ void registerLayerCommands(Session& session) {
             }));
 }
 
+// Tiled's random mode: every cell the edit changed gets a random tile from `random=` (weighted by `weights=`).
+std::string randomize(const Map& m, Layer& l, const std::vector<std::uint32_t>& before, const Params& p, int& changed) {
+    if (!has(p, "random")) return {};
+    std::vector<std::uint32_t> gids;
+    std::string error;
+    if (!gidList(m, listParam(p, "random"), p, gids, error)) return error;
+    if (gids.empty()) return "random= needs tile ids";
+    const NumberList w = listParam(p, "weights");
+    if (!w.empty() && w.size() != gids.size()) return "give one weight per random tile";
+    double total = 0;
+    for (std::size_t i = 0; i < gids.size(); ++i) total += w.empty() ? 1.0 : std::max(0.0, w[i]);
+    if (total <= 0) return "the weights add up to 0";
+    Rng rng(static_cast<std::uint64_t>(intParam(p, "seed", 1)));
+    changed = 0;
+    for (std::size_t i = 0; i < l.cells.size(); ++i) {
+        if (l.cells[i] == before[i]) continue;
+        double pick = rng.uniform() * total;
+        std::size_t k = 0;
+        for (; k + 1 < gids.size(); ++k) {
+            pick -= w.empty() ? 1.0 : std::max(0.0, w[k]);
+            if (pick < 0) break;
+        }
+        l.cells[i] = gids[k];
+        if (l.cells[i] != before[i]) ++changed;
+    }
+    return {};
+}
+
+std::vector<ParamSpec> randomParams() {
+    return {{"random", ParamType::NumberList, "random mode: each painted cell gets one of these tile ids instead of tile=", false},
+            {"weights", ParamType::NumberList, "relative chance of each random tile (default equal)", false},
+            {"seed", ParamType::Int, "random seed: same seed, same result", false, {}, std::int64_t{1}}};
+}
+
+bool brushGid(const Map& m, const Params& p, std::uint32_t& gid, std::string& error) {
+    if (!has(p, "tile") && !has(p, "random")) {
+        error = "give tile= (or random=a,b,c)";
+        return false;
+    }
+    if (!has(p, "tile")) {
+        // a placeholder that can't match an existing cell; randomize() replaces it
+        gid = kGidMask;
+        return true;
+    }
+    return gidParam(m, p, "tile", gid, error);
+}
+
 void registerPaintCommands(Session& session) {
     auto& reg = session.registry();
     const ParamSpec flipH{"flip_h", ParamType::Bool, "mirror the tile horizontally", false, {}, false};
@@ -720,16 +863,22 @@ void registerPaintCommands(Session& session) {
 
     reg.add({"levels.paint", "Paint Tile",
              "Put a tile in one cell (x = column, y = row, from the top-left), or in many: cells=x1,y1,x2,y2,...",
-             {docParam(), layerParam(), {"x", ParamType::Int, "column", false}, {"y", ParamType::Int, "row", false},
-              {"cells", ParamType::NumberList, "x,y pairs instead of x and y", false}, tileParam(), tilesetParam(), flipH, flipV,
-              previewParam()},
+             [&] {
+                 std::vector<ParamSpec> ps{docParam(), layerParam(), {"x", ParamType::Int, "column", false}, {"y", ParamType::Int, "row", false},
+                                           {"cells", ParamType::NumberList, "x,y pairs instead of x and y", false},
+                                           tileParam("tile", "tile id within the tileset (0 = its first tile, -1 = empty)", false), tilesetParam(), flipH, flipV};
+                 for (auto& r : randomParams()) ps.push_back(r);
+                 ps.push_back(previewParam());
+                 return ps;
+             }(),
              true},
             levelCommand(session, [](LevelDoc& doc, const Params& p) {
                 Map& m = doc.map;
                 std::string error;
                 Layer* l = tileLayer(m, p, error);
                 std::uint32_t gid = 0;
-                if (!l || !gidParam(m, p, "tile", gid, error)) return Result::failure(error);
+                if (!l || !brushGid(m, p, gid, error)) return Result::failure(error);
+                const std::vector<std::uint32_t> before = l->cells;
                 NumberList cells = listParam(p, "cells");
                 if (has(p, "x") || has(p, "y")) {
                     if (!has(p, "x") || !has(p, "y")) return Result::failure("give both x and y");
@@ -751,27 +900,44 @@ void registerPaintCommands(Session& session) {
                     return Result::failure("outside the " + std::to_string(m.width) + "x" + std::to_string(m.height) + " map (cells are 0.." +
                                            std::to_string(m.width - 1) + ", 0.." + std::to_string(m.height - 1) + ")");
                 }
-                Result r = edited("painted " + tileName(m, gid) + " in " + plural(cells.size() / 2 - static_cast<std::size_t>(outside), "cell") + " of " + l->name +
+                if (auto err = randomize(m, *l, before, p, changed); !err.empty()) return Result::failure(err);
+                Result r = edited("painted " + (has(p, "random") ? std::string("random tiles") : tileName(m, gid)) + " in " +
+                                      plural(cells.size() / 2 - static_cast<std::size_t>(outside), "cell") + " of " + l->name +
                                       (outside ? " (" + std::to_string(outside) + " outside the map skipped)" : ""),
                                   p, changed);
                 return r;
             }));
 
-    reg.add({"levels.fill_rect", "Fill Rectangle", "Fill a rectangle of cells with a tile (outline=true for just its border, e.g. walls).",
-             {docParam(), layerParam(), {"x", ParamType::Int, "left column", true}, {"y", ParamType::Int, "top row", true},
-              {"width", ParamType::Int, "cells across", true}, {"height", ParamType::Int, "cells down", true}, tileParam(), tilesetParam(),
-              {"outline", ParamType::Bool, "only the border", false, {}, false}, flipH, flipV, previewParam()},
+    reg.add({"levels.fill_rect", "Fill Rectangle",
+             "Fill a rectangle of cells with a tile (outline=true for just its border, e.g. walls), or with random "
+             "tiles from random=a,b,c (grass variations).",
+             [&] {
+                 std::vector<ParamSpec> ps{docParam(), layerParam(), {"x", ParamType::Int, "left column", true}, {"y", ParamType::Int, "top row", true},
+                                           {"width", ParamType::Int, "cells across", true}, {"height", ParamType::Int, "cells down", true},
+                                           tileParam("tile", "tile id within the tileset (0 = its first tile, -1 = empty)", false), tilesetParam(),
+                                           {"outline", ParamType::Bool, "only the border", false, {}, false}, flipH, flipV};
+                 for (auto& r : randomParams()) ps.push_back(r);
+                 ps.push_back(previewParam());
+                 return ps;
+             }(),
              true},
             levelCommand(session, [](LevelDoc& doc, const Params& p) {
                 Map& m = doc.map;
                 std::string error;
                 Layer* l = tileLayer(m, p, error);
                 std::uint32_t gid = 0;
-                if (!l || !gidParam(m, p, "tile", gid, error)) return Result::failure(error);
+                if (!l || !brushGid(m, p, gid, error)) return Result::failure(error);
+                const std::vector<std::uint32_t> before = l->cells;
                 const CellRect rect{static_cast<int>(intParam(p, "x")), static_cast<int>(intParam(p, "y")), static_cast<int>(intParam(p, "width")),
                                     static_cast<int>(intParam(p, "height"))};
                 if (rect.w <= 0 || rect.h <= 0) return Result::failure("width and height must be positive");
-                const int n = fillRect(m, *l, rect, gid, boolParam(p, "outline", false));
+                int n = fillRect(m, *l, rect, gid, boolParam(p, "outline", false));
+                if (auto err = randomize(m, *l, before, p, n); !err.empty()) return Result::failure(err);
+                if (has(p, "random")) {
+                    return edited("filled " + std::to_string(rect.w) + "x" + std::to_string(rect.h) + " with random tiles (" +
+                                      plural(static_cast<std::size_t>(n), "cell") + " changed)",
+                                  p, n);
+                }
                 return edited("filled " + std::to_string(rect.w) + "x" + std::to_string(rect.h) + (boolParam(p, "outline", false) ? " outline" : "") +
                                   " with " + tileName(m, gid) + " (" + plural(static_cast<std::size_t>(n), "cell") + " changed)",
                               p, n);
@@ -779,20 +945,30 @@ void registerPaintCommands(Session& session) {
 
     reg.add({"levels.flood_fill", "Flood Fill",
              "Bucket fill: replace the connected area of cells matching the tile at (x, y) (empty counts too) with a tile.",
-             {docParam(), layerParam(), {"x", ParamType::Int, "column", true}, {"y", ParamType::Int, "row", true}, tileParam(), tilesetParam(),
-              {"diagonal", ParamType::Bool, "spread across corners too", false, {}, false}, flipH, flipV, previewParam()},
+             [&] {
+                 std::vector<ParamSpec> ps{docParam(), layerParam(), {"x", ParamType::Int, "column", true}, {"y", ParamType::Int, "row", true},
+                                           tileParam("tile", "tile id within the tileset (0 = its first tile, -1 = empty)", false), tilesetParam(),
+                                           {"diagonal", ParamType::Bool, "spread across corners too", false, {}, false}, flipH, flipV};
+                 for (auto& r : randomParams()) ps.push_back(r);
+                 ps.push_back(previewParam());
+                 return ps;
+             }(),
              true},
             levelCommand(session, [](LevelDoc& doc, const Params& p) {
                 Map& m = doc.map;
                 std::string error;
                 Layer* l = tileLayer(m, p, error);
                 std::uint32_t gid = 0;
-                if (!l || !gidParam(m, p, "tile", gid, error)) return Result::failure(error);
+                if (!l || !brushGid(m, p, gid, error)) return Result::failure(error);
+                const std::vector<std::uint32_t> before = l->cells;
                 const int x = static_cast<int>(intParam(p, "x")), y = static_cast<int>(intParam(p, "y"));
                 if (!m.inside(x, y)) return Result::failure("(" + std::to_string(x) + ", " + std::to_string(y) + ") is outside the map");
                 const std::string was = tileName(m, m.at(*l, x, y));
-                const int n = floodFill(m, *l, x, y, gid, boolParam(p, "diagonal", false));
-                return edited("filled " + plural(static_cast<std::size_t>(n), "cell") + " of " + was + " with " + tileName(m, gid), p, n);
+                int n = floodFill(m, *l, x, y, gid, boolParam(p, "diagonal", false));
+                if (auto err = randomize(m, *l, before, p, n); !err.empty()) return Result::failure(err);
+                return edited("filled " + plural(static_cast<std::size_t>(n), "cell") + " of " + was + " with " +
+                                  (has(p, "random") ? std::string("random tiles") : tileName(m, gid)),
+                              p, n);
             }));
 
     reg.add({"levels.line", "Tile Line", "Draw a straight line of tiles from (x1, y1) to (x2, y2), both ends included.",
@@ -915,17 +1091,25 @@ void registerGeneratorCommands(Session& session) {
     {
         std::vector<ParamSpec> ps{docParam(), layerParam("tile layer holding the terrain (default: the top tile layer)"),
                                   {"target", ParamType::String, "layer to write the auto-tiles to (default: the same layer)", false},
-                                  {"base", ParamType::Int, "tile id of the first of the 16 auto-tiles (mask 0)", false, {}, std::int64_t{0}},
+                                  {"mode", ParamType::String, "4bit: 16 tiles by side; blob: 47 tiles by sides and corners; wang: a Tiled Wang set", false,
+                                   {"4bit", "blob", "wang"}, std::string("4bit")},
+                                  {"base", ParamType::Int, "4bit/blob: tile id of the first auto-tile (mask 0)", false, {}, std::int64_t{0}},
+                                  {"wangset", ParamType::String, "wang: the Wang set's name (levels.info lists them)", false},
+                                  {"color", ParamType::Int, "wang: the terrain's colour number (from 1)", false, {}, std::int64_t{1}},
+                                  {"other", ParamType::Int, "wang: colour where the neighbour isn't terrain (0 = don't care)", false, {}, std::int64_t{0}},
                                   tilesetParam(),
                                   {"match", ParamType::NumberList, "tile ids that count as terrain (default: any non-empty cell)", false},
                                   {"edges", ParamType::String, "whether cells beyond the map count as terrain", false, {"solid", "empty"}, std::string("solid")}};
         for (auto& r : regionParams()) ps.push_back(r);
         ps.push_back(previewParam());
         reg.add({"levels.autotile", "Auto-tile",
-                 "Pick the right edge/corner tile for every terrain cell with the 16-tile (4-bit) rule: mask = N 1 + E 2 "
-                 "+ S 4 + W 8 for each side whose neighbour is terrain too, and the cell becomes tile base + mask. Lay "
-                 "your 16 tiles out in that order (levels.tileset_placeholder style=autotile draws a template). Paint "
-                 "rough terrain with any tile, then run this; the result can go to another layer (target=).",
+                 "Pick the right edge/corner tile for every terrain cell. mode=4bit (16 tiles): mask = N 1 + E 2 + S 4 + "
+                 "W 8 for each side whose neighbour is terrain too, and the cell becomes tile base + mask. mode=blob (47 "
+                 "tiles, like Godot's 3x3 minimal and LDtk rules): sides plus corners, a corner counting only when both "
+                 "sides next to it are terrain. mode=wang uses a Tiled Wang (terrain) set of the tileset: corner, edge or "
+                 "mixed, picking the tile whose wang id matches the neighbours best. levels.tileset_placeholder "
+                 "style=autotile/blob/corner draws templates. Paint rough terrain with any tile, then run this; the "
+                 "result can go to another layer (target=).",
                  ps, true},
                 levelCommand(session, [](LevelDoc& doc, const Params& p) {
                     Map& m = doc.map;
@@ -939,10 +1123,38 @@ void registerGeneratorCommands(Session& session) {
                         dst = &m.addLayer(stringParam(p, "target"), LayerKind::Tiles, si + 1);
                         src = &m.layers[static_cast<std::size_t>(si)];
                     }
+                    const std::string mode = stringParam(p, "mode", "4bit");
+                    const std::uint32_t span = mode == "blob" ? 47 : 16;
                     std::uint32_t base = 0;
-                    if (!gidFor(m, intParam(p, "base", 0), p, base, error)) return Result::failure(error);
-                    if (const Tileset* t = m.tilesetFor(base); t && !t->contains(base + 15)) {
-                        return Result::failure("base " + std::to_string(intParam(p, "base", 0)) + " leaves fewer than 16 tiles in " + t->name);
+                    const Tileset* wangTs = nullptr;
+                    const WangSet* wang = nullptr;
+                    if (mode == "wang") {
+                        if (m.tilesets.empty()) return Result::failure("the map has no tileset");
+                        for (const auto& t : m.tilesets) {
+                            if (has(p, "tileset") && &t != m.tileset(stringParam(p, "tileset"))) continue;
+                            for (const auto& w : t.wangsets) {
+                                if (!wang && (!has(p, "wangset") || w.name == stringParam(p, "wangset"))) {
+                                    wang = &w;
+                                    wangTs = &t;
+                                }
+                            }
+                        }
+                        if (!wang) {
+                            return Result::failure(has(p, "wangset") ? "no Wang set called '" + stringParam(p, "wangset") + "' (levels.info lists them)"
+                                                                     : "no Wang set in the tilesets; add one with levels.wangset");
+                        }
+                    } else {
+                        if (!gidFor(m, intParam(p, "base", 0), p, base, error)) return Result::failure(error);
+                        if (const Tileset* t = m.tilesetFor(base); t && !t->contains(base + span - 1)) {
+                            return Result::failure("base " + std::to_string(intParam(p, "base", 0)) + " leaves fewer than " + std::to_string(span) + " tiles in " + t->name);
+                        }
+                    }
+                    const int color = static_cast<int>(intParam(p, "color", 1));
+                    std::set<std::uint32_t> wangTiles;  // tiles of the set that show the terrain stay terrain
+                    if (wang) {
+                        for (const auto& [tile, id] : wang->tiles) {
+                            if (std::find(id.begin(), id.end(), color) != id.end()) wangTiles.insert(wangTs->firstGid + static_cast<std::uint32_t>(tile));
+                        }
                     }
                     std::set<std::uint32_t> match;
                     std::vector<std::uint32_t> list;
@@ -952,11 +1164,23 @@ void registerGeneratorCommands(Session& session) {
                         g &= kGidMask;
                         if (!g) return false;
                         if (match.empty()) return true;
-                        return match.count(g) > 0 || (g >= base && g < base + 16);  // already auto-tiled cells stay terrain
+                        if (wang) return match.count(g) > 0 || wangTiles.count(g) > 0;
+                        return match.count(g) > 0 || (g >= base && g < base + span);  // already auto-tiled cells stay terrain
                     };
-                    const int n = autotile(m, *src, *dst, isTerrain, base, regionParam(m, p), stringParam(p, "edges", "solid") == "solid");
+                    const bool edges = stringParam(p, "edges", "solid") == "solid";
+                    if (wang) {
+                        int unmatched = 0;
+                        const int n = autotileWang(m, *src, *dst, isTerrain, *wangTs, *wang, color, static_cast<int>(intParam(p, "other", 0)),
+                                                   regionParam(m, p), edges, &unmatched);
+                        Result r = edited("auto-tiled " + plural(static_cast<std::size_t>(n), "cell") + " on " + dst->name + " with Wang set " + wang->name +
+                                              " (" + wang->type + ")" + (unmatched ? ", " + plural(static_cast<std::size_t>(unmatched), "cell") + " had no exact match" : ""),
+                                          p, n);
+                        return r.with("unmatched", static_cast<std::int64_t>(unmatched));
+                    }
+                    const int n = mode == "blob" ? autotileBlob(m, *src, *dst, isTerrain, base, regionParam(m, p), edges)
+                                                 : autotile(m, *src, *dst, isTerrain, base, regionParam(m, p), edges);
                     return edited("auto-tiled " + plural(static_cast<std::size_t>(n), "cell") + " on " + dst->name + " with tiles " + tileName(m, base) +
-                                      ".." + tileName(m, base + 15),
+                                      ".." + tileName(m, base + span - 1),
                                   p, n);
                 }));
     }
@@ -1161,16 +1385,22 @@ void registerObjectCommands(Session& session) {
     const ParamSpec idSpec{"id", ParamType::Int, "object id (levels.object_list shows them)", true};
 
     reg.add({"levels.object_add", "Add Object",
-             "Add an entity to an object layer: a rect (trigger zones, rooms), ellipse, or point (spawns). Position "
-             "and size are in px from the map's top-left, or give cell=column,row. Custom properties as "
-             "properties=\"hp=10; loot=gold\" (types inferred). The layer is created if it doesn't exist.",
+             "Add an entity to an object layer: a rect (trigger zones, rooms), ellipse, point (spawns), polygon "
+             "(slopes, odd-shaped collision) or polyline (paths, patrol routes; points=x1,y1,x2,y2,... in px "
+             "relative to x,y), or a tile object (tile=id: a placed sprite such as a chest). Position and size are in "
+             "px from the map's top-left, or give cell=column,row. rotation= turns it clockwise in degrees. Custom "
+             "properties as properties=\"hp=10; loot=gold\" (types inferred). The layer is created if it doesn't "
+             "exist.",
              {docParam(), {"layer", ParamType::String, "object layer (default: the top one, or a new 'objects')", false},
               {"name", ParamType::String, "object name", false, {}, std::string()},
               {"type", ParamType::String, "object type/class, e.g. enemy, chest, spawn", false, {}, std::string()},
               {"x", ParamType::Number, "left in px", false}, {"y", ParamType::Number, "top in px", false}, cellSpec,
               {"width", ParamType::Number, "px (default: one tile; 0 for points)", false},
               {"height", ParamType::Number, "px (default: one tile; 0 for points)", false},
-              {"shape", ParamType::String, "object shape", false, {"rect", "ellipse", "point"}, std::string("rect")},
+              {"shape", ParamType::String, "object shape", false, {"rect", "ellipse", "point", "polygon", "polyline"}, std::string("rect")},
+              {"points", ParamType::NumberList, "polygon/polyline: x1,y1,x2,y2,... px relative to x,y", false},
+              {"rotation", ParamType::Number, "degrees clockwise", false, {}, 0.0},
+              {"tile", ParamType::Int, "make it a tile object showing this tile id", false}, tilesetParam(),
               {"properties", ParamType::String, "custom properties: key=value; key2=value2", false}, previewParam()},
              true},
             levelCommand(session, [](LevelDoc& doc, const Params& p) {
@@ -1194,8 +1424,26 @@ void registerObjectCommands(Session& session) {
                 } else {
                     return Result::failure("give x and y (px) or cell=column,row");
                 }
-                ob.width = point ? 0 : numberParam(p, "width", m.tileWidth);
-                ob.height = point ? 0 : numberParam(p, "height", m.tileHeight);
+                const bool poly = ob.shape == "polygon" || ob.shape == "polyline";
+                ob.width = point || poly ? 0 : numberParam(p, "width", m.tileWidth);
+                ob.height = point || poly ? 0 : numberParam(p, "height", m.tileHeight);
+                if (poly) {
+                    const NumberList pts = listParam(p, "points");
+                    if (pts.size() % 2 || pts.size() < (ob.shape == "polygon" ? 6u : 4u)) {
+                        return Result::failure(ob.shape + " needs points=x1,y1,x2,y2,... (at least " + (ob.shape == "polygon" ? "3" : "2") + " points)");
+                    }
+                    for (std::size_t i = 0; i + 1 < pts.size(); i += 2) ob.points.push_back({pts[i], pts[i + 1]});
+                }
+                ob.rotation = numberParam(p, "rotation", 0);
+                if (has(p, "tile")) {
+                    if (!gidFor(m, intParam(p, "tile"), p, ob.gid, error)) return Result::failure(error);
+                    if (!has(p, "width") || !has(p, "height")) {
+                        if (const Tileset* t = m.tilesetFor(ob.gid)) {
+                            if (!has(p, "width")) ob.width = t->tileWidth;
+                            if (!has(p, "height")) ob.height = t->tileHeight;
+                        }
+                    }
+                }
                 ob.props = parseProps(stringParam(p, "properties"));
                 ob.id = m.nextObjectId++;
                 l->objects.push_back(ob);
@@ -1246,7 +1494,9 @@ void registerObjectCommands(Session& session) {
              "value removes it). properties=\"a=1; b=2\" sets several at once.",
              {docParam(), idSpec, {"name", ParamType::String, "new name", false}, {"type", ParamType::String, "new type", false},
               {"width", ParamType::Number, "px", false}, {"height", ParamType::Number, "px", false},
-              {"shape", ParamType::String, "object shape", false, {"rect", "ellipse", "point"}},
+              {"shape", ParamType::String, "object shape", false, {"rect", "ellipse", "point", "polygon", "polyline"}},
+              {"points", ParamType::NumberList, "polygon/polyline points x1,y1,x2,y2,... relative to the object's x,y", false},
+              {"rotation", ParamType::Number, "degrees clockwise", false},
               {"key", ParamType::String, "custom property name", false}, {"value", ParamType::String, "its value (empty removes it)", false},
               {"value_type", ParamType::String, "property type (auto: from the value)", false, propertyTypes(), std::string("auto")},
               {"properties", ParamType::String, "several properties: key=value; key2=value2", false}, previewParam()},
@@ -1260,6 +1510,16 @@ void registerObjectCommands(Session& session) {
                 if (has(p, "width")) ob->width = std::max(0.0, numberParam(p, "width"));
                 if (has(p, "height")) ob->height = std::max(0.0, numberParam(p, "height"));
                 if (has(p, "shape")) ob->shape = stringParam(p, "shape");
+                if (has(p, "rotation")) ob->rotation = numberParam(p, "rotation");
+                if (has(p, "points")) {
+                    const NumberList pts = listParam(p, "points");
+                    if (pts.size() % 2) return Result::failure("points are x,y pairs");
+                    ob->points.clear();
+                    for (std::size_t i = 0; i + 1 < pts.size(); i += 2) ob->points.push_back({pts[i], pts[i + 1]});
+                }
+                if ((ob->shape == "polygon" && ob->points.size() < 3) || (ob->shape == "polyline" && ob->points.size() < 2)) {
+                    return Result::failure("a " + ob->shape + " needs points= (3 or more for a polygon, 2 for a polyline)");
+                }
                 if (has(p, "key")) {
                     const std::string v = stringParam(p, "value");
                     if (v.empty()) ob->props.erase(stringParam(p, "key"));
@@ -1311,11 +1571,13 @@ void registerQueryCommands(Session& session) {
     reg.add({"levels.collision", "Build Collision",
              "Build collision from tile layers: a cell is solid when a source layer has a solid tile there; solid=any "
              "(any tile), list (the ids in tiles=), or property (tiles with a property, default solid=true, set by "
-             "levels.tile_property). output=objects writes merged rectangles (type 'collision') to an object layer, "
-             "which engines load as static bodies; output=grid writes a 0/1 collision grid tile layer. The target "
-             "layer is replaced.",
+             "levels.tile_property), or shapes (tiles with collision shapes from levels.tile_collision). "
+             "output=objects writes merged rectangles (type 'collision') to an object layer, which engines load as "
+             "static bodies, and with shapes=true a tile's own collision shapes (slopes, half blocks) instead of its "
+             "whole cell; output=grid writes a 0/1 collision grid tile layer. The target layer is replaced.",
              {docParam(), {"from", ParamType::String, "comma-separated source layers (default: every non-collision tile layer)", false},
-              {"solid", ParamType::String, "which tiles are solid", false, {"any", "list", "property"}, std::string("any")},
+              {"solid", ParamType::String, "which tiles are solid", false, {"any", "list", "property", "shapes"}, std::string("any")},
+              {"shapes", ParamType::Bool, "output=objects: use tiles' own collision shapes where they have them", false, {}, true},
               {"tiles", ParamType::NumberList, "solid=list: the solid tile ids", false}, tilesetParam(),
               {"property", ParamType::String, "solid=property: the property that must be true", false, {}, std::string("solid")},
               {"output", ParamType::String, "what to write", false, {"objects", "grid"}, std::string("objects")},
@@ -1344,10 +1606,17 @@ void registerQueryCommands(Session& session) {
                 if (mode == "list" && list.empty()) return Result::failure("solid=list needs tiles=");
                 const std::set<std::uint32_t> listed(list.begin(), list.end());
                 const std::string prop = stringParam(p, "property", "solid");
+                auto tileShapes = [&](std::uint32_t raw) -> const std::vector<MapObject>* {
+                    const Tileset* t = m.tilesetFor(raw);
+                    if (!t) return nullptr;
+                    auto it = t->tileShapes.find(static_cast<int>((raw & kGidMask) - t->firstGid));
+                    return it == t->tileShapes.end() || it->second.empty() ? nullptr : &it->second;
+                };
                 auto solidTile = [&](std::uint32_t raw) {
                     const std::uint32_t g = raw & kGidMask;
                     if (!g) return false;
                     if (mode == "list") return listed.count(g) > 0;
+                    if (mode == "shapes") return tileShapes(raw) != nullptr;
                     if (mode == "property") {
                         const Properties* ps = m.tileProperties(g);
                         if (!ps) return false;
@@ -1357,11 +1626,16 @@ void registerQueryCommands(Session& session) {
                     return true;
                 };
                 std::vector<bool> solid(static_cast<std::size_t>(m.width) * m.height, false);
+                std::vector<std::uint32_t> shaped(solid.size(), 0);  // cells drawn from their tile's own shapes
+                const bool useShapes = boolParam(p, "shapes", true) && stringParam(p, "output", "objects") == "objects";
                 std::size_t count = 0;
                 for (std::size_t i = 0; i < solid.size(); ++i) {
-                    for (const Layer* l : sources) {
-                        if (solidTile(l->cells[i])) {
-                            solid[i] = true;
+                    // the top source layer decides
+                    for (auto it = sources.rbegin(); it != sources.rend(); ++it) {
+                        const std::uint32_t raw = (*it)->cells[i];
+                        if (solidTile(raw)) {
+                            if (useShapes && tileShapes(raw)) shaped[i] = raw;
+                            else solid[i] = true;
                             ++count;
                             break;
                         }
@@ -1390,8 +1664,25 @@ void registerQueryCommands(Session& session) {
                         ob.height = c.h * m.tileHeight;
                         l.objects.push_back(ob);
                     }
-                    r.message = "built " + plural(rects.size(), "collision rectangle") + " covering " + plural(count, "solid cell") + " on " + name;
-                    r.with("rectangles", static_cast<std::int64_t>(rects.size()));
+                    std::size_t shapes = 0;
+                    for (std::size_t i = 0; i < shaped.size(); ++i) {
+                        if (!shaped[i]) continue;
+                        const double cx = static_cast<double>(i % static_cast<std::size_t>(m.width)) * m.tileWidth;
+                        const double cy = static_cast<double>(i / static_cast<std::size_t>(m.width)) * m.tileHeight;
+                        for (const MapObject& shape : *tileShapes(shaped[i])) {
+                            MapObject ob = shape;
+                            ob.id = m.nextObjectId++;
+                            ob.type = "collision";
+                            ob.name.clear();
+                            ob.x += cx;
+                            ob.y += cy;
+                            l.objects.push_back(ob);
+                            ++shapes;
+                        }
+                    }
+                    r.message = "built " + plural(rects.size(), "collision rectangle") + (shapes ? " and " + plural(shapes, "tile shape") : "") + " covering " +
+                                plural(count, "solid cell") + " on " + name;
+                    r.with("rectangles", static_cast<std::int64_t>(rects.size())).with("shapes", static_cast<std::int64_t>(shapes));
                 }
                 return r.with("solid_cells", static_cast<std::int64_t>(count)).with("layer", name);
             }));
@@ -1614,6 +1905,518 @@ void registerQueryCommands(Session& session) {
             }, false));
 }
 
+Tileset* tilesetArg(Map& m, const Params& p, std::string& error) {
+    if (m.tilesets.empty()) {
+        error = "the map has no tileset yet";
+        return nullptr;
+    }
+    Tileset* t = has(p, "tileset") ? m.tileset(stringParam(p, "tileset")) : &m.tilesets.front();
+    if (!t) error = "no tileset called '" + stringParam(p, "tileset") + "'";
+    return t;
+}
+
+bool tileArg(const Tileset& t, const Params& p, const std::string& key, int& out, std::string& error) {
+    out = static_cast<int>(intParam(p, key, 0));
+    if (out < 0 || out >= t.tileCount) {
+        error = "tileset " + t.name + " has tiles 0.." + std::to_string(t.tileCount - 1) + ", not " + std::to_string(out);
+        return false;
+    }
+    return true;
+}
+
+void registerTerrainCommands(Session& session) {
+    auto& reg = session.registry();
+
+    reg.add({"levels.wangset", "Wang Set",
+             "Add, change or remove a Tiled Wang set (terrain set) on a tileset, for levels.autotile mode=wang and for "
+             "Tiled's terrain brush. type corner (16 tiles: each corner is one terrain), edge (16 tiles: each side) or "
+             "mixed (both, 47+ tiles). colors=\"grass:#40a040,dirt:#a07040\" names the terrains (numbered from 1). "
+             "layout=corner16, edge16 or blob47 fills in the wang ids for a standard tile layout starting at tile "
+             "first= (terrain colour color=, the rest other=); otherwise set tiles one by one with levels.wang_tile.",
+             {docParam(), tilesetParam(), {"name", ParamType::String, "Wang set name", true},
+              {"type", ParamType::String, "what the tiles match on", false, {"corner", "edge", "mixed"}},
+              {"colors", ParamType::String, "terrains as name:#colour, comma-separated (replaces the list)", false},
+              {"layout", ParamType::String, "fill wang ids for a standard layout", false, {"none", "corner16", "edge16", "blob47"}, std::string("none")},
+              {"first", ParamType::Int, "layout: tile id of the layout's first tile", false, {}, std::int64_t{0}},
+              {"color", ParamType::Int, "layout: the terrain colour number", false, {}, std::int64_t{1}},
+              {"other", ParamType::Int, "layout: colour of the rest (0 = none)", false, {}, std::int64_t{2}},
+              {"remove", ParamType::Bool, "delete the Wang set", false, {}, false}},
+             true},
+            levelCommand(session, [](LevelDoc& doc, const Params& p) {
+                std::string error;
+                Tileset* t = tilesetArg(doc.map, p, error);
+                if (!t) return Result::failure(error);
+                const std::string name = stringParam(p, "name");
+                auto it = std::find_if(t->wangsets.begin(), t->wangsets.end(), [&](const WangSet& w) { return w.name == name; });
+                if (boolParam(p, "remove", false)) {
+                    if (it == t->wangsets.end()) return Result::failure("no Wang set called '" + name + "' on " + t->name);
+                    t->wangsets.erase(it);
+                    return edited("removed Wang set " + name + " from " + t->name, p);
+                }
+                const bool created = it == t->wangsets.end();
+                if (created) {
+                    t->wangsets.push_back({});
+                    t->wangsets.back().name = name;
+                    it = t->wangsets.end() - 1;
+                }
+                WangSet& w = *it;
+                if (has(p, "type")) w.type = stringParam(p, "type");
+                if (has(p, "colors")) {
+                    w.colors.clear();
+                    for (const auto& item : splitList(stringParam(p, "colors"))) {
+                        WangColor c;
+                        const auto colon = item.find(':');
+                        c.name = item.substr(0, colon);
+                        if (colon != std::string::npos) {
+                            c.color = item.substr(colon + 1);
+                            if (!Color::parse(c.color)) return Result::failure("not a colour: " + c.color);
+                        }
+                        w.colors.push_back(c);
+                    }
+                }
+                const std::string layout = stringParam(p, "layout", "none");
+                if (layout != "none") {
+                    const int first = static_cast<int>(intParam(p, "first", 0)), count = layout == "blob47" ? 47 : 16;
+                    if (first < 0 || first + count > t->tileCount) {
+                        return Result::failure(layout + " needs tiles " + std::to_string(first) + ".." + std::to_string(first + count - 1) + " but " + t->name +
+                                               " has 0.." + std::to_string(t->tileCount - 1));
+                    }
+                    wangTemplate(w, layout, first, static_cast<int>(intParam(p, "color", 1)), static_cast<int>(intParam(p, "other", 2)));
+                }
+                const int need = std::max(static_cast<int>(intParam(p, "color", 1)), static_cast<int>(intParam(p, "other", 2)));
+                while (static_cast<int>(w.colors.size()) < need && layout != "none") {
+                    w.colors.push_back({"terrain " + std::to_string(w.colors.size() + 1), placeholderColor(static_cast<std::uint32_t>(w.colors.size() + 3)).hex().substr(0, 7), -1, 1});
+                }
+                Result r = edited(std::string(created ? "added" : "updated") + " Wang set " + name + " on " + t->name + ": " + w.type + ", " +
+                                      plural(w.colors.size(), "colour") + ", " + plural(w.tiles.size(), "tile"),
+                                  p);
+                return r.with("wangset", name).with("tiles", static_cast<std::int64_t>(w.tiles.size()));
+            }));
+
+    reg.add({"levels.wang_tile", "Wang Tile",
+             "Set one tile's wang id in a Wang set: the terrain colour at top, top-right, right, bottom-right, bottom, "
+             "bottom-left, left, top-left (8 numbers, 0 = none; a corner set uses the odd places, an edge set the "
+             "even ones). All zeros removes the tile from the set.",
+             {docParam(), tilesetParam(), {"wangset", ParamType::String, "Wang set name", true}, tileParam("tile", "tile id within the tileset"),
+              {"wangid", ParamType::NumberList, "8 colour numbers: top, top-right, right, bottom-right, bottom, bottom-left, left, top-left", true}},
+             true},
+            levelCommand(session, [](LevelDoc& doc, const Params& p) {
+                std::string error;
+                Tileset* t = tilesetArg(doc.map, p, error);
+                int tile = 0;
+                if (!t || !tileArg(*t, p, "tile", tile, error)) return Result::failure(error);
+                auto it = std::find_if(t->wangsets.begin(), t->wangsets.end(), [&](const WangSet& w) { return w.name == stringParam(p, "wangset"); });
+                if (it == t->wangsets.end()) return Result::failure("no Wang set called '" + stringParam(p, "wangset") + "' (add it with levels.wangset)");
+                const NumberList v = listParam(p, "wangid");
+                if (v.size() != 8) return Result::failure("wangid needs 8 numbers");
+                std::array<int, 8> id{};
+                bool any = false;
+                for (std::size_t k = 0; k < 8; ++k) {
+                    id[k] = static_cast<int>(v[k]);
+                    if (id[k] < 0 || id[k] > static_cast<int>(std::max<std::size_t>(it->colors.size(), 254))) return Result::failure("bad colour number");
+                    any = any || id[k];
+                }
+                if (!any) {
+                    it->tiles.erase(tile);
+                    return edited("removed tile " + std::to_string(tile) + " from Wang set " + it->name, p);
+                }
+                it->tiles[tile] = id;
+                return edited("tile " + std::to_string(tile) + " in Wang set " + it->name + " is now " + [&] {
+                    std::string s;
+                    for (std::size_t k = 0; k < 8; ++k) s += (k ? "," : "") + std::to_string(id[k]);
+                    return s;
+                }(),
+                              p);
+            }));
+
+    reg.add({"levels.tile_animation", "Animate Tile",
+             "Make a tile animated (water, torches, conveyor belts): wherever it is placed it cycles through frames= "
+             "(tile ids of the same tileset), each shown for duration= ms (or durations= per frame). Saved as Tiled "
+             "tile animations; levels.preview time= shows a moment of it. No frames removes the animation.",
+             {docParam(), tilesetParam(), tileParam("tile", "the tile that animates"),
+              {"frames", ParamType::NumberList, "tile ids to cycle through (often starting with the tile itself)", false},
+              {"duration", ParamType::Int, "ms per frame", false, {}, std::int64_t{100}},
+              {"durations", ParamType::NumberList, "ms for each frame instead", false}},
+             true},
+            levelCommand(session, [](LevelDoc& doc, const Params& p) {
+                std::string error;
+                Tileset* t = tilesetArg(doc.map, p, error);
+                int tile = 0;
+                if (!t || !tileArg(*t, p, "tile", tile, error)) return Result::failure(error);
+                const NumberList frames = listParam(p, "frames"), durations = listParam(p, "durations");
+                if (frames.empty()) {
+                    t->animations.erase(tile);
+                    return edited("tile " + std::to_string(tile) + " of " + t->name + " no longer animates", p);
+                }
+                if (!durations.empty() && durations.size() != frames.size()) return Result::failure("give one duration per frame");
+                std::vector<TileFrame> anim;
+                int total = 0;
+                for (std::size_t i = 0; i < frames.size(); ++i) {
+                    const int f = static_cast<int>(frames[i]);
+                    if (f < 0 || f >= t->tileCount) return Result::failure("frame " + std::to_string(f) + " isn't a tile of " + t->name);
+                    const int d = std::max(1, static_cast<int>(durations.empty() ? intParam(p, "duration", 100) : static_cast<std::int64_t>(durations[i])));
+                    anim.push_back({f, d});
+                    total += d;
+                }
+                t->animations[tile] = anim;
+                Result r = edited("tile " + std::to_string(tile) + " of " + t->name + " animates through " + plural(anim.size(), "frame") + " (" +
+                                      std::to_string(total) + " ms a loop)",
+                                  p);
+                return r.with("frames", static_cast<std::int64_t>(anim.size())).with("loop_ms", static_cast<std::int64_t>(total));
+            }));
+
+    reg.add({"levels.tile_collision", "Tile Collision Shape",
+             "Give a tile its own collision shape (Tiled's tile collision editor): a rect, ellipse or polygon in px "
+             "inside the tile, e.g. a half block (rect y=8 height=8) or a slope (polygon points=0,16,16,0,16,16). "
+             "Shapes add up; clear=true removes the tile's shapes first. levels.collision and Godot export use them.",
+             {docParam(), tilesetParam(), tileParam("tile", "tile id within the tileset"),
+              {"shape", ParamType::String, "shape to add", false, {"rect", "ellipse", "polygon"}},
+              {"x", ParamType::Number, "left in px inside the tile", false, {}, 0.0}, {"y", ParamType::Number, "top in px inside the tile", false, {}, 0.0},
+              {"width", ParamType::Number, "px (default: the tile's width)", false}, {"height", ParamType::Number, "px (default: the tile's height)", false},
+              {"points", ParamType::NumberList, "polygon: x1,y1,x2,y2,... px inside the tile", false},
+              {"clear", ParamType::Bool, "remove the tile's shapes first", false, {}, false}},
+             true},
+            levelCommand(session, [](LevelDoc& doc, const Params& p) {
+                std::string error;
+                Tileset* t = tilesetArg(doc.map, p, error);
+                int tile = 0;
+                if (!t || !tileArg(*t, p, "tile", tile, error)) return Result::failure(error);
+                if (boolParam(p, "clear", false)) t->tileShapes.erase(tile);
+                if (!has(p, "shape")) {
+                    if (!boolParam(p, "clear", false)) return Result::failure("give shape= (or clear=true to remove the shapes)");
+                    return edited("removed the collision shapes of " + t->name + ":" + std::to_string(tile), p);
+                }
+                MapObject ob;
+                ob.shape = stringParam(p, "shape");
+                ob.x = numberParam(p, "x", 0);
+                ob.y = numberParam(p, "y", 0);
+                if (ob.shape == "polygon") {
+                    const NumberList pts = listParam(p, "points");
+                    if (pts.size() < 6 || pts.size() % 2) return Result::failure("a polygon needs points=x1,y1,x2,y2,x3,y3,...");
+                    for (std::size_t i = 0; i + 1 < pts.size(); i += 2) ob.points.push_back({pts[i] - ob.x, pts[i + 1] - ob.y});
+                } else {
+                    ob.width = numberParam(p, "width", t->tileWidth);
+                    ob.height = numberParam(p, "height", t->tileHeight);
+                    if (ob.width <= 0 || ob.height <= 0) return Result::failure("width and height must be positive");
+                }
+                auto& shapes = t->tileShapes[tile];
+                ob.id = static_cast<int>(shapes.size()) + 1;
+                shapes.push_back(ob);
+                Result r = edited(t->name + ":" + std::to_string(tile) + " now has " + plural(shapes.size(), "collision shape"), p);
+                return r.with("shapes", static_cast<std::int64_t>(shapes.size()));
+            }));
+
+    reg.add({"levels.tileset_preview", "Preview Tileset",
+             "Render a tileset's tiles as a PNG attachment, packed in its columns with no margin or spacing (tile n "
+             "at column n % columns, row n / columns), so a click on the picture names a tile. Tiles without an image "
+             "draw as their placeholder colours. Returns tileset, tiles, columns, tile_width, tile_height, first_gid.",
+             {docParam(), tilesetParam(), {"scale", ParamType::Int, "whole-number enlargement", false, {}, std::int64_t{1}}}, false, true},
+            levelCommand(session, [](LevelDoc& doc, const Params& p) {
+                std::string error;
+                Tileset* t = tilesetArg(doc.map, p, error);
+                if (!t) return Result::failure(error);
+                const int cols = std::max(1, std::min(t->columns > 0 ? t->columns : 8, std::max(1, t->tileCount)));
+                const int rows = std::max(1, (t->tileCount + cols - 1) / cols);
+                const int tw = std::max(1, t->tileWidth), th = std::max(1, t->tileHeight);
+                const int scale = clampInt(intParam(p, "scale", 1), 1, 16);
+                if (static_cast<long long>(cols) * tw * scale > 16384 || static_cast<long long>(rows) * th * scale > 16384)
+                    return Result::failure("the tileset is too big to preview at that scale");
+                Image out(cols * tw * scale, rows * th * scale);
+                for (int id = 0; id < t->tileCount; ++id) {
+                    const int ox = (id % cols) * tw, oy = (id / cols) * th;
+                    const Color flat = placeholderColor(t->firstGid + static_cast<std::uint32_t>(id));
+                    for (int y = 0; y < th; ++y) {
+                        for (int x = 0; x < tw; ++x) {
+                            Color c = flat;
+                            if (t->pixels) {
+                                const int sx = t->tileX(id) + x, sy = t->tileY(id) + y;
+                                c = sx < t->pixels->width() && sy < t->pixels->height() ? t->pixels->at(sx, sy) : Color{0, 0, 0, 0};
+                            }
+                            for (int dy = 0; dy < scale; ++dy)
+                                for (int dx = 0; dx < scale; ++dx) out.set((ox + x) * scale + dx, (oy + y) * scale + dy, c);
+                        }
+                    }
+                }
+                Result r = Result::success(t->name + ": " + std::to_string(t->tileCount) + " tiles in " + std::to_string(cols) + " columns");
+                r.attach({"image/png", raster::encodePng(out), "tileset.png"});
+                return r.with("tileset", t->name)
+                    .with("tiles", static_cast<std::int64_t>(t->tileCount))
+                    .with("columns", static_cast<std::int64_t>(cols))
+                    .with("tile_width", static_cast<std::int64_t>(tw))
+                    .with("tile_height", static_cast<std::int64_t>(th))
+                    .with("first_gid", static_cast<std::int64_t>(t->firstGid));
+            }, false));
+}
+
+// ---- worlds ------------------------------------------------------------------------
+
+// Undoable edit of a world: snapshots its entries.
+class WorldEdit : public Action {
+public:
+    WorldEdit(std::shared_ptr<WorldDoc> doc, std::function<Result(WorldDoc&)> fn) : doc_(std::move(doc)), fn_(std::move(fn)) {}
+    Result apply() override {
+        before_ = doc_->entries;
+        Result r;
+        try {
+            r = fn_(*doc_);
+        } catch (const std::exception& e) {
+            r = Result::failure(e.what());
+        }
+        if (!r.ok) doc_->entries = before_;
+        return r;
+    }
+    void revert() override { doc_->entries = before_; }
+
+private:
+    std::shared_ptr<WorldDoc> doc_;
+    std::function<Result(WorldDoc&)> fn_;
+    std::vector<WorldDoc::Entry> before_;
+};
+
+ParamSpec worldParam() { return {"world", ParamType::String, "id of an open world, e.g. world1", true}; }
+
+ActionFactory worldCommand(Session& session, std::function<Result(Session&, WorldDoc&, const Params&)> fn, bool undoable = true) {
+    return [&session, fn, undoable](const Params& p) -> std::unique_ptr<Action> {
+        const std::string id = stringParam(p, "world");
+        auto doc = session.workspace().getAs<WorldDoc>(id);
+        if (!doc) return std::make_unique<FunctionAction>([id] { return Result::failure("no open world called '" + id + "' (use levels.world_new or levels.world_open)"); });
+        Session* s = &session;
+        if (!undoable) {
+            return std::make_unique<FunctionAction>([s, doc, fn, p] {
+                try {
+                    return fn(*s, *doc, p);
+                } catch (const std::exception& e) {
+                    return Result::failure(e.what());
+                }
+            });
+        }
+        return std::make_unique<WorldEdit>(doc, [s, fn, p](WorldDoc& d) { return fn(*s, d, p); });
+    };
+}
+
+// A world entry's map: the open level, else the file read from disk.
+std::shared_ptr<const Map> entryMap(Session& s, const WorldDoc::Entry& e) {
+    if (!e.doc.empty()) {
+        if (auto d = s.workspace().getAs<LevelDoc>(e.doc)) return std::shared_ptr<const Map>(d, &d->map);
+    }
+    std::error_code ec;
+    if (!e.file.empty() && fs::exists(e.file, ec)) return std::make_shared<Map>(loadMap(e.file));
+    return nullptr;
+}
+
+std::string entryName(const WorldDoc::Entry& e) { return e.file.empty() ? e.doc : fs::path(e.file).filename().string() + (e.doc.empty() ? "" : " (" + e.doc + ")"); }
+
+int findEntry(const WorldDoc& w, const std::string& key) {
+    for (std::size_t i = 0; i < w.entries.size(); ++i) {
+        const auto& e = w.entries[i];
+        if (e.doc == key || e.file == key || fs::path(e.file).filename().string() == key || std::to_string(i) == key) return static_cast<int>(i);
+    }
+    return -1;
+}
+
+void registerWorldCommands(Session& session) {
+    auto& reg = session.registry();
+
+    reg.add({"levels.world_new", "New World",
+             "Start a world: several levels laid out side by side, saved as a Tiled .world file (Tiled and most "
+             "engines' Tiled importers load it). Add levels with levels.world_add.",
+             {}, false},
+            [&session](const Params&) -> std::unique_ptr<Action> {
+                return std::make_unique<FunctionAction>([&session] {
+                    const std::string id = session.workspace().add(std::make_shared<WorldDoc>(), "world");
+                    return Result::success("created " + id + ": an empty world", id).with("world", id);
+                });
+            });
+
+    reg.add({"levels.world_open", "Open World",
+             "Open a Tiled .world file and every level it lists (each becomes an open level, e.g. lvl1, lvl2).",
+             {{"path", ParamType::String, ".world file", true}}, false},
+            [&session](const Params& p) -> std::unique_ptr<Action> {
+                return std::make_unique<FunctionAction>([&session, p] {
+                    try {
+                        const fs::path path = stringParam(p, "path");
+                        std::ifstream in(path, std::ios::binary);
+                        if (!in) return Result::failure("can't read " + path.string());
+                        std::stringstream text;
+                        text << in.rdbuf();
+                        auto world = std::make_shared<WorldDoc>();
+                        world->path = path.string();
+                        std::string ids, lines;
+                        for (const auto& wm : fromWorldJson(text.str(), path.parent_path())) {
+                            auto lvl = std::make_shared<LevelDoc>();
+                            lvl->map = loadMap(wm.file);
+                            lvl->path = wm.file;
+                            const std::string id = session.workspace().add(lvl, "lvl");
+                            world->entries.push_back({id, wm.file, wm.x, wm.y});
+                            ids += (ids.empty() ? "" : ",") + id;
+                            lines += "\n  " + id + " " + fs::path(wm.file).filename().string() + " at " + std::to_string(wm.x) + "," + std::to_string(wm.y);
+                        }
+                        const std::string wid = session.workspace().add(world, "world");
+                        Result r = Result::success("opened " + path.string() + " as " + wid + ": " + world->summary() + lines, wid);
+                        return r.with("world", wid).with("levels", ids).with("count", static_cast<std::int64_t>(world->entries.size()));
+                    } catch (const std::exception& e) {
+                        return Result::failure(e.what());
+                    }
+                });
+            });
+
+    reg.add({"levels.world_add", "Add Level to World",
+             "Place a level in a world: an open level (level=lvl2) or a map file (path=), at x,y px, or next to "
+             "another level of the world (beside=lvl1 side=right|left|above|below; default: right of the last one). "
+             "An open level that was never saved needs file= for where levels.world_save will write it.",
+             {worldParam(), {"level", ParamType::String, "open level id", false}, {"path", ParamType::String, "map file instead of an open level", false},
+              {"file", ParamType::String, "where to save the open level (default: its own path)", false},
+              {"x", ParamType::Int, "left in px", false}, {"y", ParamType::Int, "top in px", false},
+              {"beside", ParamType::String, "place next to this level of the world (id, file name or index)", false},
+              {"side", ParamType::String, "which side of beside", false, {"right", "left", "above", "below"}, std::string("right")}},
+             true},
+            worldCommand(session, [](Session& s, WorldDoc& w, const Params& p) {
+                WorldDoc::Entry e;
+                if (has(p, "level")) {
+                    auto d = s.workspace().getAs<LevelDoc>(stringParam(p, "level"));
+                    if (!d) return Result::failure("no open level called '" + stringParam(p, "level") + "'");
+                    e.doc = stringParam(p, "level");
+                    e.file = has(p, "file") ? stringParam(p, "file") : d->path;
+                    if (e.file.empty()) return Result::failure(e.doc + " has never been saved: give file= for where the world should keep it");
+                } else if (has(p, "path")) {
+                    e.file = stringParam(p, "path");
+                } else {
+                    return Result::failure("give level= (an open level) or path= (a map file)");
+                }
+                if (!e.file.empty()) {
+                    std::error_code ec;
+                    auto abs = fs::absolute(e.file, ec);
+                    e.file = (ec ? fs::path(e.file) : abs).lexically_normal().string();
+                }
+                for (const auto& other : w.entries) {
+                    if ((!e.doc.empty() && other.doc == e.doc) || other.file == e.file) return Result::failure(entryName(e) + " is already in the world");
+                }
+                auto map = entryMap(s, e);
+                if (!map) return Result::failure("can't read " + e.file);
+                if (has(p, "x") || has(p, "y")) {
+                    e.x = static_cast<int>(intParam(p, "x", 0));
+                    e.y = static_cast<int>(intParam(p, "y", 0));
+                } else if (!w.entries.empty()) {
+                    const int bi = has(p, "beside") ? findEntry(w, stringParam(p, "beside")) : static_cast<int>(w.entries.size()) - 1;
+                    if (bi < 0) return Result::failure("no level '" + stringParam(p, "beside") + "' in the world");
+                    const auto& b = w.entries[static_cast<std::size_t>(bi)];
+                    auto bm = entryMap(s, b);
+                    const int bw = bm ? bm->width * bm->tileWidth : 0, bh = bm ? bm->height * bm->tileHeight : 0;
+                    const int mw = map->width * map->tileWidth, mh = map->height * map->tileHeight;
+                    const std::string side = stringParam(p, "side", "right");
+                    e.x = side == "right" ? b.x + bw : side == "left" ? b.x - mw : b.x;
+                    e.y = side == "below" ? b.y + bh : side == "above" ? b.y - mh : b.y;
+                }
+                w.entries.push_back(e);
+                Result r = Result::success("added " + entryName(e) + " at " + std::to_string(e.x) + "," + std::to_string(e.y) + " (" + w.summary() + ")");
+                return r.with("world", stringParam(p, "world")).with("x", static_cast<std::int64_t>(e.x)).with("y", static_cast<std::int64_t>(e.y));
+            }));
+
+    reg.add({"levels.world_remove", "Remove Level from World", "Take a level out of a world (the level itself stays open and its file stays).",
+             {worldParam(), {"level", ParamType::String, "level id, file name or index in the world", true}}, true},
+            worldCommand(session, [](Session&, WorldDoc& w, const Params& p) {
+                const int i = findEntry(w, stringParam(p, "level"));
+                if (i < 0) return Result::failure("no level '" + stringParam(p, "level") + "' in the world");
+                const std::string name = entryName(w.entries[static_cast<std::size_t>(i)]);
+                w.entries.erase(w.entries.begin() + i);
+                return Result::success("removed " + name + " (" + w.summary() + ")").with("world", stringParam(p, "world"));
+            }));
+
+    reg.add({"levels.world_save", "Save World",
+             "Write the world as a Tiled .world file (map paths relative to it), and save every open level in it to "
+             "its file first (save_levels=false skips that; the extension of each file picks its format).",
+             {worldParam(), {"path", ParamType::String, ".world file (default: where it was opened from)", false},
+              {"save_levels", ParamType::Bool, "also save the open levels", false, {}, true}},
+             false},
+            worldCommand(
+                session,
+                [](Session& s, WorldDoc& w, const Params& p) {
+                    const fs::path path = has(p, "path") ? fs::path(stringParam(p, "path")) : fs::path(w.path);
+                    if (path.empty()) return Result::failure("give path= for the .world file");
+                    std::vector<WorldMap> maps;
+                    std::size_t saved = 0;
+                    for (const auto& e : w.entries) {
+                        auto map = entryMap(s, e);
+                        if (!map) return Result::failure("can't read " + entryName(e));
+                        if (!e.doc.empty() && boolParam(p, "save_levels", true)) {
+                            auto d = s.workspace().getAs<LevelDoc>(e.doc);
+                            std::string format = formatFor(e.file);
+                            if (fs::path(e.file).extension() == ".json") format = "json";
+                            if (format.empty() || format == "png" || format == "csv" || format == "tscn") return Result::failure("can't save a level as " + e.file);
+                            saveMap(d->map, e.file, format);
+                            d->path = e.file;
+                            ++saved;
+                        }
+                        maps.push_back({e.file, e.x, e.y, map->width * map->tileWidth, map->height * map->tileHeight});
+                    }
+                    if (auto parent = path.parent_path(); !parent.empty()) {
+                        std::error_code ec;
+                        fs::create_directories(parent, ec);
+                    }
+                    std::ofstream out(path, std::ios::binary);
+                    out << toWorldJson(maps, path.parent_path());
+                    if (!out) return Result::failure("can't write " + path.string());
+                    w.path = path.string();
+                    Result r = Result::success("saved " + path.string() + " with " + plural(maps.size(), "level") + (saved ? " (" + plural(saved, "level file") + " saved)" : ""),
+                                               path.string());
+                    return r.with("path", path.string()).with("levels", static_cast<std::int64_t>(maps.size()));
+                },
+                false));
+
+    reg.add({"levels.world_preview", "Preview World",
+             "List a world's levels with their positions and sizes, and render the whole world as one picture (each "
+             "level at its place, its name in the corner) to check how they join.",
+             {worldParam(), {"scale", ParamType::Number, "zoom factor (default: fit 1024 px)", false},
+              {"output", ParamType::String, "also write the picture to this file", false}},
+             false, true},
+            worldCommand(
+                session,
+                [](Session& s, WorldDoc& w, const Params& p) {
+                    if (w.entries.empty()) return Result::success(w.summary());
+                    int x0 = 1 << 30, y0 = 1 << 30, x1 = -(1 << 30), y1 = -(1 << 30);
+                    std::vector<std::shared_ptr<const Map>> maps;
+                    std::string lines;
+                    for (const auto& e : w.entries) {
+                        auto m = entryMap(s, e);
+                        maps.push_back(m);
+                        const int mw = m ? m->width * m->tileWidth : 0, mh = m ? m->height * m->tileHeight : 0;
+                        x0 = std::min(x0, e.x);
+                        y0 = std::min(y0, e.y);
+                        x1 = std::max(x1, e.x + mw);
+                        y1 = std::max(y1, e.y + mh);
+                        lines += "\n  " + entryName(e) + " at " + std::to_string(e.x) + "," + std::to_string(e.y) + " size " + std::to_string(mw) + "x" +
+                                 std::to_string(mh) + (m ? "" : " (missing)");
+                    }
+                    const double big = std::max(1, std::max(x1 - x0, y1 - y0));
+                    const double scale = std::clamp(has(p, "scale") ? numberParam(p, "scale") : std::min(1.0, 1024.0 / big), 0.01, 8.0);
+                    Image img(std::max(1, static_cast<int>((x1 - x0) * scale)), std::max(1, static_cast<int>((y1 - y0) * scale)), Color{40, 40, 48, 255});
+                    for (std::size_t i = 0; i < maps.size(); ++i) {
+                        if (!maps[i]) continue;
+                        RenderOptions o;
+                        o.scale = scale;
+                        o.objects = false;
+                        const Image part = render(*maps[i], o);
+                        const int ox = static_cast<int>((w.entries[i].x - x0) * scale), oy = static_cast<int>((w.entries[i].y - y0) * scale);
+                        raster::blendOnto(img, part, ox, oy, raster::Blend::Normal, 1.0);
+                        raster::strokeRect(img, ox + 0.5, oy + 0.5, part.width() - 1, part.height() - 1, Color{255, 255, 255, 160}, 1);
+                    }
+                    Result r = Result::success(w.summary() + ", spanning " + std::to_string(x1 - x0) + "x" + std::to_string(y1 - y0) + " px" + lines);
+                    if (has(p, "output")) {
+                        const fs::path out = stringParam(p, "output");
+                        if (auto parent = out.parent_path(); !parent.empty()) {
+                            std::error_code ec;
+                            fs::create_directories(parent, ec);
+                        }
+                        raster::save(img, out);
+                        r.with("output", out.string());
+                    }
+                    r.with("width", static_cast<std::int64_t>(x1 - x0)).with("height", static_cast<std::int64_t>(y1 - y0)).with("levels", static_cast<std::int64_t>(w.entries.size()));
+                    r.attach({"image/png", raster::encodePng(img), "world.png"});
+                    return r;
+                },
+                false));
+}
+
 }  // namespace
 
 void registerCommands(Session& session) {
@@ -1624,6 +2427,8 @@ void registerCommands(Session& session) {
     registerGeneratorCommands(session);
     registerObjectCommands(session);
     registerQueryCommands(session);
+    registerTerrainCommands(session);
+    registerWorldCommands(session);
 }
 
 }  // namespace wetwaresuite::levels

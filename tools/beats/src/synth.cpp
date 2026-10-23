@@ -6,6 +6,7 @@
 #include <map>
 
 #include "wetwaresuite/audio/dsp.hpp"
+#include "wetwaresuite/audio/rack.hpp"
 #include "wetwaresuite/beats/song.hpp"
 
 namespace wetwaresuite::beats {
@@ -148,28 +149,78 @@ std::size_t framesFor(double seconds, int rate) { return static_cast<std::size_t
 audio::Buffer synthNote(const SynthSettings& st, int rate, double frequency, double seconds, double velocity) {
     const double total = seconds + std::max(0.001, st.release);
     audio::Buffer out(1, framesFor(total, rate), rate);
-    Oscillator o1, o2;
-    o1.type = st.osc1;
-    o2.type = st.osc2;
-    o2.rng = Rng(777);
+    // unison: each oscillator is `voices` copies spread evenly over unisonSpread cents
+    const int voices = std::clamp(st.unison, 1, 7);
+    std::vector<Oscillator> o1(static_cast<std::size_t>(voices)), o2(static_cast<std::size_t>(voices));
+    std::vector<double> spread(static_cast<std::size_t>(voices), 0.0);
+    for (int v = 0; v < voices; ++v) {
+        o1[static_cast<std::size_t>(v)].type = st.osc1;
+        o2[static_cast<std::size_t>(v)].type = st.osc2;
+        o2[static_cast<std::size_t>(v)].rng = Rng(777u + static_cast<std::uint32_t>(v));
+        o1[static_cast<std::size_t>(v)].rng = Rng(12345u + static_cast<std::uint32_t>(v));
+        if (voices > 1) {
+            spread[static_cast<std::size_t>(v)] = (static_cast<double>(v) / (voices - 1) - 0.5) * st.unisonSpread / 1200.0;
+            o1[static_cast<std::size_t>(v)].phase = std::fmod(0.37 * v, 1.0);  // start apart so they don't sum into one loud attack
+            o2[static_cast<std::size_t>(v)].phase = std::fmod(0.61 * v, 1.0);
+        }
+    }
     const double cents = st.detune / 1200.0;
     const double f1 = frequency * std::pow(2.0, st.octave - cents * 0.5);
     const double f2 = frequency * std::pow(2.0, st.octave + st.osc2Semitones / 12.0 + cents * 0.5);
     const double l2 = st.osc2 == Osc::Off ? 0.0 : std::clamp(st.osc2Level, 0.0, 1.0);
     const double l1 = st.osc1 == Osc::Off ? 0.0 : 1.0;
-    const double norm = 1.0 / std::max(1.0, l1 + l2 * 0.8);
+    const double norm = 1.0 / std::max(1.0, l1 + l2 * 0.8) / std::sqrt(static_cast<double>(voices));
+    std::vector<double> ratio(static_cast<std::size_t>(voices));
+    for (int v = 0; v < voices; ++v) ratio[static_cast<std::size_t>(v)] = std::pow(2.0, spread[static_cast<std::size_t>(v)]);
     Svf f;
     auto& d = out.channels[0];
     const double fd = std::max(0.005, st.filterDecay);
+    const double lfoStep = std::max(0.0, st.lfoRate) / rate;
+    const double depth = st.lfoDepth;
+    double lfoPhase = 0;
     for (std::size_t i = 0; i < d.size(); ++i) {
         const double t = static_cast<double>(i) / rate;
-        const double env = adsr(st, t, seconds);
-        const double x = (l1 * o1.tick(f1, rate) + l2 * o2.tick(f2, rate)) * norm;
-        const double cutoff = st.cutoff * std::pow(2.0, st.filterEnv * std::exp(-t / fd));
-        const double y = f.lowpass(x, cutoff, st.resonance, rate);
+        double lfo = 0;
+        if (st.lfoTarget != LfoTarget::Off && depth != 0) {
+            switch (st.lfoShape) {
+                case 1: lfo = lfoPhase < 0.5 ? 4 * lfoPhase - 1 : 3 - 4 * lfoPhase; break;
+                case 2: lfo = lfoPhase < 0.5 ? 1 : -1; break;
+                case 3: lfo = 2 * lfoPhase - 1; break;
+                default: lfo = std::sin(2 * kPi * lfoPhase);
+            }
+            lfoPhase += lfoStep;
+            if (lfoPhase >= 1) lfoPhase -= 1;
+        }
+        const double bend = st.lfoTarget == LfoTarget::Pitch ? std::pow(2.0, depth * lfo / 12.0) : 1.0;
+        double env = adsr(st, t, seconds);
+        if (st.lfoTarget == LfoTarget::Amp) env *= 1.0 - std::clamp(depth, 0.0, 1.0) * (0.5 + 0.5 * lfo);
+        double x = 0;
+        for (std::size_t v = 0; v < static_cast<std::size_t>(voices); ++v) {
+            if (l1 > 0) x += l1 * o1[v].tick(f1 * bend * ratio[v], rate);
+            if (l2 > 0) x += l2 * o2[v].tick(f2 * bend / ratio[v], rate);
+        }
+        x *= norm;
+        double cutoff = st.cutoff * std::pow(2.0, st.filterEnv * std::exp(-t / fd));
+        if (st.lfoTarget == LfoTarget::Filter) cutoff *= std::pow(2.0, depth * lfo);
+        double y;
+        switch (st.filter) {
+            case FilterMode::HighPass: y = f.highpass(x, cutoff, st.resonance, rate); break;
+            case FilterMode::BandPass: y = f.bandpass(x, cutoff, st.resonance, rate); break;
+            default: y = f.lowpass(x, cutoff, st.resonance, rate);
+        }
         d[i] = static_cast<float>(y * env * velocity * 0.5);
     }
     return out;
+}
+
+audio::Buffer metronomeClick(int rate, bool accent) {
+    audio::Buffer b(1, framesFor(0.03, rate), rate);
+    const double hz = accent ? 1600.0 : 1000.0, amp = accent ? 1.0 : 0.6;
+    for (std::size_t i = 0; i < b.frames(); ++i) {
+        const double t = static_cast<double>(i) / rate;
+        b.channels[0][i] = static_cast<float>(std::sin(2 * kPi * hz * t) * std::exp(-t / 0.008) * amp);
+    }
+    return b;
 }
 
 audio::Buffer drumHit(const std::string& voice, int rate) {
@@ -320,12 +371,25 @@ audio::Buffer renderTrackBuffer(const Song& s, int index, double fromBeat, doubl
         const double len = e.length * spb;
         any = true;
         if (t.kind == TrackKind::Drum) {
-            if (auto slot = t.slots.find(e.voice); slot != t.slots.end()) {
-                if (slot->second.audio) addAt(mono, *slot->second.audio, at, vel);
-                continue;
-            }
             auto it = hits.find(e.voice);
-            if (it == hits.end()) it = hits.emplace(e.voice, drumHit(e.voice, rate)).first;
+            if (it == hits.end()) {
+                audio::Buffer hit;
+                if (auto slot = t.slots.find(e.voice); slot != t.slots.end()) {
+                    if (slot->second.audio) hit = *slot->second.audio;
+                } else {
+                    hit = drumHit(e.voice, rate);
+                }
+                if (auto pad = t.pads.find(e.voice); pad != t.pads.end() && !hit.empty()) {
+                    const Pad& pd = pad->second;
+                    if (pd.tune != 0) hit = audio::changeSpeed(hit, std::pow(2.0, pd.tune / 12.0));
+                    if (pd.decay > 0) {
+                        hit.resize(std::min(hit.frames(), framesFor(pd.decay, rate)));
+                        audio::fadeOut(hit, pd.decay, audio::all(hit), audio::FadeCurve::Exponential);
+                    }
+                    if (pd.volumeDb != 0) audio::gain(hit, pd.volumeDb, audio::all(hit));
+                }
+                it = hits.emplace(e.voice, std::move(hit)).first;
+            }
             addAt(mono, it->second, at, vel);
         } else if (t.kind == TrackKind::Synth) {
             addAt(mono, synthNote(t.synth, rate, noteFrequency(e.pitch), len, vel), at, 1.0);
@@ -346,7 +410,8 @@ audio::Buffer renderTrackBuffer(const Song& s, int index, double fromBeat, doubl
         audio::compress(mono, c, audio::all(mono));
     }
     audio::Buffer st = mono;
-    audio::pan(st, std::clamp(t.pan, -1.0, 1.0), audio::all(st));  // mono -> constant-power stereo
+    const audio::Automation* panLane = audio::findLane(t.automation, "pan");
+    audio::pan(st, panLane ? 0.0 : std::clamp(t.pan, -1.0, 1.0), audio::all(st));  // mono -> constant-power stereo
     if (st.channelCount() == 1) audio::setChannels(st, 2);
     if (t.fx.delayMix > 0) {
         audio::echo(st, std::max(0.01, t.fx.delayBeats * spb), std::clamp(t.fx.delayFeedback, 0.0, 0.95), std::clamp(t.fx.delayMix, 0.0, 1.0),
@@ -358,7 +423,10 @@ audio::Buffer renderTrackBuffer(const Song& s, int index, double fromBeat, doubl
         rv.roomSize = std::clamp(t.fx.reverbSize, 0.0, 1.0);
         audio::reverb(st, rv, audio::all(st));
     }
+    audio::applyRack(st, t.rack, t.automation, fromBeat, spb);
     audio::gain(st, t.volumeDb, audio::all(st));
+    if (const audio::Automation* vol = audio::findLane(t.automation, "volume")) audio::applyVolumeLane(st, *vol, fromBeat, spb);
+    if (panLane) audio::applyPanLane(st, *panLane, fromBeat, spb);
     return st;
 }
 
@@ -375,8 +443,9 @@ audio::Buffer render(const Song& s, const RenderOptions& o) {
             tail = std::max(tail, t.kind == TrackKind::Drum ? 0.6 : t.synth.release + 0.05);
             if (t.fx.reverb > 0) tail = std::max(tail, 1.0 + 2.0 * t.fx.reverbSize);
             if (t.fx.delayMix > 0) tail = std::max(tail, std::min(3.0, t.fx.delayBeats * s.secondsPerBeat() * 4));
+            tail = std::max(tail, audio::rackTail(t.rack));
         }
-        tail = std::min(tail, 3.0);
+        tail = std::min(tail + (o.master ? audio::rackTail(s.masterRack) : 0.0), 8.0);
     }
     const std::size_t frames = framesFor((toBeat - fromBeat) * s.secondsPerBeat() + tail, s.rate);
     audio::Buffer mix(2, frames, s.rate);
@@ -395,6 +464,26 @@ audio::Buffer render(const Song& s, const RenderOptions& o) {
     }
     mix.resize(frames);
     audio::gain(mix, s.masterDb - 3.0, audio::all(mix));  // a little headroom for summing tracks
+    if (o.master) {
+        audio::applyRack(mix, s.masterRack, s.masterAutomation, fromBeat, s.secondsPerBeat());
+        if (const audio::Automation* vol = audio::findLane(s.masterAutomation, "volume")) audio::applyVolumeLane(mix, *vol, fromBeat, s.secondsPerBeat());
+    }
+    if (o.click > 0 || (o.click < 0 && s.metronome)) {
+        // a click per beat of the time signature (eighths in 6/8), accented on each bar
+        const double step = 4.0 / std::max(1, s.beatUnit);
+        const audio::Buffer hi = metronomeClick(s.rate, true), lo = metronomeClick(s.rate, false);
+        const double g = audio::dbToGain(s.metronomeDb);
+        int k = static_cast<int>(std::ceil(fromBeat / step - 1e-9));
+        for (double beat = k * step; beat < toBeat - 1e-9; beat = ++k * step) {
+            const bool accent = k % std::max(1, s.beatsPerBar) == 0;
+            const std::size_t at = framesFor((beat - fromBeat) * s.secondsPerBeat(), s.rate);
+            const audio::Buffer& c = accent ? hi : lo;
+            for (std::size_t i = 0; i < c.frames() && at + i < mix.frames(); ++i) {
+                mix.channels[0][at + i] += static_cast<float>(c.channels[0][i] * g);
+                mix.channels[1][at + i] += static_cast<float>(c.channels[0][i] * g);
+            }
+        }
+    }
     if (o.limit) audio::limit(mix, -1.0, 80, audio::all(mix));
     // drop the silent part of the tail
     if (o.tailSeconds < 0) {

@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# wetwaresuite.dmg for macOS: one wetwaresuite.app (the launcher window with
-# every tool) that carries every program inside it, plus an Applications
-# shortcut so installing is one drag.
+# wetwaresuite.dmg for macOS: a "wetwaresuite" folder with one .app per app
+# (wetwaresuite image.app, wetwaresuite cad.app, ...) plus the launcher
+# (wetwaresuite.app), and an Applications shortcut so installing is one drag.
+# Each app is its own program with its own dock icon (the logo in its colour)
+# and the file types it opens; they find each other through the sibling bundles.
 #   packaging/macos/make-dmg.sh <stage dir> <version> <out.dmg>
 # <stage dir> is the folder the downloads workflow packs into the zip.
 set -euo pipefail
@@ -12,25 +14,42 @@ out=$3
 root=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
+folder="$work/dmg/wetwaresuite"
+mkdir -p "$folder"
 
-app="$work/dmg/wetwaresuite.app"
-mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-# every program sits next to the launcher so they find each other (app.installed, app.send)
-find "$stage" -maxdepth 1 -type f -name 'wetwaresuite*' -perm -u+x -exec cp {} "$app/Contents/MacOS/" \;
-[ -x "$app/Contents/MacOS/wetwaresuite-gui" ] || { echo "no wetwaresuite-gui in $stage" >&2; exit 1; }
-cp "$root/branding/wetwaresuite.icns" "$app/Contents/Resources/"
-cp "$root/LICENSE" "$app/Contents/Resources/"
+# CFBundleDocumentTypes for one app, from packaging/file-types.tsv
+doc_types() {
+  local app=$1 exts
+  exts=$(awk -F'\t' -v app="$app" '!/^#/ && $2 == app { sub(/^\./, "", $1); printf "<string>%s</string>", $1 }' "$root/packaging/file-types.tsv")
+  [ -z "$exts" ] && return 0
+  local own
+  own=$(awk -F'\t' -v app="$app" '!/^#/ && $2 == app && $4 == "yes" { sub(/^\./, "", $1); printf "<string>%s</string>", $1 }' "$root/packaging/file-types.tsv")
+  echo "  <key>CFBundleDocumentTypes</key><array>"
+  if [ -n "$own" ]; then
+    echo "    <dict><key>CFBundleTypeName</key><string>wetwaresuite $app file</string><key>CFBundleTypeRole</key><string>Editor</string><key>LSHandlerRank</key><string>Owner</string><key>CFBundleTypeExtensions</key><array>$own</array></dict>"
+  fi
+  echo "    <dict><key>CFBundleTypeName</key><string>files wetwaresuite $app opens</string><key>CFBundleTypeRole</key><string>Editor</string><key>LSHandlerRank</key><string>Alternate</string><key>CFBundleTypeExtensions</key><array>$exts</array></dict>"
+  echo "  </array>"
+}
 
-cat > "$app/Contents/Info.plist" <<EOF
+# make_app <bundle name> <program> <bundle id> <icns> <app id or "">
+make_app() {
+  local name=$1 prog=$2 id=$3 icns=$4 app=$5
+  local bundle="$folder/$name.app"
+  mkdir -p "$bundle/Contents/MacOS" "$bundle/Contents/Resources"
+  cp "$stage/$prog" "$bundle/Contents/MacOS/"
+  cp "$icns" "$bundle/Contents/Resources/icon.icns"
+  cp "$root/LICENSE" "$bundle/Contents/Resources/"
+  cat > "$bundle/Contents/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>CFBundleName</key><string>wetwaresuite</string>
-  <key>CFBundleDisplayName</key><string>wetwaresuite</string>
-  <key>CFBundleIdentifier</key><string>io.github.arthurjclack.wetwaresuite</string>
-  <key>CFBundleExecutable</key><string>wetwaresuite-gui</string>
-  <key>CFBundleIconFile</key><string>wetwaresuite</string>
+  <key>CFBundleName</key><string>$name</string>
+  <key>CFBundleDisplayName</key><string>$name</string>
+  <key>CFBundleIdentifier</key><string>$id</string>
+  <key>CFBundleExecutable</key><string>$prog</string>
+  <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleShortVersionString</key><string>$version</string>
   <key>CFBundleVersion</key><string>$version</string>
@@ -38,24 +57,40 @@ cat > "$app/Contents/Info.plist" <<EOF
   <key>LSApplicationCategoryType</key><string>public.app-category.graphics-design</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>NSHumanReadableCopyright</key><string>GPL-3.0</string>
+$( [ -n "$app" ] && doc_types "$app" )
 </dict>
 </plist>
 EOF
+  # ad-hoc signature: not notarized, but apple silicon needs a signed bundle to run at all
+  codesign --force --sign - "$bundle"
+}
 
-# ad-hoc signature: not notarized, but apple silicon needs a signed bundle to run at all
-codesign --force --deep --sign - "$app"
+[ -x "$stage/wetwaresuite-gui" ] || { echo "no wetwaresuite-gui in $stage" >&2; exit 1; }
+# the launcher also carries the command-line programs (wetwaresuite, the hub, share)
+make_app wetwaresuite wetwaresuite-gui io.github.arthurjclack.wetwaresuite "$root/branding/wetwaresuite.icns" ""
+for prog in wetwaresuite wetwaresuite-hub wetwaresuite-share; do
+  [ -x "$stage/$prog" ] && cp "$stage/$prog" "$folder/wetwaresuite.app/Contents/MacOS/"
+done
+codesign --force --sign - "$folder/wetwaresuite.app"
+while IFS=$'\t' read -r id name comment; do
+  [[ -z "$id" || "$id" == \#* ]] && continue
+  [ -x "$stage/wetwaresuite-$id" ] || { echo "no wetwaresuite-$id in $stage" >&2; exit 1; }
+  make_app "$name" "wetwaresuite-$id" "io.github.arthurjclack.wetwaresuite.$id" "$root/branding/apps/$id.icns" "$id"
+done < "$root/packaging/apps.tsv"
 
 ln -s /Applications "$work/dmg/Applications"
 cat > "$work/dmg/README.txt" <<'EOF'
-drag wetwaresuite into Applications, then open it from Launchpad.
+drag the wetwaresuite folder into Applications. every app is in it and shows up
+in Launchpad on its own: wetwaresuite image, wetwaresuite cad, ... each opens in
+its own window with its own dock icon. "wetwaresuite" is the launcher.
 
-first open (the app is not notarized yet): right-click wetwaresuite, choose Open,
+first open (the apps are not notarized yet): right-click an app, choose Open,
 then Open again. or run once in Terminal:
-  xattr -dr com.apple.quarantine /Applications/wetwaresuite.app
+  xattr -dr com.apple.quarantine /Applications/wetwaresuite
 
-each app on its own, or from a terminal:
-  /Applications/wetwaresuite.app/Contents/MacOS/wetwaresuite-image
-  /Applications/wetwaresuite.app/Contents/MacOS/wetwaresuite help
+from a terminal:
+  "/Applications/wetwaresuite/wetwaresuite image.app/Contents/MacOS/wetwaresuite-image" help
+  /Applications/wetwaresuite/wetwaresuite.app/Contents/MacOS/wetwaresuite help
 
 tutorials: https://github.com/ArthurJClack/wetwaresuite/tree/main/docs/tutorials
 license: GPL-3.0

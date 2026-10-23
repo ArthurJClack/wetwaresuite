@@ -60,6 +60,8 @@ void registerOutputCommands(Session& session);
 void registerTrackCommands(Session& session);
 void registerPatternCommands(Session& session);
 void registerArrangeCommands(Session& session);
+void registerNoteCommands(Session& session);
+void registerMixCommands(Session& session);
 
 }  // namespace tool
 }  // namespace wetwaresuite::beats

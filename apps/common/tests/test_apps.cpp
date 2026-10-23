@@ -5,6 +5,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <regex>
 #include <set>
 #include <sstream>
@@ -76,6 +77,25 @@ std::string readFile(const fs::path& p) {
 }
 
 }  // namespace
+
+// a stand-in 3D document: draws a solid colour so app.view's plumbing can be checked without a tool
+class Fake3d : public Document {
+public:
+    std::string kind() const override { return "mesh"; }
+    std::string summary() const override { return "fake"; }
+    bool renderView(const OrbitView& v, int w, int h, std::vector<std::uint8_t>& rgba) const override {
+        last = v;
+        if (w == 0 && h == 0) return true;
+        rgba.assign(static_cast<std::size_t>(w) * static_cast<std::size_t>(h) * 4, 200);
+        return true;
+    }
+    mutable OrbitView last;
+};
+class Flat : public Document {
+public:
+    std::string kind() const override { return "image"; }
+    std::string summary() const override { return "flat"; }
+};
 
 int main() {
     auto home = fs::temp_directory_path() / "wetwaresuite_test_apps";
@@ -263,6 +283,7 @@ int main() {
         auto gui = decide({"gui", "--action", "photo.resize", "--screenshot", "s.bmp"});
         CHECK(gui.kind == LaunchKind::Gui && gui.action == "photo.resize" && gui.screenshot == "s.bmp" && gui.error.empty());
         CHECK(!decide({"gui", "--action"}).error.empty());
+        CHECK(decide({"gui", "--all"}).all && !decide({"gui"}).all);  // --all: every tool in one window
         CHECK(!decide({"gui", "--nope"}).error.empty());
         CHECK(decide({"-psn_0_12345"}).kind == LaunchKind::Gui);  // old macOS Finder argument
         // the command line keeps every word it had, even when a file has that name
@@ -274,6 +295,49 @@ int main() {
         CHECK(decide({"photo.jpg", "--keep-going"}).kind == LaunchKind::Cli);
         CHECK(decide({"nonsense"}).kind == LaunchKind::Cli);
         CHECK(apps::isCliKeyword("batch") && !apps::isCliKeyword("open"));
+    }
+
+    // ---- the launcher: a tile per app, each started as its own program ----
+    {
+        auto launcher = apps::launcherInfo();
+        CHECK(launcher.id == "launcher" && launcher.tools.empty());
+        CHECK(launcher.launcher.size() + 1 == apps::all().size());  // every app but share
+        bool sawImage = false;
+        for (const auto& t : launcher.launcher) {
+            CHECK(t.id != "share" && apps::find(t.id));
+            CHECK(!t.name.empty() && t.name[0] >= 'A' && t.name[0] <= 'Z' && !t.summary.empty());
+            if (t.id == "image") sawImage = t.name == "Image" && t.accent == apps::find("image")->accent;
+        }
+        CHECK(sawImage);
+        CHECK(apps::guiInfo("image").id == "image" && apps::guiInfo("image").launcher.empty());
+    }
+
+    // ---- the installers' file types match the table (packaging/file_types.py makes them) ----
+    {
+        std::ifstream in(std::string(WETWARESUITE_SOURCE_DIR) + "/packaging/file-types.tsv");
+        CHECK(in.good());
+        std::set<std::string> listed;
+        std::string line;
+        while (std::getline(in, line)) {
+            if (line.empty() || line[0] == '#') continue;
+            std::istringstream cols(line);
+            std::string ext, app, mime, own;
+            std::getline(cols, ext, '\t');
+            std::getline(cols, app, '\t');
+            std::getline(cols, mime, '\t');
+            std::getline(cols, own, '\t');
+            const auto route = apps::routeForFile("x" + ext);
+            CHECK(route.app == app && !route.command.empty() && !mime.empty());
+            CHECK((own == "yes") == (ext.rfind(".ww", 0) == 0 || ext.rfind(".ach", 0) == 0));
+            listed.insert(ext);
+        }
+        std::size_t openable = 0;
+        for (const auto& [ext, route] : apps::fileTypes()) {
+            if (route.command.empty() || std::count(ext.begin(), ext.end(), '.') > 1) continue;
+            ++openable;
+            if (!listed.count(ext)) std::cerr << "packaging/file-types.tsv misses " << ext << ": run python3 packaging/file_types.py\n";
+        }
+        CHECK(openable == listed.size());
     }
 
     // ---- what the window shows for an app ----
@@ -426,5 +490,26 @@ int main() {
 #endif
 
     fs::remove_all(home);
+    // ---- app.view: any 3D document from any angle ----
+    {
+        Session s;
+        apps::registerCommands(s, "cad");
+        auto fake = std::make_shared<Fake3d>();
+        s.workspace().put("mesh1", fake);
+        s.workspace().put("img1", std::make_shared<Flat>());
+        const std::string out = (fs::temp_directory_path() / "wetwaresuite_test_view.png").string();
+        Result r = s.run("app.view", {{"doc", std::string("mesh1")}, {"view", std::string("front")}, {"yaw", 30.0}, {"pitch", 100.0},
+                                      {"zoom", 2.0}, {"width", std::int64_t{64}}, {"height", std::int64_t{48}}, {"output", out}});
+        CHECK(r.ok && r.attachments.size() == 1 && r.attachments[0].bytes.substr(1, 3) == "PNG");
+        CHECK(fake->last.yaw == 30 && fake->last.pitch == 89.9 && fake->last.zoom == 2);  // pitch is clamped
+        CHECK(r.ok && fs::file_size(out) == r.attachments[0].bytes.size());
+        fs::remove(out);
+        CHECK(s.run("app.view", {{"doc", std::string("mesh1")}, {"view", std::string("top")}}).ok && fake->last.pitch > 89);
+        Result flat = s.run("app.view", {{"doc", std::string("img1")}});
+        CHECK(!flat.ok && flat.message.find("not a 3D document") != std::string::npos);
+        CHECK(!s.run("app.view", {{"doc", std::string("nope")}}).ok);
+        CHECK(!s.run("app.view", {{"doc", std::string("mesh1")}, {"zoom", 0.0}}).ok);
+    }
+
     return check::summary("apps");
 }

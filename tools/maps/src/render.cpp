@@ -330,13 +330,15 @@ struct View {
 View makeView(const Map& map, const RenderOptions& o, std::vector<std::string>& warnings) {
     View v;
     v.crs = o.crs;
-    BBox ll = o.bbox ? *o.bbox : map.bounds(true);
+    // an explicit area, else the map's own view (set by maps.view or a bookmark), else everything
+    const std::optional<BBox> chosen = o.bbox ? o.bbox : (map.view && map.view->valid() ? map.view : std::nullopt);
+    BBox ll = chosen ? *chosen : map.bounds(true);
     if (!ll.valid()) ll = {-180, -60, 180, 85};
     if (v.crs.kind == Crs::WebMercator) {
         ll.minY = std::max(ll.minY, -85.0);
         ll.maxY = std::min(ll.maxY, 85.0);
         // a world view: Antarctica would fill the bottom half
-        if (!o.bbox && ll.width() > 180 && ll.minY < -60) ll.minY = -60;
+        if (!chosen && ll.width() > 180 && ll.minY < -60) ll.minY = -60;
     }
     // a single point or a tiny extent: open it up to about 2 km
     if (ll.width() < 1e-4 && ll.height() < 1e-4) {
@@ -352,7 +354,7 @@ View makeView(const Map& map, const RenderOptions& o, std::vector<std::string>& 
             pb.add(p.x, p.y);
         }
     }
-    if (!o.bbox) {
+    if (!chosen) {
         const double mx = pb.width() * o.margin, my = pb.height() * o.margin;
         pb.minX -= mx;
         pb.maxX += mx;
@@ -1521,6 +1523,7 @@ std::string drawPdf(const Scene& sc, double dpi, const std::string& title) {
     const double pw = sc.W * k, ph = sc.H * k;
     const int font = pdfdoc::addStandardFont(w, pdfdoc::Standard::Helvetica);
     const int bold = pdfdoc::addStandardFont(w, pdfdoc::Standard::HelveticaBold);
+    pdfdoc::UnicodeFallback uni(w);
     std::map<int, std::string> alphas;  // alpha*1000 -> name
     std::vector<std::pair<std::string, int>> images;
     auto gs = [&](double a) {
@@ -1554,10 +1557,12 @@ std::string drawPdf(const Scene& sc, double dpi, const std::string& title) {
                 cs += "\n" + d + "S\nQ\n";
             }
         } else if (auto* t = std::get_if<DText>(&op)) {
-            const std::string f = t->bold ? "/F2 " : "/F1 ";
+            const std::string fr = t->bold ? "F2" : "F1";
+            const std::string f = "/" + fr + " ";
             const std::string pos = "1 0 0 -1 " + pdfdoc::num(t->x) + " " + pdfdoc::num(t->y) + " Tm ";
-            if (t->halo) cs += "q /" + gs(0.85) + " gs 1 1 1 RG 2.6 w BT 1 Tr " + f + pdfdoc::num(t->size) + " Tf " + pos + pdfdoc::text(t->text) + " Tj ET Q\n";
-            cs += "q /" + gs(t->color.a / 255.0) + " gs " + rgb(t->color) + " rg BT " + f + pdfdoc::num(t->size) + " Tf " + pos + pdfdoc::text(t->text) + " Tj ET Q\n";
+            const std::string shown = uni.show(t->text, fr, t->size);
+            if (t->halo) cs += "q /" + gs(0.85) + " gs 1 1 1 RG 2.6 w BT 1 Tr " + f + pdfdoc::num(t->size) + " Tf " + pos + shown + " ET Q\n";
+            cs += "q /" + gs(t->color.a / 255.0) + " gs " + rgb(t->color) + " rg BT " + f + pdfdoc::num(t->size) + " Tf " + pos + shown + " ET Q\n";
         } else if (auto* im = std::get_if<DImage>(&op)) {
             const int id = pdfdoc::addImage(w, *im->img);
             const std::string name = "Im" + std::to_string(images.size());
@@ -1566,7 +1571,7 @@ std::string drawPdf(const Scene& sc, double dpi, const std::string& title) {
         }
     }
     const int content = w.addStream("", cs);
-    std::string res = "<< /Font << /F1 " + std::to_string(font) + " 0 R /F2 " + std::to_string(bold) + " 0 R >>";
+    std::string res = "<< /Font << /F1 " + std::to_string(font) + " 0 R /F2 " + std::to_string(bold) + " 0 R" + uni.resource() + " >>";
     if (!alphas.empty()) {
         res += " /ExtGState <<";
         for (const auto& [a, name] : alphas) res += " /" + name + " << /Type /ExtGState /ca " + pdfdoc::num(a / 1000.0) + " /CA " + pdfdoc::num(a / 1000.0) + " >>";
@@ -1583,7 +1588,8 @@ std::string drawPdf(const Scene& sc, double dpi, const std::string& title) {
                            "] /Contents " + std::to_string(content) + " 0 R /Resources " + res + " >>");
     w.set(pages, "<< /Type /Pages /Kids [" + std::to_string(page) + " 0 R] /Count 1 >>");
     const int catalog = w.add("<< /Type /Catalog /Pages " + std::to_string(pages) + " 0 R >>");
-    const int info = w.add("<< /Producer (wetwaresuite maps) /Title " + pdfdoc::text(title.empty() ? "Map" : title) + " >>");
+    uni.finish();
+    const int info = w.add("<< /Producer (wetwaresuite maps) /Title " + pdfdoc::infoText(title.empty() ? "Map" : title) + " >>");
     return w.finish(catalog, info);
 }
 
@@ -1710,10 +1716,42 @@ std::string MapDoc::summary() const {
     return s;
 }
 
-std::unique_ptr<Attachment> MapDoc::preview() const {
+RenderOptions previewOptions(const Map& map) {
     RenderOptions o;
     o.width = 800;
     o.title = map.title;
+    return o;
+}
+
+Coord pixelToLonLat(const Map& map, const RenderOptions& options, double x, double y) {
+    std::vector<std::string> warnings;
+    const View v = makeView(map, options, warnings);
+    return v.lonlat(x, y);
+}
+
+Coord lonLatToPixel(const Map& map, const RenderOptions& options, double lon, double lat) {
+    std::vector<std::string> warnings;
+    const View v = makeView(map, options, warnings);
+    const P p = v.px({lon, lat});
+    return {p.x, p.y};
+}
+
+BBox shownArea(const Map& map, const RenderOptions& options, int* width, int* height) {
+    std::vector<std::string> warnings;
+    const View v = makeView(map, options, warnings);
+    if (width) *width = v.W;
+    if (height) *height = v.H;
+    return viewLonLat(v);
+}
+
+double renderMetresPerPixel(const Map& map, const RenderOptions& options) {
+    std::vector<std::string> warnings;
+    const View v = makeView(map, options, warnings);
+    return metresPerPixel(v, v.H / 2.0);
+}
+
+std::unique_ptr<Attachment> MapDoc::preview() const {
+    const RenderOptions o = previewOptions(map);
     return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(renderImage(map, o)), "preview.png"});
 }
 

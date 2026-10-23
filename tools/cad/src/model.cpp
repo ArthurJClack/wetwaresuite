@@ -13,6 +13,8 @@
 #include "wetwaresuite/mesh/csg.hpp"
 #include "wetwaresuite/mesh/io.hpp"
 #include "wetwaresuite/mesh/primitives.hpp"
+#include "blend.hpp"
+#include "build.hpp"
 #include "repair.hpp"
 
 namespace wetwaresuite::cad {
@@ -40,6 +42,11 @@ FieldDef choice(std::string name, std::string help, std::vector<std::string> cho
 FieldDef flag(std::string name, std::string help, bool fallback) {
     return {std::move(name), FieldKind::Bool, std::move(help), fallback ? "true" : "false", false, {}};
 }
+FieldDef words(std::string name, std::string help, std::string fallback) {
+    return {std::move(name), FieldKind::Text, std::move(help), std::move(fallback), false, {}};
+}
+FieldDef optRef(std::string name, std::string help) { return {std::move(name), FieldKind::Ref, std::move(help), {}, false, {}}; }
+FieldDef refs(std::string name, std::string help) { return {std::move(name), FieldKind::Refs, std::move(help), {}, true, {}}; }
 FieldDef points(std::string name, std::string help, bool required) {
     return {std::move(name), FieldKind::Points, std::move(help), {}, required, {}};
 }
@@ -58,6 +65,102 @@ std::vector<FieldDef> placement() {
 FieldDef planeField() {
     return choice("plane", "sketch plane: xy extrudes along +Z, xz (x->X, y->Z) along +Y, yz (x->Y, y->Z) along +X",
                   {"xy", "xz", "yz"}, "xy");
+}
+
+std::vector<FieldDef> combine() {
+    return {choice("operation", "new body, join (add to target), cut (remove from target) or intersect (keep the overlap)",
+                   {"join", "cut", "new", "intersect"}, "join"),
+            optRef("target", "body to join, cut or intersect (default: the last body in the tree)")};
+}
+
+FieldDef faceField(const std::string& of) {
+    return words("face", "which flat face of " + of + ": top, bottom, front, back, left, right (+x -x +y -y +z -z), or x,y,z near it", "top");
+}
+
+// Sketches, datums and the features built from sketches (built in features.cpp).
+void addSketchTypes(std::vector<FeatureType>& t) {
+    t.push_back({"sketch", "Sketch",
+                 "Start a 2D sketch: on a standard plane (xy, xz, yz) shifted by offset, on a flat face of a body (on=body "
+                 "face=top) or on a datum plane (on=datum_plane1). Add geometry with cad.sketch_line, sketch_rect, sketch_circle, "
+                 "sketch_arc, sketch_polygon, sketch_spline; constrain it with cad.sketch_constrain and cad.sketch_dimension. "
+                 "Sketch x/y follow the world axes the plane is closest to (top face: X and Y). Then cad.sketch_extrude, "
+                 "sketch_revolve, loft or sweep it.",
+                 {choice("plane", "standard plane: xy (normal +Z), xz (x->X, y->Z, normal +Y), yz (x->Y, y->Z, normal +X)", {"xy", "xz", "yz"}, "xy"),
+                  num("offset", "shift the plane along its normal", "0"),
+                  optRef("on", "sketch on a flat face of this body, or on this datum plane"), faceField("on"),
+                  integer("segments", "segments per full circle when arcs and circles become profiles", "64")}});
+    t.push_back({"datum_plane", "Datum Plane",
+                 "A reference plane for sketches and mates: a standard plane or a face of a body (on, face), shifted by offset "
+                 "along its normal and tilted by angle about its own u or v axis; or through three points.",
+                 {choice("plane", "standard plane to start from", {"xy", "xz", "yz"}, "xy"), num("offset", "shift along the normal", "0"),
+                  optRef("on", "start from a flat face of this body (or another datum plane)"), faceField("on"),
+                  num("angle", "tilt in degrees about the axis below, through the plane's origin", "0"),
+                  choice("axis", "tilt axis: the plane's own u (sketch x) or v (sketch y)", {"u", "v"}, "u"),
+                  words("points", "instead: three points x,y,z,x,y,z,x,y,z the plane passes through", "")}});
+    t.push_back({"datum_axis", "Datum Axis",
+                 "A reference axis for revolves, patterns and concentric mates: through cx/cy/cz along x, y or z; through two "
+                 "points; or the axis of a hole, cylinder or revolve (on, index).",
+                 {choice("axis", "direction", {"z", "x", "y"}, "z"), num("cx", "a point on it: X", "0"), num("cy", "Y", "0"),
+                  num("cz", "Z", "0"), words("points", "instead: two points x,y,z,x,y,z", ""),
+                  optRef("on", "instead: take the axis of this feature (hole, cylinder, revolve, sketch circle)"),
+                  integer("index", "which of its axes (patterns of holes have several)", "1")}});
+    t.push_back({"sketch_extrude", "Extrude Sketch Profile",
+                 "Extrude a sketch's closed profiles (inner loops become holes) as a new body, or join, cut or intersect it with "
+                 "a body. end: blind (depth), symmetric (depth split across the plane), through_all, up_to_face (the plane of "
+                 "a face of the target, up_to). depth2 adds a second direction; draft tapers the walls; reverse flips the "
+                 "direction. A cut on a face sketch goes into the body.",
+                 with({ref("sketch", "the sketch to extrude"), num("depth", "extrusion distance", "10"),
+                       choice("end", "end condition", {"blind", "symmetric", "through_all", "up_to_face"}, "blind"),
+                       num("depth2", "blind: also extrude this far the other way", "0"),
+                       words("up_to", "up_to_face: face of the target (top, bottom, ..., or x,y,z) to stop at", "top"),
+                       flag("reverse", "extrude the other way", false), num("draft", "taper angle in degrees (inwards)", "0"),
+                       words("regions", "which profile regions, 1,2,... (cad.sketch_info lists them; empty = all)", "")},
+                      combine())});
+    t.push_back({"sketch_revolve", "Revolve Sketch Profile",
+                 "Revolve a sketch's closed profiles about an axis in the sketch: a line of the sketch (often a construction "
+                 "centerline) or the sketch's own x or y axis. angle < 360 leaves flat ends; symmetric spreads it both ways.",
+                 with({ref("sketch", "the sketch to revolve"),
+                       words("axis", "a line id in the sketch (e.g. l5), or x / y for the sketch's axes", "y"),
+                       num("angle", "degrees, (0, 360]", "360"), flag("symmetric", "spread the angle both ways", false),
+                       flag("reverse", "revolve the other way", false), integer("segments", "segments for a full turn", "64")},
+                      combine())});
+    t.push_back({"loft", "Loft",
+                 "Blend between two or more sketch profiles (one closed outline each) in order: straight between two, smooth "
+                 "through three or more. The outlines are matched point by point from where they are closest.",
+                 with({refs("sections", "sketches in order, comma-separated (at least 2)"),
+                       flag("ruled", "straight between every pair of sections", false),
+                       integer("samples", "points around each section, 0 = automatic", "0")},
+                      combine())});
+    t.push_back({"sweep", "Sweep",
+                 "Sweep a sketch's closed profile along the path drawn in another sketch (one chain of lines, arcs and "
+                 "splines, open or closed). The profile keeps its angle to the path; twist turns it along the way.",
+                 with({ref("profile", "sketch with the closed profile"), ref("path", "sketch with the path"),
+                       num("twist", "total twist in degrees", "0")},
+                      combine())});
+    t.push_back({"draft", "Draft",
+                 "Tilt the walls of a body (faces parallel to the pull direction) by angle, so it releases from a mould: "
+                 "walls lean in going along pull, holes open up. neutral is where the walls keep their size (default: the "
+                 "body's start along pull).",
+                 {ref("target", "body to draft"), num("angle", "draft angle in degrees", {}, true),
+                  choice("pull", "pull direction", {"+z", "-z", "+x", "-x", "+y", "-y"}, "+z"),
+                  num("neutral", "position of the neutral plane along pull (default: the body's start)")}});
+    t.push_back({"rib", "Rib",
+                 "Add a rib (gusset) to a body from an open line in a sketch: the line is thickened across the sketch plane "
+                 "and filled towards the body until it meets it. flip fills to the other side of the line.",
+                 {ref("sketch", "sketch with one open chain of lines"), ref("target", "body the rib joins"),
+                  num("thickness", "rib thickness", {}, true), flag("flip", "fill to the other side of the line", false)}});
+    t.push_back({"thread", "Thread",
+                 "Cut a modeled thread into a body along an axis: external (on a shaft: cuts the grooves) or internal (in a "
+                 "hole: the hole should be the minor diameter). Metric 60 degree profile. Drawings show it as a callout "
+                 "(M8x1.25); cosmetic=true only adds the callout and axis and leaves the solid plain (fast, and what "
+                 "most printed and machined parts want).",
+                 {ref("target", "body to thread"), num("diameter", "major (nominal) diameter", {}, true),
+                  num("pitch", "distance per turn", {}, true), num("length", "threaded length", {}, true),
+                  num("x", "start of the thread on its axis: X", "0"), num("y", "Y", "0"), num("z", "Z", "0"),
+                  choice("axis", "direction the thread runs from the start point", {"z", "-z", "x", "-x", "y", "-y"}, "z"),
+                  flag("internal", "an internal thread (in a hole)", false), flag("left", "left-handed", false),
+                  flag("cosmetic", "callout only: don't cut the thread into the solid", false),
+                  integer("segments", "segments per turn", "32")}});
 }
 
 std::vector<FeatureType> buildTypes() {
@@ -171,6 +274,27 @@ std::vector<FeatureType> buildTypes() {
                   num("z", "move Z", "0"), num("rx", "rotate about X", "0"), num("ry", "rotate about Y", "0"),
                   num("rz", "rotate about Z", "0"), num("scale", "uniform scale", "1"), num("cx", "pivot X", "0"),
                   num("cy", "pivot Y", "0"), num("cz", "pivot Z", "0")}});
+    t.push_back({"fillet", "Fillet",
+                 "Round the sharp edges of a feature with radius: outer edges are cut round, inner edges filled round. "
+                 "Pick edges by kind (edges=top,vertical) or by points near them (near=0,0,5). Where three rounded outer edges "
+                 "meet, the corner becomes a ball.",
+                 {ref("target", "feature to round"), num("radius", "fillet radius", {}, true), words("edges", "which edges: all, outer, inner, top, bottom, vertical, horizontal, x, y, z (comma-separated, combined)", "all"),
+                  words("near", "instead of edges: points x,y,z,x,y,z,... picking the edge closest to each (cad.edges lists them)", ""),
+                  num("angle", "only edges whose faces meet at this many degrees or more", "30"),
+                  integer("segments", "segments per quarter circle", "8")}});
+    t.push_back({"chamfer", "Chamfer",
+                 "Bevel the sharp edges of a feature: distance is measured along both faces from the edge. Outer edges are cut, "
+                 "inner edges filled. Pick edges like fillet does.",
+                 {ref("target", "feature to bevel"), num("distance", "chamfer size along each face", {}, true), words("edges", "which edges: all, outer, inner, top, bottom, vertical, horizontal, x, y, z (comma-separated, combined)", "all"),
+                  words("near", "instead of edges: points x,y,z,x,y,z,... picking the edge closest to each (cad.edges lists them)", ""),
+                  num("angle", "only edges whose faces meet at this many degrees or more", "30")}});
+    t.push_back({"shell", "Shell",
+                 "Hollow a feature out, leaving walls of thickness. open removes the outermost faces facing those ways "
+                 "(top, bottom, front, back, left, right or +x -x +y -y +z -z; comma-separated), e.g. open=top makes a box "
+                 "into a tray.",
+                 {ref("target", "feature to hollow"), num("thickness", "wall thickness", {}, true),
+                  words("open", "faces to remove: top, bottom, front, back, left, right, +x, -x, ...", "")}});
+    addSketchTypes(t);
     return t;
 }
 
@@ -292,100 +416,127 @@ const Mesh* CadDoc::featureMesh(const std::string& name) const {
     return it == results.end() || !it->second.mesh ? nullptr : it->second.mesh.get();
 }
 
+const FeatureExtra* CadDoc::featureExtra(const std::string& name) const {
+    auto it = results.find(name);
+    return it == results.end() || !it->second.extra ? nullptr : it->second.extra.get();
+}
+
 std::string CadDoc::featureStatus(const std::string& name) const {
     const Feature* f = findFeature(name);
     if (!f) return "missing";
     if (f->suppressed) return "suppressed";
-    if (!featureMesh(name)) return "empty";
+    if (!featureMesh(name)) {
+        const FeatureExtra* x = featureExtra(name);
+        if (x && x->sketch) return "sketch, " + x->sketch->status();
+        if (x && x->plane) return "plane";
+        if (x && !x->axes.empty()) return "axis";
+        return "empty";
+    }
     auto c = consumedBy.find(name);
     return c == consumedBy.end() ? "body" : "used by " + c->second;
 }
 
 // ---- regeneration ---------------------------------------------------------------
 
-namespace {
+namespace detail {
 
-using MeshPtr = std::shared_ptr<const Mesh>;
+void Ctx::fail(const std::string& why) const { throw std::runtime_error("feature " + f.name + ": " + why); }
 
-struct Ctx {
-    const CadDoc& doc;
-    const Feature& f;
-    const FeatureType& t;
-
-    [[noreturn]] void fail(const std::string& why) const { throw std::runtime_error("feature " + f.name + ": " + why); }
-
-    bool has(const std::string& key) const {
-        auto it = f.values.find(key);
-        return it != f.values.end() && !it->second.empty();
+bool Ctx::has(const std::string& key) const {
+    auto it = f.values.find(key);
+    return it != f.values.end() && !it->second.empty();
+}
+std::string Ctx::text(const std::string& key) const {
+    auto it = f.values.find(key);
+    if (it != f.values.end() && !it->second.empty()) return it->second;
+    const FieldDef* d = t.field(key);
+    return d ? d->fallback : std::string();
+}
+double Ctx::number(const std::string& key) const {
+    std::string s = text(key);
+    if (s.empty()) fail(key + " is required");
+    try {
+        return doc.eval(s);
+    } catch (const ExprError& e) {
+        fail(key + ": " + e.what());
     }
-    std::string text(const std::string& key) const {
-        auto it = f.values.find(key);
-        if (it != f.values.end() && !it->second.empty()) return it->second;
-        const FieldDef* d = t.field(key);
-        return d ? d->fallback : std::string();
+}
+int Ctx::whole(const std::string& key, int lo, int hi) const {
+    double v = number(key);
+    long long n = std::llround(v);
+    if (n < lo || n > hi) fail(key + " must be between " + std::to_string(lo) + " and " + std::to_string(hi));
+    return static_cast<int>(n);
+}
+bool Ctx::flag(const std::string& key) const { return text(key) == "true"; }
+std::vector<Vec2> Ctx::pts(const std::string& key, std::size_t minPoints) const {
+    std::vector<std::string> items = splitList(text(key));
+    if (items.size() % 2 != 0 || items.size() / 2 < minPoints) {
+        fail(key + " must be x,y pairs, at least " + std::to_string(minPoints) + " points (got " +
+             std::to_string(items.size()) + " numbers)");
     }
-    double number(const std::string& key) const {
-        std::string s = text(key);
-        if (s.empty()) fail(key + " is required");
+    std::vector<Vec2> out;
+    for (std::size_t i = 0; i < items.size(); i += 2) {
         try {
-            return doc.eval(s);
+            out.push_back({doc.eval(items[i]), doc.eval(items[i + 1])});
         } catch (const ExprError& e) {
             fail(key + ": " + e.what());
         }
     }
-    int whole(const std::string& key, int lo, int hi) const {
-        double v = number(key);
-        long long n = std::llround(v);
-        if (n < lo || n > hi) fail(key + " must be between " + std::to_string(lo) + " and " + std::to_string(hi));
-        return static_cast<int>(n);
-    }
-    bool flag(const std::string& key) const { return text(key) == "true"; }
-    std::vector<Vec2> pts(const std::string& key, std::size_t minPoints) const {
-        std::vector<std::string> items = splitList(text(key));
-        if (items.size() % 2 != 0 || items.size() / 2 < minPoints) {
-            fail(key + " must be x,y pairs, at least " + std::to_string(minPoints) + " points (got " +
-                 std::to_string(items.size()) + " numbers)");
+    return out;
+}
+std::vector<Vec3> Ctx::points3(const std::string& key) const {
+    std::vector<std::string> items = splitList(text(key));
+    if (items.size() % 3 != 0) fail(key + " must be x,y,z triples");
+    std::vector<Vec3> out;
+    for (std::size_t i = 0; i < items.size(); i += 3) {
+        try {
+            out.push_back({doc.eval(items[i]), doc.eval(items[i + 1]), doc.eval(items[i + 2])});
+        } catch (const ExprError& e) {
+            fail(key + ": " + e.what());
         }
-        std::vector<Vec2> out;
-        for (std::size_t i = 0; i < items.size(); i += 2) {
-            try {
-                out.push_back({doc.eval(items[i]), doc.eval(items[i + 1])});
-            } catch (const ExprError& e) {
-                fail(key + ": " + e.what());
-            }
-        }
-        return out;
     }
-    double size(const std::string& diameter, const std::string& radius, bool required = true) const {
-        if (has(radius)) return number(radius);
-        if (has(diameter)) return number(diameter) / 2;
-        if (required) fail("give " + diameter + " or " + radius);
-        return 0;
+    return out;
+}
+double Ctx::size(const std::string& diameter, const std::string& radius, bool required) const {
+    if (has(radius)) return number(radius);
+    if (has(diameter)) return number(diameter) / 2;
+    if (required) fail("give " + diameter + " or " + radius);
+    return 0;
+}
+Mat4 Ctx::place() const {
+    return Mat4::translate({number("x"), number("y"), number("z")}) * Mat4::rotate({number("rx"), number("ry"), number("rz")});
+}
+Mat4 Ctx::sketchPlane() const {
+    Mat4 m;
+    const std::string plane = text("plane");
+    if (plane == "xz") {  // x->X, y->Z, extrusion->Y
+        m.m[0] = 1; m.m[1] = 0; m.m[2] = 0;
+        m.m[4] = 0; m.m[5] = 0; m.m[6] = 1;
+        m.m[8] = 0; m.m[9] = 1; m.m[10] = 0;
+    } else if (plane == "yz") {  // x->Y, y->Z, extrusion->X
+        m.m[0] = 0; m.m[1] = 0; m.m[2] = 1;
+        m.m[4] = 1; m.m[5] = 0; m.m[6] = 0;
+        m.m[8] = 0; m.m[9] = 1; m.m[10] = 0;
     }
-    Mat4 place() const {
-        return Mat4::translate({number("x"), number("y"), number("z")}) * Mat4::rotate({number("rx"), number("ry"), number("rz")});
-    }
-    Mat4 sketchPlane() const {
-        Mat4 m;
-        const std::string plane = text("plane");
-        if (plane == "xz") {  // x->X, y->Z, extrusion->Y
-            m.m[0] = 1; m.m[1] = 0; m.m[2] = 0;
-            m.m[4] = 0; m.m[5] = 0; m.m[6] = 1;
-            m.m[8] = 0; m.m[9] = 1; m.m[10] = 0;
-        } else if (plane == "yz") {  // x->Y, y->Z, extrusion->X
-            m.m[0] = 0; m.m[1] = 0; m.m[2] = 1;
-            m.m[4] = 1; m.m[5] = 0; m.m[6] = 0;
-            m.m[8] = 0; m.m[9] = 1; m.m[10] = 0;
-        }
-        return m;
-    }
-};
+    return m;
+}
 
-// CSG can leave zero-volume "fins": two triangles on the same three vertices
-// with opposite winding. They enclose nothing, so dropping both pairs keeps
+}  // namespace detail
+
+namespace {
+
+using detail::Built;
+using detail::Ctx;
+using detail::MeshPtr;
+using detail::placed;
+using detail::share;
+using detail::csg;
+using detail::input;
+
+// CSG can leave zero-volume "fins": triangles on the same three vertices with
+// opposite winding. They enclose nothing, so dropping each opposite pair keeps
 // the solid and makes it watertight again.
-Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
-    Mesh m = mesh::booleanOp(a, b, op);
+bool dropFins(Mesh& m) {
     std::map<std::array<std::uint32_t, 3>, std::vector<std::size_t>> byCorners;
     for (std::size_t t = 0; t < m.triangleCount(); ++t) {
         std::array<std::uint32_t, 3> k{m.indices[t * 3], m.indices[t * 3 + 1], m.indices[t * 3 + 2]};
@@ -395,30 +546,37 @@ Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
     std::vector<bool> drop(m.triangleCount(), false);
     bool any = false;
     for (const auto& [k, tris] : byCorners) {
-        if (tris.size() != 2) continue;
+        if (tris.size() < 2) continue;
+        // split by winding: same cyclic order as the first = same side
+        std::vector<std::size_t> same, flipped;
         const auto* a0 = &m.indices[tris[0] * 3];
-        const auto* b0 = &m.indices[tris[1] * 3];
-        // same cyclic order = same winding; only opposite pairs are fins
-        bool same = false;
-        for (int r = 0; r < 3; ++r) same = same || (a0[0] == b0[r] && a0[1] == b0[(r + 1) % 3] && a0[2] == b0[(r + 2) % 3]);
-        if (same) continue;
-        drop[tris[0]] = drop[tris[1]] = true;
-        any = true;
+        for (std::size_t t : tris) {
+            const auto* b0 = &m.indices[t * 3];
+            bool s = false;
+            for (int r = 0; r < 3; ++r) s = s || (a0[0] == b0[r] && a0[1] == b0[(r + 1) % 3] && a0[2] == b0[(r + 2) % 3]);
+            (s ? same : flipped).push_back(t);
+        }
+        for (std::size_t i = 0; i < std::min(same.size(), flipped.size()); ++i) {
+            drop[same[i]] = drop[flipped[i]] = true;
+            any = true;
+        }
     }
-    if (!any) return m;
+    if (!any) return false;
     std::vector<std::uint32_t> kept;
     for (std::size_t t = 0; t < m.triangleCount(); ++t) {
         if (!drop[t]) kept.insert(kept.end(), {m.indices[t * 3], m.indices[t * 3 + 1], m.indices[t * 3 + 2]});
     }
     m.indices = std::move(kept);
     mesh::cleanup(m);
+    return true;
+}
+
+Mesh csgOnce(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
+    Mesh m = mesh::booleanOp(a, b, op);
+    dropFins(m);
     return m;
 }
 
-Mesh placed(Mesh m, const Mat4& t) {
-    mesh::transform(m, t);
-    return m;
-}
 
 // Booleans of closed solids should be closed. The BSP engine can still leave a
 // sliver overlap when split lines nearly coincide, so if a result comes out
@@ -448,17 +606,30 @@ Mesh tidy(Mesh m) {
     return m;
 }
 
-Mesh csg(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
+// Long sliver triangles (flat faces read from STEP or other programs) can
+// leave crumbs a hundred-thousandth of a millimetre across where a cut crosses
+// them; merging points that close and dropping the fins that leaves closes it.
+bool mend(Mesh& m, double d) {
+    mesh::weld(m, d * 1e-6);
+    dropFins(m);
+    m = tidy(std::move(m));
+    return !m.empty() && clean(m);
+}
+
+Mesh csgImpl(const Mesh& a, const Mesh& b, mesh::BooleanOp op) {
     Mesh m = tidy(csgOnce(a, b, op));
     if (m.empty() || clean(m) || !mesh::isWatertight(a) || !mesh::isWatertight(b)) return m;
     const mesh::Bounds bb = mesh::bounds(b);
     const double d = std::max(mesh::bounds(a).diagonal(), bb.diagonal());
+    if (Mesh r = m; mend(r, d)) return r;
     const Vec3 c = bb.center(), skew = normalize(Vec3{1, 0.618, 0.382});
     const Mat4 nudges[] = {Mat4::translate(c) * Mat4::rotateAxis(skew, 1e-5) * Mat4::translate(-c),
                            Mat4::translate(skew * (d * 1e-7)), Mat4::translate(Vec3{-0.382, 1, -0.618} * (d * 3e-7)),
                            Mat4::translate(c) * Mat4::rotateAxis(Vec3{-0.5, 0.2, 1}, -3e-5) * Mat4::translate(-c)};
     for (const auto& n : nudges) {
-        Mesh r = tidy(csgOnce(a, placed(b, n), op));
+        Mesh moved = b;
+        mesh::transform(moved, n);
+        Mesh r = tidy(csgOnce(a, moved, op));
         if (!r.empty() && clean(r)) return r;
     }
     return m;
@@ -535,15 +706,35 @@ Mat4 alignDown(const Vec3& dir) {
     return r;
 }
 
-struct Built {
-    MeshPtr mesh;
-    std::vector<MeshPtr> tools;
-};
+}  // namespace
+
+namespace detail {
 
 MeshPtr share(Mesh m) {
     if (m.empty()) return nullptr;
     return std::make_shared<const Mesh>(std::move(m));
 }
+
+Mesh placed(Mesh m, const Mat4& t) {
+    mesh::transform(m, t);
+    return m;
+}
+
+Mesh csg(const Mesh& a, const Mesh& b, mesh::BooleanOp op) { return csgImpl(a, b, op); }
+
+const CadDoc::Cached* input(const Done& done, const Ctx& c, const std::string& key) {
+    const std::string name = c.text(key);
+    auto it = done.find(name);
+    if (it == done.end()) {
+        if (c.doc.featureIndex(name) < 0) c.fail(key + " refers to '" + name + "', which doesn't exist");
+        c.fail(key + " refers to '" + name + "', which comes later in the tree");
+    }
+    return &it->second;
+}
+
+}  // namespace detail
+
+namespace {
 
 Built buildPrimitive(const Ctx& c) {
     const std::string& type = c.f.type;
@@ -602,15 +793,6 @@ Built buildPrimitive(const Ctx& c) {
     return {share(placed(std::move(m), c.place())), {}};
 }
 
-const CadDoc::Cached* input(const std::map<std::string, CadDoc::Cached>& done, const Ctx& c, const std::string& key) {
-    const std::string name = c.text(key);
-    auto it = done.find(name);
-    if (it == done.end()) {
-        if (c.doc.featureIndex(name) < 0) c.fail(key + " refers to '" + name + "', which doesn't exist");
-        c.fail(key + " refers to '" + name + "', which comes later in the tree");
-    }
-    return &it->second;
-}
 
 Built buildHole(const Ctx& c, const CadDoc::Cached& target) {
     if (!target.mesh) return {};
@@ -664,6 +846,9 @@ Built buildHole(const Ctx& c, const CadDoc::Cached& target) {
     Built out;
     out.mesh = share(csg(body, tool, mesh::BooleanOp::Difference));
     out.tools.push_back(std::make_shared<const Mesh>(std::move(tool)));
+    auto extra = std::make_shared<FeatureExtra>();
+    extra->axes.push_back({pos, dir * -1.0, r});
+    out.extra = extra;
     return out;
 }
 
@@ -671,6 +856,16 @@ Built buildHole(const Ctx& c, const CadDoc::Cached& target) {
 Built repeat(const CadDoc::Cached& target, const std::vector<Mat4>& copies, bool includeFirst) {
     if (!target.mesh) return {};
     Built out;
+    if (target.extra && !target.extra->axes.empty()) {
+        auto extra = std::make_shared<FeatureExtra>();
+        for (std::size_t k = 0; k < copies.size(); ++k) {
+            if (k == 0 && !includeFirst) continue;
+            for (const auto& a : target.extra->axes) {
+                extra->axes.push_back({copies[k].point(a.point), mesh::normalize(copies[k].direction(a.dir)), a.radius});
+            }
+        }
+        out.extra = extra;
+    }
     if (!target.tools.empty()) {
         // a hole (or a pattern of holes): repeat the cut on the same body
         Mesh body = *target.mesh;
@@ -755,6 +950,52 @@ Built buildOperation(const Ctx& c, const std::map<std::string, CadDoc::Cached>& 
                        Mat4::translate(-pivot);
         return {share(placed(*target.mesh, m)), {}};
     }
+    if (type == "fillet" || type == "chamfer") {
+        if (!target.mesh) return {};
+        const double angle = c.number("angle");
+        if (!(angle > 0 && angle < 180)) c.fail("angle must be between 0 and 180 degrees");
+        std::vector<Vec3> near;
+        const auto items = splitList(c.text("near"));
+        if (items.size() % 3 != 0) c.fail("near must be x,y,z triples");
+        for (std::size_t i = 0; i < items.size(); i += 3) {
+            try {
+                near.push_back({c.doc.eval(items[i]), c.doc.eval(items[i + 1]), c.doc.eval(items[i + 2])});
+            } catch (const ExprError& e) {
+                c.fail(std::string("near: ") + e.what());
+            }
+        }
+        try {
+            const auto all = detail::sharpEdges(*target.mesh, angle);
+            const auto edges = detail::pickEdges(*target.mesh, all, splitList(c.text("edges")), near);
+            if (edges.empty()) c.fail("no edges matched (cad.edges lists the sharp edges)");
+            const bool chamfer = type == "chamfer";
+            return {share(detail::blendEdges(*target.mesh, edges, c.number(chamfer ? "distance" : "radius"), chamfer,
+                                             chamfer ? 1 : c.whole("segments", 1, 64), csg)),
+                    {}};
+        } catch (const std::invalid_argument& e) {
+            c.fail(e.what());
+        } catch (const std::runtime_error& e) {
+            const std::string what = e.what();
+            if (what.rfind("feature ", 0) == 0) throw;
+            c.fail(what);
+        }
+    }
+    if (type == "shell") {
+        if (!target.mesh) return {};
+        std::vector<Vec3> open;
+        for (const auto& name : splitList(c.text("open"))) {
+            Vec3 d;
+            if (!detail::directionByName(name, d)) c.fail("open: unknown side '" + name + "' (top, bottom, front, back, left, right, +x, -x, ...)");
+            open.push_back(d);
+        }
+        try {
+            return {share(detail::shell(*target.mesh, c.number("thickness"), open, csg)), {}};
+        } catch (const std::runtime_error& e) {
+            const std::string what = e.what();
+            if (what.rfind("feature ", 0) == 0) throw;
+            c.fail(what);
+        }
+    }
     c.fail("unknown feature type " + type);
 }
 
@@ -777,6 +1018,11 @@ std::string signature(const Ctx& c, const std::map<std::string, CadDoc::Cached>&
             } else if (d->kind == FieldKind::Ref) {
                 auto it = done.find(v);
                 sig += "{" + (it == done.end() ? std::string("?") : it->second.signature) + "}";
+            } else if (d->kind == FieldKind::Refs) {
+                for (const auto& item : splitList(v)) {
+                    auto it = done.find(item);
+                    sig += "{" + (it == done.end() ? std::string("?") : it->second.signature) + "}";
+                }
             } else {
                 sig += v;
             }
@@ -793,6 +1039,7 @@ std::string signature(const Ctx& c, const std::map<std::string, CadDoc::Cached>&
         std::snprintf(buf, sizeof buf, "%p", static_cast<const void*>(c.f.imported.get()));
         sig += "|mesh=" + std::string(buf);
     }
+    if (detail::isAdvanced(c.f.type)) sig += detail::advancedSignature(c);
     return sig;
 }
 
@@ -812,18 +1059,29 @@ void CadDoc::regenerate() {
         std::string sig = signature(c, done);
         Cached result;
         auto old = results.find(f.name);
-        if (old != results.end() && old->second.signature == sig) {
+        if (old != results.end() && (old->second.key.empty() ? old->second.signature : old->second.key) == sig) {
             result = old->second;
         } else {
             Built b;
-            bool isOp = false;
-            for (const auto& field : t->fields) isOp = isOp || field.kind == FieldKind::Ref;
-            b = isOp ? buildOperation(c, done) : buildPrimitive(c);
-            result = Cached{sig, b.mesh, b.tools};
+            if (detail::isAdvanced(f.type)) {
+                b = detail::buildAdvanced(c, done);
+            } else {
+                bool isOp = false;
+                for (const auto& field : t->fields) isOp = isOp || field.kind == FieldKind::Ref;
+                b = isOp ? buildOperation(c, done) : buildPrimitive(c);
+                auto axes = detail::primitiveAxes(c);
+                if (!axes.empty() && !b.extra) {
+                    auto extra = std::make_shared<FeatureExtra>();
+                    extra->axes = std::move(axes);
+                    b.extra = extra;
+                }
+            }
+            result = Cached{b.signature.empty() ? sig : b.signature, b.mesh, b.tools, nullptr, b.extra, b.signature.empty() ? std::string() : sig};
         }
         if (result.mesh) {
             for (const auto& field : t->fields) {
                 if (field.kind != FieldKind::Ref) continue;
+                if (field.name == "target" && c.text("operation") == "new") continue;
                 const std::string in = c.text(field.name);
                 auto it = done.find(in);
                 if (it != done.end() && it->second.mesh) consumed[in] = f.name;
@@ -885,6 +1143,61 @@ std::shared_ptr<CadDoc> newCad(const std::string& units) {
     return doc;
 }
 
+namespace {
+
+json sketchJson(const Sketch& sk) {
+    json pts = json::array(), ents = json::array(), cons = json::array();
+    for (const auto& p : sk.points) pts.push_back({{"id", p.id}, {"x", p.x}, {"y", p.y}});
+    for (const auto& e : sk.entities) {
+        json je = {{"id", e.id}, {"kind", e.kind}, {"points", e.points}};
+        if (e.kind == "circle") je["radius"] = e.radius;
+        if (e.construction) je["construction"] = true;
+        if (e.closed) je["closed"] = true;
+        ents.push_back(je);
+    }
+    for (const auto& c : sk.constraints) {
+        json jc = {{"id", c.id}, {"type", c.type}, {"refs", c.refs}};
+        if (!c.value.empty()) jc["value"] = c.value;
+        if (c.aux != 0) jc["aux"] = c.aux;
+        cons.push_back(jc);
+    }
+    return {{"points", pts}, {"entities", ents}, {"constraints", cons}, {"counters", sk.counters}};
+}
+
+Sketch sketchFromJson(const json& j) {
+    Sketch sk;
+    for (const auto& p : j.value("points", json::array())) sk.points.push_back({p.at("id").get<std::string>(), p.at("x").get<double>(), p.at("y").get<double>()});
+    for (const auto& e : j.value("entities", json::array())) {
+        SketchEntity se;
+        se.id = e.at("id").get<std::string>();
+        se.kind = e.at("kind").get<std::string>();
+        se.points = e.at("points").get<std::vector<std::string>>();
+        se.radius = e.value("radius", 0.0);
+        se.construction = e.value("construction", false);
+        se.closed = e.value("closed", false);
+        const std::size_t need = se.kind == "line" ? 2 : se.kind == "circle" ? 1 : se.kind == "arc" ? 3 : 2;
+        if (se.kind != "line" && se.kind != "circle" && se.kind != "arc" && se.kind != "spline") throw std::runtime_error("unknown sketch entity kind '" + se.kind + "'");
+        if (se.kind == "spline" ? se.points.size() < need : se.points.size() != need) throw std::runtime_error("sketch entity " + se.id + " has the wrong number of points");
+        for (const auto& pid : se.points) {
+            if (!sk.point(pid)) throw std::runtime_error("sketch entity " + se.id + " uses a missing point " + pid);
+        }
+        sk.entities.push_back(std::move(se));
+    }
+    for (const auto& c : j.value("constraints", json::array())) {
+        SketchConstraint sc;
+        sc.id = c.at("id").get<std::string>();
+        sc.type = c.at("type").get<std::string>();
+        sc.refs = c.at("refs").get<std::vector<std::string>>();
+        sc.value = c.value("value", "");
+        sc.aux = c.value("aux", 0.0);
+        sk.constraints.push_back(std::move(sc));
+    }
+    sk.counters = j.value("counters", std::map<std::string, int>{});
+    return sk;
+}
+
+}  // namespace
+
 std::string toJson(const CadDoc& doc) {
     json j;
     j["format"] = "wwcad";
@@ -897,6 +1210,7 @@ std::string toJson(const CadDoc& doc) {
     for (const auto& f : doc.features) {
         json jf = {{"name", f.name}, {"type", f.type}, {"values", f.values}};
         if (f.suppressed) jf["suppressed"] = true;
+        if (f.type == "sketch") jf["sketch"] = sketchJson(f.sketch);
         if (f.imported) {
             std::vector<double> pos;
             for (const auto& v : f.imported->positions) pos.insert(pos.end(), {v.x, v.y, v.z});
@@ -932,6 +1246,7 @@ std::shared_ptr<CadDoc> fromJson(const std::string& text) {
             f.values = jf.value("values", std::map<std::string, std::string>{});
             f.suppressed = jf.value("suppressed", false);
             f.source = jf.value("source", "");
+            if (jf.contains("sketch")) f.sketch = sketchFromJson(jf["sketch"]);
             if (jf.contains("mesh")) {
                 Mesh m;
                 auto pos = jf["mesh"].at("positions").get<std::vector<double>>();
@@ -980,7 +1295,7 @@ std::shared_ptr<CadDoc> openCad(const std::filesystem::path& path) {
         doc->features.push_back(std::move(f));
         doc->regenerate();
     } else {
-        throw std::runtime_error("cad opens .wwcad files and meshes (stl obj ply off glb gltf 3mf), not " + path.string());
+        throw std::runtime_error("cad opens .wwcad files, STEP and meshes (step stp stl obj ply off glb gltf 3mf fbx), not " + path.string());
     }
     doc->path = path.string();
     return doc;

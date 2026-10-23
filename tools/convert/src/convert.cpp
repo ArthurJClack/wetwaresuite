@@ -28,8 +28,16 @@ std::string extOf(const fs::path& p) {
     return lower(e);
 }
 
-const std::set<std::string> kRasterIn = {"png", "jpg", "jpeg", "bmp", "tga", "gif", "psd", "hdr", "pic", "ppm", "pgm", "pnm", "ora"};
-const std::set<std::string> kRasterOut = {"png", "jpg", "jpeg", "bmp", "tga", "ppm", "ora"};
+const std::set<std::string> kRasterIn = [] {  // built in: stb, TIFF, WebP (when built with libwebp), ORA
+    std::set<std::string> s(raster::readableExtensions().begin(), raster::readableExtensions().end());
+    s.insert("ora");
+    return s;
+}();
+const std::set<std::string> kRasterOut = [] {
+    std::set<std::string> s(raster::writableExtensions().begin(), raster::writableExtensions().end());
+    s.insert("ora");
+    return s;
+}();
 const std::set<std::string> kAudio = {"wav", "mp3", "flac", "ogg", "opus", "aac", "m4a", "aiff", "aif", "wma", "ac3", "amr"};
 const std::set<std::string> kVideo = {"mp4", "mkv", "mov", "webm", "avi", "wmv", "flv", "m4v", "mpg", "mpeg", "3gp", "ts", "gif"};
 const std::set<std::string> kFfmpegImages = {"webp", "avif", "heic", "heif", "tif", "tiff", "jxl", "ico", "exr"};
@@ -44,7 +52,7 @@ const std::set<std::string> kVectorOut = {"svg", "png", "jpg", "jpeg", "bmp", "t
 const std::set<std::string> kMeshIn(mesh::readableExtensions().begin(), mesh::readableExtensions().end());
 const std::set<std::string> kMeshOut(mesh::writableExtensions().begin(), mesh::writableExtensions().end());
 const std::set<std::string> kMeshRender = {"png", "jpg", "jpeg", "bmp", "tga", "ppm"};  // mesh -> rendered preview
-const std::set<std::string> k3dLater = {"fbx", "dae", "step", "stp", "iges", "igs", "usd", "usda", "usdc", "usdz", "blend", "3ds", "x3d", "wrl"};
+const std::set<std::string> k3dLater = {"dae", "iges", "igs", "usd", "usda", "usdc", "usdz", "blend", "3ds", "x3d", "wrl"};
 
 bool in(const std::set<std::string>& set, const std::string& v) { return set.count(v) > 0; }
 
@@ -343,7 +351,7 @@ void registerCommands(Session& session) {
                         "\nmarkup (pandoc, " + yes(hasPandoc) + "): " + joined(kMarkup) + " -> " + joined(kMarkupOut) +
                         "\n3D meshes (built in, ready): " + joined(kMeshIn) + " -> " + joined(kMeshOut) + ", or rendered to " +
                         joined(kMeshRender) +
-                        "\nother 3D and CAD (" + joined(k3dLater) + "): coming with asset forge and cad";
+                        "\nother 3D and CAD (" + joined(k3dLater) + "): not built in yet";
                     return Result::success(text).with("mesh", true).with("ffmpeg", hasFfmpeg).with("libreoffice", hasOffice)
                         .with("pandoc", hasPandoc).with("vector", hasVector);
                 });

@@ -768,12 +768,15 @@ void exportFile(const Drawing& doc, const std::filesystem::path& path, double dp
         bytes = toPdf(doc);
     } else if (e == "dxf") {
         bytes = toDxf(doc);
+    } else if (e == "dwg") {
+        dxfToDwg(toDxf(doc), path);
+        return;
     } else if (raster::canWrite(path)) {
         raster::Image img = render(doc, sheetView(doc), 0, dpi, false);
         raster::save(img, path, quality);
         return;
     } else {
-        throw std::runtime_error("can't export ." + e + " (use .dxf, .svg, .pdf, .png, .jpg, .bmp, .tga or .ppm)");
+        throw std::runtime_error("can't export ." + e + " (use .dxf, .dwg, .svg, .pdf, .png, .jpg, .bmp, .tga or .ppm)");
     }
     std::ofstream out(path, std::ios::binary);
     if (!out) throw std::runtime_error("cannot write " + path.string());

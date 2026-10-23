@@ -11,8 +11,23 @@ needs no graphics card: on a computer without one it draws in software.
 
 ## 1. Start it
 
-Every app opens its window when you start it without typing anything after its name. In a file
-manager (Explorer, Finder, Files), **double-click** the app's program:
+Every app is its own program with its own window, its own icon (the logo in the app's colour) and
+its own entry in the start menu, the dock or Launchpad. Opening one never opens the others, and you
+can have several open side by side, like Photoshop next to Blender.
+
+**The launcher.** The plain "wetwaresuite" entry in the start menu (on a Mac, `wetwaresuite.app` in
+the wetwaresuite folder) opens a small window with a tile for every app. Click a tile and that app
+starts in its own window; the launcher stays open so you can start another, and closing it closes
+nothing else. **Open a file...** (or dropping files on the launcher) hands each file to the app made
+for it. An app that isn't installed yet shows "not installed": add it with the hub.
+
+**Straight to an app.** Each app is in the start menu as "wetwaresuite image", "wetwaresuite cad"
+and so on, and the installers add every app to the "Open with" menu of the files it opens
+(Explorer, Finder and Linux file managers), so you can right-click a `.stl` and open it in cad. Files
+in wetwaresuite's own formats (`.wwcad`, `.wwcut`, `.wwlay`, `.wwmap`, `.wwfit`) open in their app
+with a double-click.
+
+In a file manager (Explorer, Finder, Files) you can also **double-click** an app's program:
 
 | program | what its window is for |
 |---------|------------------------|
@@ -28,7 +43,7 @@ manager (Explorer, Finder, Files), **double-click** the app's program:
 | `wetwaresuite-maps` | maps, GPS tracks and map data |
 | `wetwaresuite-system` | calculator, code editor, file manager, terminal, system monitor and clock |
 | `wetwaresuite-files` | converting, finding and batch-processing files |
-| `wetwaresuite` | every tool in one window |
+| `wetwaresuite-gui`, `wetwaresuite` | the launcher (`gui --all`: every tool in one window) |
 
 Each app has its own colour, so you can tell the windows apart at a glance. If you installed the
 apps with the hub they are in your personal wetwaresuite `bin` folder (see [the apps](apps.md));
@@ -58,18 +73,28 @@ double-click one in Explorer, Windows briefly makes a black console box for it; 
 the box belongs to it alone and closes it, so only the window stays. Started from a terminal
 (PowerShell or Command Prompt) it keeps the terminal, so any messages still show there.
 
-### The all-tools launcher
+### The launcher from the command line
 
-`wetwaresuite-gui` is the same window with a choice of tools. It is built next to the all-in-one
-`wetwaresuite` (`build/apps/wetwaresuite/`):
+`wetwaresuite-gui` is built into `build/bin/` next to the apps, so it finds them:
 
 ```sh
-wetwaresuite-gui                       # every tool
+wetwaresuite-gui                       # the launcher: every app starts in its own window
+wetwaresuite-gui a.png song.wav        # a.png opens in image, song.wav in sound, each in its own window
+wetwaresuite open part.step            # the all-in-one does the same
+wetwaresuite-gui --app all             # every tool in one window, the way it used to be
+wetwaresuite gui --all                 # the same from the all-in-one
 wetwaresuite-gui --app image           # the same window wetwaresuite-image opens
 wetwaresuite-gui --app image a.jpg     # and open a picture straight away
 wetwaresuite-gui --tools photo,convert # or name the tools yourself
 wetwaresuite-gui --list-apps           # the app names
 ```
+
+When no app is installed next to it (say you copied just the `wetwaresuite` program somewhere),
+the launcher has nothing to start, so it opens every tool in one window instead.
+
+The AppImage on Linux runs everything from inside its one file, which unmounts when the program
+you started it with closes, so keep the launcher open while you use apps you started from it (or
+start each app with `--run image`, or install the `.deb`).
 
 ## 2. The home screen
 
@@ -130,8 +155,70 @@ When a file is open, the middle of the window shows it.
 - **Fit** shows the whole picture, **100%** shows it at its real size.
 - The list of **Open files** on the left switches between files.
 
-Files that aren't pictures (a 3D model, a song, a map) show their preview picture if the tool has one,
-or a one-line summary.
+3D files (cad parts, models, sculpts, scan fits, prints) open in a **3D view** you can turn around:
+
+- **Drag** with the left button to turn the model, **right- or middle-drag** (or Shift+drag) to move it, **scroll** to zoom.
+- **Iso**, **Front**, **Right** and **Top** jump to those angles; **Fit** (or a double-click) shows the whole model again.
+- The angle shows in the bottom-left corner. It stays put while you edit, so you can watch a change from the side you care about.
+
+![a cad part in the 3D view](images/gui-cad-3d-view.jpg)
+
+It draws in software, so it works on any computer, GPU or not. While you drag it skips the smoothing for speed and redraws sharp when you let go. The same view is `app.view` from the command line and for Claude (see [3D view](3d-view.md)).
+
+Other files that aren't pictures (a song, a map) show their preview picture if the tool has one,
+or a one-line summary. Sound files get a play bar too (see [playback](playback.md)).
+
+### The timeline
+
+Video edits (the video app) and multitrack audio projects (the sound app) get a **timeline** under the preview, one row per track:
+
+![an audio project with its timeline](images/gui-sound-timeline.jpg)
+
+- **Drag a clip** to move it in time. Drag it up or down onto another track of the same kind (video onto video, sound onto sound) to move it there. While you drag, an outline shows where it will land and its new start time.
+- **Drag a clip's left or right edge** to trim it. Trimming never throws audio or video away: drag the edge back out and the rest comes back (as far as the source goes).
+- Clips **snap** to the start, the red cursor and the edges of other clips.
+- **Click the ruler** or an empty part of a track to put the **cursor** there. **Split** (or **S**) cuts the selected clip at the cursor; **Delete** (or the Delete key) removes it.
+- **Scroll** to move along the timeline, **Ctrl+scroll** to zoom, **Fit** to see all of it.
+
+Video edits add an editor's tools:
+
+![a video edit's timeline: track switches, markers, in/out, a transition and keyframes](images/gui-video-timeline.jpg)
+
+- Each track has switches at its head: **L** locks it (edits leave it alone), **H** hides its picture, **M** mutes its sound, **S** solos it. A lit switch is on; muted, hidden and locked tracks are drawn dimmer.
+- The **cursor is the edit's playhead** (`cut.set_cursor`): the razor, markers, in/out, inserts and freeze frames all work at it, and the preview shows its frame.
+- **Razor** (**Ctrl+K**) cuts every unlocked track at the cursor. **Ripple delete** (**Shift+Delete**) removes the selected clip and closes the gap.
+- **Marker** (**M**) drops a marker at the cursor: a flag on the ruler (hover it for its name). **In** (**I**) and **Out** (**O**) mark a range, shaded on the ruler, for `cut.extract`, `cut.lift` and `cut.render range=in_out`.
+- **Transition** (**T**) crossfades the selected clip with the one before it; a transition shows as a wedge over the start of the later clip.
+- Small yellow diamonds along a clip are its **keyframes**. Clicking a clip outlines the clips linked to it (its sound) too, and they move and trim together.
+
+Every drag is one ordinary command (`cut.move_clip`, `cut.trim_clip`, `audio.clip_set`, `audio.clip_trim`, `audio.clip_split`...), so it shows in the history and **Undo** takes it back, and a script or Claude can do exactly the same.
+
+### Spreadsheets: type into the cells
+
+A spreadsheet (in the office app) opens as a grid of cells instead of a picture, with a tab for each
+sheet above it.
+
+![a budget spreadsheet in the office app's grid](images/gui-office-sheet-grid.jpg)
+
+- **Click** a cell to pick it. Its name (like `B7`) and what's in it show in the **formula bar** at the
+  top; type there and press **Enter** to change it.
+- **Just start typing** to replace the cell, or **double-click** (or press **F2**) to change what's
+  already there. Start with `=` for a formula, like `=SUM(B2:B5)`.
+- **Enter** puts it in and moves down, **Tab** moves right (hold **Shift** to go back), **Esc** cancels.
+  Clicking another cell keeps what you typed.
+- The **arrow keys**, **Page Up/Down** and **Home** move around; **Delete** empties the cell.
+- **Ctrl+C**, **Ctrl+X** and **Ctrl+V** copy, cut and paste a cell. Pasting rows copied from another
+  spreadsheet fills a block of cells from the one you picked.
+
+Every cell you change is one step in the history, the same `office.sheet_set` or `office.sheet_clear`
+command a script would run, so Ctrl+Z takes back exactly one cell. Formulas that depend on it update
+at once, and cells with errors (`#DIV/0!`, `#NAME?`) show in red.
+
+Cells look the way the file says: fill and font colours, bold, underline, alignment, merged cells,
+and conditional formats with their data bars, which change as soon as the numbers do. To style cells,
+merge them, freeze the top rows, add a dropdown, a conditional format, a chart or a pivot table,
+press **Ctrl+K** and type `style`, `merge`, `freeze`, `validate`, `conditional`, `chart` or `pivot`.
+The [office tutorial](office.md#task-7-a-sales-tracker-the-excel-way) has an example of each.
 
 ## 7. Painting
 
@@ -171,6 +258,37 @@ Remove is one step in the history, so Ctrl+Z takes back exactly one. The
 To start a fresh canvas: **Start something new**, then **New canvas (Paint)**, set the width and
 height, and press Run. To keep your work, search for **save**, pick **Save image**, press
 **Browse...** to choose where, and Run. Saving as `.ora` keeps the layers.
+
+### Selecting part of the picture
+
+In the image app, the **Select** tool chooses the part of the picture your next edits change. Pick
+**Box**, **Oval** or **Lasso** and drag, or **Wand** and click a colour to take the area like it. Hold
+**Shift** to add more and **Alt** to take some away; a click on the picture selects nothing again. The
+selection shows as a moving dashed outline ("marching ants").
+
+While something is selected, painting, filling and every action on the left (Adjust colours, Curves,
+Effects...) only change the inside. **Deselect** (Ctrl+D), **Invert** (Ctrl+Shift+I), **All**
+(Ctrl+A) and **Delete** sit next to the shapes. Selecting is a step in the history like any edit, so
+Ctrl+Z brings back the previous selection. See [the photo tutorial](photo.md#task-8-selections-masks-curves-and-free-transform)
+for masks, curves and free transform.
+
+### Circuits: click on the schematic and the board
+
+In the electronics app a circuit (`.circuit.json`, or a KiCad `.kicad_sch`, `.kicad_pcb` or `.kicad_pro`)
+gets its own row above the picture:
+
+1. **Show** picks **Schematic**, **Board** or **3D** (the assembled board; drag to look around).
+2. **Tool** on the schematic: **Select** (click anything to hear what it is: a pin and its net, a wire,
+   a label, a part), **Place** (choose the part in the list beside it, type a value if you like, then
+   click where it goes), **Wire** (click where the wire starts, then at each corner; it ends on a pin,
+   or press Esc or right-click), **Move** (click a part, then where it goes) and **Delete**.
+3. **Tool** on the board: **Select**, **Move** (footprints), **Trace** (pick the copper layer; clicks on
+   a pad snap to its centre) and **Via**. **Place parts**, **Route** and **Check** are one click each;
+   on the schematic, **Check** runs the electrical check.
+
+Each click is one step in the history (Ctrl+Z takes it back) and runs the same `circuit.*` command a
+script or Claude would, so you can mix clicking, forms and batch scripts on one design. The
+[circuit tutorial](circuit.md#task-10-draw-in-the-window) has the whole list.
 
 ## 8. Sending your work to another app
 

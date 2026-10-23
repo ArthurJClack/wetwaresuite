@@ -2,7 +2,7 @@
 
 `blueprint` is the suite's 2D drafting tool, in the spirit of LibreCAD or
 AutoCAD LT: real-world units, layers, dimensions that measure themselves,
-walls/doors/windows/rooms for floor plans, a title block, DXF in and out,
+walls/doors/windows/rooms for floor plans, a title block, DXF in and out (DWG through a free converter),
 and PDF/SVG/PNG sheets that print to scale. Like every wetwaresuite tool it is
 headless: each action is a command you can type once, put in a batch
 script, or let Claude call over MCP.
@@ -423,8 +423,10 @@ scale: 1:75
 A DXF from another program works the same way. It has no saved sheet, so
 it is opened in `mm` (or the units in its `$INSUNITS` header) and fitted to
 the paper with `scale=fit` and centred; pass `units=`, `paper=` and `scale=`
-to `blueprint.open` or `blueprint.convert` to choose yourself. Blocks
-(INSERT), splines and ellipses are skipped; `blueprint.open` says how many.
+to `blueprint.open` or `blueprint.convert` to choose yourself. Blocks are
+expanded into plain lines, arcs and text, and ellipses and splines become
+polylines. A `.dwg` works too when a DWG converter is installed (see
+section 8).
 
 ### the batch script
 
@@ -767,8 +769,35 @@ title block on a layer `BP_SHEET` (ignored when reading back).
 POLYLINE/VERTEX, CIRCLE, ARC, POINT, TEXT, MTEXT (formatting stripped),
 SOLID/TRACE, HATCH (outer boundary) and DIMENSION (linear, aligned, angular,
 radius, diameter), plus layers with their colours, weights and line types.
-INSERT (blocks), ELLIPSE, SPLINE and other types are skipped and counted in
-the message.
+ELLIPSE and SPLINE become polylines (splines are sampled along their real
+NURBS curve), ATTRIB values become text, and INSERT places the block's
+entities with its position, scale, rotation and row/column array, nested
+blocks included. Block entities on layer `0` move onto the INSERT's layer
+and ByBlock colours take the INSERT's colour, as in AutoCAD. Once open they
+are ordinary entities: the block itself isn't kept. Other types (3D solids,
+images, ordinate dimensions) are skipped and counted in the message.
+
+### DWG
+
+DWG is AutoCAD's closed binary format. blueprint reads and writes it by
+converting through DXF with a free converter on your PATH, tried in this
+order:
+
+- **LibreDWG** (`dwg2dxf` and `dxf2dwg`, GPL, packaged as `libredwg-tools`
+  or `libredwg` on most Linux distributions and in Homebrew; Windows builds
+  on the LibreDWG releases page);
+- **ODA File Converter** (`ODAFileConverter`, free download from the Open
+  Design Alliance; writes AutoCAD 2018 DWG).
+
+```
+blueprint.open path=survey.dwg
+blueprint.save doc=bp1 path=survey-edited.dwg
+blueprint.convert input=survey.dwg output=survey.pdf paper=A3
+```
+
+Every command that takes `file=` accepts a `.dwg` too. Without a converter
+the command fails with a message saying what to install; saving as `.dxf`
+always works and every CAD program opens it.
 
 ## 9. command and parameter reference
 
@@ -779,10 +808,10 @@ Required parameters are in **bold**. Most drawing commands also take
 | command | parameters | notes |
 |---|---|---|
 | `blueprint.new` | `units` (mm/cm/m/in/ft, default mm), `paper` (A4 A3 A2 A1 A0 letter legal tabloid, default A4), `orientation` (landscape/portrait), `scale` (default 1:1), `title`, `author`, `date` | returns `doc` |
-| `blueprint.open` | **`path`**, `units`, `paper`, `orientation`, `scale` (or `fit`), `center` | opens a DXF, returns `doc` |
-| `blueprint.save` | **`doc`**, **`path`**, `sheet` | DXF |
-| `blueprint.export` | **`doc`**, **`path`**, `dpi` (150), `quality` (90) | .pdf .svg .png .jpg .bmp |
-| `blueprint.convert` | **`input`**, **`output`**, `paper`, `orientation`, `scale`, `center`, `dpi`, `title` | DXF to PDF/SVG/PNG/DXF in one go |
+| `blueprint.open` | **`path`**, `units`, `paper`, `orientation`, `scale` (or `fit`), `center` | opens a DXF or DWG, returns `doc` |
+| `blueprint.save` | **`doc`**, **`path`**, `sheet` | DXF or DWG |
+| `blueprint.export` | **`doc`**, **`path`**, `dpi` (150), `quality` (90) | .pdf .svg .png .jpg .bmp .dxf .dwg |
+| `blueprint.convert` | **`input`**, **`output`**, `paper`, `orientation`, `scale`, `center`, `dpi`, `title` | DXF/DWG to PDF/SVG/PNG/DXF/DWG in one go |
 | `blueprint.close` | **`doc`** | undoable |
 | `blueprint.info` | `doc` or `file` | sheet, layers, counts, extents |
 | `blueprint.preview` | **`doc`**, `size` (px), `view` (extents/sheet), `grid` | PNG attachment |
@@ -836,13 +865,16 @@ Required parameters are in **bold**. Most drawing commands also take
   Move it together with the geometry (`entities=e3,e14`), or delete it and
   add it again; the value is always measured from its points.
 - **Printing is not to scale**: print the PDF at 100% / actual size.
+- **"DWG needs a converter on PATH"**: install LibreDWG or the ODA File
+  Converter (section 8), or save and share `.dxf` instead.
 
 Known limitations of this version:
 
-- no trim/extend, fillet/chamfer, splines or ellipses; text is single-line
+- no trim/extend, fillet/chamfer, or drawing splines and ellipses; text is single-line
   and Helvetica only (PNG export uses a built-in stroke font);
-- DXF import skips blocks (INSERT), ELLIPSE and SPLINE; polyline arc
-  segments are flattened to short lines; a hatch keeps only its outer
+- DXF import expands blocks into plain entities (editing the block
+  definition isn't possible); ellipses, splines and polyline arc segments
+  are flattened to short lines; a hatch keeps only its outer
   boundary (no holes); per-entity line type overrides are ignored (layer
   line types are kept); hatch spacing from foreign files is converted to
   paper mm;

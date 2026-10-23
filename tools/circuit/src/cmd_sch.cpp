@@ -1,4 +1,5 @@
 // circuit.* schematic commands: placing parts, wiring, labels, power symbols, checks and exports.
+#include <algorithm>
 #include <set>
 
 #include "cmd_common.hpp"
@@ -204,12 +205,27 @@ void registerSchematicCommands(Session& session) {
                     part.pins = static_cast<int>(intParam(p, "pins", 0));
                     if (has(p, "pin_names")) part.pinNames = splitList(stringParam(p, "pin_names"));
                     auto sym = findSymbol(part.symbol, part.pins, part.pinNames, &error);
+                    if (!sym) {
+                        // a symbol imported from KiCad that another part already uses
+                        for (const auto& other : c.parts) {
+                            if (other.customSymbol && (other.customSymbol->name == part.symbol || other.customSymbol->title == part.symbol)) {
+                                sym = part.customSymbol = other.customSymbol;
+                                part.symbol = other.symbol;
+                                part.unit = other.unit;
+                                if (part.footprint.empty() && other.customFootprint) part.customFootprint = other.customFootprint;
+                                break;
+                            }
+                        }
+                    }
                     if (!sym) return Result::failure(error);
                     if (sym->name == "ic" && part.pins == 0) part.pins = static_cast<int>(sym->pins.size());
                     if ((sym->name == "header" || sym->name == "header2") && part.pins == 0) part.pins = static_cast<int>(sym->pins.size());
                     part.value = has(p, "value") ? stringParam(p, "value") : sym->value;
                     part.footprint = has(p, "footprint") && !stringParam(p, "footprint").empty() ? stringParam(p, "footprint") : sym->footprint;
-                    if (!part.footprint.empty() && !findFootprint(part.footprint)) return Result::failure("no footprint called '" + part.footprint + "' (circuit.footprints lists them)");
+                    if (part.customFootprint && !has(p, "footprint")) part.footprint = part.customFootprint->name;
+                    else part.customFootprint = importedFootprint(c, part.footprint);
+                    if (part.customSymbol && !part.customFootprint && !findFootprint(part.footprint)) part.footprint.clear();
+                    if (!part.footprint.empty() && !part.customFootprint && !findFootprint(part.footprint)) return Result::failure("no footprint called '" + part.footprint + "' (circuit.footprints lists them)");
                     if (has(p, "ref")) {
                         part.ref = stringParam(p, "ref");
                         if (c.part(part.ref)) return Result::failure(part.ref + " already exists");
@@ -259,8 +275,10 @@ void registerSchematicCommands(Session& session) {
                     if (has(p, "value")) part->value = stringParam(p, "value"), changed.push_back("value");
                     if (has(p, "footprint")) {
                         const std::string fp = stringParam(p, "footprint");
-                        if (!fp.empty() && !findFootprint(fp)) return Result::failure("no footprint called '" + fp + "'");
+                        auto imported = importedFootprint(c, fp);
+                        if (!fp.empty() && !imported && !findFootprint(fp)) return Result::failure("no footprint called '" + fp + "'");
                         part->footprint = fp;
+                        part->customFootprint = imported;
                         changed.push_back("footprint");
                     }
                     if (has(p, "pins")) part->pins = static_cast<int>(intParam(p, "pins")), changed.push_back("pins");
@@ -443,7 +461,11 @@ void registerSchematicCommands(Session& session) {
                     return edited("label " + name, p);
                 },
                 View::Schematic));
+}
 
+// power symbols, no-connect marks, wire removal and annotation
+void registerSchematicMarkCommands(Session& session) {
+    auto& reg = session.registry();
     reg.add({"circuit.power", "Power Symbol",
              "Attach a power or ground symbol to pins: symbol=gnd pins=R2.2,C1.2 puts a ground symbol under each pin and wires it. "
              "Power symbols with the same value are one global net (GND, VCC, +5V, +3V3, +12V, or any value=...).",

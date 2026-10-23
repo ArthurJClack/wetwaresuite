@@ -7,7 +7,7 @@ hub (Rust, standalone)        installs apps offline, makes offline editions, wri
 share (Rust, standalone)      wetwaresuite-share: share/sync folders over LAN or internet, own MCP server
   │
 apps/app                      wetwaresuite-<app>: one binary per app (image, draw, model, ...), its tools only
-apps/wetwaresuite             wetwaresuite: every tool in one binary; wetwaresuite-gui launcher
+apps/wetwaresuite             wetwaresuite: every tool in one binary; wetwaresuite-gui, the launcher that starts each app as its own program
 apps/common                   app table, file routing, handoff folder, app.* commands, shared CLI
 tools/<name> (C++)            each tool is a library of commands
 gui/                          desktop window over a Session (ImGui + SDL3), linked into apps
@@ -53,13 +53,13 @@ people install apps, not tools. an app is a few related tools in one binary:
 | --- | --- |
 | image | photo, paint |
 | draw | vector, type, board |
-| model | sculpt, render, animate |
+| model | model, sculpt, render, animate |
 | game | forge, levels |
 | cad | cad, blueprint, slicer, fit |
 | electronics | circuit, flash |
 | sound | audio, beats |
 | video | cut, capture |
-| office | office, layout, notes |
+| office | office, pdf, layout, notes |
 | maps | maps |
 | system | calc, code, explorer, terminal, monitor, clock |
 | files | toolkit, convert, library, automate (always installed) |

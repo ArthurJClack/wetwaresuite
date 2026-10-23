@@ -10,6 +10,7 @@
 
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/playback/player.hpp"
 #include "app_commands.hpp"
 #include "gui_launch.hpp"
 #include "launch.hpp"
@@ -62,7 +63,9 @@ constexpr const char* kInstructions =
 void usage() {
     std::cout << "wetwaresuite " << kVersion << ": the whole suite, headless\n\n"
               << "usage:\n"
-                 "  wetwaresuite                          open the window with every tool (also: wetwaresuite <files>, open <files>, gui)\n"
+                 "  wetwaresuite                          open the launcher: every app starts in its own window\n"
+                 "  wetwaresuite <files>                  open each file in its own app (also: open <files>)\n"
+                 "  wetwaresuite gui --all                every tool in one window\n"
                  "  wetwaresuite list [tool]              list commands (optionally for one tool, e.g. photo)\n"
                  "  wetwaresuite help <command>           show a command's parameters\n"
                  "  wetwaresuite run <command> key=value  run one command, e.g. run convert.file input=a.png output=a.jpg\n"
@@ -154,6 +157,12 @@ int main(int argc, char** argv) {
             return 2;
         }
         gui::RunOptions options{launch.screenshot, launch.files, launch.action};
+        // the launcher (or files straight to their own apps), unless asked for every
+        // tool in one window or no app is installed next to this program
+        if (!launch.all && launch.action.empty()) {
+            int code = apps::runLauncher(session, options, usage);
+            if (code >= 0) return code;
+        }
         return apps::runGui(session, apps::guiInfo("suite"), options, usage);
     }
     const std::string cmd = args[0];
@@ -230,13 +239,19 @@ int main(int argc, char** argv) {
                 else file = args[i];
             }
             cli::Batch batch(session);
-            if (file.empty() || file == "-") return batch.run(std::cin, std::cout, std::cerr, keepGoing) == 0 ? 0 : 1;
+            if (file.empty() || file == "-") {
+                const int rc = batch.run(std::cin, std::cout, std::cerr, keepGoing) == 0 ? 0 : 1;
+                playback::finishBeforeExit();
+                return rc;
+            }
             std::ifstream in(file);
             if (!in) {
                 std::cerr << "cannot open " << file << "\n";
                 return 2;
             }
-            return batch.run(in, std::cout, std::cerr, keepGoing) == 0 ? 0 : 1;
+            const int rc = batch.run(in, std::cout, std::cerr, keepGoing) == 0 ? 0 : 1;
+            playback::finishBeforeExit();  // let a played sound finish
+            return rc;
         }
 
         // run <command> ... or <command> ...
@@ -255,6 +270,7 @@ int main(int argc, char** argv) {
         Result r = session.run(id, params);
         std::string text = cli::format(r);
         (r.ok ? std::cout : std::cerr) << text << (text.empty() ? "" : "\n");
+        if (r.ok) playback::finishBeforeExit();  // `audio.play path=a.wav` is heard, not cut off
         return r.ok ? 0 : 1;
     } catch (const std::exception& e) {
         std::cerr << "error: " << e.what() << "\n";

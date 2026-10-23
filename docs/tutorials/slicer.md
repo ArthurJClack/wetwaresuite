@@ -1,6 +1,6 @@
 # Slicer: from a 3D model to G-code
 
-`slicer` turns a 3D model (STL, 3MF, OBJ, PLY, OFF, glTF) into G-code for an FDM 3D printer. It knows a few common printers and filaments, works out walls, top and bottom skins, infill, skirt, brim and simple supports, and tells you how long the print takes and how much filament it uses. The simplest use is one command:
+`slicer` turns a 3D model (STL, 3MF, OBJ, PLY, OFF, glTF, FBX, STEP) into G-code for an FDM 3D printer. It knows a few common printers and filaments, works out walls, top and bottom skins, infill (including gyroid and cubic), skirt, brim and column or tree supports, packs several parts onto one bed, and tells you how long the print takes and how much filament it uses. The simplest use is one command:
 
 ```sh
 wetwaresuite slicer.slice_file input=3DBenchy.stl printer=prusa_mk4 filament=pla
@@ -16,9 +16,10 @@ A slice job is a **print job document** (`print1`, `print2`, ...) holding three 
 - **Layers.** The first layer is `first_layer_height` thick, every other one `layer_height`. A 20 mm cube at 0.2 mm has exactly 100 layers. Each layer is cut through its middle.
 - **Walls** (`perimeters`) are exact inward offsets of the layer outline, one line width apart, printed inside-out so the outer wall goes on last. Holes get walls too.
 - **Top and bottom skins.** A spot is printed as solid infill unless every layer within `bottom_layers` below and `top_layers` above also has infill there, so any surface facing up or down (also sloped ones and the floor of a cavity) gets solid layers, not only the very top and bottom of the part.
-- **Infill** is straight lines clipped to the area inside the walls: `lines` (one direction per layer, alternating 45 and 135 degrees), `grid` (both every layer) or `triangles` (0, 60 and 120 degrees). Density sets the spacing; 100 % is solid.
+- **Infill** fills the area inside the walls: `lines` (one direction per layer, alternating 45 and 135 degrees), `grid` (both every layer), `triangles` (0, 60 and 120 degrees), `cubic` (three line sets that slide with height into a lattice of cubes), `gyroid` (the wavy cut of a gyroid surface, a 3D lattice strong in every direction) or `concentric` (rings following the walls). Density sets the spacing so each pattern uses about the same plastic; 100 % is solid.
 - **Skirt and brim.** A skirt is `skirt` loops around everything on the first layer, `skirt_distance` mm away. A brim is `brim` mm of loops touching the outside of the part on the first layer to help it stick.
-- **Supports** (`supports=everywhere` or `buildplate`) are vertical columns of lines under any overhang steeper than `support_angle` from vertical, kept a gap away from the part sideways and one layer below it. `buildplate` keeps only the columns that stand on the bed. There are no tree supports, no support interfaces and no bridge detection.
+- **Supports** (`supports=everywhere` or `buildplate`) hold up any overhang steeper than `support_angle` from vertical, kept a gap away from the part sideways and one layer below it. `support_style=columns` (the default) fills straight down with lines; `support_style=tree` starts thin tips on a grid under the overhang and grows them down as branches that lean together (at most 40 degrees), merge into thicker trunks and dodge the part. `buildplate` keeps only supports that stand on the bed; with `everywhere` they may rest on the part. There are no support interfaces and no bridge detection.
+- **Several parts** can share one bed (`slicer.add`, task 7). They are sliced together, so one skirt goes round all of them and each layer prints every part before moving up.
 - **G-code** is Marlin flavour: absolute positioning and absolute extrusion (`M82`), with `G92 E0` at the start of every layer, `;LAYER:n` and `;TYPE:` comments (the names Cura uses, so G-code viewers colour them), retraction on travel moves longer than 1.5 mm, the fan off for the first layer, and the first-layer temperature dropping to the normal one on layer 1. Extrusion is line width x layer height x length / filament cross-section (1.75 mm filament).
 - **Estimates.** Print time is the sum of every move's length divided by its speed, with no acceleration, so real printers usually take 1.3 to 2 times longer on small, detailed parts. Filament is the length pushed through the nozzle; grams use the filament's density.
 
@@ -316,7 +317,7 @@ cad.save path=part.stl
 slicer.slice_file input=part.stl output=part.gcode filament=petg perimeters=4 infill=40 lay_flat=true
 ```
 
-The same job, step by step, and going through 3MF with [convert](convert.md) on the way (convert changes mesh formats: STL, OBJ, PLY, OFF, glTF, 3MF, and can render a mesh to PNG):
+The same job, step by step, and going through 3MF with [convert](convert.md) on the way (convert changes mesh formats: STL, OBJ, PLY, OFF, glTF, 3MF, FBX, STEP, and can render a mesh to PNG):
 
 ```text
 # part.txt: print a cad part (part.stl) strong, in PETG, on its side
@@ -390,13 +391,61 @@ The line width follows the nozzle (0.6 x 1.125 = 0.675 mm) unless you set `line_
 
 Claude calls `slicer_slice_file` with `printer=custom`, `bed_x=350 bed_y=350 bed_z=340`, `filament=abs` and `start_gcode="PRINT_START BED={bed_temp} EXTRUDER={first_layer_temp}"`.
 
+## Task 7: several parts on one bed, with tree supports and gyroid infill
+
+Two mushroom-shaped parts (a 10 mm stem under a 40 x 40 mm cap, so the cap needs support) and two 30 mm balls, all printed in one go. Tree supports use far less plastic under the caps than columns, and gyroid infill is equally strong in every direction.
+
+```text
+# plate.txt
+slicer.load path=mushroom.stl supports=buildplate support_style=tree infill_pattern=gyroid -> job
+slicer.add doc=$job path=ball.stl copies=2
+slicer.add doc=$job object=mushroom
+slicer.info doc=$job
+slicer.slice doc=$job
+slicer.preview_layer doc=$job layer=120 frame=bed output=plate.png
+slicer.settings doc=$job support_style=columns
+slicer.slice doc=$job
+slicer.settings doc=$job support_style=tree z_hop=0.4
+slicer.export_gcode doc=$job path=plate.gcode
+```
+
+```text
+$ wetwaresuite batch plate.txt
+loaded mushroom.stl as print1 (24 triangles) on the ender3
+added 2 x ball; on the bed: mushroom, ball, ball_2
+added 1 x mushroom; on the bed: mushroom, ball, ball_2, mushroom_2
+mushroom.stl (4 parts): 155.0 x 40.0 x 34.0 mm, 46.96 cm3 (58.2 g if printed solid in pla); fits the ender3
+ender3 (220 x 220 x 250 mm, 0.40 mm nozzle), pla 205/60 C, normal: 0.20 mm layers, 2 walls, 4 top / 4 bottom, 20% gyroid infill, 50 mm/s, supports buildplate (tree), skirt 1
+  1. mushroom: 40.0 x 40.0 x 34.0 mm at 52.5, 110.0
+  2. ball: 30.0 x 30.0 x 30.0 mm at 137.5, 105.0
+  3. ball_2: 30.0 x 30.0 x 30.0 mm at 172.5, 105.0
+  4. mushroom_2: 40.0 x 40.0 x 34.0 mm at 97.5, 110.0
+sliced mushroom.stl: 170 layers, about 2h 9m, 10.40 m / 31.0 g of filament
+layer 120 of 170 at z=24.20 mm: outer wall 223 mm, inner wall 210 mm, solid infill 197 mm, infill 341 mm, support 651 mm (...)
+...supports buildplate (columns), skirt 1
+sliced mushroom.stl: 170 layers, about 2h 26m, 13.93 m / 41.5 g of filament
+...supports buildplate (tree), z hop 0.40 mm, skirt 1
+wrote plate.gcode: 170 layers, about 2h 36m, 10.40 m / 31.0 g of filament
+```
+
+What happened:
+
+- `slicer.add` puts more parts on the same bed: `path=` a file, `mesh=` an open mesh, or `object=` a copy of a part already there; `copies=` adds several at once. After each add, every part is packed onto the bed in rows 5 mm apart (`spacing=` changes the gap, `arrange=false` leaves them where they are).
+- Each part has a name from its file (`ball`, `ball_2`, ...), listed by `slicer.info`. `object=` takes that name or its number in `slicer.place`, `slicer.move`, `slicer.rotate`, `slicer.scale`, `slicer.lay_flat` and `slicer.remove`. Without `object=`, move and place shift the whole group, and rotate, scale and lay flat act on each part about its own centre.
+- `slicer.arrange` re-packs everything. If parts overlap after a move, the command still works but warns ("... overlap and would print stuck together (run slicer.arrange)"); a part off the bed stops slicing until you move it back or arrange.
+- Tree supports (`support_style=tree`) start as thin tips on a grid under every overhang and lean together as they go down, merging into thicker trunks that keep clear of the part and stand on the bed. Here they took 31.0 g against 41.5 g for columns, and they snap off in a few pieces. With `supports=everywhere`, branches that meet the part below rest on it instead of being dropped.
+- `infill_pattern=gyroid` draws the wavy lines of a gyroid surface that shift from layer to layer, so the infill is a 3D lattice; `cubic` is three line sets that slide with height into stacked cubes; `concentric` is rings following the walls (nice for vases and flexible parts).
+- `z_hop=0.4` lifts the nozzle 0.4 mm for every retracted travel so it doesn't drag across the parts. It adds time (here about 27 minutes for all the hops between four parts), so use it when the nozzle catches on prints.
+
+Asking Claude: *"Put two of mushroom.stl and two of ball.stl on the Ender 3 bed, tree supports from the bed only, gyroid infill, and save the G-code."* Claude calls `slicer_load` with `supports: "buildplate"`, `support_style: "tree"` and `infill_pattern: "gyroid"`, then `slicer_add` with `path: "ball.stl"` and `copies: 2`, `slicer_add` with `object: "mushroom"`, `slicer_preview` with `view: "top"` to check the layout, and `slicer_export_gcode`.
+
 ## Commands
 
 | Command | What it does |
 | --- | --- |
 | `slicer.load` | Start a print job from `path=` (any mesh format) or `mesh=` (an open mesh document); centres it on the bed. Takes `scale`, `lay_flat`, `preview` and every setting below. Returns `print1`, ... |
 | `slicer.slice_file` | One shot: `input=` model, `output=` G-code (default: next to the model), plus `scale`, `rotate_z`, `lay_flat` and every setting. |
-| `slicer.place` | Drop onto the bed and centre it, or put its centre at `x`, `y`. |
+| `slicer.place` | Drop onto the bed and centre it, or put its centre at `x`, `y`. `object=` picks one part when there are several (also for move, rotate, scale and lay_flat). |
 | `slicer.move` | Slide by `x`, `y` mm (`absolute=true`: to that centre). |
 | `slicer.rotate` | Rotate by `x`, then `y`, then `z` degrees about its centre, then drop back onto the bed. |
 | `slicer.scale` | `factor` for all axes, or `x`, `y`, `z` factors. |
@@ -408,6 +457,9 @@ Claude calls `slicer_slice_file` with `printer=custom`, `bed_x=350 bed_y=350 bed
 | `slicer.export_gcode` | Write the G-code to `path=` (slices first if needed). |
 | `slicer.preview_layer` | Picture of one layer (`layer`, `size`, `travel`, `frame=part|bed`, `output=` to save it). |
 | `slicer.preview` | The model on the bed (`view`, `size`, `output`). |
+| `slicer.add` | Put another model on the bed: `path=`, `mesh=` or `object=` (copy a part), `copies`, `scale`, `lay_flat`, `name`; arranges the bed unless `arrange=false`. |
+| `slicer.arrange` | Pack every part on the bed in rows, `spacing` mm apart (default 5), centred. |
+| `slicer.remove` | Take one part (`object=` name or number) off the bed. |
 | `slicer.close` | Close a job (undo reopens it). |
 
 Moves, rotations, scaling, laying flat and settings are undoable (`undo`, `redo`); every edit clears the old slice, so estimates are always for the current state. All commands that change a model accept `preview=true` to attach a picture of it on the bed.
@@ -433,16 +485,18 @@ Values marked "preset" come from the printer, filament or quality preset.
 | `perimeters` | walls (0..20) | 2 |
 | `top_layers`, `bottom_layers` | solid layers over and under surfaces | 4, 4 |
 | `infill` | sparse infill percent, 0..100 (100 = solid) | 20 |
-| `infill_pattern` | `lines`, `grid`, `triangles` | `grid` |
+| `infill_pattern` | `lines`, `grid`, `triangles`, `cubic`, `gyroid`, `concentric` | `grid` |
 | `speed` | print speed mm/s (outer walls 75 %) | 50 |
 | `first_layer_speed` | mm/s | 20 |
 | `travel_speed` | mm/s | 150 |
 | `retraction` | mm pulled back on travels over 1.5 mm and at layer changes (0 = off) | 0.8 |
 | `retraction_speed` | mm/s | 35 |
+| `z_hop` | mm the nozzle lifts on retracted travels (0 = off) | 0 |
 | `skirt` | skirt loops (0 = none) | 1 |
 | `skirt_distance` | mm between skirt and part (or brim) | 5 |
 | `brim` | brim width, mm (0 = none) | 0 |
 | `supports` | `none`, `everywhere`, `buildplate` | `none` |
+| `support_style` | `columns` (straight down) or `tree` (branches that merge into trunks) | `columns` |
 | `support_angle` | degrees from vertical that need support | 50 |
 | `support_density` | support line percent | 15 |
 | `seam` | where wall loops start: `nearest` (shortest travel), `rear` (back of the part), `random` | `nearest` |
@@ -452,9 +506,9 @@ TPU caps every speed at 25 mm/s.
 
 ## Limitations
 
-- One model per job; no arranging several parts on one bed (load and slice them separately).
+- Arranging packs parts by their bounding boxes in rows, so L-shaped or round parts leave gaps a footprint-aware packer would fill. Parts can't have their own settings yet; the whole bed prints with one set.
 - Walls follow the outline exactly; walls thinner than two lines get fewer walls and no gap fill, so very thin features can come out hollow or missing.
-- No bridge detection, ironing, z-hop, coasting, wipe, adaptive layers, variable line width, tree supports or support interfaces.
+- No bridge detection, ironing, coasting, wipe, adaptive layers, variable line width or support interfaces. Tree support tips are thin dots, so a large flat overhang bridges between them (about 3 mm apart at the default density); raise `support_density` for a smoother underside.
 - Time estimates ignore acceleration; expect real prints to take longer.
 - G-code is Marlin flavour with absolute extrusion. Klipper accepts it; Bambu printers need their own start G-code (task 6).
 - Region booleans snap to a 0.1 micron grid; in rare cases a layer can get a slightly wrong skin. Check suspicious layers with `slicer.preview_layer`.

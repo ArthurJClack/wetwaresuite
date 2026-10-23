@@ -1,4 +1,5 @@
 // CRC-32, MD5, SHA-1 and SHA-256, small and dependency-free.
+#include <algorithm>
 #include <array>
 #include <cstring>
 #include <fstream>

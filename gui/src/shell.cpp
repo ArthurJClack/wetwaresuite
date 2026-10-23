@@ -119,7 +119,11 @@ Result Shell::run(const std::string& id, const Params& params) {
         const CommandInfo* info = find(id);
         if (!info || !info->readOnly) ++changes_;
         // a command that made or picked a document: show it
-        if (const Value* doc = r.field("doc")) {
+        // most tools answer with doc=; audio projects with project=, songs with song=
+        const Value* doc = r.field("doc");
+        if (!doc) doc = r.field("project");
+        if (!doc) doc = r.field("song");
+        if (doc) {
             if (auto s = std::get_if<std::string>(doc); s && session_.workspace().get(*s)) {
                 if (*s != currentDoc_) canvas_.fit = true;
                 currentDoc_ = *s;
@@ -129,7 +133,7 @@ Result Shell::run(const std::string& id, const Params& params) {
             }
         }
         auto path = params.find("path");
-        if (path != params.end() && id.size() > 5 && (id.compare(id.size() - 5, 5, ".open") == 0)) {
+        if (path != params.end() && id.size() > 5 && (id.compare(id.size() - 5, 5, ".open") == 0 || id.compare(id.size() - 5, 5, "_open") == 0)) {
             if (auto p = std::get_if<std::string>(&path->second)) {
                 recent_ = pushRecent(recent_, *p);
                 saveRecent();
@@ -191,6 +195,7 @@ void Shell::redo() {
 }
 
 void Shell::openFile(const std::string& path) {
+    if (!app_.launcher.empty()) return launcherOpen(path);  // the launcher hands every file to its own app
     if (openFolder(path)) return;  // a folder opens in the file manager (or as a code project)
     const auto candidates = openCandidates(path, tools_, commands_);
     resultFor_ = "Open a file";

@@ -13,6 +13,10 @@ void registerCommands(Session& session) {
     tool::registerFileCommands(session, state);
     tool::registerEditCommands(session, state);
     tool::registerProjectCommands(session);
+    tool::registerPlayCommands(session);
+    tool::registerEffectCommands(session);
+    tool::registerRackCommands(session);
+    tool::registerMixCommands(session);
 }
 
 }  // namespace wetwaresuite::audio

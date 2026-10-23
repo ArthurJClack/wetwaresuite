@@ -10,7 +10,8 @@ the wetwaresuite logo ("flow"): lowercase monoline letters standing on one rail 
 | `png/icon-<size>.png` | 16 to 1024 px renders of `icon.svg` |
 | `wetwaresuite.ico` | windows icon, built into every `.exe` through `wetwaresuite.rc.in` |
 | `wetwaresuite.icns` | macOS icon, for `.app` bundles |
-| `wetwaresuite.desktop` | linux start-menu entry, installed with `wetwaresuite-gui` |
+| `wetwaresuite.desktop` | linux start-menu entry for the launcher, installed with `wetwaresuite-gui` |
+| `apps/<app>.{svg,png,ico,icns}` | each app's own icon: the logo with its mark in the app's colour (`make_app_icons.py` makes them from `png/` and the colours in `apps/common/apps.cpp`); every `wetwaresuite-<app>.exe`, `.app` bundle and linux entry uses its own, and the window tints its icon the same way |
 
 the window icon is `png/icon-128.png`, embedded into the gui at build time (`gui/CMakeLists.txt`).
 

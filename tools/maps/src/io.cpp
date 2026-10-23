@@ -1444,12 +1444,14 @@ std::string vectorFormatFor(const fs::path& path) {
     if (ext == "csv" || ext == "tsv" || ext == "txt") return "csv";
     if (ext == "shp" || ext == "dbf" || ext == "shx") return "shp";
     if (ext == "wkt") return "wkt";
+    if (ext == "fit") return "fit";
+    if (ext == "osm") return "osm";
     return {};
 }
 
 std::vector<Layer> importVector(const fs::path& path, const std::string& format0, const ImportOptions& o, std::vector<std::string>* warnings) {
     std::string format = format0.empty() || format0 == "auto" ? vectorFormatFor(path) : format0;
-    if (format.empty()) throw std::runtime_error("can't tell the format of " + path.string() + " (use .geojson, .kml, .gpx, .csv, .shp or .wkt, or pass format=)");
+    if (format.empty()) throw std::runtime_error("can't tell the format of " + path.string() + " (use .geojson, .kml, .gpx, .fit, .osm, .csv, .shp or .wkt, or pass format=)");
     std::string base = path.stem().string();
     if (format == "shp") {
         fs::path shp = path;
@@ -1459,6 +1461,11 @@ std::vector<Layer> importVector(const fs::path& path, const std::string& format0
         return {l};
     }
     const std::string text = readFile(path);
+    if (format == "osm") {
+        auto layers = parseOsmXml(text, base, warnings);
+        for (auto& l : layers) l.source = path.string();
+        return layers;
+    }
     std::vector<Layer> out;
     auto make = [&](const std::string& name, std::vector<Feature> fs) {
         Layer l;
@@ -1479,6 +1486,8 @@ std::vector<Layer> importVector(const fs::path& path, const std::string& format0
         if ((what == "all" || what == "waypoints") && !g.waypoints.empty()) make(base + " waypoints", std::move(g.waypoints));
         if (out.empty()) make(base, {});
         if (out.size() == 1) out[0].name = base;
+    } else if (format == "fit") {
+        make(base, parseFit(text, warnings));
     } else if (format == "csv") {
         make(base, parseCsv(text, o, warnings));
     } else if (format == "wkt") {
@@ -1506,6 +1515,8 @@ std::vector<std::string> exportVector(const Layer& layer, const fs::path& path, 
     if (format.empty()) throw std::runtime_error("can't tell the format from " + path.string() + " (use .geojson, .kml, .gpx, .csv, .shp or .wkt)");
     if (layer.isRaster()) throw std::runtime_error("'" + layer.name + "' is a raster layer: use maps.raster_save");
     if (format == "shp") return writeShapefile(layer, path, o);
+    if (format == "fit" || format == "osm")
+        throw std::runtime_error("maps reads ." + format + " files but doesn't write them: export to .gpx, .geojson, .kml, .csv or .shp");
     std::string text;
     if (format == "geojson") text = toGeoJson(layer.features, o);
     else if (format == "kml") text = toKml(layer);
@@ -1616,6 +1627,12 @@ std::string toProject(const Map& map) {
         layers.push_back(lj);
     }
     j["layers"] = layers;
+    if (!map.bookmarks.empty()) {
+        json bm = json::array();
+        for (const auto& b : map.bookmarks) bm.push_back({{"name", b.name}, {"bbox", {b.box.minX, b.box.minY, b.box.maxX, b.box.maxY}}});
+        j["bookmarks"] = bm;
+    }
+    if (map.view && map.view->valid()) j["view"] = {map.view->minX, map.view->minY, map.view->maxX, map.view->maxY};
     return j.dump(1) + "\n";
 }
 
@@ -1631,6 +1648,19 @@ Map fromProject(const std::string& text, const fs::path&) {
     if (format != "wetwaresuite-map" && format != "achclwss-map") throw std::runtime_error("not a wetwaresuite map project (.wwmap)");
     Map m;
     m.title = j.value("title", "");
+    auto boxOf = [](const json& a) -> std::optional<BBox> {
+        if (!a.is_array() || a.size() != 4) return std::nullopt;
+        for (const auto& v : a) {
+            if (!v.is_number()) return std::nullopt;
+        }
+        BBox b{a[0].get<double>(), a[1].get<double>(), a[2].get<double>(), a[3].get<double>()};
+        return b.valid() ? std::optional<BBox>(b) : std::nullopt;
+    };
+    for (const auto& bj : j.value("bookmarks", json::array())) {
+        if (!bj.is_object()) continue;
+        if (auto b = boxOf(bj.value("bbox", json::array()))) m.bookmarks.push_back({bj.value("name", ""), *b});
+    }
+    if (j.contains("view")) m.view = boxOf(j["view"]);
     for (const auto& lj : j.value("layers", json::array())) {
         Layer l;
         l.name = lj.value("name", "layer");

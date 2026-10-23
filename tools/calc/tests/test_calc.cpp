@@ -1,4 +1,5 @@
 // calc: exact numbers, the parser, units, statistics, solving, graphs, the commands and MCP.
+#include <algorithm>
 #include <cmath>
 #include <filesystem>
 

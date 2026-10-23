@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -319,7 +320,6 @@ void testSvgImport() {
     <rect id="r1" width="10" height="10" style="stroke: blue; stroke-width: 2px"/>
     <circle inkscape:label="dot" cx="50" cy="50" r="5" fill="none" stroke="#0f0"/>
   </g>
-  <text x="0" y="0">ignored</text>
   <unknownthing><rect width="1" height="1"/></unknownthing>
   <ellipse cx="100" cy="50" rx="20" ry="10" style="fill:#00ff0080;fill-opacity:0.5" transform="rotate(45 100 50)"/>
   <line x1="0" y1="0" x2="10" y2="10" stroke="black"/>
@@ -332,27 +332,29 @@ void testSvgImport() {
     auto doc = fromSvg(svg);
     CHECK(doc->width == 756 && doc->height == 378);  // 200mm at 96 dpi
     CHECK(doc->background.a == 0);
-    CHECK(doc->shapes.size() == 8);
-    if (doc->shapes.size() != 8) return;
-    const Shape& r = doc->shapes[0];
-    CHECK(r.kind == ShapeKind::Rect && r.name == "r1");
+    // the <g> becomes a group that owns the opacity and translate; its shapes inherit the fill
+    CHECK(doc->shapes.size() == 9);
+    if (doc->shapes.size() != 9) return;
+    const Shape& g = doc->shapes[0];
+    CHECK(g.kind == ShapeKind::Group && near(g.opacity, 0.5));
+    const Shape& r = doc->shapes[1];
+    CHECK(r.kind == ShapeKind::Rect && r.name == "r1" && r.parent == g.id);
     CHECK(r.fill == Color{255, 0, 0, 255});
     CHECK(r.stroke == Color{0, 0, 255, 255});
     CHECK(near(r.strokeWidth, 2));
-    CHECK(near(r.opacity, 0.5));
-    // viewBox scale 3.78 and the group's translate both end up in the transform
-    Bounds b = bounds(outline(r));
+    // viewBox scale 3.78 and the group's translate both end up in the outline on the canvas
+    Bounds b = bounds(outlineIn(*doc, 1));
     CHECK(near(b.x0, 10 * 3.7795, 0.01) && near(b.y0, 20 * 3.7795, 0.01) && near(b.width(), 37.795, 0.01));
-    const Shape& dot = doc->shapes[1];
+    const Shape& dot = doc->shapes[2];
     CHECK(dot.kind == ShapeKind::Ellipse && dot.name == "dot" && !dot.fill && dot.stroke == Color{0, 255, 0, 255});
-    const Shape& el = doc->shapes[2];
+    const Shape& el = doc->shapes[3];
     CHECK(el.kind == ShapeKind::Ellipse && near(el.transform.rotate, 45, 1e-6));
     CHECK(el.fill && el.fill->a == 64);
-    CHECK(doc->shapes[3].kind == ShapeKind::Line && !doc->shapes[3].fill);
-    CHECK(doc->shapes[4].kind == ShapeKind::Polyline && doc->shapes[4].points.size() == 3);
-    CHECK(doc->shapes[5].kind == ShapeKind::Polygon && doc->shapes[5].fill == Color{0, 0, 0, 255});
-    CHECK(doc->shapes[6].kind == ShapeKind::Path && !doc->shapes[6].visible);
-    CHECK(doc->shapes[7].kind == ShapeKind::Rect && doc->shapes[7].fill == Color{128, 128, 128, 255});
+    CHECK(doc->shapes[4].kind == ShapeKind::Line && !doc->shapes[4].fill);
+    CHECK(doc->shapes[5].kind == ShapeKind::Polyline && doc->shapes[5].points.size() == 3);
+    CHECK(doc->shapes[6].kind == ShapeKind::Polygon && doc->shapes[6].fill == Color{0, 0, 0, 255});
+    CHECK(doc->shapes[7].kind == ShapeKind::Path && !doc->shapes[7].visible);
+    CHECK(doc->shapes[8].kind == ShapeKind::Rect && doc->shapes[8].fill == Color{128, 128, 128, 255});
 
     bool threw = false;
     try {
@@ -553,7 +555,147 @@ void testMcp() {
     CHECK(session.workspace().getAs<VectorDoc>("vec1")->shapes[0].transform.identity());
 }
 
+
+// Area inside an outline (even-odd), sampled on a 0.25 px grid over [x0,x1]x[y0,y1].
+double sampledArea(const Outline& o, double x0, double y0, double x1, double y1) {
+    double area = 0;
+    const double step = 0.25;
+    for (double y = y0 + step / 2; y < y1; y += step)
+        for (double x = x0 + step / 2; x < x1; x += step) {
+            bool in = false;
+            for (const auto& c : o)
+                for (std::size_t i = 0, j = c.points.size() - 1; i < c.points.size(); j = i++) {
+                    const Point& a = c.points[i];
+                    const Point& b = c.points[j];
+                    if ((a.y > y) != (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x) in = !in;
+                }
+            if (in) area += step * step;
+        }
+    return area;
+}
+
+void testTextGradientBoolean() {
+    Session session;
+    registerCommands(session);
+    const Value vec = std::string("vec1");
+    CHECK(session.run("vector.new", {{"width", std::int64_t{400}}, {"height", std::int64_t{200}}}).ok);
+    auto doc = session.workspace().getAs<VectorDoc>("vec1");
+
+    // text with the built-in font: real glyph outlines, sized by the font size
+    Result r = session.run("vector.add_text", {{"doc", vec}, {"text", std::string("Hello")}, {"x", 20.0}, {"y", 100.0}, {"size", 60.0}});
+    CHECK(r.ok && toText(*r.field("shape")) == "s1");
+    const Shape& t = doc->shapes[0];
+    CHECK(t.kind == ShapeKind::Text && t.fill == Color{0, 0, 0, 255} && !t.stroke);
+    Bounds b = bounds(outline(t));
+    CHECK(!b.empty && b.x0 >= 19 && b.x0 < 30 && b.y1 <= 101 && b.y1 > 95);  // H sits on the baseline
+    CHECK(b.height() > 35 && b.height() < 50);                              // cap height ~0.7 em
+    const double width = b.width();
+    CHECK(width > 100 && width < 200);
+    raster::Image img = render(*doc);
+    int dark = 0;
+    for (int y = 50; y < 100; ++y)
+        for (int x = 20; x < 200; ++x) dark += img.at(x, y).r < 100;
+    CHECK(dark > 500);
+
+    // anchors and multi-line text
+    r = session.run("vector.set_text", {{"doc", vec}, {"shape", std::string("s1")}, {"anchor", std::string("center")}, {"x", 200.0}});
+    CHECK(r.ok && doc->shapes[0].anchor == "middle");
+    b = bounds(outline(doc->shapes[0]));
+    CHECK(near((b.x0 + b.x1) / 2, 200, 3));
+    r = session.run("vector.set_text", {{"doc", vec}, {"shape", std::string("s1")}, {"text", std::string("Hello\\nworld")}});
+    CHECK(r.ok && doc->shapes[0].text == "Hello\nworld");
+    CHECK(bounds(outline(doc->shapes[0])).y1 > 150);  // second line is 1.2 em lower
+    CHECK(session.history().undo() && doc->shapes[0].text == "Hello");
+    CHECK(!session.run("vector.set_text", {{"doc", vec}, {"shape", std::string("s1")}, {"anchor", std::string("diagonal")}}).ok);
+    // unicode beyond Latin-1 still has glyphs
+    CHECK(!textPathData(Shape{.kind = ShapeKind::Text, .text = "\xd0\x9f\xce\xa9"}).empty());
+
+    // text survives an SVG round trip as text
+    std::string svg = toSvg(*doc);
+    CHECK(svg.find("<text") != std::string::npos && svg.find("Hello") != std::string::npos);
+    auto back = fromSvg(svg);
+    CHECK(back->shapes.size() == 1 && back->shapes[0].kind == ShapeKind::Text && back->shapes[0].text == "Hello" &&
+          back->shapes[0].anchor == "middle" && near(back->shapes[0].fontSize, 60));
+
+    // to_path keeps the look
+    Bounds before = bounds(outline(doc->shapes[0]));
+    r = session.run("vector.to_path", {{"doc", vec}, {"shape", std::string("s1")}});
+    CHECK(r.ok && doc->shapes[0].kind == ShapeKind::Path && doc->shapes[0].d.find('Q') != std::string::npos);
+    Bounds after = bounds(outline(doc->shapes[0]));
+    CHECK(near(before.x0, after.x0, 0.5) && near(before.y1, after.y1, 0.5) && near(before.width(), after.width(), 0.5));
+    session.history().undo();
+
+    // gradients
+    r = session.run("vector.add_rect", {{"doc", vec}, {"x", 0.0}, {"y", 0.0}, {"width", 400.0}, {"height", 20.0}, {"fill", std::string("gray")}});
+    CHECK(r.ok);
+    r = session.run("vector.gradient", {{"doc", vec}, {"shape", std::string("s2")}, {"colors", std::string("red,rgb(0,0,255)")}});
+    CHECK(r.ok && doc->shapes[1].gradient && doc->shapes[1].gradient->stops.size() == 2);
+    img = render(*doc);
+    CHECK(isColor(img.at(2, 10), 253, 0, 2, 10) && isColor(img.at(397, 10), 2, 0, 253, 10));
+    CHECK(isColor(img.at(200, 10), 128, 0, 128, 12));
+    r = session.run("vector.gradient", {{"doc", vec}, {"shape", std::string("s2")}, {"stops", std::string("0:white,1:black")}, {"angle", 90.0}});
+    CHECK(r.ok);
+    img = render(*doc);
+    CHECK(img.at(200, 1).r > img.at(200, 18).r + 150);
+    r = session.run("vector.gradient", {{"doc", vec}, {"shape", std::string("s2")}, {"type", std::string("radial")}, {"colors", std::string("white,black")}});
+    CHECK(r.ok && doc->shapes[1].gradient->radial);
+    svg = toSvg(*doc);
+    CHECK(svg.find("<radialGradient") != std::string::npos && svg.find("url(#") != std::string::npos);
+    back = fromSvg(svg);
+    CHECK(back->shapes.size() == 2 && back->shapes[1].gradient && back->shapes[1].gradient->radial && back->shapes[1].gradient->stops.size() == 2);
+    CHECK(!session.run("vector.gradient", {{"doc", vec}, {"shape", std::string("s2")}, {"colors", std::string("red,notacolour")}}).ok);
+    CHECK(session.run("vector.gradient", {{"doc", vec}, {"shape", std::string("s2")}, {"remove", true}}).ok && !doc->shapes[1].gradient);
+
+    // booleans on two overlapping 10x10 squares
+    struct Case {
+        const char* op;
+        double area;
+        std::size_t contours;
+    };
+    for (Case c : {Case{"union", 150, 1}, Case{"subtract", 50, 1}, Case{"intersect", 50, 1}, Case{"exclude", 100, 2}}) {
+        Session s2;
+        registerCommands(s2);
+        CHECK(s2.run("vector.new", {{"width", std::int64_t{40}}, {"height", std::int64_t{40}}}).ok);
+        auto d2 = s2.workspace().getAs<VectorDoc>("vec1");
+        s2.run("vector.add_rect", {{"doc", vec}, {"x", 0.0}, {"y", 0.0}, {"width", 10.0}, {"height", 10.0}, {"fill", std::string("red")}});
+        s2.run("vector.add_rect", {{"doc", vec}, {"x", 5.0}, {"y", 0.0}, {"width", 10.0}, {"height", 10.0}, {"fill", std::string("blue")}});
+        r = s2.run("vector.boolean", {{"doc", vec}, {"op", std::string(c.op)}, {"shapes", std::string("s1, s2")}});
+        CHECK(r.ok);
+        CHECK(d2->shapes.size() == 1 && d2->shapes[0].kind == ShapeKind::Path && d2->shapes[0].fill == Color{255, 0, 0, 255});
+        Outline o = outline(d2->shapes[0]);
+        CHECK(o.size() == c.contours);
+        double area = sampledArea(o, -1, -1, 20, 12);
+        if (!near(area, c.area, 1)) std::printf("  %s area %.2f, wanted %.0f\n", c.op, area, c.area);
+        CHECK(near(area, c.area, 1));
+        CHECK(s2.history().undo() && d2->shapes.size() == 2);
+    }
+
+    // a hole: big square minus a small one inside, and keep=true leaves the originals
+    {
+        Session s3;
+        registerCommands(s3);
+        s3.run("vector.new", {});
+        auto d3 = s3.workspace().getAs<VectorDoc>("vec1");
+        s3.run("vector.add_rect", {{"doc", vec}, {"x", 0.0}, {"y", 0.0}, {"width", 20.0}, {"height", 20.0}});
+        s3.run("vector.add_ellipse", {{"doc", vec}, {"cx", 10.0}, {"cy", 10.0}, {"rx", 5.0}});
+        r = s3.run("vector.boolean", {{"doc", vec}, {"op", std::string("subtract")}, {"shapes", std::string("s1,s2")}, {"keep", true},
+                                      {"name", std::string("washer")}});
+        CHECK(r.ok && d3->shapes.size() == 3 && d3->shapes[2].name == "washer");
+        Outline o = outline(d3->shapes[2]);
+        CHECK(o.size() == 2);
+        CHECK(near(sampledArea(o, -1, -1, 21, 21), 400 - 3.14159 * 25, 2));
+        // a rotated shape is combined where it's drawn
+        s3.run("vector.transform", {{"doc", vec}, {"shape", std::string("s1")}, {"rotate", 45.0}});
+        r = s3.run("vector.boolean", {{"doc", vec}, {"op", std::string("intersect")}, {"shapes", std::string("s1,s2")}});
+        CHECK(r.ok && near(sampledArea(outline(d3->shapes[static_cast<std::size_t>(d3->find(toText(*r.field("shape"))))]), -5, -5, 25, 25), 3.14159 * 25, 2));
+        CHECK(!s3.run("vector.boolean", {{"doc", vec}, {"op", std::string("melt")}, {"shapes", std::string("s1,s2")}}).ok);
+        CHECK(!s3.run("vector.boolean", {{"doc", vec}, {"op", std::string("union")}, {"shapes", std::string("washer")}}).ok);
+    }
+}
+
 }  // namespace
+
+void runToolTests();  // test_vector_tools.cpp
 
 int main() {
     testPathParsing();
@@ -561,7 +703,9 @@ int main() {
     testSvgRoundTrip();
     testSvgImport();
     testCommandsAndUndo();
+    testTextGradientBoolean();
     testBatch();
     testMcp();
+    runToolTests();
     return check::summary("vector");
 }

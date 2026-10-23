@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "wetwaresuite/cad/sketch.hpp"
 #include "wetwaresuite/core/command.hpp"
 #include "wetwaresuite/mesh/document.hpp"
 #include "wetwaresuite/mesh/mesh.hpp"
@@ -63,6 +64,7 @@ struct Feature {
     bool suppressed = false;
     std::shared_ptr<const mesh::Mesh> imported;  // type "imported" only
     std::string source;                          // type "imported": where it came from
+    Sketch sketch;                               // type "sketch": its points, entities and constraints
 };
 
 // Units are a label for lengths, used for mass (density is g/cm^3).
@@ -107,7 +109,10 @@ public:
         std::shared_ptr<const mesh::Mesh> mesh;                  // null = produced nothing
         std::vector<std::shared_ptr<const mesh::Mesh>> tools;    // hole cutters, so patterns/mirrors can repeat them
         std::shared_ptr<const mesh::Mesh> display;               // mesh with flat faces re-triangulated, for bodies
+        std::shared_ptr<const FeatureExtra> extra;               // solved sketch, datum plane, axes
+        std::string key;                                         // inputs, when they differ from signature (sketches)
     };
+    const FeatureExtra* featureExtra(const std::string& name) const;  // null if none
     std::map<std::string, Cached> results;  // feature name -> last result
     std::map<std::string, std::string> consumedBy;
 };
@@ -119,7 +124,8 @@ std::string toJson(const CadDoc& doc);
 std::shared_ptr<CadDoc> fromJson(const std::string& text);  // throws std::runtime_error
 
 // Feature types and their fields, which drive the commands and feature_set.
-enum class FieldKind { Number, Integer, Points, Ref, Choice, Bool, Text };
+// Ref: one earlier feature (required unless the field says otherwise); Refs: a comma-separated list of them.
+enum class FieldKind { Number, Integer, Points, Ref, Choice, Bool, Text, Refs };
 
 struct FieldDef {
     std::string name;

@@ -1,8 +1,10 @@
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 
 #include "wetwaresuite/mesh/csg.hpp"
 #include "wetwaresuite/mesh/document.hpp"
@@ -293,6 +295,47 @@ int main() {
         CHECK(clusterVertices(s, 0.5).triangleCount() < s.triangleCount());
     }
 
+    // ---- STEP ----
+    {
+        // flat faces become one B-rep face each
+        const std::string text = writeStep(box({20, 10, 5}));
+        CHECK(text.rfind("ISO-10303-21;", 0) == 0 && text.find("MANIFOLD_SOLID_BREP") != std::string::npos);
+        std::size_t faces = 0;
+        for (std::size_t at = text.find("ADVANCED_FACE"); at != std::string::npos; at = text.find("ADVANCED_FACE", at + 1)) ++faces;
+        CHECK(faces == 6);
+        Mesh back = readStep(text);
+        CHECK(approx(volume(back), 1000, 1e-9) && isWatertight(back));
+        // parts written by OpenCASCADE (gmsh): planes, cylinders, cones, spheres, tori, rational B-splines, an assembly
+        const std::string data = WETWARESUITE_MESH_TEST_DATA;
+        struct Sample {
+            const char* name;
+            double volume;  // what OpenCASCADE reports for the exact solid
+            double tolerance;
+        };
+        for (const Sample& sample : {Sample{"filleted", 10950.6254, 0.002}, Sample{"cone", 3267.2564, 0.005}, Sample{"sphere", 4188.7902, 0.01},
+                                     Sample{"torus", 9869.6044, 0.005}, Sample{"loft", 9726.6155, 0.005}, Sample{"two", 1125.0, 1e-9}}) {
+            std::string notes;
+            Mesh m;
+            try {
+                std::ifstream in(data + "/occ-" + sample.name + ".step", std::ios::binary);
+                std::string bytes((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+                m = readStep(bytes, &notes);
+            } catch (const std::exception& e) {
+                std::printf("  %s: %s\n", sample.name, e.what());
+            }
+            const bool ok = isWatertight(m) && approx(volume(m), sample.volume, sample.volume * sample.tolerance);
+            if (!ok) std::printf("  STEP %s: volume %g, %s\n", sample.name, volume(m), isWatertight(m) ? "closed" : "open");
+            CHECK(ok);
+        }
+        bool threw = false;
+        try {
+            readStep("solid cube\nendsolid\n");
+        } catch (const std::runtime_error&) {
+            threw = true;
+        }
+        CHECK(threw);
+    }
+
     // ---- IO round trips ----
     {
         auto dir = fs::temp_directory_path() / "wetwaresuite_test_mesh";
@@ -301,16 +344,93 @@ int main() {
         Mesh shape = booleanDifference(box({20, 10, 5}), cylinder(2, 10, 24));
         const double v = volume(shape);
 
-        CHECK(readableExtensions().size() == 7 && writableExtensions().size() == 7);
-        CHECK(canRead("a.STL") && canWrite("x.glb") && !canRead("a.fbx"));
+        CHECK(readableExtensions().size() == 10 && writableExtensions().size() == 10);
+        CHECK(canRead("a.STL") && canWrite("x.glb") && canRead("a.FBX") && !canRead("a.dae"));
         for (const auto& ext : writableExtensions()) {
             const fs::path p = dir / ("shape." + ext);
             save(p, shape);
             Mesh back = load(p);
-            const bool ok = back.triangleCount() == shape.triangleCount() && approx(volume(back), v, 1e-5) &&
+            const bool step = ext == "step" || ext == "stp";  // flat faces come back re-triangulated
+            const bool ok = (step || back.triangleCount() == shape.triangleCount()) && approx(volume(back), v, 1e-5) &&
                             sameBounds(back, shape, 1e-4) && isWatertight(back);
             if (!ok) std::printf("round trip failed for .%s\n", ext.c_str());
             CHECK(ok);
+        }
+        // STEP faces whose edges carry points on a straight run (CSG cuts leave them) still come back closed
+        for (const auto& [r, segments] : std::vector<std::pair<double, int>>{{1, 12}, {1.37, 20}, {1, 20}, {3.59, 24}}) {
+            Mesh cut = booleanDifference(box({20, 10, 5}), cylinder(r, 10, segments));
+            Mesh back = readStep(writeStep(cut));
+            const bool ok = isWatertight(back) && approx(volume(back), volume(cut), 1e-5);
+            if (!ok) std::printf("STEP collinear edge points: r %g, %d segments\n", r, segments);
+            CHECK(ok);
+        }
+        // FBX: an ASCII file as Blender/Maya write them (Y-up, cm, quads, a translated and scaled model)
+        {
+            const std::string ascii = R"fbx(; FBX 7.4.0 project file
+FBXHeaderExtension:  {
+	FBXVersion: 7400
+}
+GlobalSettings:  {
+	Version: 1000
+	Properties70:  {
+		P: "UpAxis", "int", "Integer", "",1
+		P: "UpAxisSign", "int", "Integer", "",1
+		P: "FrontAxis", "int", "Integer", "",2
+		P: "FrontAxisSign", "int", "Integer", "",1
+		P: "CoordAxis", "int", "Integer", "",0
+		P: "CoordAxisSign", "int", "Integer", "",1
+		P: "UnitScaleFactor", "double", "Number", "",1
+	}
+}
+Objects:  {
+	Geometry: 100, "Geometry::Cube", "Mesh" {
+		Vertices: *24 {
+			a: -1,-1,1,1,-1,1,-1,1,1,1,1,1,-1,1,-1,1,1,-1,-1,-1,-1,1,-1,-1
+		}
+		PolygonVertexIndex: *24 {
+			a: 0,1,3,-3,2,3,5,-5,4,5,7,-7,6,7,1,-1,1,7,5,-4,6,0,2,-5
+		}
+		GeometryVersion: 124
+		LayerElementUV: 0 {
+			MappingInformationType: "ByPolygonVertex"
+			ReferenceInformationType: "IndexToDirect"
+			UV: *8 {
+				a: 0,0,1,0,1,1,0,1
+			}
+			UVIndex: *24 {
+				a: 0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3
+			}
+		}
+	}
+	Model: 200, "Model::Cube", "Mesh" {
+		Version: 232
+		Properties70:  {
+			P: "Lcl Translation", "Lcl Translation", "", "A",10,20,30
+			P: "Lcl Scaling", "Lcl Scaling", "", "A",2,2,2
+		}
+	}
+}
+Connections:  {
+	C: "OO",200,0
+	C: "OO",100,200
+}
+)fbx";
+            Mesh cube = readFbx(ascii);
+            CHECK(cube.triangleCount() == 12 && cube.hasUvs() && isWatertight(cube));
+            CHECK(approx(volume(cube), 64, 1e-9));  // 2x2x2 scaled by 2
+            // Y-up (10, 20, 30) lands at (10, -30, 20) Z-up
+            const Bounds cb = bounds(cube);
+            CHECK(approx(cb.center().x, 10, 1e-9) && approx(cb.center().y, -30, 1e-9) && approx(cb.center().z, 20, 1e-9));
+            // binary written by us reads back the same, UVs included
+            Mesh back = readFbx(writeFbx(cube));
+            CHECK(back.triangleCount() == 12 && back.hasUvs() && approx(volume(back), 64, 1e-6) && sameBounds(back, cube, 1e-6));
+            bool threw = false;
+            try {
+                readFbx("Objects: {\n");
+            } catch (const std::runtime_error&) {
+                threw = true;
+            }
+            CHECK(threw);
         }
         // ASCII variants.
         for (const char* ext : {"stl", "ply"}) {
@@ -443,6 +563,38 @@ int main() {
         CHECK(ci.at(0, 0).a == 0 && ci.at(32, 20).a == 255);
         CHECK(nonBackground(render(Mesh{}, 16, 16), o.background) == 0);
         CHECK(nonBackground(render(plane(1, 1), 32, 32), o.background) > 100);  // flat, open meshes too
+
+        // orbit camera: pitch 90 is the top view, the size holds while turning, zoom and pan move it
+        RenderOptions front;
+        front.outline = front.antialias = false;
+        RenderOptions orb = front;
+        orb.orbit = Orbit{0, 90, 1, 0, 0};
+        const raster::Image oi = render(shape, 81, 81, orb);
+        CHECK(oi.at(40, 40) == front.background && oi.at(40, 25) != front.background);  // down through the hole
+        std::size_t lastCovered = 0;
+        bool steady = true;
+        for (double yaw : {0.0, 20.0, 45.0, 90.0}) {
+            orb.orbit->yaw = yaw;
+            orb.orbit->pitch = 0;
+            const std::size_t c = nonBackground(render(box({2, 2, 2}), 100, 100, orb), front.background);
+            if (lastCovered && (c < lastCovered / 2 || c > lastCovered * 2)) steady = false;
+            lastCovered = c;
+        }
+        CHECK(steady && lastCovered > 0);
+        orb.orbit = Orbit{30, 20, 1, 0, 0};
+        const std::size_t base = nonBackground(render(shape, 100, 100, orb), front.background);
+        orb.orbit->zoom = 2;
+        CHECK(nonBackground(render(shape, 100, 100, orb), front.background) > base * 2);
+        orb.orbit->zoom = 1;
+        orb.orbit->panX = 3;  // pushed off to the right, out of view
+        CHECK(nonBackground(render(shape, 100, 100, orb), front.background) < base / 4);
+        orb.orbit = Orbit{0, 0, 1, 0, 0};  // front
+        CHECK(nonBackground(render(shape, 64, 64, orb), front.background) > 64 * 64 / 10);
+        // documents: 0 x 0 asks, a real size draws
+        auto md = newMesh(shape);
+        std::vector<std::uint8_t> rgba;
+        CHECK(md->renderView(OrbitView{}, 0, 0, rgba) && rgba.empty());
+        CHECK(md->renderView(OrbitView{}, 40, 30, rgba) && rgba.size() == 40u * 30u * 4u);
     }
 
     // ---- document + commands ----

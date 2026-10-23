@@ -88,6 +88,48 @@ bool inTriangle(const Vec2& p, const Vec2& a, const Vec2& b, const Vec2& c) {
     return orient(a, b, p) >= 0 && orient(b, c, p) >= 0 && orient(c, a, p) >= 0;
 }
 
+// Ear clipping leaves a zero-area triangle (a, v, b) when v sits on the straight line from a to b
+// (collinear points, as CSG cuts leave along an edge). The face next door has v on that edge, so the
+// sliver goes, and the triangle across a-b is split at v instead.
+void dropSlivers(const std::vector<Vec2>& pts, std::vector<std::uint32_t>& tris) {
+    // "on the line" allows for coordinates rounded in the file (STEP writers keep 12 to 15 digits)
+    Vec2 lo{1e300, 1e300}, hi{-1e300, -1e300};
+    for (const Vec2& p : pts) lo = {std::min(lo.x, p.x), std::min(lo.y, p.y)}, hi = {std::max(hi.x, p.x), std::max(hi.y, p.y)};
+    const double tol = 1e-9 * std::max({std::abs(lo.x), std::abs(lo.y), std::abs(hi.x), std::abs(hi.y), 1e-300});
+    for (int round = 0; round < 64; ++round) {
+        bool changed = false;
+        for (std::size_t t = 0; t + 2 < tris.size(); t += 3) {
+            // the longest edge is a-b, v the corner opposite it
+            int k = 0;
+            double longest = -1;
+            for (int e = 0; e < 3; ++e) {
+                const Vec2 d = pts[tris[t + static_cast<std::size_t>((e + 1) % 3)]] - pts[tris[t + static_cast<std::size_t>(e)]];
+                if (dot(d, d) > longest) longest = dot(d, d), k = e;
+            }
+            const std::uint32_t a = tris[t + static_cast<std::size_t>(k)], b = tris[t + static_cast<std::size_t>((k + 1) % 3)],
+                                v = tris[t + static_cast<std::size_t>((k + 2) % 3)];
+            const Vec2 &pa = pts[a], &pb = pts[b], &pv = pts[v];
+            if (!(longest > 0) || std::abs(orient(pa, pb, pv)) > tol * std::sqrt(longest)) continue;
+            const double along = dot(pv - pa, pb - pa);
+            if (along <= 0 || along >= longest) continue;  // v not strictly between a and b
+            // the neighbour across a-b runs b -> a
+            for (std::size_t u = 0; u + 2 < tris.size(); u += 3) {
+                if (u == t) continue;
+                int j = 0;
+                while (j < 3 && !(tris[u + static_cast<std::size_t>(j)] == b && tris[u + static_cast<std::size_t>((j + 1) % 3)] == a)) ++j;
+                if (j == 3) continue;
+                const std::uint32_t c = tris[u + static_cast<std::size_t>((j + 2) % 3)];
+                if (c == v) continue;
+                tris[u] = b, tris[u + 1] = v, tris[u + 2] = c;  // (b, v, c): was (b, a, c) with v put on b-a
+                tris[t] = v, tris[t + 1] = a, tris[t + 2] = c;
+                changed = true;
+                break;
+            }
+        }
+        if (!changed) break;
+    }
+}
+
 }  // namespace
 
 std::vector<std::uint32_t> triangulate(const std::vector<Vec2>& outerIn, const std::vector<std::vector<Vec2>>& holesIn) {
@@ -175,6 +217,7 @@ std::vector<std::uint32_t> triangulate(const std::vector<Vec2>& outerIn, const s
         }
     }
     out.insert(out.end(), {outer[prev[cur]], outer[cur], outer[next[cur]]});
+    dropSlivers(pts, out);
     return out;
 }
 

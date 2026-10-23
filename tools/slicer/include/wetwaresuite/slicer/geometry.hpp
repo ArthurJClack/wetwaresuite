@@ -22,6 +22,7 @@ using mesh::Loop;
 using mesh::Vec2;
 using Region = std::vector<Loop>;
 using Segment = std::pair<Vec2, Vec2>;
+using Polyline = std::vector<Vec2>;
 
 // Which winding numbers count as inside.
 enum class FillRule { NonZero, Positive, AtLeastTwo };
@@ -51,7 +52,16 @@ Loop simplify(const Loop& loop, double tolerance);
 std::vector<Region> islands(const Region& region);
 
 // Parallel lines `spacing` apart at `angleDegrees`, clipped to the region
-// (even-odd). Lines sit on a fixed grid through the origin so layers line up.
-std::vector<Segment> fillLines(const Region& region, double spacing, double angleDegrees);
+// (even-odd). Lines sit on a fixed grid through the origin so layers line up;
+// `shift` slides the grid sideways (along the lines' normal) by that many mm.
+std::vector<Segment> fillLines(const Region& region, double spacing, double angleDegrees, double shift = 0);
+
+// Cuts open polylines to the parts inside the region (even-odd).
+std::vector<Polyline> clipPolylines(const Region& region, const std::vector<Polyline>& lines);
+
+// The gyroid surface sin x cos y + sin y cos z + sin z cos x = 0 (repeating
+// every `period` mm) cut at height z, clipped to the region. Consecutive
+// layers shift, so the lines stack into a 3D lattice.
+std::vector<Polyline> gyroidLines(const Region& region, double period, double z);
 
 }  // namespace wetwaresuite::slicer

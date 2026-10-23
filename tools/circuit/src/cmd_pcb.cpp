@@ -1,5 +1,6 @@
 // circuit.* board commands (outline, placement, traces, routing, pours, rules), checks,
 // fabrication output and the simulator.
+#include <algorithm>
 #include <set>
 #include <sstream>
 
@@ -11,8 +12,17 @@ namespace wetwaresuite::circuit::cmd {
 namespace {
 
 int layerParam(const Params& p, const std::string& fallback = "F") {
-    const std::string l = lower(stringParam(p, "layer", fallback));
-    return (l == "b" || l == "bottom" || l == "b.cu" || l == "back") ? 1 : 0;
+    const int l = parseLayer(stringParam(p, "layer", fallback));
+    return l < 0 ? 0 : l;
+}
+
+// Fails with a message when `layer=` names no layer or one the board doesn't have.
+std::string layerError(const Board& b, const Params& p) {
+    if (!has(p, "layer")) return {};
+    const int l = parseLayer(stringParam(p, "layer"));
+    if (l < 0) return "layer must be F, B, In1 or In2";
+    if (l >= b.layers) return std::string(layerName(l)) + " needs a 4-layer board (circuit.board layers=4)";
+    return {};
 }
 
 std::vector<ParamSpec> withPreview(std::vector<ParamSpec> v) {
@@ -23,7 +33,7 @@ std::vector<ParamSpec> withPreview(std::vector<ParamSpec> v) {
 // The net of the copper (pad, trace or via) under a point on a layer, "" if none.
 std::string netAt(const Circuit& c, const Netlist& nl, Pt q, int layer) {
     for (const auto& pad : worldPads(c, nl)) {
-        if (!(pad.layers & (layer == 0 ? 1 : 2))) continue;
+        if (!(pad.layers & layerBit(layer)) || !pad.plated) continue;
         if (std::abs(q.x - pad.pos.x) <= pad.w / 2 + 1e-6 && std::abs(q.y - pad.pos.y) <= pad.h / 2 + 1e-6) return pad.net;
     }
     for (const auto& t : c.board.traces) {
@@ -44,18 +54,34 @@ void registerPcbCommands(Session& session) {
     auto& reg = session.registry();
     reg.add({"circuit.board", "Board Outline",
              "Set the board outline in mm: a width x height rectangle with its top-left corner at x, y, or any polygon with "
-             "points=x1,y1,x2,y2,... Two copper layers: F (top) and B (bottom).",
+             "points=x1,y1,x2,y2,... layers=2 (F, B) or 4 (F, In1, In2, B; inner layers are usually ground and power planes).",
              withPreview({docParam(),
                           {"width", ParamType::Number, "rectangle width, mm", false},
                           {"height", ParamType::Number, "rectangle height, mm", false},
                           {"x", ParamType::Number, "left edge, mm", false, {}, 0.0},
                           {"y", ParamType::Number, "top edge, mm", false, {}, 0.0},
-                          {"points", ParamType::NumberList, "polygon corners x1,y1,x2,y2,... in mm instead of a rectangle", false}}),
+                          {"points", ParamType::NumberList, "polygon corners x1,y1,x2,y2,... in mm instead of a rectangle", false},
+                          {"layers", ParamType::Int, "copper layers, 2 or 4 (kept when not given)", false, {}, {}}}),
              true},
             circuitCommand(
                 session,
                 [](CircuitDoc& doc, const Params& p) {
                     Board& b = doc.circuit.board;
+                    if (has(p, "layers")) {
+                        const auto n = intParam(p, "layers");
+                        if (n != 2 && n != 4) return Result::failure("layers must be 2 or 4");
+                        if (n == 2) {
+                            for (const auto& t : b.traces) {
+                                if (t.layer > 1) return Result::failure("there are traces on inner layers: circuit.unroute layer=In1 / In2 first");
+                            }
+                            std::erase_if(b.zones, [](const Zone& z) { return z.layer > 1; });
+                        }
+                        b.layers = static_cast<int>(n);
+                        if (!has(p, "points") && !has(p, "width") && b.outline.size() >= 3) {
+                            return edited(std::to_string(b.layers) + " copper layers; board " + num(boardWidth(b)) + " x " + num(boardHeight(b)) + " mm", p)
+                                .with("layers", static_cast<std::int64_t>(b.layers));
+                        }
+                    }
                     if (has(p, "points")) {
                         const NumberList v = listParam(p, "points");
                         if (v.size() < 6 || v.size() % 2) return Result::failure("points needs at least three x,y pairs");
@@ -67,7 +93,8 @@ void registerPcbCommands(Session& session) {
                         if (w <= 0 || h <= 0 || w > 1000 || h > 1000) return Result::failure("width and height must be 0..1000 mm");
                         b.outline = {{x, y}, {x + w, y}, {x + w, y + h}, {x, y + h}};
                     }
-                    return edited("board " + num(boardWidth(b)) + " x " + num(boardHeight(b)) + " mm", p)
+                    return edited("board " + num(boardWidth(b)) + " x " + num(boardHeight(b)) + " mm, " + std::to_string(b.layers) + " copper layers", p)
+                        .with("layers", static_cast<std::int64_t>(b.layers))
                         .with("width", boardWidth(b))
                         .with("height", boardHeight(b));
                 },
@@ -127,11 +154,11 @@ void registerPcbCommands(Session& session) {
                 View::Pcb));
 
     reg.add({"circuit.trace", "Draw Trace",
-             "Draw copper through points=x1,y1,x2,y2,... (mm) on layer F or B. The net comes from the pad or trace under the first "
+             "Draw copper through points=x1,y1,x2,y2,... (mm) on layer F, B (or In1, In2 on 4 layers). The net comes from the pad or trace under the first "
              "point unless net= is given; width defaults to the rules (power nets wider).",
              withPreview({docParam(),
                           {"points", ParamType::NumberList, "x1,y1,x2,y2,... in mm", true},
-                          {"layer", ParamType::String, "F (top) or B (bottom)", false, {"F", "B"}, std::string("F")},
+                          {"layer", ParamType::String, "F (top), B (bottom), In1 or In2", false, {"F", "B", "In1", "In2"}, std::string("F")},
                           {"width", ParamType::Number, "trace width, mm", false},
                           {"net", ParamType::String, "net name (default: from the copper under the first point)", false}}),
              true},
@@ -141,6 +168,7 @@ void registerPcbCommands(Session& session) {
                     Circuit& c = doc.circuit;
                     const NumberList v = listParam(p, "points");
                     if (v.size() < 4 || v.size() % 2) return Result::failure("points needs pairs: x1,y1,x2,y2,...");
+                    if (auto e = layerError(c.board, p); !e.empty()) return Result::failure(e);
                     const int layer = layerParam(p);
                     const Netlist nl = buildNetlist(c);
                     std::string net = stringParam(p, "net");
@@ -153,12 +181,12 @@ void registerPcbCommands(Session& session) {
                         c.board.traces.push_back({{v[i - 2], v[i - 1]}, {v[i], v[i + 1]}, width, layer, net});
                         ++n;
                     }
-                    return edited(std::to_string(n) + " trace segments on " + (layer ? "B.Cu" : "F.Cu") + (net.empty() ? " (no net: it touches no pad)" : " net " + net), p)
+                    return edited(std::to_string(n) + " trace segments on " + layerName(layer) + (net.empty() ? " (no net: it touches no pad)" : " net " + net), p)
                         .with("net", net);
                 },
                 View::Pcb));
 
-    reg.add({"circuit.via", "Add Via", "Add a via (a plated hole joining F and B copper) at x, y mm.",
+    reg.add({"circuit.via", "Add Via", "Add a via (a plated hole joining every copper layer) at x, y mm.",
              withPreview({docParam(),
                           {"x", ParamType::Number, "x, mm", true},
                           {"y", ParamType::Number, "y, mm", true},
@@ -174,8 +202,7 @@ void registerPcbCommands(Session& session) {
                     std::string net = stringParam(p, "net");
                     if (net.empty()) {
                         const Netlist nl = buildNetlist(c);
-                        net = netAt(c, nl, q, 0);
-                        if (net.empty()) net = netAt(c, nl, q, 1);
+                        for (int l = 0; l < c.board.layers && net.empty(); ++l) net = netAt(c, nl, q, l);
                     }
                     c.board.vias.push_back({q, numberParam(p, "drill", c.board.rules.viaDrill), numberParam(p, "diameter", c.board.rules.viaDiameter), net});
                     return edited("via at " + pt(q) + (net.empty() ? "" : " on " + net), p).with("net", net);
@@ -183,12 +210,12 @@ void registerPcbCommands(Session& session) {
                 View::Pcb));
 
     reg.add({"circuit.route", "Autoroute",
-             "Route unrouted connections with a grid maze router on both layers (vias where it helps). Short nets go first; a "
+             "Route unrouted connections with a grid maze router on the copper layers (vias where it helps). Short nets go first; a "
              "second pass retries failed nets first. Good for small boards; check with circuit.drc. Route before pouring copper.",
              withPreview({docParam(),
                           {"nets", ParamType::String, "only these nets, comma-separated", false},
                           {"skip", ParamType::String, "leave these nets alone, comma-separated (e.g. GND for a pour)", false},
-                          {"layers", ParamType::Int, "1 = top only, 2 = both", false, {}, std::int64_t{2}},
+                          {"layers", ParamType::Int, "1 = top only, 2 = top and bottom, 4 = all four (4-layer boards)", false, {}, std::int64_t{2}},
                           {"via_cost", ParamType::Number, "how much a via costs, in grid steps (higher = fewer vias)", false, {}, 8.0},
                           {"time_limit", ParamType::Int, "seconds", false, {}, std::int64_t{60}}}),
              true},
@@ -200,7 +227,8 @@ void registerPcbCommands(Session& session) {
                     RouteOptions o;
                     if (has(p, "nets")) o.nets = splitList(stringParam(p, "nets"));
                     if (has(p, "skip")) o.skip = splitList(stringParam(p, "skip"));
-                    o.layers = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "layers", 2), 1, 2));
+                    o.layers = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "layers", 2), 1, doc.circuit.board.layers));
+                    if (o.layers == 3) o.layers = 2;
                     o.viaCost = std::clamp(numberParam(p, "via_cost", 8), 0.0, 1000.0);
                     o.maxSeconds = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "time_limit", 60), 1, 3600));
                     const RouteReport r = autoroute(doc.circuit, nl, o);
@@ -215,7 +243,7 @@ void registerPcbCommands(Session& session) {
                 View::Pcb));
 
     reg.add({"circuit.unroute", "Remove Traces", "Remove traces and vias: of one net (net=), of one layer (layer=), or all of them.",
-             withPreview({docParam(), {"net", ParamType::String, "only this net", false}, {"layer", ParamType::String, "only this layer (F or B; vias stay)", false, {"F", "B"}}}),
+             withPreview({docParam(), {"net", ParamType::String, "only this net", false}, {"layer", ParamType::String, "only this layer (F, B, In1, In2; vias stay)", false, {"F", "B", "In1", "In2"}}}),
              true},
             circuitCommand(
                 session,
@@ -236,8 +264,10 @@ void registerPcbCommands(Session& session) {
              "touch no pad of the net are dropped. Recomputed whenever the board changes.",
              withPreview({docParam(),
                           {"net", ParamType::String, "net to pour", false, {}, std::string("GND")},
-                          {"layer", ParamType::String, "F, B or both", false, {"F", "B", "both"}, std::string("B")},
-                          {"clearance", ParamType::Number, "gap to other copper, mm", false, {}, 0.3}}),
+                          {"layer", ParamType::String, "F, B, both, or In1/In2 on a 4-layer board (a plane)", false, {"F", "B", "both", "In1", "In2"}, std::string("B")},
+                          {"clearance", ParamType::Number, "gap to other copper, mm", false, {}, 0.3},
+                          {"thermal", ParamType::Bool, "join pads through thermal-relief spokes (easier hand soldering); false = solid", false, {}, true},
+                          {"spoke", ParamType::Number, "thermal spoke width, mm", false, {}, 0.5}}),
              true},
             circuitCommand(
                 session,
@@ -251,15 +281,24 @@ void registerPcbCommands(Session& session) {
                     const std::string l = stringParam(p, "layer", "B");
                     std::vector<int> layers;
                     if (l == "both") layers = {0, 1};
-                    else layers = {layerParam(p, "B")};
+                    else {
+                        if (auto e = layerError(c.board, p); !e.empty()) return Result::failure(e);
+                        layers = {layerParam(p, "B")};
+                    }
                     for (int layer : layers) {
                         std::erase_if(c.board.zones, [&](const Zone& z) { return z.layer == layer; });
-                        c.board.zones.push_back({realName, layer, std::max(0.1, numberParam(p, "clearance", 0.3)), 0.25});
+                        Zone z{realName, layer, std::max(0.1, numberParam(p, "clearance", 0.3)), 0.25};
+                        z.thermal = boolParam(p, "thermal", true);
+                        z.spoke = std::clamp(numberParam(p, "spoke", 0.5), 0.15, 5.0);
+                        c.board.zones.push_back(z);
                     }
                     const auto fills = fillZones(c, nl);
                     double area = 0;
-                    for (const auto& f : fills) area += static_cast<double>(std::count(f.cells.begin(), f.cells.end(), 1)) * f.cell * f.cell;
-                    return edited("poured " + realName + " on " + (l == "both" ? "both layers" : (layers[0] ? "B.Cu" : "F.Cu")) + ", " + num(area) + " mm2 of copper", p)
+                    for (const auto& f : fills) {
+                        if (std::find(layers.begin(), layers.end(), f.layer) == layers.end()) continue;  // only this pour
+                        area += static_cast<double>(std::count(f.cells.begin(), f.cells.end(), 1)) * f.cell * f.cell;
+                    }
+                    return edited("poured " + realName + " on " + (l == "both" ? "both outer layers" : layerName(layers[0])) + ", " + num(area) + " mm2 of copper", p)
                         .with("area", area);
                 },
                 View::Pcb));
@@ -342,7 +381,7 @@ void registerPcbOutputCommands(Session& session) {
                         if (has(p, "ref") && lower(pad.ref) != lower(stringParam(p, "ref"))) continue;
                         if (has(p, "net") && lower(pad.net) != lower(stringParam(p, "net"))) continue;
                         s += "\n" + pad.ref + "." + pad.number + " at " + pt(pad.pos) + " size " + num(pad.w) + "x" + num(pad.h) +
-                             (pad.drill > 0 ? " drill " + num(pad.drill) + " (F+B)" : pad.layers == 1 ? " (F)" : " (B)") + " net " + (pad.net.empty() ? "-" : pad.net);
+                             (pad.drill > 0 ? " drill " + num(pad.drill) + (pad.plated ? " (all layers)" : " (non-plated)") : pad.layers == 1 ? " (F)" : " (B)") + " net " + (pad.net.empty() ? "-" : pad.net);
                         ++n;
                     }
                     if (n == 0) return Result::failure("no pads match (is the part on the board? circuit.pcb_place)");
@@ -367,11 +406,14 @@ void registerPcbOutputCommands(Session& session) {
                 View::Pcb, false));
 
     reg.add({"circuit.gerber", "Export Gerber",
-             "Write fabrication files: Gerber RS-274X for F/B copper, mask, paste and silkscreen plus the board edge (Edge_Cuts), "
-             "and an Excellon drill file. path ending in .zip writes one zip ready to upload to a fab; otherwise a folder.",
+             "Write fabrication files: Gerber RS-274X for copper (2 or 4 layers), mask, paste and silkscreen plus the board edge "
+             "(Edge_Cuts), Excellon drill files (plated, and non-plated when there are mounting holes), and for assembly a "
+             "pick-and-place CSV (NAME-pos.csv) and a BOM (NAME-bom.csv). path ending in .zip writes one zip ready to upload to a "
+             "fab; otherwise a folder.",
              {docParam(),
               {"path", ParamType::String, "output folder, or a .zip file", true},
-              {"name", ParamType::String, "file name prefix (default: the title or 'board')", false}},
+              {"name", ParamType::String, "file name prefix (default: the title or 'board')", false},
+              {"assembly", ParamType::Bool, "also write the pick-and-place and BOM CSVs", false, {}, true}},
              false},
             circuitCommand(
                 session,
@@ -383,7 +425,11 @@ void registerPcbOutputCommands(Session& session) {
                     for (auto& ch : base) {
                         if (!std::isalnum(static_cast<unsigned char>(ch)) && ch != '-' && ch != '_') ch = '_';
                     }
-                    const auto files = fabFiles(doc.circuit, nl, base);
+                    auto files = fabFiles(doc.circuit, nl, base);
+                    if (boolParam(p, "assembly", true)) {
+                        files.push_back({base + "-pos.csv", placementCsv(doc.circuit)});
+                        files.push_back({base + "-bom.csv", bomCsv(doc.circuit, true)});
+                    }
                     const fs::path path = stringParam(p, "path");
                     std::string error;
                     std::string list;
@@ -402,6 +448,22 @@ void registerPcbOutputCommands(Session& session) {
                     return edited("wrote " + std::to_string(files.size()) + " files to " + path.string() + list + warn, p)
                         .with("files", static_cast<std::int64_t>(files.size()))
                         .with("path", path.string());
+                },
+                View::Pcb, false));
+
+    reg.add({"circuit.placement", "Pick and Place File",
+             "Write the pick-and-place (component placement, CPL) CSV for assembly: Designator, Val, Package, Mid X, Mid Y, "
+             "Rotation, Layer, in mm with y up from the board's bottom-left corner (the format JLCPCB and most assemblers read).",
+             {docParam(), {"path", ParamType::String, "output .csv (omit to just print it)", false}}, false, true},
+            circuitCommand(
+                session,
+                [](CircuitDoc& doc, const Params& p) {
+                    const std::string csv = placementCsv(doc.circuit);
+                    const auto rows = static_cast<std::int64_t>(std::count(csv.begin(), csv.end(), '\n') - 1);
+                    if (!has(p, "path")) return edited(csv, p).with("parts", rows);
+                    std::string error;
+                    if (!writeFile(stringParam(p, "path"), csv, error)) return Result::failure(error);
+                    return edited("wrote " + stringParam(p, "path") + " (" + std::to_string(rows) + " parts)", p).with("parts", rows);
                 },
                 View::Pcb, false));
 
@@ -504,9 +566,12 @@ namespace wetwaresuite::circuit {
 void registerCommands(Session& session) {
     cmd::registerFileCommands(session);
     cmd::registerSchematicCommands(session);
+    cmd::registerSchematicMarkCommands(session);
     cmd::registerSchematicQueryCommands(session);
     cmd::registerPcbCommands(session);
     cmd::registerPcbOutputCommands(session);
+    cmd::registerBoardToolCommands(session);
+    cmd::registerViewCommands(session);
 }
 
 }  // namespace wetwaresuite::circuit

@@ -19,6 +19,8 @@ if(NOT _old STREQUAL _src)
 endif()
 
 add_library(wetwaresuite_maps src/geo.cpp src/analysis.cpp src/io.cpp src/shapefile.cpp src/raster_io.cpp src/render.cpp src/pmtiles.cpp src/mvt.cpp src/vector_style.cpp src/commands.cpp
+            src/edit.cpp src/tracks.cpp src/osm.cpp src/routing.cpp src/edit_commands.cpp src/overlay_commands.cpp
+            src/track_commands.cpp src/nav_commands.cpp src/place_commands.cpp
             ${_countries_cpp})
 add_library(wetwaresuite::maps ALIAS wetwaresuite_maps)
 target_include_directories(wetwaresuite_maps PUBLIC include)
@@ -28,4 +30,7 @@ if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_maps tests/test_maps.cpp)
   target_link_libraries(test_maps PRIVATE wetwaresuite::maps wetwaresuite::mcp wetwaresuite_check)
   add_test(NAME maps COMMAND test_maps)
+  add_executable(test_maps_tools tests/test_maps_tools.cpp)
+  target_link_libraries(test_maps_tools PRIVATE wetwaresuite::maps wetwaresuite::mcp wetwaresuite_check)
+  add_test(NAME maps_tools COMMAND test_maps_tools)
 endif()

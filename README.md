@@ -32,13 +32,13 @@ install only what you need (`hub install image model --from <release folder>`); 
 | --- | --- | --- | --- |
 | image | `wetwaresuite-image` | photos, painting, textures | photo, paint |
 | draw | `wetwaresuite-draw` | vector art, fonts, whiteboards | vector, type, board |
-| model | `wetwaresuite-model` | 3D modeling, renders, animation | sculpt, render, animate |
+| model | `wetwaresuite-model` | 3D modeling, renders, animation | model, sculpt, render, animate |
 | game | `wetwaresuite-game` | game assets and levels | forge, levels |
 | cad | `wetwaresuite-cad` | engineering, drafting, 3D printing, parts that fit 3D scans | cad, blueprint, slicer, fit |
 | electronics | `wetwaresuite-electronics` | circuits and microcontrollers | circuit, flash |
 | sound | `wetwaresuite-sound` | audio editing and music | audio, beats |
 | video | `wetwaresuite-video` | video editing and screen capture | cut, capture |
-| office | `wetwaresuite-office` | documents, sheets, slides, print layout, notes | office, layout, notes |
+| office | `wetwaresuite-office` | documents, sheets, slides, PDF editor, print layout, notes | office, pdf, layout, notes |
 | maps | `wetwaresuite-maps` | offline maps and GIS | maps |
 | system | `wetwaresuite-system` | calculator, code editor, file manager, terminal, system monitor, clock | calc, code, explorer, terminal, monitor, clock |
 | files | `wetwaresuite-files` | open, convert, find anything (always installed) | toolkit, convert, library, automate |
@@ -59,8 +59,8 @@ install only what you need (`hub install image model --from <release folder>`); 
 | `tools/paint/` | painting: pressure brushes, eraser, fills, shapes, gradients, layers |
 | `tools/vector/` | vector design: shapes, paths, text, SVG in and out |
 | `tools/blueprint/` | technical drafting and floor plans: walls, doors, dimensions, layers, DXF in/out, PDF/SVG to scale |
-| `tools/cad/` | parametric CAD: feature tree, expressions, holes, patterns, booleans, measuring, STL/3MF export |
-| `tools/slicer/` | 3D printing: printer/filament presets, perimeters, infill, supports, G-code with time and filament estimates |
+| `tools/cad/` | parametric CAD: feature tree, expressions, holes, patterns, booleans, fillets, chamfers, shells, measuring, STEP import/export, STL/3MF export |
+| `tools/slicer/` | 3D printing: printer/filament presets, perimeters, infill (gyroid, cubic, ...), column and tree supports, several parts per bed with auto-arrange, G-code with time and filament estimates |
 | `tools/forge/` | game assets: mesh cleanup, LODs, UVs, sprite sheets and atlases, normal maps, tileable textures, pixel art |
 | `tools/layout/` | print layout and publishing: posters, flyers, cards, booklets; linked text frames, styles, masters, CMYK, preflight, PDF with bleed and crop marks, N-up imposition |
 | `tools/audio/` | audio editing on `libs/audio`: noise reduction, EQ, compression, loudness (LUFS), pitch and tempo, multitrack mixing with ducking, spectrograms, folder batches |
@@ -72,6 +72,7 @@ install only what you need (`hub install image model --from <release folder>`); 
 | `tools/convert/` | change a file's type: images and 3D meshes built in, audio/video via ffmpeg, docs via LibreOffice/pandoc |
 | `tools/levels/` | game levels and tilemaps: tilesets, tile and object layers, painting, auto-tiling, scatter, cave/dungeon/noise generators, collision, Tiled TMX/TMJ, LDtk, JSON, CSV, PNG |
 | `tools/fit/` | scan fit: phone 3D scans (OBJ/PLY/STL/glTF/points, metres and Y-up handled) cleaned up, robust plane/cylinder/circle/curve references, parts that hug the scan at a set gap (plates, blocks, clamps, strips, phone mounts, gauge pods, switch panels, speaker rings), gap checks, test slices, replayable `.wwfit` projects |
+| `tools/model/` | polygon modeling like Blender: scenes of objects, edit mode on quads and n-gons (extrude, inset, bevel, loop cut, knife, bridge, spin...), a modifier stack (mirror, array, subsurf, solidify, bevel, boolean, decimate...), UVs, materials, keyframes; OBJ/glTF/FBX/STL out |
 | `tools/sculpt/` | digital sculpting: brush strokes with symmetry and masks, subdivision, voxel remesh, quadric decimation, quad retopology, heightmap displacement, STL/OBJ/PLY/glTF out |
 | `tools/beats/` | music making: step sequencer and piano roll, subtractive synth with presets, synthesized drum kit with sample slots, pitched sampler, arrangement by bar, effects, WAV/MP3 render, MIDI import/export, genre-based beat generator |
 | `tools/animate/` | 2D and 3D animation: keyframes with easing, shapes, text, images, frame-by-frame cels with onion skin, bone rigs, 3D meshes and camera; PNG sequences, sprite sheets with JSON atlases, GIF, mp4/webm (via ffmpeg) |
@@ -90,7 +91,7 @@ install only what you need (`hub install image model --from <release folder>`); 
 | `tools/clock/` | clock: world time for ~110 cities with summer-time rules, conversions, timers, stopwatch with laps, alarms saved between runs, date differences and working days, calendars |
 | `apps/app/` | `wetwaresuite-<app>`: one small binary per app (image, draw, model...), built from one shared main; each links only its own tools |
 | `apps/common/` | what every app shares: the app table, which app opens which file, the handoff folder and the `app.*` commands |
-| `apps/wetwaresuite/` | `wetwaresuite`: every tool in one binary (the window with no arguments; commands, batch scripts or an MCP server with them), plus the `wetwaresuite-gui` launcher |
+| `apps/wetwaresuite/` | `wetwaresuite`: every tool in one binary (commands, batch scripts or an MCP server with them; `gui --all` is every tool in one window), plus the `wetwaresuite-gui` launcher that starts each app in its own window |
 | `share/` | `wetwaresuite-share`: share a folder with any browser (link, QR, code), live-sync code between machines, send files; LAN or internet |
 | `hub/` | `hub`: lists and installs apps offline from a folder or archive, makes offline editions (1-256 GB), prints the MCP config for Claude |
 

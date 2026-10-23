@@ -1,6 +1,7 @@
-add_library(wetwaresuite_forge src/forge.cpp src/mesh_commands.cpp src/image_commands.cpp src/sprite_commands.cpp src/texture.cpp src/meshops.cpp)
+add_library(wetwaresuite_forge src/forge.cpp src/mesh_commands.cpp src/image_commands.cpp src/sprite_commands.cpp src/texture.cpp src/meshops.cpp
+  src/sprite_model.cpp src/aseprite.cpp src/sprite_export.cpp src/anim_commands.cpp)
 add_library(wetwaresuite::forge ALIAS wetwaresuite_forge)
-target_include_directories(wetwaresuite_forge PUBLIC include)
+target_include_directories(wetwaresuite_forge PUBLIC include PRIVATE ${PROJECT_SOURCE_DIR}/third_party/stb)
 target_link_libraries(wetwaresuite_forge PUBLIC wetwaresuite::mesh wetwaresuite::raster PRIVATE nlohmann_json::nlohmann_json)
 
 if(WETWARESUITE_BUILD_TESTS)

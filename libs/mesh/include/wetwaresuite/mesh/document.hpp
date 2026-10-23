@@ -29,7 +29,12 @@ public:
     std::string kind() const override { return "mesh"; }
     std::string summary() const override;
     std::unique_ptr<Attachment> preview() const override;  // 512x512 PNG
+    bool renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const override;
 };
+
+// Draws a mesh from an orbit camera into rgba (how 3D documents implement renderView).
+bool renderOrbit(const Mesh& mesh, const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba,
+                 RenderOptions options = {});
 
 // One line: "12 triangles, 8 vertices, size 10 x 10 x 10 at (-5, -5, -5), watertight".
 std::string describe(const Mesh& mesh);

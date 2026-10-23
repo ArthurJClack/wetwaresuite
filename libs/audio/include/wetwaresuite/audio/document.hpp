@@ -19,6 +19,7 @@ class AudioDoc : public Document {
 public:
     Buffer audio;
     NoiseProfile noise;  // learned by audio.noise_profile, used by audio.denoise
+    std::vector<Marker> markers;  // markers and regions (audio.marker_add), in seconds
 
     std::string kind() const override { return "audio"; }
     std::string summary() const override;
@@ -32,6 +33,8 @@ public:
     std::string kind() const override { return "audio project"; }
     std::string summary() const override;
     std::unique_ptr<Attachment> preview() const override;  // track lanes PNG
+    bool timeline(TimelineLayout& out) const override;
+    std::string timelineCommand(const TimelineEdit& edit) const override;
 };
 
 std::shared_ptr<AudioDoc> newAudio(Buffer b);
@@ -49,6 +52,7 @@ private:
     std::function<Result(AudioDoc&)> fn_;
     Buffer before_;
     NoiseProfile beforeNoise_;
+    std::vector<Marker> beforeMarkers_;
 };
 
 class ProjectEdit : public Action {

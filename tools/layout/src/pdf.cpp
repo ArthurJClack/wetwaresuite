@@ -146,6 +146,8 @@ public:
             for (const auto& [n, id] : m) r += " /" + n + " " + std::to_string(id) + " 0 R";
             r += " >>";
         };
+        uni_.finish();
+        if (uni_.used()) fontObjects_["FU"] = uni_.id();
         dict("Font", fontObjects_);
         dict("XObject", imageObjects_);
         dict("ExtGState", gsObjects_);
@@ -163,8 +165,7 @@ public:
                 s += "q\n" + col + "BT\n/" + font(*run.face) + " " + pn(run.size) + " Tf\n";
                 if (run.tracking != 0) s += pn(run.tracking) + " Tc\n";
                 if (run.wordSpace != 0) s += pn(run.wordSpace) + " Tw\n";
-                s += "1 0 0 -1 " + pn(run.x) + " " + pn(line.baseline) + " Tm\n" + pdfdoc::literal(pdfdoc::toWinAnsi(run.text)) +
-                     " Tj\nET\n";
+                s += "1 0 0 -1 " + pn(run.x) + " " + pn(line.baseline) + " Tm\n" + uni_.show(run.text, font(*run.face), run.size) + "\nET\n";
                 if (run.underline) s += rectPath(run.x, line.baseline + run.size * 0.1, run.width, std::max(run.size * 0.05, 0.1)) + "f\n";
                 s += "Q\n";
             }
@@ -286,7 +287,7 @@ public:
         w_.set(pages, "<< /Type /Pages /Kids [" + list + "] /Count " + std::to_string(kids.size()) + " >>");
         finishResources();
         const int root = w_.add("<< /Type /Catalog /Pages " + std::to_string(pages) + " 0 R >>");
-        const int info = w_.add("<< /Title " + pdfdoc::text(doc_.title.empty() ? "layout" : doc_.title) +
+        const int info = w_.add("<< /Title " + pdfdoc::infoText(doc_.title.empty() ? "layout" : doc_.title) +
                                 " /Creator (wetwaresuite layout) /Producer (wetwaresuite) >>");
         report.pages = static_cast<int>(kids.size());
         if (usedRgb && usedCmyk) report.warnings.push_back("mixes RGB and CMYK colours");
@@ -301,6 +302,7 @@ private:
     const LayoutDoc& doc_;
     bool embed_ = false;
     pdfdoc::Writer w_;
+    pdfdoc::UnicodeFallback uni_{w_};  // Greek, Cyrillic, ... in the built-in font
     int resources_ = 0;
     std::map<std::string, std::string> fonts_, images_, alphas_;
     std::map<std::string, int> fontObjects_, imageObjects_, gsObjects_;

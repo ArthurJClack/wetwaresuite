@@ -473,12 +473,98 @@ void testMcp() {
 
 }  // namespace
 
+// Fillets, chamfers and shells: volumes against the exact shapes.
+void testBlends() {
+    Session s;
+    registerCommands(s);
+    auto watertight = [&](const std::string& doc) { return std::get<bool>(*run(s, "cad.info doc=" + doc).field("watertight")); };
+    // a fully rounded box: its exact volume, within the polygon error
+    run(s, "cad.new");
+    run(s, "cad.box doc=cad1 name=b width=40 depth=30 height=10");
+    Result edges = run(s, "cad.edges doc=cad1");
+    CHECK(edges.ok && num(edges, "count") == 12);
+    CHECK(run(s, "cad.fillet doc=cad1 name=f target=b radius=3").ok);
+    const double r = 3, a = 40 - 2 * r, b = 30 - 2 * r, c = 10 - 2 * r;
+    const double rounded = a * b * c + 2 * r * (a * b + b * c + a * c) + kPi * r * r * (a + b + c) + 4.0 / 3 * kPi * r * r * r;
+    CHECK(within(volumeOf(s), rounded, 0.003) && watertight("cad1"));
+    // vertical edges only
+    CHECK(run(s, "cad.feature_set doc=cad1 feature=f values=\"edges=vertical; radius=5\"").ok);
+    CHECK(within(volumeOf(s), 12000 - 4 * 25 * (1 - kPi / 4) * 10, 0.001));
+    CHECK(!run(s, "cad.feature_set doc=cad1 feature=f param=edges value=sideways").ok);
+    CHECK(!run(s, "cad.feature_set doc=cad1 feature=f param=radius value=40").ok);  // too big: refused and rolled back
+    CHECK(within(volumeOf(s), 12000 - 4 * 25 * (1 - kPi / 4) * 10, 0.001));
+
+    // one edge picked by a point near it: a 2 x 2 triangle along 20 mm comes off exactly
+    run(s, "cad.new");
+    run(s, "cad.box doc=cad2 name=cube width=20 depth=20 height=20");
+    CHECK(run(s, "cad.chamfer doc=cad2 target=cube distance=2 near=20,10,20").ok);
+    CHECK(near(volumeOf(s, "cad2"), 8000 - 2 * 20, 1e-6) && watertight("cad2"));
+
+    // an inside corner gets filled: an L bracket
+    run(s, "cad.new");
+    run(s, "cad.extrude doc=cad3 name=l plane=xz points=\"0,0, 50,0, 50,6, 6,6, 6,40, 0,40\" height=30");
+    CHECK(run(s, "cad.fillet doc=cad3 target=l radius=5 edges=inner").ok);
+    CHECK(within(volumeOf(s, "cad3") - 15120, 30 * 25 * (1 - kPi / 4), 0.03) && watertight("cad3"));
+
+    // round rims: a chamfered cylinder and a boss filleted into its base
+    run(s, "cad.new");
+    run(s, "cad.cylinder doc=cad4 name=cy diameter=30 height=20 segments=96");
+    const double before = volumeOf(s, "cad4");
+    CHECK(run(s, "cad.chamfer doc=cad4 target=cy distance=2").ok);
+    CHECK(within(before - volumeOf(s, "cad4"), 2 * 2 * 2 * kPi * (15 - 2.0 / 3), 0.01) && watertight("cad4"));
+    run(s, "cad.new");
+    run(s, "cad.box doc=cad5 name=base width=60 depth=40 height=8");
+    run(s, "cad.cylinder doc=cad5 name=boss diameter=20 height=15 x=30 y=20 z=8");
+    run(s, "cad.boolean doc=cad5 name=u a=base b=boss");
+    CHECK(run(s, "cad.fillet doc=cad5 name=inner target=u radius=3 edges=inner").ok);
+    const double ring = 9 * (1 - kPi / 4) * 2 * kPi * (10 + 3 * (10 - 3 * kPi) / (3 * (4 - kPi)));  // Pappus
+    CHECK(within(volumeOf(s, "cad5") - (19200 + kPi * 100 * 15), ring, 0.05) && watertight("cad5"));
+    CHECK(run(s, "cad.fillet doc=cad5 target=inner radius=1 edges=top").ok && watertight("cad5"));
+
+    // shells: a closed box and an open tray
+    run(s, "cad.new");
+    run(s, "cad.box doc=cad6 name=box width=50 depth=40 height=25");
+    CHECK(run(s, "cad.shell doc=cad6 name=sh target=box thickness=2").ok);
+    CHECK(near(volumeOf(s, "cad6"), 50000 - 46 * 36 * 21, 1e-4));
+    CHECK(run(s, "cad.feature_set doc=cad6 feature=sh param=open value=top").ok);
+    CHECK(near(volumeOf(s, "cad6"), 50000 - 46 * 36 * 23, 1e-4) && watertight("cad6"));
+    CHECK(near(num(run(s, "cad.measure_section doc=cad6 z=10"), "loops"), 2));
+    CHECK(!run(s, "cad.feature_set doc=cad6 feature=sh param=thickness value=30").ok);
+    CHECK(!run(s, "cad.feature_set doc=cad6 feature=sh param=open value=upwards").ok);
+
+    // STEP out and back in: the tray keeps its volume and stays closed
+    const std::string step = (std::filesystem::temp_directory_path() / "wetwaresuite_cad_tray.step").string();
+    CHECK(run(s, "cad.save doc=cad6 path=\"" + step + "\"").ok);
+    Result opened = run(s, "cad.open path=\"" + step + "\"");
+    CHECK(opened.ok);
+    const std::string back = toText(*opened.field("doc"));
+    CHECK(near(volumeOf(s, back), 50000 - 46 * 36 * 23, 1e-3) && watertight(back));
+
+    // the tutorial's tray: its STEP comes back with long sliver faces, and a hole
+    // drilled right on a sliver's diagonal still has to close
+    const std::string t = toText(*run(s, "cad.new").field("doc"));
+    run(s, "cad.extrude_rect doc=" + t + " name=block width=60 depth=40 height=25");
+    run(s, "cad.fillet doc=" + t + " name=round target=block radius=4 edges=vertical");
+    run(s, "cad.shell doc=" + t + " name=tray target=round thickness=2 open=top");
+    run(s, "cad.chamfer doc=" + t + " name=bevel target=tray distance=1 edges=bottom");
+    CHECK(run(s, "cad.fillet doc=" + t + " name=lip target=bevel radius=0.8 edges=top").ok && watertight(t));
+    const double trayVolume = volumeOf(s, t);
+    CHECK(run(s, "cad.save doc=" + t + " path=\"" + step + "\"").ok);
+    opened = run(s, "cad.open path=\"" + step + "\"");
+    const std::string drilled = toText(*opened.field("doc"));
+    CHECK(within(volumeOf(s, drilled), trayVolume, 1e-6));
+    CHECK(run(s, "cad.hole doc=" + drilled + " target=imported1 diameter=5 x=30 y=20").ok);
+    CHECK(within(volumeOf(s, drilled), trayVolume - ngon(2.5, 64) * 2, 1e-6) && watertight(drilled));
+    std::filesystem::remove(step);
+}
+
 int main() {
     testExpressions();
     testParamsAndVolumes();
     testPatternsAndBooleans();
     testSketches();
     testHoles();
+    testBlends();
     testBracket();
     testUndoRedo();
     testFiles();

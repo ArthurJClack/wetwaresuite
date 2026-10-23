@@ -12,6 +12,7 @@
 
 #include "wetwaresuite/circuit/circuit.hpp"
 #include "wetwaresuite/raster/codec.hpp"
+#include "sexpr.hpp"
 
 namespace wetwaresuite::circuit {
 
@@ -31,56 +32,7 @@ std::string lower(std::string s) {
     return s;
 }
 
-// ---- s-expressions ----------------------------------------------------------------------
-
-struct Sx {
-    std::string atom;
-    std::vector<Sx> list;
-    bool isList = false;
-    const Sx* child(const std::string& head) const {
-        for (const auto& c : list) {
-            if (c.isList && !c.list.empty() && !c.list[0].isList && c.list[0].atom == head) return &c;
-        }
-        return nullptr;
-    }
-    std::string value(const std::string& head) const {
-        const Sx* c = child(head);
-        return c && c->list.size() > 1 && !c->list[1].isList ? c->list[1].atom : std::string();
-    }
-};
-
-Sx parseSx(const std::string& s, std::size_t& i, int depth = 0) {
-    if (depth > 200) throw std::runtime_error("netlist nested too deeply");
-    auto skip = [&] {
-        while (i < s.size() && std::isspace(static_cast<unsigned char>(s[i]))) ++i;
-    };
-    skip();
-    Sx node;
-    if (i >= s.size()) throw std::runtime_error("unexpected end of netlist");
-    if (s[i] == '(') {
-        node.isList = true;
-        ++i;
-        for (;;) {
-            skip();
-            if (i >= s.size()) throw std::runtime_error("unbalanced parentheses in netlist");
-            if (s[i] == ')') {
-                ++i;
-                break;
-            }
-            node.list.push_back(parseSx(s, i, depth + 1));
-        }
-    } else if (s[i] == '"') {
-        ++i;
-        while (i < s.size() && s[i] != '"') {
-            if (s[i] == '\\' && i + 1 < s.size()) ++i;
-            node.atom += s[i++];
-        }
-        ++i;
-    } else {
-        while (i < s.size() && !std::isspace(static_cast<unsigned char>(s[i])) && s[i] != '(' && s[i] != ')') node.atom += s[i++];
-    }
-    return node;
-}
+}  // namespace
 
 std::string mapKicadPart(const std::string& partIn, int& pins) {
     const std::string p = lower(partIn);
@@ -118,6 +70,137 @@ std::string mapKicadPart(const std::string& partIn, int& pins) {
     return canonicalSymbol(p);
 }
 
+namespace {
+
+// ---- custom symbols and footprints (from KiCad files) ----------------------------------
+
+json symbolJson(const Symbol& s) {
+    json j;
+    j["name"] = s.name;
+    j["title"] = s.title;
+    j["prefix"] = s.prefix;
+    j["value"] = s.value;
+    j["footprint"] = s.footprint;
+    if (s.power) j["power"] = true;
+    if (s.joinSameName) j["join_same_name"] = true;
+    if (!s.inBom) j["in_bom"] = false;
+    j["pin_numbers"] = s.showPinNumbers;
+    j["pin_names"] = s.showPinNames;
+    j["ref_at"] = pt(s.refPos);
+    j["value_at"] = pt(s.valuePos);
+    json pins = json::array();
+    for (const auto& p : s.pins) pins.push_back({{"number", p.number}, {"name", p.name}, {"at", pt(p.pos)}, {"end", pt(p.end)}, {"type", toString(p.type)}});
+    j["pins"] = std::move(pins);
+    json shapes = json::array();
+    static const char* kinds[] = {"poly", "circle", "rect", "text"};
+    for (const auto& sh : s.shapes) {
+        json q;
+        q["kind"] = kinds[sh.kind];
+        json pts = json::array();
+        for (const auto& p : sh.pts) pts.push_back(pt(p));
+        q["pts"] = std::move(pts);
+        if (sh.r) q["r"] = sh.r;
+        if (sh.closed) q["closed"] = true;
+        if (sh.fill) q["fill"] = true;
+        if (!sh.text.empty()) {
+            q["text"] = sh.text;
+            q["size"] = sh.size;
+        }
+        shapes.push_back(std::move(q));
+    }
+    j["shapes"] = std::move(shapes);
+    return j;
+}
+
+PinType readPinType(const std::string& t) {
+    for (PinType k : {PinType::Passive, PinType::Input, PinType::Output, PinType::Bidirectional, PinType::PowerIn, PinType::PowerOut,
+                      PinType::OpenCollector, PinType::NotConnected}) {
+        if (t == toString(k)) return k;
+    }
+    return PinType::Passive;
+}
+
+std::shared_ptr<const Symbol> readSymbol(const json& j) {
+    auto s = std::make_shared<Symbol>();
+    s->name = j.value("name", "");
+    s->title = j.value("title", "");
+    s->category = "imported";
+    s->prefix = j.value("prefix", "U");
+    s->value = j.value("value", "");
+    s->footprint = j.value("footprint", "");
+    s->power = j.value("power", false);
+    s->joinSameName = j.value("join_same_name", false);
+    s->inBom = j.value("in_bom", true);
+    s->showPinNumbers = j.value("pin_numbers", false);
+    s->showPinNames = j.value("pin_names", false);
+    if (j.contains("ref_at")) s->refPos = readPt(j["ref_at"]);
+    if (j.contains("value_at")) s->valuePos = readPt(j["value_at"]);
+    for (const auto& p : j.value("pins", json::array())) {
+        s->pins.push_back({p.value("number", ""), p.value("name", ""), readPt(p["at"]), readPt(p["end"]), readPinType(p.value("type", "passive"))});
+    }
+    for (const auto& q : j.value("shapes", json::array())) {
+        Shape sh;
+        const std::string k = q.value("kind", "poly");
+        sh.kind = k == "circle" ? Shape::Circle : k == "rect" ? Shape::Rect : k == "text" ? Shape::Text : Shape::Poly;
+        for (const auto& p : q.value("pts", json::array())) sh.pts.push_back(readPt(p));
+        sh.r = q.value("r", 0.0);
+        sh.closed = q.value("closed", false);
+        sh.fill = q.value("fill", false);
+        sh.text = q.value("text", "");
+        sh.size = q.value("size", 0.7);
+        s->shapes.push_back(std::move(sh));
+    }
+    finishSymbol(*s);
+    return s;
+}
+
+json footprintJson(const Footprint& f) {
+    json j;
+    j["name"] = f.name;
+    j["description"] = f.description;
+    json pads = json::array();
+    static const char* shapes[] = {"rect", "circle", "oval"};
+    for (const auto& p : f.pads) {
+        json q{{"number", p.number}, {"at", pt(p.pos)}, {"size", json::array({p.w, p.h})}, {"shape", shapes[static_cast<int>(p.shape)]}};
+        if (p.drill > 0) q["drill"] = p.drill;
+        if (!p.plated) q["plated"] = false;
+        pads.push_back(std::move(q));
+    }
+    j["pads"] = std::move(pads);
+    json silk = json::array();
+    for (const auto& [a, b] : f.silk) silk.push_back(json::array({a.x, a.y, b.x, b.y}));
+    j["silk"] = std::move(silk);
+    j["courtyard"] = json::array({f.x0, f.y0, f.x1, f.y1});
+    return j;
+}
+
+std::shared_ptr<const Footprint> readFootprint(const json& j) {
+    auto f = std::make_shared<Footprint>();
+    f->name = j.value("name", "");
+    f->description = j.value("description", "");
+    for (const auto& q : j.value("pads", json::array())) {
+        PadDef p;
+        p.number = q.value("number", "");
+        p.pos = readPt(q["at"]);
+        const Pt size = readPt(q["size"]);
+        p.w = size.x, p.h = size.y;
+        const std::string sh = q.value("shape", "rect");
+        p.shape = sh == "circle" ? PadShape::Circle : sh == "oval" ? PadShape::Oval : PadShape::Rect;
+        p.drill = q.value("drill", 0.0);
+        p.plated = q.value("plated", true);
+        f->pads.push_back(p);
+    }
+    for (const auto& l : j.value("silk", json::array())) {
+        if (l.is_array() && l.size() == 4) f->silk.push_back({{l[0].get<double>(), l[1].get<double>()}, {l[2].get<double>(), l[3].get<double>()}});
+    }
+    finishFootprint(*f);
+    if (j.contains("courtyard") && j["courtyard"].size() == 4) {
+        const auto& c = j["courtyard"];
+        f->x0 = c[0].get<double>(), f->y0 = c[1].get<double>(), f->x1 = c[2].get<double>(), f->y1 = c[3].get<double>();
+    }
+    return f;
+}
+
 }  // namespace
 
 std::string toJson(const Circuit& c) {
@@ -126,8 +209,23 @@ std::string toJson(const Circuit& c) {
     j["version"] = 1;
     j["title"] = c.title;
     json parts = json::array();
+    // custom symbols and footprints are stored once each, keyed by name (made unique)
+    std::map<const void*, std::string> customKeys;
+    json symbols = json::object(), footprints = json::object();
+    auto keyFor = [&](const void* ptr, const std::string& name, json& table, const json& body) {
+        if (auto it = customKeys.find(ptr); it != customKeys.end()) return it->second;
+        std::string key = name.empty() ? "custom" : name;
+        for (int n = 2; table.contains(key); ++n) key = (name.empty() ? "custom" : name) + "~" + std::to_string(n);
+        table[key] = body;
+        customKeys[ptr] = key;
+        return key;
+    };
     for (const auto& p : c.parts) {
         json q;
+        if (p.customSymbol) q["custom_symbol"] = keyFor(p.customSymbol.get(), p.customSymbol->name, symbols, symbolJson(*p.customSymbol));
+        if (p.customFootprint)
+            q["custom_footprint"] = keyFor(p.customFootprint.get(), p.customFootprint->name, footprints, footprintJson(*p.customFootprint));
+        if (p.unit) q["unit"] = p.unit;
         q["ref"] = p.ref;
         q["symbol"] = p.symbol;
         q["value"] = p.value;
@@ -144,6 +242,8 @@ std::string toJson(const Circuit& c) {
         parts.push_back(std::move(q));
     }
     j["parts"] = std::move(parts);
+    if (!symbols.empty()) j["symbols"] = std::move(symbols);
+    if (!footprints.empty()) j["footprints"] = std::move(footprints);
     json wires = json::array();
     for (const auto& w : c.wires) {
         json pts = json::array();
@@ -152,7 +252,11 @@ std::string toJson(const Circuit& c) {
     }
     j["wires"] = std::move(wires);
     json labels = json::array();
-    for (const auto& l : c.labels) labels.push_back({{"name", l.name}, {"at", pt(l.pos)}});
+    for (const auto& l : c.labels) {
+        json q{{"name", l.name}, {"at", pt(l.pos)}};
+        if (!l.kind.empty()) q["kind"] = l.kind;
+        labels.push_back(std::move(q));
+    }
     j["labels"] = std::move(labels);
     json nc = json::array();
     for (const auto& p : c.noConnects) nc.push_back(pt(p));
@@ -160,10 +264,11 @@ std::string toJson(const Circuit& c) {
     json b;
     json outline = json::array();
     for (const auto& p : c.board.outline) outline.push_back(pt(p));
+    b["layers"] = c.board.layers;
     b["outline"] = std::move(outline);
     json traces = json::array();
     for (const auto& t : c.board.traces) {
-        traces.push_back({{"a", pt(t.a)}, {"b", pt(t.b)}, {"width", t.width}, {"layer", t.layer == 0 ? "F" : "B"}, {"net", t.net}});
+        traces.push_back({{"a", pt(t.a)}, {"b", pt(t.b)}, {"width", t.width}, {"layer", layerShort(t.layer)}, {"net", t.net}});
     }
     b["traces"] = std::move(traces);
     json vias = json::array();
@@ -171,7 +276,7 @@ std::string toJson(const Circuit& c) {
     b["vias"] = std::move(vias);
     json zones = json::array();
     for (const auto& z : c.board.zones) {
-        zones.push_back({{"net", z.net}, {"layer", z.layer == 0 ? "F" : "B"}, {"clearance", z.clearance}, {"min_width", z.minWidth}});
+        zones.push_back({{"net", z.net}, {"layer", layerShort(z.layer)}, {"clearance", z.clearance}, {"min_width", z.minWidth}, {"thermal", z.thermal}, {"spoke", z.spoke}});
     }
     b["zones"] = std::move(zones);
     const Rules& r = c.board.rules;
@@ -193,8 +298,27 @@ Circuit fromJson(const std::string& text) {
     Circuit c;
     try {
         c.title = j.value("title", "");
+        std::map<std::string, std::shared_ptr<const Symbol>> symbols;
+        std::map<std::string, std::shared_ptr<const Footprint>> footprints;
+        if (j.contains("symbols")) {
+            for (const auto& [key, body] : j["symbols"].items()) symbols[key] = readSymbol(body);
+        }
+        if (j.contains("footprints")) {
+            for (const auto& [key, body] : j["footprints"].items()) footprints[key] = readFootprint(body);
+        }
         for (const auto& q : j["parts"]) {
             Part p;
+            if (q.contains("custom_symbol")) {
+                auto it = symbols.find(q["custom_symbol"].get<std::string>());
+                if (it == symbols.end()) throw std::runtime_error("a part names a symbol the file doesn't hold");
+                p.customSymbol = it->second;
+            }
+            if (q.contains("custom_footprint")) {
+                auto it = footprints.find(q["custom_footprint"].get<std::string>());
+                if (it == footprints.end()) throw std::runtime_error("a part names a footprint the file doesn't hold");
+                p.customFootprint = it->second;
+            }
+            p.unit = q.value("unit", 0);
             p.ref = q.value("ref", "");
             p.symbol = q.value("symbol", "");
             p.value = q.value("value", "");
@@ -222,19 +346,20 @@ Circuit fromJson(const std::string& text) {
             }
         }
         if (j.contains("labels")) {
-            for (const auto& l : j["labels"]) c.labels.push_back({l.value("name", ""), readPt(l["at"])});
+            for (const auto& l : j["labels"]) c.labels.push_back({l.value("name", ""), readPt(l["at"]), l.value("kind", "")});
         }
         if (j.contains("no_connects")) {
             for (const auto& p : j["no_connects"]) c.noConnects.push_back(readPt(p));
         }
         if (j.contains("board")) {
             const auto& b = j["board"];
+            c.board.layers = b.value("layers", 2) == 4 ? 4 : 2;
             if (b.contains("outline")) {
                 for (const auto& p : b["outline"]) c.board.outline.push_back(readPt(p));
             }
             if (b.contains("traces")) {
                 for (const auto& t : b["traces"]) {
-                    c.board.traces.push_back({readPt(t["a"]), readPt(t["b"]), t.value("width", 0.25), t.value("layer", "F") == "B" ? 1 : 0, t.value("net", "")});
+                    c.board.traces.push_back({readPt(t["a"]), readPt(t["b"]), t.value("width", 0.25), std::max(0, parseLayer(t.value("layer", "F"))), t.value("net", "")});
                 }
             }
             if (b.contains("vias")) {
@@ -242,7 +367,10 @@ Circuit fromJson(const std::string& text) {
             }
             if (b.contains("zones")) {
                 for (const auto& z : b["zones"]) {
-                    c.board.zones.push_back({z.value("net", ""), z.value("layer", "B") == "F" ? 0 : 1, z.value("clearance", 0.3), z.value("min_width", 0.25)});
+                    Zone zone{z.value("net", ""), std::max(0, parseLayer(z.value("layer", "B"))), z.value("clearance", 0.3), z.value("min_width", 0.25)};
+                    zone.thermal = z.value("thermal", true);
+                    zone.spoke = z.value("spoke", 0.5);
+                    c.board.zones.push_back(zone);
                 }
             }
             if (b.contains("rules")) {
@@ -267,8 +395,7 @@ Circuit fromJson(const std::string& text) {
 }
 
 Circuit fromKicadNetlist(const std::string& text, std::vector<std::string>* warnings) {
-    std::size_t i = 0;
-    Sx root = parseSx(text, i);
+    Sx root = parseSx(text);
     if (!root.isList || root.list.empty() || root.list[0].atom != "export") throw std::runtime_error("not a KiCad netlist (expected (export ...))");
     Circuit c;
     if (const Sx* design = root.child("design")) c.title = design->value("source");
@@ -419,9 +546,7 @@ std::string CircuitDoc::summary() const {
 }
 
 std::unique_ptr<Attachment> CircuitDoc::preview() const {
-    const pdf::Page page = schematicPage(circuit);
-    const double scale = std::clamp(1400.0 / std::max(page.width, page.height), 0.5, 2.5);
-    return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(pdf::renderPage(page, scale)), "schematic.png"});
+    return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(viewImage(circuit, view)), view + ".png"});
 }
 
 Result CircuitEdit::apply() {

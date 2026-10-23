@@ -12,10 +12,22 @@
 
 namespace wetwaresuite::gui {
 
+// One app on the launcher's grid.
+struct LauncherApp {
+    std::string id;       // "image": started as wetwaresuite-image through app.launch
+    std::string name;     // "Image"
+    std::string summary;  // one line of plain words
+    std::uint32_t accent = 0x3d7eff;
+};
+
 struct AppInfo {
     std::string name;                // shown in the title bar, e.g. "wetwaresuite image"
     std::vector<std::string> tools;  // tool ids this app carries, e.g. {"photo", "paint"}; empty = every command's prefix
     std::uint32_t accent = 0x3d7eff;  // 0xRRGGBB
+    // Non-empty: the window is the launcher. It carries no tools; each app it
+    // starts (and each file it opens) runs as its own program in its own window.
+    std::vector<LauncherApp> launcher;
+    std::string id;  // "image", "launcher": names the window to the desktop so each app gets its own dock/taskbar entry
 };
 
 struct RunOptions {

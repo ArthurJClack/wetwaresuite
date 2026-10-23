@@ -8,6 +8,8 @@
 #include <vector>
 
 #include "wetwaresuite/capture/capture.hpp"
+#include "wetwaresuite/capture/scene.hpp"
+#include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/core/process.hpp"
 #include "wetwaresuite/mcp/server.hpp"
@@ -334,6 +336,20 @@ void testXvfb() {
         r = batch.runLine("capture.record display=" + display + " output=\"" + (dir / "rec.gif").string() + "\" duration=0.5 fps=10");
         CHECK(r.ok && num(r, "bytes") > 0);
         if (!r.ok) std::printf("  %s\n", r.message.c_str());
+        // a scene: the screen with a colour box and text over it
+        CHECK(batch.runLine("capture.scene_new width=320 height=240 fps=10").ok);
+        CHECK(batch.runLine("capture.add_source doc=scene1 kind=screen").ok);
+        CHECK(batch.runLine("capture.add_source doc=scene1 kind=color color=red x=0 y=0 width=40 height=40").ok);
+        CHECK(batch.runLine("capture.add_source doc=scene1 kind=text text=REC font_size=24 x=200 y=10").ok);
+        r = batch.runLine("capture.record_scene doc=scene1 display=" + display + " output=\"" + (dir / "scene.mp4").string() + "\" duration=1 quality=draft");
+        CHECK(r.ok && num(r, "bytes") > 0);
+        if (!r.ok) std::printf("  %s\n", r.message.c_str());
+        r = batch.runLine("capture.start_recording display=" + display + " output=\"" + (dir / "screen.mkv").string() + "\" quality=draft");
+        CHECK(r.ok);
+        std::this_thread::sleep_for(std::chrono::milliseconds(800));
+        r = batch.runLine("capture.stop_recording");
+        CHECK(r.ok && num(r, "bytes") > 0);
+        if (!r.ok) std::printf("  %s\n", r.message.c_str());
     } else {
         std::printf("Xvfb didn't come up: skipping\n");
     }
@@ -348,6 +364,183 @@ void testXvfb() {
 #endif
 }
 
+
+std::string writePng(const fs::path& path, raster::Color c, int w, int h) {
+    raster::Image img(w, h, c);
+    raster::save(img, path);
+    return path.string();
+}
+
+// Scenes: planning the recording, drawing, and the commands, all without a screen.
+void testScenes() {
+    const fs::path dir = fs::temp_directory_path() / "wetwaresuite_capture_scene";
+    fs::remove_all(dir);
+    fs::create_directories(dir);
+    const std::string logo = writePng(dir / "logo.png", {255, 0, 0, 255}, 20, 10);
+
+    Scene sc;
+    sc.width = 1280;
+    sc.height = 720;
+    sc.fps = 25;
+    Source screen;
+    screen.id = "s1";
+    screen.kind = "screen";
+    screen.monitor = 1;
+    Source cam;
+    cam.id = "s2";
+    cam.kind = "webcam";
+    cam.x = 960;
+    cam.y = 500;
+    cam.width = 320;
+    cam.height = 180;
+    cam.keyColor = "#00ff00";
+    cam.opacity = 0.8;
+    Source text;
+    text.id = "s3";
+    text.kind = "text";
+    text.text = "LIVE";
+    Source hidden = text;
+    hidden.id = "s4";
+    hidden.visible = false;
+    sc.sources = {screen, cam, text, hidden};
+    SceneRecordRequest rq;
+    rq.output = "/out/show.mp4";
+    rq.duration = 5;
+    std::map<std::string, std::string> stills = {{"s3", "/tmp/s3.png"}};
+    Plan plan = planSceneRecord(linux(), sc, rq, stills);
+    CHECK(plan.ok());
+    if (!plan.ok()) std::printf("  %s\n", plan.error.c_str());
+    CHECK(has(plan.args, {"-f", "x11grab"}) && has(plan.args, {"-i", ":0+1920,0"}) && has(plan.args, {"-f", "v4l2"}) &&
+          has(plan.args, {"-i", "/dev/video0"}) && has(plan.args, {"-loop", "1", "-framerate", "25", "-i", "/tmp/s3.png"}));
+    const std::string graph = after(plan.args, "-filter_complex");
+    CHECK(contains(graph, "color=c=0x000000:s=1280x720:r=25[b0]"));
+    CHECK(contains(graph, "[0:v]scale=1280:720,format=rgba[s0]") && contains(graph, "[b0][s0]overlay=x=0:y=0"));
+    CHECK(contains(graph, "[1:v]scale=320:180,format=rgba,colorkey=0x00FF00:0.3:0.1,colorchannelmixer=aa=0.8[s1]"));
+    CHECK(contains(graph, "[b1][s1]overlay=x=960:y=500") && contains(graph, "[2:v]format=rgba[s2]") && contains(graph, "[b3]format=yuv420p[out]"));
+    CHECK(!contains(graph, "[b4]"));  // the hidden source isn't in it
+    CHECK(has(plan.args, {"-map", "[out]"}) && has(plan.args, {"-t", "5"}) && plan.args.back() == "/out/show.mp4" && has(plan.args, {"-nostdin"}));
+    CHECK(plan.backend == "x11grab+v4l2");
+    // until stopped: no time limit, and ffmpeg listens for q
+    rq.duration = 0;
+    rq.forStop = true;
+    rq.audio = true;
+    plan = planSceneRecord(linux(), sc, rq, stills);
+    CHECK(plan.ok() && !has(plan.args, {"-nostdin"}) && after(plan.args, "-t").empty() && has(plan.args, {"-f", "pulse"}) && has(plan.args, {"-map", "3:a"}));
+    rq.forStop = false;
+    CHECK(contains(planSceneRecord(linux(), sc, rq, stills).error, "duration"));
+    rq.duration = 2;
+    CHECK(contains(planSceneRecord(linux(""), sc, rq, stills).error, "no screen"));
+    Environment win;
+    win.platform = Platform::Windows;
+    win.hasFfmpeg = true;
+    Source window;
+    window.id = "s5";
+    window.kind = "window";
+    window.window = "Notepad";
+    Scene ws;
+    ws.sources = {window};
+    rq.audio = false;
+    plan = planSceneRecord(win, ws, rq, {});
+    CHECK(plan.ok() && has(plan.args, {"-f", "gdigrab"}) && has(plan.args, {"-i", "title=Notepad"}));
+    CHECK(contains(planSceneRecord(linux(), ws, rq, {}).error, "Windows"));
+    rq.output = "/out/x.avi";
+    CHECK(!planSceneRecord(linux(), sc, rq, stills).ok());
+    Environment noff = linux();
+    noff.hasFfmpeg = false;
+    rq.output = "/out/x.mp4";
+    CHECK(contains(planSceneRecord(noff, sc, rq, stills).error, "ffmpeg"));
+
+    // JSON
+    sc.name = "Stream";
+    Source img;
+    img.id = "s6";
+    img.kind = "image";
+    img.path = logo;
+    sc.sources.push_back(img);
+    sc.nextSource = 7;
+    auto back = sceneFromJson(toJson(sc));
+    CHECK(back->name == "Stream" && back->sources.size() == 5 && back->sources[1].keyColor == cam.keyColor && back->sources[1].opacity == cam.opacity && back->sources[3].visible == false && back->nextSource == 7);
+    CHECK(toJson(*back) == toJson(sc));
+    bool threw = false;
+    try {
+        sceneFromJson("{\"format\":\"wwcut\"}");
+    } catch (const std::exception&) {
+        threw = true;
+    }
+    CHECK(threw);
+
+    // the commands, drawing with no screen
+    Session s;
+    registerCommands(s);
+    cli::Batch batch(s);
+    Result r = batch.runLine("capture.scene_new width=160 height=90 fps=10 background=#0000ff");
+    CHECK(r.ok && toText(r.value) == "scene1");
+    auto scene = s.workspace().getAs<Scene>("scene1");
+    CHECK(batch.runLine("capture.add_source doc=scene1 kind=screen").ok);
+    CHECK(batch.runLine("capture.add_source doc=scene1 kind=image path=\"" + logo + "\" x=10 y=10").ok);
+    CHECK(batch.runLine("capture.add_source doc=scene1 kind=text text=Hello font_size=20 x=60 y=60 color=yellow").ok);
+    CHECK(batch.runLine("capture.add_source doc=scene1 kind=color color=#00ff00 x=140 y=0 width=20 height=20").ok);
+    CHECK(!batch.runLine("capture.add_source doc=scene1 kind=image path=/no/such.png").ok);
+    CHECK(!batch.runLine("capture.add_source doc=scene1 kind=hologram").ok);
+    CHECK(!batch.runLine("capture.add_source doc=scene1 kind=text").ok);
+    CHECK(scene->sources.size() == 4);
+    r = batch.runLine("capture.preview_scene doc=scene1 width=160");
+    CHECK(r.ok && r.attachments.size() == 1);
+    raster::Image pic = raster::decode(r.attachments[0].bytes);
+    auto pxl = [&](int x, int y) {
+        const std::uint8_t* p = pic.pixel(x, y);
+        return std::vector<int>{p[0], p[1], p[2]};
+    };
+    CHECK(pic.width() == 160 && pxl(15, 15) == std::vector<int>({255, 0, 0}) && pxl(150, 10) == std::vector<int>({0, 255, 0}));
+    CHECK(pxl(100, 20)[2] < 100);  // the screen placeholder covers the blue background
+    int yellow = 0;
+    for (int y = 60; y < 90; ++y)
+        for (int x = 60; x < 160; ++x) yellow += pic.pixel(x, y)[0] > 200 && pic.pixel(x, y)[1] > 200 && pic.pixel(x, y)[2] < 80;
+    CHECK(yellow > 10);
+    // hide the screen: the background shows; restack; undo
+    CHECK(batch.runLine("capture.set_source doc=scene1 source=s1 visible=false").ok);
+    pic = raster::decode(scene->preview()->bytes);
+    CHECK(pic.pixel(100, 20)[2] > 200);
+    CHECK(batch.runLine("undo").ok && scene->sources[0].visible);
+    CHECK(batch.runLine("capture.set_source doc=scene1 source=s1 order=top").ok && scene->sources.back().id == "s1");
+    CHECK(batch.runLine("capture.set_source doc=scene1 source=s1 order=bottom x=5").ok && scene->sources.front().id == "s1" && scene->sources.front().x == 5);
+    CHECK(!batch.runLine("capture.set_source doc=scene1 source=s1 opacity=2").ok);
+    CHECK(batch.runLine("capture.remove_source doc=scene1 source=s1").ok && scene->sources.size() == 3);
+    r = batch.runLine("capture.scene_info doc=scene1");
+    CHECK(r.ok && num(r, "sources") == 3 && contains(r.message, "Hello"));
+    const std::string file = (dir / "show.wwscene").string();
+    CHECK(batch.runLine("capture.scene_save doc=scene1 path=\"" + file + "\"").ok);
+    r = batch.runLine("capture.scene_open path=\"" + file + "\"");
+    CHECK(r.ok && toText(r.value) == "scene2" && toJson(*s.workspace().getAs<Scene>("scene2")) == toJson(*scene));
+    CHECK(!batch.runLine("capture.stop_recording").ok);  // nothing running
+    CHECK(batch.runLine("capture.recordings").ok);
+
+    // stills alone record without a screen when ffmpeg is here
+    if (findProgram("ffmpeg")) {
+        const std::string out = (dir / "stills.mp4").string();
+        r = batch.runLine("capture.record_scene doc=scene1 output=\"" + out + "\" duration=1 quality=draft");
+        CHECK(r.ok && num(r, "bytes") > 0);
+        if (!r.ok) std::printf("  %s\n", r.message.c_str());
+        r = batch.runLine("capture.start_recording doc=scene1 output=\"" + (dir / "live.mp4").string() + "\" quality=draft");
+        CHECK(r.ok && toText(r.value) == "rec1");
+        if (!r.ok) std::printf("  %s\n", r.message.c_str());
+        std::this_thread::sleep_for(std::chrono::milliseconds(1200));
+        r = batch.runLine("capture.recordings");
+        CHECK(r.ok && num(r, "count") == 1);
+        r = batch.runLine("capture.stop_recording recording=rec1");
+        CHECK(r.ok && num(r, "bytes") > 0);
+        if (!r.ok) std::printf("  %s\n", r.message.c_str());
+        if (findProgram("ffprobe")) {
+            ProcessResult pr = runProgram({findProgram("ffprobe")->string(), "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0",
+                                           (dir / "live.mp4").string()});
+            CHECK(pr.exitCode == 0 && std::atof(pr.output.c_str()) > 0.4);
+        }
+    } else {
+        std::printf("ffmpeg not found: skipping scene recordings\n");
+    }
+    fs::remove_all(dir);
+}
+
 }  // namespace
 
 int main() {
@@ -355,6 +548,7 @@ int main() {
     testRecordPlans();
     testWebcamAndParsing();
     testCommands();
+    testScenes();
     testXvfb();
     return check::summary("capture");
 }

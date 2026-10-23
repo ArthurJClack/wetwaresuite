@@ -1,4 +1,6 @@
 // The terminal.* commands.
+#include <algorithm>
+
 #include "wetwaresuite/sysutil/sysutil.hpp"
 #include "wetwaresuite/terminal/terminal.hpp"
 

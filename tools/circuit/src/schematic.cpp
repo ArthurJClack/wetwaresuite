@@ -115,9 +115,15 @@ Part* Circuit::part(const std::string& ref) {
 
 const Part* Circuit::part(const std::string& ref) const { return const_cast<Circuit*>(this)->part(ref); }
 
-std::shared_ptr<const Symbol> symbolOf(const Part& part) { return findSymbol(part.symbol, part.pins, part.pinNames); }
+std::shared_ptr<const Symbol> symbolOf(const Part& part) {
+    if (part.customSymbol) return part.customSymbol;
+    return findSymbol(part.symbol, part.pins, part.pinNames);
+}
 
-std::shared_ptr<const Footprint> footprintOf(const Part& part) { return findFootprint(part.footprint); }
+std::shared_ptr<const Footprint> footprintOf(const Part& part) {
+    if (part.customFootprint) return part.customFootprint;
+    return findFootprint(part.footprint);
+}
 
 Pt toSheet(const Part& part, Pt p) {
     if (part.mirror) p.x = -p.x;
@@ -324,7 +330,7 @@ Netlist buildNetlist(const Circuit& c) {
             const int id = pointId(pinPos(part, pin));
             ++touches[static_cast<std::size_t>(id)];
             pins.push_back({&part, &pin, id, sym->power, sym->module});
-            if (sym->module) {
+            if (sym->module || sym->joinSameName) {
                 auto [it, fresh] = sameName.emplace(pin.name, id);
                 if (!fresh) uf.unite(it->second, id);
             }
@@ -471,7 +477,7 @@ std::vector<Issue> erc(const Circuit& c, const Netlist& nl) {
             continue;
         }
         if (sym->power) continue;
-        ++refs[upper(p.ref)];
+        ++refs[upper(p.ref) + (p.unit > 0 ? " (unit " + std::to_string(p.unit) + ")" : "")];
         if (p.ref.empty() || p.ref.back() == '?') out.push_back({"error", "unannotated", "part '" + p.ref + "' has no reference number"});
         if (!p.footprint.empty()) {
             auto fp = footprintOf(p);
@@ -549,10 +555,12 @@ std::vector<Issue> erc(const Circuit& c, const Netlist& nl) {
 std::string bomCsv(const Circuit& c, bool grouped) {
     std::set<std::string> fieldKeys;
     std::vector<const Part*> parts;
+    std::set<std::string> multiUnit;  // the units of one part count once
     for (const auto& p : c.parts) {
+        if (p.unit > 0 && !multiUnit.insert(p.ref).second) continue;
         auto sym = symbolOf(p);
         if (sym && (sym->power || ((sym->name == "vsource" || sym->name == "isource") && p.footprint.empty()))) continue;
-        if (p.fields.count("dnp")) continue;
+        if (p.fields.count("dnp") || (sym && !sym->inBom)) continue;
         parts.push_back(&p);
         for (const auto& [k, v] : p.fields) fieldKeys.insert(k);
     }
@@ -612,9 +620,11 @@ std::string kicadNetlist(const Circuit& c, const Netlist& nl) {
     o << "(export (version \"E\")\n  (design\n    (source " << sexpStr(c.title.empty() ? "circuit" : c.title) << ")\n    (tool \"wetwaresuite circuit\"))\n";
     o << "  (components\n";
     std::vector<const Part*> parts;
+    std::set<std::string> multiUnit;
     for (const auto& p : c.parts) {
         auto sym = symbolOf(p);
         if (sym && sym->power) continue;
+        if (p.unit > 0 && !multiUnit.insert(p.ref).second) continue;
         parts.push_back(&p);
     }
     std::sort(parts.begin(), parts.end(), [](const Part* a, const Part* b) { return refLess(a->ref, b->ref); });

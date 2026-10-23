@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -380,6 +381,135 @@ void testMcp() {
     std::filesystem::remove(stl);
 }
 
+void testUpgrades() {
+    // clipping open polylines: a line across a 10 mm square with a 4 mm hole keeps 6 mm in two pieces
+    Region ring = {square(0, 0, 10), square(3, 3, 4, false)};
+    auto pieces = clipPolylines(ring, {{{-5, 5}, {2, 5}, {15, 5}}});
+    double kept = 0;
+    for (const auto& pl : pieces) {
+        for (std::size_t k = 1; k < pl.size(); ++k) kept += length(pl[k] - pl[k - 1]);
+    }
+    CHECK(pieces.size() == 2 && near(kept, 6, 1e-9));
+    // shifted line grids slide sideways
+    auto a = fillLines({square(0, 0, 10)}, 2, 0, 0), b = fillLines({square(0, 0, 10)}, 2, 0, 0.5);
+    CHECK(!a.empty() && !b.empty() && near(std::fmod(b.front().first.y, 2.0), 0.5, 1e-9));
+
+    // every infill pattern lays down about as much line as grid at the same density
+    Config c = defaults();
+    c.settings.topLayers = c.settings.bottomLayers = 0;
+    c.settings.perimeters = 1;
+    const mesh::Mesh cube = cubeOnBed(30, c.printer);
+    auto infillLength = [](const SliceResult& r, std::size_t layer) {
+        double len = 0;
+        for (const auto& p : r.layers[layer].paths) {
+            if (p.type != PathType::Infill) continue;
+            for (std::size_t k = 1; k < p.points.size(); ++k) len += length(p.points[k] - p.points[k - 1]);
+            if (p.closed) len += length(p.points.front() - p.points.back());
+        }
+        return len;
+    };
+    const double grid = infillLength(slice(cube, c), 70);
+    CHECK(grid > 100);
+    for (const char* pattern : {"gyroid", "cubic", "concentric"}) {
+        Config pc = c;
+        pc.settings.infillPattern = pattern;
+        const SliceResult r = slice(cube, pc);
+        const double len = infillLength(r, 70);
+        CHECK(len > grid * 0.75 && len < grid * 1.3);
+        Parsed pp = parse(toGcode(r, pc).text, pc.printer);
+        CHECK(pp.inBed && pp.eMonotonic);
+        if (std::string(pattern) != "concentric") {
+            // the lattice moves from layer to layer
+            const auto& p1 = r.layers[70].paths.back().points.front();
+            const auto& p2 = r.layers[72].paths.back().points.front();
+            CHECK(length(p1 - p2) > 1e-3);
+        }
+    }
+
+    // tree supports under a mushroom cap: less plastic than columns, clear of the stem, standing on the bed
+    mesh::Mesh mush = mesh::box({10, 10, 30}, false);
+    mesh::Mesh cap = mesh::box({40, 40, 4}, false);
+    mesh::transform(cap, mesh::Mat4::translate({-15, -15, 30}));
+    mesh::append(mush, cap);
+    centerOnBed(mush, c.printer);
+    Config cols = defaults(), tree = defaults();
+    cols.settings.supports = tree.settings.supports = "buildplate";
+    tree.settings.supportStyle = "tree";
+    const SliceResult rc = slice(mush, cols), rt = slice(mush, tree);
+    const double gc = toGcode(rc, cols).filamentGrams, gt = toGcode(rt, tree).filamentGrams;
+    CHECK(gt < gc);
+    std::size_t supportPaths = 0;
+    bool clear = true, onBed = false;
+    const double stem0 = c.printer.bedX / 2 - 5, stem1 = c.printer.bedX / 2 + 5;
+    for (std::size_t i = 0; i < 149; ++i) {
+        for (const auto& p : rt.layers[i].paths) {
+            if (p.type != PathType::Support) continue;
+            ++supportPaths;
+            onBed = onBed || i == 0;
+            for (const auto& v : p.points) clear = clear && !(v.x > stem0 - 0.3 && v.x < stem1 + 0.3 && v.y > stem0 - 0.3 && v.y < stem1 + 0.3);
+        }
+    }
+    CHECK(supportPaths > 100 && clear && onBed);
+    // right under the cap the tips cover the whole overhang
+    std::size_t tips = 0;
+    for (const auto& p : rt.layers[147].paths) tips += p.type == PathType::Support && p.closed;
+    CHECK(tips > 100);
+    Parsed tp = parse(toGcode(rt, tree).text, tree.printer);
+    CHECK(tp.inBed && tp.eMonotonic);
+
+    // z hop lifts on long travels
+    Config hop = defaults();
+    hop.settings.zHop = 0.4;
+    const std::string g0 = toGcode(slice(cube, defaults()), defaults()).text, g1 = toGcode(slice(cube, hop), hop).text;
+    auto zMoves = [](const std::string& g) {
+        std::size_t n = 0;
+        for (std::size_t pos = g.find("G0 Z"); pos != std::string::npos; pos = g.find("G0 Z", pos + 1)) ++n;
+        return n;
+    };
+    CHECK(zMoves(g1) > zMoves(g0) + 100);
+
+    // arranging boxes on the bed
+    std::vector<mesh::Bounds> boxes(4, mesh::Bounds{{0, 0, 0}, {50, 40, 10}});
+    auto centres = arrange(boxes, c.printer, 5);
+    CHECK(centres && centres->size() == 4);
+    if (centres) {
+        bool apart = true;
+        for (std::size_t i = 0; i < 4; ++i) {
+            for (std::size_t j = i + 1; j < 4; ++j) {
+                apart = apart && (std::abs((*centres)[i].x - (*centres)[j].x) >= 55 - 1e-9 || std::abs((*centres)[i].y - (*centres)[j].y) >= 45 - 1e-9);
+            }
+        }
+        CHECK(apart);
+    }
+    CHECK(!arrange(std::vector<mesh::Bounds>(30, mesh::Bounds{{0, 0, 0}, {50, 40, 10}}), c.printer, 5));
+
+    // several parts on one bed through the commands
+    Session session;
+    registerCommands(session);
+    const auto stl = tmp("part.stl");
+    mesh::save(stl, mesh::box({20, 20, 10}));
+    const std::string doc = toText(*session.run("slicer.load", {{"path", stl.string()}}).field("doc"));
+    Result r = session.run("slicer.add", {{"doc", doc}, {"object", std::string("1")}, {"copies", std::int64_t{3}}});
+    CHECK(r.ok && std::get<std::int64_t>(*r.field("parts")) == 4 && std::get<bool>(*r.field("fits")) && !r.field("overlap"));
+    r = session.run("slicer.info", {{"doc", doc}});
+    CHECK(toText(*r.field("part_names")) == "wetwaresuite_slicer_part, wetwaresuite_slicer_part_2, wetwaresuite_slicer_part_3, wetwaresuite_slicer_part_4");
+    r = session.run("slicer.move", {{"doc", doc}, {"object", std::string("2")}, {"x", 400.0}});
+    CHECK(r.ok && !std::get<bool>(*r.field("fits")));
+    CHECK(!session.run("slicer.slice", {{"doc", doc}}).ok);
+    CHECK(session.run("slicer.arrange", {{"doc", doc}}).ok);
+    r = session.run("slicer.move", {{"doc", doc}, {"object", std::string("3")}, {"x", -25.0}, {"absolute", false}});
+    CHECK(r.ok && r.field("overlap"));
+    CHECK(session.run("slicer.remove", {{"doc", doc}, {"object", std::string("wetwaresuite_slicer_part_3")}}).ok);
+    CHECK(!session.run("slicer.remove", {{"doc", doc}, {"object", std::string("nope")}}).ok);
+    r = session.run("slicer.slice", {{"doc", doc}});
+    CHECK(r.ok);
+    r = session.run("slicer.info", {{"doc", doc}});
+    CHECK(near(std::get<double>(*r.field("volume_cm3")), 12, 0.01));
+    CHECK(!session.run("slicer.add", {{"doc", doc}, {"object", std::string("1")}, {"copies", std::int64_t{200}}}).ok);
+    CHECK(std::get<std::int64_t>(*session.run("slicer.info", {{"doc", doc}}).field("parts")) == 3);
+    std::filesystem::remove(stl);
+}
+
 }  // namespace
 
 int main() {
@@ -388,6 +518,7 @@ int main() {
     testSliceCube();
     testHoleAndSupports();
     testCommands();
+    testUpgrades();
     testMcp();
     return check::summary("slicer");
 }

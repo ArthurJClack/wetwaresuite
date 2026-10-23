@@ -1,3 +1,4 @@
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -498,6 +499,15 @@ void testBookletAndCards(const std::filesystem::path& dir) {
     r = run(s, "layout.impose doc=lay2 path=" + q(dir / "cards2.pdf") + " sheet=A4 gap=6");
     CHECK(r.ok && num(r, "per_sheet") < 10);
     CHECK(!run(s, "layout.impose doc=lay2 path=" + q(dir / "cards3.pdf") + " sheet=A7 cols=5").ok);
+    // Cyrillic and Greek are set in the built-in font and embedded; latin-only cards were not
+    CHECK(slurp(dir / "cards.pdf").find("/Type0") == std::string::npos);
+    run(s, "layout.frame_add doc=lay2 type=text text=\"\xD0\x90\xD0\xB4\xD0\xB0 \xCE\xA9\" size=12");
+    CHECK(run(s, "layout.export doc=lay2 path=" + q(dir / "cyr.pdf")).ok);
+    {
+        const std::string cyr = slurp(dir / "cyr.pdf");
+        CHECK(cyr.find("/Subtype /Type0") != std::string::npos && cyr.find("/FU ") != std::string::npos);
+        CHECK(cyr.find("/ToUnicode") != std::string::npos);
+    }
 }
 
 void testFonts(const std::filesystem::path& dir) {

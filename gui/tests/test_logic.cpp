@@ -179,6 +179,26 @@ void testRealCommands() {
     auto cands = openCandidates("/tmp/cat.PNG", {"paint", "photo"}, all);
     CHECK(!cands.empty() && cands[0] == "photo.open");
     CHECK(openCandidates("x.png", {"paint"}, all).empty());
+    // a tool's other openers count too, and the one naming the extension goes first
+    std::vector<CommandInfo> office = {
+        {"office.doc_open", "Open Document", "Open a .docx or .md file", {ParamSpec{"path"}}, false},
+        {"office.sheet_open", "Open Spreadsheet", "Open .xlsx or .csv", {ParamSpec{"path"}}, false},
+        {"office.sheet_close", "Close", "close", {}, false},
+        {"office.reopen", "Reopen", "no path here", {}, false}};
+    cands = openCandidates("/x/budget.csv", {"office"}, office);
+    CHECK(cands.size() == 2 && cands[0] == "office.sheet_open" && cands[1] == "office.doc_open");
+    // "<tool>.<thing>_open" commands that name the extension are tried first
+    {
+        std::vector<CommandInfo> game = all;
+        game.push_back({"forge.sprite_open", "Open sprite", "Open an Aseprite .aseprite/.ase file.",
+                        {{"path", ParamType::String, "file", false}}, false, true});
+        game.push_back({"forge.other_open", "Open other", "Open an aseprite thing.",
+                        {{"path", ParamType::String, "file", true}, {"size", ParamType::Int, "px", true}}, false, true});
+        auto sprite = openCandidates("hero.aseprite", {"photo", "forge"}, game);
+        CHECK(!sprite.empty() && sprite[0] == "forge.sprite_open");
+        CHECK(std::find(sprite.begin(), sprite.end(), "forge.other_open") == sprite.end());
+        CHECK(openCandidates("hero.ase", {"forge"}, game).size() == 1);
+    }
 }
 
 void testColoursRecentMessages() {
@@ -279,6 +299,40 @@ void testRetouchParams() {
 }
 
 // The params the canvas sends really run, change the picture and undo in one step.
+void testBrushTools() {
+    Session session;
+    photo::registerCommands(session);
+    paint::registerCommands(session);
+    CHECK(session.run("photo.new", {{"width", std::int64_t{60}}, {"height", std::int64_t{40}}, {"background", std::string("#808080")}}).ok);
+    auto doc = session.workspace().getAs<raster::ImageDoc>("img1");
+    CHECK(doc != nullptr);
+    if (!doc) return;
+    BrushToolSettings set;
+    set.size = 8;
+    std::string command, error;
+    Params p;
+    // clone without a source says what to do
+    CHECK(!brushToolParams("clone", "img1", {10, 10, 20, 10}, {}, set, nullptr, command, p, error) && error.find("Alt+click") != std::string::npos);
+    CHECK(!brushToolParams("dodge", "img1", {10}, {}, set, nullptr, command, p, error));
+    // every tool's params run as they are
+    HealSource src;
+    src.pick(40, 30);
+    double off[2];
+    CHECK(src.offsetFor(10, 10, off[0], off[1]));
+    for (const char* tool : {"clone", "dodge", "burn", "sponge", "smudge", "blur", "sharpen"}) {
+        CHECK(brushToolParams(tool, "img1", {10, 10, 20, 10}, {1, 0.5}, set, off, command, p, error));
+        Result r = session.run(command, p);
+        CHECK(r.ok);
+    }
+    // dodge brightens, burn darkens where they paint
+    set.strength = 80;
+    CHECK(brushToolParams("dodge", "img1", {5, 30, 15, 30}, {}, set, nullptr, command, p, error) && session.run(command, p).ok);
+    CHECK(doc->image.layers[0].image.at(10, 30).r > 0x80);
+    CHECK(brushToolParams("burn", "img1", {45, 30, 55, 30}, {}, set, nullptr, command, p, error) && session.run(command, p).ok);
+    CHECK(doc->image.layers[0].image.at(50, 30).r < 0x80);
+    CHECK(std::get<std::string>(p.at("range")) == "midtones" && command == "paint.dodge");
+}
+
 void testRetouchCommands() {
     Session session;
     photo::registerCommands(session);
@@ -342,5 +396,6 @@ int main() {
     testHealSource();
     testRetouchParams();
     testRetouchCommands();
+    testBrushTools();
     return check::summary("gui_logic");
 }

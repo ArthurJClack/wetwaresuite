@@ -1,9 +1,15 @@
 find_package(Threads REQUIRED)
+include(${PROJECT_SOURCE_DIR}/cmake/webp.cmake)
 add_library(wetwaresuite_raster src/image.cpp src/codec.cpp src/ops.cpp src/paint.cpp src/ora.cpp src/document.cpp src/parallel.cpp
-            src/pyramid.cpp)
+            src/pyramid.cpp src/selection.cpp src/tiff.cpp src/webp.cpp src/composite.cpp src/adjustments.cpp src/styles.cpp src/psd.cpp
+            src/retouch.cpp src/filters.cpp)
 add_library(wetwaresuite::raster ALIAS wetwaresuite_raster)
 target_include_directories(wetwaresuite_raster PUBLIC include PRIVATE ${PROJECT_SOURCE_DIR}/third_party/stb)
 target_link_libraries(wetwaresuite_raster PUBLIC wetwaresuite::core PRIVATE Threads::Threads)
+if(TARGET wetwaresuite_webp)
+  target_link_libraries(wetwaresuite_raster PRIVATE wetwaresuite_webp)
+  target_compile_definitions(wetwaresuite_raster PRIVATE WETWARESUITE_HAS_WEBP=1)
+endif()
 # no fused multiply-adds behind our back: the SIMD and scalar loops (and every platform) give the same bytes
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(wetwaresuite_raster PRIVATE -ffp-contract=off)
@@ -15,4 +21,10 @@ if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_raster tests/test_raster.cpp)
   target_link_libraries(test_raster PRIVATE wetwaresuite::raster wetwaresuite_check)
   add_test(NAME raster COMMAND test_raster)
+endif()
+
+if(WETWARESUITE_BUILD_TESTS)
+  add_executable(test_raster_layers tests/test_layers.cpp)
+  target_link_libraries(test_raster_layers PRIVATE wetwaresuite::raster wetwaresuite_check)
+  add_test(NAME raster_layers COMMAND test_raster_layers)
 endif()

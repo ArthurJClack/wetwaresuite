@@ -6,6 +6,7 @@
 // fuses multiply-adds on its own).
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 

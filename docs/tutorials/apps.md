@@ -10,13 +10,13 @@ If you want everything in one program (handy for scripts, servers and Claude), t
 | --- | --- | --- | --- | --- |
 | image | `wetwaresuite-image` | edit photos, paint pictures, make textures | photo, paint | ~2 MB |
 | draw | `wetwaresuite-draw` | vector art and logos, fonts, whiteboards and diagrams | vector, type, board | ~5 MB |
-| model | `wetwaresuite-model` | 3D modeling and sculpting, rendered pictures, animation | sculpt, render, animate | ~4 MB |
+| model | `wetwaresuite-model` | 3D modeling and sculpting, rendered pictures, animation | model, sculpt, render, animate | ~5 MB |
 | game | `wetwaresuite-game` | game assets (meshes, sprites, textures) and game levels | forge, levels | ~4 MB |
 | cad | `wetwaresuite-cad` | precise parts, technical drawings and floor plans, 3D printing, car parts and mounts that fit a phone 3D scan | cad, blueprint, slicer, fit | ~5 MB |
 | electronics | `wetwaresuite-electronics` | circuit diagrams, circuit boards, flashing microcontrollers | circuit, flash | ~4 MB |
 | sound | `wetwaresuite-sound` | record and clean up audio, make music | audio, beats | ~4 MB |
 | video | `wetwaresuite-video` | edit videos, screenshots, screen recording | cut, capture | ~3 MB |
-| office | `wetwaresuite-office` | documents, spreadsheets, slides, PDFs, print layouts, notes | office, layout, notes | ~7 MB |
+| office | `wetwaresuite-office` | documents, spreadsheets, slides, a PDF editor, print layouts, notes | office, pdf, layout, notes | ~7 MB |
 | maps | `wetwaresuite-maps` | offline maps, GPS tracks and map data | maps | ~4 MB |
 | system | `wetwaresuite-system` | calculator, code editor, file manager, terminal, system monitor and clock | calc, code, explorer, terminal, monitor, clock | ~6 MB |
 | files | `wetwaresuite-files` | open, convert, find and batch-process any file | toolkit, convert, library, automate | ~4 MB |

@@ -1,6 +1,7 @@
 // The calc.* commands. Changes to what the calculator remembers (variables,
 // functions, memory, history, settings) are undoable: each keeps a copy of the
 // state from before it ran.
+#include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <sstream>

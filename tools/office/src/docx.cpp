@@ -1,6 +1,9 @@
-// DOCX (read and write) and ODT (read) for the block document model.
+// Reading DOCX into the block document model: styles (built-in changes and your
+// own), run and paragraph formats, lists with their numbering, tables with merged
+// cells, images, headers and footers, footnotes, comments, tracked changes and the
+// table of contents. Writing is in docx_write.cpp.
+#include <algorithm>
 #include <cmath>
-#include <functional>
 #include <map>
 #include <set>
 #include <stdexcept>
@@ -11,343 +14,6 @@
 #include "xml.hpp"
 
 namespace wetwaresuite::office {
-
-namespace {
-
-const char* kW = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
-const char* kR = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
-const char* kRelImage = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/image";
-const char* kRelLink = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink";
-
-std::string twips(double pt) { return std::to_string(static_cast<long>(std::lround(pt * 20))); }
-std::string emu(double pt) { return std::to_string(static_cast<long long>(std::llround(pt * 12700))); }
-
-bool isJpeg(const std::string& b) { return b.size() > 2 && static_cast<unsigned char>(b[0]) == 0xFF && static_cast<unsigned char>(b[1]) == 0xD8; }
-
-// Natural size of an image block in points, fitted to `maxWidth`.
-void imageSize(const Block& b, double maxWidth, double& w, double& h) {
-    double pw = b.pixels ? b.pixels->pixels.width() : 100, ph = b.pixels ? b.pixels->pixels.height() : 100;
-    if (pw <= 0) pw = 1;
-    w = b.width > 0 ? b.width : pw * 0.75;
-    if (w > maxWidth) w = maxWidth;
-    h = w * ph / pw;
-}
-
-struct DocxWriter {
-    const TextDocument& doc;
-    xml::Writer w;
-    struct Rel {
-        std::string id, type, target;
-        bool external = false;
-    };
-    std::vector<Rel> relList;
-    std::vector<raster::ZipEntry> media;
-    std::map<std::string, std::string> linkIds;
-    int orderedLists = 0;
-    int pictures = 0;
-
-    std::string addRel(const std::string& type, const std::string& target, bool external) {
-        std::string id = "rId" + std::to_string(relList.size() + 10);
-        relList.push_back({id, type, target, external});
-        return id;
-    }
-
-    void textRun(const Run& r, bool forceBold = false) {
-        // split on line breaks and tabs
-        std::string cur;
-        auto open = [&] {
-            w.open("w:r");
-            if (r.bold || forceBold || r.italic || r.underline || r.code || !r.link.empty()) {
-                w.open("w:rPr");
-                if (!r.link.empty()) w.leaf("w:rStyle", {{"w:val", "Hyperlink"}});
-                if (r.code) w.leaf("w:rFonts", {{"w:ascii", "Courier New"}, {"w:hAnsi", "Courier New"}, {"w:cs", "Courier New"}});
-                if (r.bold || forceBold) w.leaf("w:b");
-                if (r.italic) w.leaf("w:i");
-                if (r.underline && r.link.empty()) w.leaf("w:u", {{"w:val", "single"}});
-                w.close();
-            }
-        };
-        open();
-        auto flushText = [&] {
-            if (cur.empty()) return;
-            w.open("w:t").attr("xml:space", "preserve").text(cur).close();
-            cur.clear();
-        };
-        for (char c : r.text) {
-            if (c == '\n') {
-                flushText();
-                w.leaf("w:br");
-            } else if (c == '\t') {
-                flushText();
-                w.leaf("w:tab");
-            } else {
-                cur += c;
-            }
-        }
-        flushText();
-        w.close();
-    }
-
-    void runs(const Runs& rs, bool forceBold = false) {
-        for (std::size_t i = 0; i < rs.size(); ++i) {
-            const Run& r = rs[i];
-            if (r.link.empty()) {
-                textRun(r, forceBold);
-                continue;
-            }
-            auto it = linkIds.find(r.link);
-            std::string id = it != linkIds.end() ? it->second : (linkIds[r.link] = addRel(kRelLink, r.link, true));
-            w.open("w:hyperlink").attr("r:id", id).attr("w:history", "1");
-            // consecutive runs with the same link share the hyperlink
-            std::size_t j = i;
-            while (j < rs.size() && rs[j].link == r.link) textRun(rs[j++], forceBold);
-            w.close();
-            i = j - 1;
-        }
-    }
-
-    void paragraph(const std::string& style, const Runs& rs, int numId = 0, int ilvl = 0) {
-        w.open("w:p");
-        if (!style.empty() || numId) {
-            w.open("w:pPr");
-            if (!style.empty()) w.leaf("w:pStyle", {{"w:val", style}});
-            if (numId) {
-                w.open("w:numPr").leaf("w:ilvl", {{"w:val", std::to_string(ilvl)}}).leaf("w:numId", {{"w:val", std::to_string(numId)}}).close();
-            }
-            w.close();
-        }
-        runs(rs);
-        w.close();
-    }
-
-    void image(const Block& b) {
-        const double contentW = doc.page.width - 2 * doc.page.margin;
-        double wpt, hpt;
-        imageSize(b, contentW, wpt, hpt);
-        ++pictures;
-        std::string name = "image" + std::to_string(pictures) + (isJpeg(b.image) ? ".jpeg" : ".png");
-        media.push_back({"word/media/" + name, b.image});
-        std::string id = addRel(kRelImage, "media/" + name, false);
-        const std::string cx = emu(wpt), cy = emu(hpt);
-        w.open("w:p").open("w:r").open("w:drawing");
-        w.open("wp:inline").attr("distT", "0").attr("distB", "0").attr("distL", "0").attr("distR", "0");
-        w.leaf("wp:extent", {{"cx", cx}, {"cy", cy}});
-        w.leaf("wp:effectExtent", {{"l", "0"}, {"t", "0"}, {"r", "0"}, {"b", "0"}});
-        w.leaf("wp:docPr", {{"id", std::to_string(pictures)}, {"name", "Picture " + std::to_string(pictures)}, {"descr", b.alt}});
-        w.open("wp:cNvGraphicFramePr").leaf("a:graphicFrameLocks", {{"xmlns:a", "http://schemas.openxmlformats.org/drawingml/2006/main"}, {"noChangeAspect", "1"}}).close();
-        w.open("a:graphic").attr("xmlns:a", "http://schemas.openxmlformats.org/drawingml/2006/main");
-        w.open("a:graphicData").attr("uri", "http://schemas.openxmlformats.org/drawingml/2006/picture");
-        w.open("pic:pic").attr("xmlns:pic", "http://schemas.openxmlformats.org/drawingml/2006/picture");
-        w.open("pic:nvPicPr").leaf("pic:cNvPr", {{"id", "0"}, {"name", name}}).leaf("pic:cNvPicPr").close();
-        w.open("pic:blipFill").leaf("a:blip", {{"r:embed", id}}).open("a:stretch").leaf("a:fillRect").close().close();
-        w.open("pic:spPr");
-        w.open("a:xfrm").leaf("a:off", {{"x", "0"}, {"y", "0"}}).leaf("a:ext", {{"cx", cx}, {"cy", cy}}).close();
-        w.open("a:prstGeom").attr("prst", "rect").leaf("a:avLst").close();
-        w.close();  // spPr
-        w.close().close().close();  // pic, graphicData, graphic
-        w.close().close().close().close();  // inline, drawing, r, p
-    }
-
-    void table(const Block& b) {
-        std::size_t cols = 0;
-        for (const auto& r : b.rows) cols = std::max(cols, r.size());
-        if (!cols) return;
-        const double contentW = doc.page.width - 2 * doc.page.margin;
-        const std::string colW = twips(contentW / static_cast<double>(cols));
-        w.open("w:tbl");
-        w.open("w:tblPr").leaf("w:tblStyle", {{"w:val", "TableGrid"}}).leaf("w:tblW", {{"w:w", "0"}, {"w:type", "auto"}}).leaf("w:tblLook", {{"w:val", "04A0"}, {"w:firstRow", "1"}, {"w:lastRow", "0"}, {"w:firstColumn", "0"}, {"w:lastColumn", "0"}, {"w:noHBand", "0"}, {"w:noVBand", "1"}}).close();
-        w.open("w:tblGrid");
-        for (std::size_t c = 0; c < cols; ++c) w.leaf("w:gridCol", {{"w:w", colW}});
-        w.close();
-        for (std::size_t r = 0; r < b.rows.size(); ++r) {
-            const bool head = r == 0 && b.header;
-            w.open("w:tr");
-            if (head) w.open("w:trPr").leaf("w:tblHeader").close();
-            for (std::size_t c = 0; c < cols; ++c) {
-                w.open("w:tc").open("w:tcPr").leaf("w:tcW", {{"w:w", colW}, {"w:type", "dxa"}}).close();
-                w.open("w:p");
-                if (c < b.rows[r].size()) runs(b.rows[r][c], head);
-                w.close();
-                w.close();
-            }
-            w.close();
-        }
-        w.close();
-    }
-
-    std::string documentXml() {
-        w.open("w:document").attr("xmlns:w", kW).attr("xmlns:r", kR).attr("xmlns:wp", "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing");
-        w.open("w:body");
-        for (std::size_t i = 0; i < doc.blocks.size(); ++i) {
-            const Block& b = doc.blocks[i];
-            switch (b.kind) {
-                case Block::Heading: paragraph("Heading" + std::to_string(std::clamp(b.level, 1, 6)), b.runs); break;
-                case Block::Paragraph: paragraph("", b.runs); break;
-                case Block::Quote: paragraph("Quote", b.runs); break;
-                case Block::Code: paragraph("Code", b.runs); break;
-                case Block::PageBreak: w.open("w:p").open("w:r").leaf("w:br", {{"w:type", "page"}}).close().close(); break;
-                case Block::List: {
-                    int numId = b.ordered ? 2 + orderedLists++ : 1;
-                    for (const auto& it : b.items) paragraph("ListParagraph", it.runs, numId, std::clamp(it.level, 0, 8));
-                    break;
-                }
-                case Block::Table:
-                    table(b);
-                    if (i + 1 == doc.blocks.size()) w.leaf("w:p");
-                    break;
-                case Block::Image: image(b); break;
-            }
-        }
-        w.open("w:sectPr");
-        w.leaf("w:pgSz", {{"w:w", twips(doc.page.width)}, {"w:h", twips(doc.page.height)}});
-        w.leaf("w:pgMar", {{"w:top", twips(doc.page.margin)},
-                           {"w:right", twips(doc.page.margin)},
-                           {"w:bottom", twips(doc.page.margin)},
-                           {"w:left", twips(doc.page.margin)},
-                           {"w:header", "708"},
-                           {"w:footer", "708"},
-                           {"w:gutter", "0"}});
-        w.close();
-        w.close().close();
-        return w.str();
-    }
-};
-
-std::string stylesXml(const TextDocument& doc) {
-    xml::Writer s;
-    const std::string font = doc.page.font == pdf::Family::Serif ? "Times New Roman" : doc.page.font == pdf::Family::Mono ? "Courier New" : "Calibri";
-    const std::string size = std::to_string(static_cast<int>(std::lround(doc.page.fontSize * 2)));
-    s.open("w:styles").attr("xmlns:w", kW);
-    s.open("w:docDefaults");
-    s.open("w:rPrDefault").open("w:rPr").leaf("w:rFonts", {{"w:ascii", font}, {"w:hAnsi", font}, {"w:eastAsia", font}, {"w:cs", font}});
-    s.leaf("w:sz", {{"w:val", size}}).leaf("w:szCs", {{"w:val", size}}).leaf("w:lang", {{"w:val", "en-US"}}).close().close();
-    s.open("w:pPrDefault").open("w:pPr").leaf("w:spacing", {{"w:after", "160"}, {"w:line", "264"}, {"w:lineRule", "auto"}}).close().close();
-    s.close();
-    s.open("w:style").attr("w:type", "paragraph").attr("w:default", "1").attr("w:styleId", "Normal").leaf("w:name", {{"w:val", "Normal"}}).leaf("w:qFormat").close();
-    const int sizes[6] = {36, 30, 26, 24, 22, 22};
-    for (int i = 1; i <= 6; ++i) {
-        s.open("w:style").attr("w:type", "paragraph").attr("w:styleId", "Heading" + std::to_string(i));
-        s.leaf("w:name", {{"w:val", "heading " + std::to_string(i)}}).leaf("w:basedOn", {{"w:val", "Normal"}}).leaf("w:next", {{"w:val", "Normal"}});
-        s.leaf("w:uiPriority", {{"w:val", "9"}}).leaf("w:qFormat");
-        s.open("w:pPr").leaf("w:keepNext").leaf("w:keepLines").leaf("w:spacing", {{"w:before", i <= 2 ? "360" : "240"}, {"w:after", "120"}});
-        s.leaf("w:outlineLvl", {{"w:val", std::to_string(i - 1)}}).close();
-        s.open("w:rPr").leaf("w:b").leaf("w:bCs");
-        if (i >= 5) s.leaf("w:i");
-        s.leaf("w:sz", {{"w:val", std::to_string(sizes[i - 1])}}).leaf("w:szCs", {{"w:val", std::to_string(sizes[i - 1])}}).close();
-        s.close();
-    }
-    s.open("w:style").attr("w:type", "paragraph").attr("w:styleId", "ListParagraph");
-    s.leaf("w:name", {{"w:val", "List Paragraph"}}).leaf("w:basedOn", {{"w:val", "Normal"}}).leaf("w:uiPriority", {{"w:val", "34"}}).leaf("w:qFormat");
-    s.open("w:pPr").leaf("w:spacing", {{"w:after", "60"}}).leaf("w:ind", {{"w:left", "720"}}).leaf("w:contextualSpacing").close().close();
-    s.open("w:style").attr("w:type", "paragraph").attr("w:styleId", "Quote");
-    s.leaf("w:name", {{"w:val", "Quote"}}).leaf("w:basedOn", {{"w:val", "Normal"}}).leaf("w:next", {{"w:val", "Normal"}}).leaf("w:qFormat");
-    s.open("w:pPr").leaf("w:ind", {{"w:left", "720"}, {"w:right", "720"}}).close();
-    s.open("w:rPr").leaf("w:i").leaf("w:color", {{"w:val", "555555"}}).close().close();
-    s.open("w:style").attr("w:type", "paragraph").attr("w:styleId", "Code");
-    s.leaf("w:name", {{"w:val", "Code"}}).leaf("w:basedOn", {{"w:val", "Normal"}}).leaf("w:qFormat");
-    s.open("w:pPr").leaf("w:shd", {{"w:val", "clear"}, {"w:color", "auto"}, {"w:fill", "F2F2F2"}}).leaf("w:spacing", {{"w:after", "160"}, {"w:line", "240"}, {"w:lineRule", "auto"}}).close();
-    s.open("w:rPr").leaf("w:rFonts", {{"w:ascii", "Courier New"}, {"w:hAnsi", "Courier New"}, {"w:cs", "Courier New"}}).leaf("w:sz", {{"w:val", "19"}}).close().close();
-    s.open("w:style").attr("w:type", "character").attr("w:styleId", "Hyperlink");
-    s.leaf("w:name", {{"w:val", "Hyperlink"}}).leaf("w:uiPriority", {{"w:val", "99"}}).leaf("w:unhideWhenUsed");
-    s.open("w:rPr").leaf("w:color", {{"w:val", "0563C1"}}).leaf("w:u", {{"w:val", "single"}}).close().close();
-    s.open("w:style").attr("w:type", "table").attr("w:styleId", "TableGrid");
-    s.leaf("w:name", {{"w:val", "Table Grid"}}).leaf("w:uiPriority", {{"w:val", "39"}});
-    s.open("w:pPr").leaf("w:spacing", {{"w:after", "0"}, {"w:line", "240"}, {"w:lineRule", "auto"}}).close();
-    s.open("w:tblPr").open("w:tblBorders");
-    for (const char* side : {"w:top", "w:left", "w:bottom", "w:right", "w:insideH", "w:insideV"}) {
-        s.leaf(side, {{"w:val", "single"}, {"w:sz", "4"}, {"w:space", "0"}, {"w:color", "999999"}});
-    }
-    s.close();
-    s.open("w:tblCellMar").leaf("w:left", {{"w:w", "108"}, {"w:type", "dxa"}}).leaf("w:right", {{"w:w", "108"}, {"w:type", "dxa"}}).close();
-    s.close().close();
-    return s.str();
-}
-
-std::string numberingXml(int orderedLists) {
-    xml::Writer n;
-    n.open("w:numbering").attr("xmlns:w", kW);
-    const char* bullets[3] = {"\xE2\x80\xA2", "\xE2\x97\xA6", "\xE2\x96\xAA"};  // • ◦ ▪
-    const char* fmts[3] = {"decimal", "lowerLetter", "lowerRoman"};
-    for (int a = 0; a < 2; ++a) {
-        n.open("w:abstractNum").attr("w:abstractNumId", std::to_string(a)).leaf("w:multiLevelType", {{"w:val", "hybridMultilevel"}});
-        for (int l = 0; l < 9; ++l) {
-            n.open("w:lvl").attr("w:ilvl", std::to_string(l)).leaf("w:start", {{"w:val", "1"}});
-            if (a == 0) n.leaf("w:numFmt", {{"w:val", "bullet"}}).leaf("w:lvlText", {{"w:val", bullets[l % 3]}});
-            else n.leaf("w:numFmt", {{"w:val", fmts[l % 3]}}).leaf("w:lvlText", {{"w:val", "%" + std::to_string(l + 1) + "."}});
-            n.leaf("w:lvlJc", {{"w:val", "left"}});
-            n.open("w:pPr").leaf("w:ind", {{"w:left", std::to_string(720 * (l + 1))}, {"w:hanging", "360"}}).close();
-            n.close();
-        }
-        n.close();
-    }
-    n.open("w:num").attr("w:numId", "1").leaf("w:abstractNumId", {{"w:val", "0"}}).close();
-    for (int k = 0; k < orderedLists; ++k) {
-        n.open("w:num").attr("w:numId", std::to_string(k + 2)).leaf("w:abstractNumId", {{"w:val", "1"}});
-        n.open("w:lvlOverride").attr("w:ilvl", "0").leaf("w:startOverride", {{"w:val", "1"}}).close();
-        n.close();
-    }
-    return n.str();
-}
-
-std::string relsXml(const std::vector<DocxWriter::Rel>& rels) {
-    xml::Writer r;
-    r.open("Relationships").attr("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships");
-    for (const auto& rel : rels) {
-        r.open("Relationship").attr("Id", rel.id).attr("Type", rel.type).attr("Target", rel.target);
-        if (rel.external) r.attr("TargetMode", "External");
-        r.close();
-    }
-    return r.str();
-}
-
-}  // namespace
-
-std::string writeDocx(const TextDocument& doc) {
-    DocxWriter dw{doc, {}, {}, {}, {}, 0, 0};
-    std::string documentXml = dw.documentXml();
-    std::vector<DocxWriter::Rel> rels = {{"rId1", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles", "styles.xml", false},
-                                         {"rId2", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/numbering", "numbering.xml", false}};
-    for (const auto& r : dw.relList) rels.push_back(r);
-
-    xml::Writer ct;
-    ct.open("Types").attr("xmlns", "http://schemas.openxmlformats.org/package/2006/content-types");
-    ct.leaf("Default", {{"Extension", "rels"}, {"ContentType", "application/vnd.openxmlformats-package.relationships+xml"}});
-    ct.leaf("Default", {{"Extension", "xml"}, {"ContentType", "application/xml"}});
-    ct.leaf("Default", {{"Extension", "png"}, {"ContentType", "image/png"}});
-    ct.leaf("Default", {{"Extension", "jpeg"}, {"ContentType", "image/jpeg"}});
-    ct.leaf("Override", {{"PartName", "/word/document.xml"}, {"ContentType", "application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"}});
-    ct.leaf("Override", {{"PartName", "/word/styles.xml"}, {"ContentType", "application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"}});
-    ct.leaf("Override", {{"PartName", "/word/numbering.xml"}, {"ContentType", "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml"}});
-    ct.leaf("Override", {{"PartName", "/docProps/core.xml"}, {"ContentType", "application/vnd.openxmlformats-package.core-properties+xml"}});
-
-    xml::Writer root;
-    root.open("Relationships").attr("xmlns", "http://schemas.openxmlformats.org/package/2006/relationships");
-    root.leaf("Relationship", {{"Id", "rId1"}, {"Type", "http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"}, {"Target", "word/document.xml"}});
-    root.leaf("Relationship", {{"Id", "rId2"}, {"Type", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"}, {"Target", "docProps/core.xml"}});
-
-    xml::Writer core;
-    core.open("cp:coreProperties")
-        .attr("xmlns:cp", "http://schemas.openxmlformats.org/package/2006/metadata/core-properties")
-        .attr("xmlns:dc", "http://purl.org/dc/elements/1.1/")
-        .attr("xmlns:dcterms", "http://purl.org/dc/terms/")
-        .attr("xmlns:xsi", "http://www.w3.org/2001/XMLSchema-instance");
-    if (!doc.title.empty()) core.element("dc:title", doc.title);
-    if (!doc.author.empty()) core.element("dc:creator", doc.author);
-
-    std::vector<raster::ZipEntry> entries = {
-        {"[Content_Types].xml", ct.str()},
-        {"_rels/.rels", root.str()},
-        {"word/document.xml", documentXml},
-        {"word/_rels/document.xml.rels", relsXml(rels)},
-        {"word/styles.xml", stylesXml(doc)},
-        {"word/numbering.xml", numberingXml(dw.orderedLists)},
-        {"docProps/core.xml", core.str()},
-    };
-    for (auto& m : dw.media) entries.push_back(std::move(m));
-    return raster::writeZip(entries);
-}
-
-// ---- reading DOCX -----------------------------------------------------------------
 
 namespace {
 
@@ -365,64 +31,181 @@ std::string entry(const std::map<std::string, std::string>& f, const std::string
 bool onFlag(const xml::Node* n) {
     if (!n) return false;
     std::string v = n->attr("w:val");
-    return v.empty() || (v != "0" && v != "false" && v != "none");
+    return v.empty() || (v != "0" && v != "false" && v != "none" && v != "off");
 }
+
+// -1 when the element is missing, else 0 or 1.
+int triFlag(const xml::Node* n) { return n ? (onFlag(n) ? 1 : 0) : -1; }
+
+double twipsAttr(const xml::Node* n, const char* key) { return n && n->hasAttr(key) ? std::atof(n->attr(key).c_str()) / 20.0 : 0; }
+
+std::uint32_t hexColor(const std::string& v) {
+    if (v.size() != 6) return 0;
+    for (char c : v) {
+        if (!std::isxdigit(static_cast<unsigned char>(c))) return 0;
+    }
+    return static_cast<std::uint32_t>(std::stoul(v, nullptr, 16)) | kColorSet;
+}
+
+std::uint32_t highlightColor(const std::string& v) {
+    static const std::map<std::string, std::uint32_t> names = {
+        {"yellow", 0xFFFF00},    {"green", 0x00FF00},      {"cyan", 0x00FFFF},     {"magenta", 0xFF00FF},  {"blue", 0x0000FF},
+        {"red", 0xFF0000},       {"darkBlue", 0x000080},   {"darkCyan", 0x008080}, {"darkGreen", 0x008000}, {"darkMagenta", 0x800080},
+        {"darkRed", 0x800000},   {"darkYellow", 0x808000}, {"darkGray", 0x808080}, {"lightGray", 0xC0C0C0}, {"black", 0x000000},
+        {"white", 0xFFFFFF}};
+    auto it = names.find(v);
+    return it == names.end() ? 0 : it->second | kColorSet;
+}
+
+// "serif", "mono", "sans" for a font name.
+std::string familyName(const std::string& font) {
+    const std::string f = lower(font);
+    if (f.empty()) return "";
+    if (f.find("courier") != std::string::npos || f.find("consol") != std::string::npos || f.find("mono") != std::string::npos ||
+        f.find("menlo") != std::string::npos || f.find("code") != std::string::npos) {
+        return "mono";
+    }
+    for (const char* s : {"times", "georgia", "cambria", "garamond", "palatino", "book antiqua", "serif", "baskerville", "minion", "liberation serif"}) {
+        if (f.find(s) != std::string::npos && f.find("sans") == std::string::npos) return "serif";
+    }
+    return "sans";
+}
+
+pdf::Family familyOf(const std::string& n) { return n == "serif" ? pdf::Family::Serif : n == "mono" ? pdf::Family::Mono : pdf::Family::Sans; }
+
+char alignOf(const std::string& jc) {
+    if (jc == "center") return 'c';
+    if (jc == "right" || jc == "end") return 'r';
+    if (jc == "both" || jc == "distribute" || jc == "justify") return 'j';
+    if (jc == "left" || jc == "start") return 'l';
+    return 0;
+}
+
+// Paragraph properties into a format (only what is written).
+ParaFormat paraFormat(const xml::Node* pp) {
+    ParaFormat f;
+    if (!pp) return f;
+    if (const auto* jc = pp->child("jc")) f.align = alignOf(jc->attr("w:val"));
+    if (const auto* ind = pp->child("ind")) {
+        f.indent = twipsAttr(ind, ind->hasAttr("w:left") ? "w:left" : "w:start");
+        f.indentRight = twipsAttr(ind, ind->hasAttr("w:right") ? "w:right" : "w:end");
+        if (ind->hasAttr("w:firstLine")) f.firstLine = twipsAttr(ind, "w:firstLine");
+        if (ind->hasAttr("w:hanging")) f.firstLine = -twipsAttr(ind, "w:hanging");
+    }
+    if (const auto* sp = pp->child("spacing")) {
+        if (sp->hasAttr("w:before")) f.before = twipsAttr(sp, "w:before");
+        if (sp->hasAttr("w:after")) f.after = twipsAttr(sp, "w:after");
+        const std::string rule = sp->attr("w:lineRule");
+        if (sp->hasAttr("w:line") && (rule.empty() || rule == "auto")) f.lineSpacing = std::atof(sp->attr("w:line").c_str()) / 240.0;
+    }
+    f.keepWithNext = onFlag(pp->child("keepNext"));
+    f.pageBreakBefore = onFlag(pp->child("pageBreakBefore"));
+    return f;
+}
+
+// Header cells are drawn bold anyway: bold that covers a whole header cell is not kept as a run format.
+void unboldHeader(Block& b) {
+    if (!b.header || b.rows.empty()) return;
+    for (auto& cell : b.rows[0]) {
+        bool all = true;
+        for (const auto& r : cell) all = all && (r.bold || trimCopy(r.text).empty());
+        if (!all) continue;
+        for (auto& r : cell) r.bold = false;
+        mergeRuns(cell);
+    }
+}
+
+struct ParsedStyle {
+    std::string name, basedOn;
+    int outline = -1;
+    StyleDef def;
+};
 
 struct DocxReader {
     std::map<std::string, std::string> files;
-    std::map<std::string, std::string> rels;      // id -> target (resolved under word/)
-    std::map<std::string, std::string> styleName;  // style id -> lower-case name
-    std::map<std::string, std::string> styleBase;  // style id -> basedOn id
-    std::map<std::string, int> styleOutline;
-    std::map<std::string, std::map<int, bool>> numOrdered;  // numId -> level -> ordered
+    std::map<std::string, std::string> rels;  // id -> target (resolved under word/)
+    std::map<std::string, ParsedStyle> styles;
+    struct Level {
+        std::string format = "bullet";
+        int start = 1;
+    };
+    std::map<std::string, std::map<int, Level>> numLevels;  // numId -> level
+    std::map<std::string, std::string> notes, endnotes;     // id -> inline Markdown
+    std::map<std::string, int> commentIds;                  // file id -> our id
+    std::string defaultFamily = "sans";
+    double defaultSize = 11;
     TextDocument doc;
+    int curComment = 0;
+    bool fieldPlaceholders = false;  // headers and footers: PAGE and NUMPAGES become {page} and {pages}
+    std::string lastNumId;
+
+    // ---- styles, numbering, notes, comments ------------------------------------------
 
     void loadStyles() {
         std::string s = entry(files, "word/styles.xml");
         if (s.empty()) return;
         xml::Node root = xml::parse(s);
-        for (const auto* st : root.all("style")) {
-            std::string id = st->attr("w:styleId");
-            if (const auto* n = st->child("name")) styleName[id] = lower(n->attr("w:val"));
-            if (const auto* b = st->child("basedOn")) styleBase[id] = b->attr("w:val");
-            if (const auto* p = st->child("pPr")) {
-                if (const auto* o = p->child("outlineLvl")) styleOutline[id] = std::atoi(o->attr("w:val").c_str());
+        if (const auto* dd = root.child("docDefaults")) {
+            if (const auto* rp = dd->find("rPrDefault")) {
+                if (const auto* f = rp->find("rFonts")) defaultFamily = familyName(f->attr("w:ascii"));
+                if (const auto* sz = rp->find("sz")) defaultSize = std::atof(sz->attr("w:val").c_str()) / 2.0;
             }
+        }
+        if (defaultFamily.empty()) defaultFamily = "sans";
+        if (defaultSize < 4 || defaultSize > 72) defaultSize = 11;
+        for (const auto* st : root.all("style")) {
+            if (st->attr("w:type") != "paragraph" && st->hasAttr("w:type")) continue;
+            ParsedStyle p;
+            std::string id = st->attr("w:styleId");
+            if (const auto* n = st->child("name")) p.name = n->attr("w:val");
+            if (const auto* b = st->child("basedOn")) p.basedOn = b->attr("w:val");
+            const auto* pp = st->child("pPr");
+            if (pp) {
+                if (const auto* o = pp->child("outlineLvl")) p.outline = std::atoi(o->attr("w:val").c_str());
+                p.def.para = paraFormat(pp);
+                p.def.para.pageBreakBefore = false;
+            }
+            if (const auto* rp = st->child("rPr")) {
+                if (const auto* f = rp->child("rFonts")) p.def.font = familyName(f->attr("w:ascii"));
+                if (const auto* sz = rp->child("sz")) p.def.size = std::atof(sz->attr("w:val").c_str()) / 2.0;
+                if (const auto* c = rp->child("color")) p.def.color = hexColor(c->attr("w:val"));
+                p.def.bold = triFlag(rp->child("b"));
+                p.def.italic = triFlag(rp->child("i"));
+                p.def.underline = triFlag(rp->child("u"));
+            }
+            p.def.name = p.name.empty() ? id : p.name;
+            styles[id] = p;
         }
     }
 
-    void loadNumbering() {
-        std::string s = entry(files, "word/numbering.xml");
-        if (s.empty()) return;
-        xml::Node root = xml::parse(s);
-        std::map<std::string, std::map<int, bool>> abstract;
-        for (const auto* a : root.all("abstractNum")) {
-            auto& levels = abstract[a->attr("w:abstractNumId")];
-            for (const auto* l : a->all("lvl")) {
-                const auto* f = l->child("numFmt");
-                std::string fmt = f ? f->attr("w:val") : "bullet";
-                levels[std::atoi(l->attr("w:ilvl").c_str())] = fmt != "bullet" && fmt != "none";
-            }
-        }
-        for (const auto* n : root.all("num")) {
-            const auto* a = n->child("abstractNumId");
-            if (a) numOrdered[n->attr("w:numId")] = abstract[a->attr("w:val")];
-        }
+    std::string nameOf(const std::string& id) {
+        auto it = styles.find(id);
+        return lower(it != styles.end() && !it->second.name.empty() ? it->second.name : id);
+    }
+
+    // The built-in style a file style stands for ("" when none).
+    std::string builtinFor(const std::string& id) {
+        if (id.empty()) return "Normal";
+        std::string b = styleIdOf(nameOf(id));
+        if (isBuiltinStyle(b)) return b;
+        b = styleIdOf(id);
+        return isBuiltinStyle(b) ? b : "";
     }
 
     // Heading level (1..6) of a paragraph style, 0 if not a heading; follows basedOn.
     int headingLevel(const std::string& styleId) {
         std::string id = styleId;
         for (int hops = 0; hops < 8 && !id.empty(); ++hops) {
-            const std::string name = styleName.count(id) ? styleName[id] : lower(id);
-            if (name == "title") return 1;
-            if (name == "subtitle") return 2;
-            if (startsWith(name, "heading ") || startsWith(name, "heading")) {
-                int n = std::atoi(name.c_str() + (name[7] == ' ' ? 8 : 7));
+            const std::string name = nameOf(id);
+            if (startsWith(name, "heading")) {
+                int n = std::atoi(name.c_str() + (name.size() > 7 && name[7] == ' ' ? 8 : 7));
                 if (n >= 1 && n <= 9) return std::min(n, 6);
             }
-            if (styleOutline.count(id)) return std::min(styleOutline[id] + 1, 6);
-            id = styleBase.count(id) ? styleBase[id] : "";
+            if (name == "title" || name == "subtitle" || startsWith(name, "toc")) return 0;
+            auto it = styles.find(id);
+            if (it == styles.end()) break;
+            if (it->second.outline >= 0 && it->second.outline < 9) return std::min(it->second.outline + 1, 6);
+            id = it->second.basedOn;
         }
         return 0;
     }
@@ -430,48 +213,302 @@ struct DocxReader {
     std::string styleKind(const std::string& styleId) {
         std::string id = styleId;
         for (int hops = 0; hops < 8 && !id.empty(); ++hops) {
-            const std::string name = styleName.count(id) ? styleName[id] : lower(id);
+            const std::string name = nameOf(id);
             if (name.find("quote") != std::string::npos) return "quote";
-            if (name.find("code") != std::string::npos || name.find("source") != std::string::npos || name.find("preformatted") != std::string::npos ||
-                name == "html preformatted") {
+            if (name.find("code") != std::string::npos || name.find("source") != std::string::npos || name.find("preformatted") != std::string::npos) {
                 return "code";
             }
-            id = styleBase.count(id) ? styleBase[id] : "";
+            auto it = styles.find(id);
+            id = it == styles.end() ? "" : it->second.basedOn;
         }
         return "";
     }
+
+    bool tocStyle(const std::string& id) {
+        const std::string n = nameOf(id);
+        return n.size() >= 4 && startsWith(n, "toc") && std::isdigit(static_cast<unsigned char>(n.back())) && n.find("heading") == std::string::npos;
+    }
+
+    // Built-in styles that look different in this file become entries of doc.styles.
+    void builtinChanges() {
+        doc.page.font = familyOf(defaultFamily);
+        doc.page.fontSize = defaultSize;
+        std::vector<std::pair<std::string, const ParsedStyle*>> found;
+        for (const auto& [id, p] : styles) {
+            const std::string b = builtinFor(id);
+            if (!b.empty() && !doc.styles.count(b)) found.emplace_back(b, &p);
+        }
+        // Normal first: the others start from it
+        std::stable_sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first == "Normal" && b.first != "Normal"; });
+        for (const auto& [id, p] : found) {
+            if (doc.styles.count(id)) continue;
+            const ResolvedStyle base = resolveStyle(doc, id);
+            const StyleDef& d = p->def;
+            StyleDef keep;
+            bool any = false;
+            if (!d.font.empty() && familyOf(d.font) != base.font) keep.font = d.font, any = true;
+            if (d.size > 0 && std::fabs(d.size - base.size) > 0.3) keep.size = d.size, any = true;
+            if (d.color && rgbOf(d.color) != rgbOf(base.color)) keep.color = d.color, any = true;
+            if (d.bold >= 0 && (d.bold != 0) != base.bold) keep.bold = d.bold, any = true;
+            if (d.italic >= 0 && (d.italic != 0) != base.italic) keep.italic = d.italic, any = true;
+            if (d.underline >= 0 && (d.underline != 0) != base.underline) keep.underline = d.underline, any = true;
+            const ParaFormat& f = d.para;
+            if (f.align && f.align != base.align) keep.para.align = f.align, any = true;
+            if (f.indent && std::fabs(f.indent - base.indent) > 0.1) keep.para.indent = f.indent, any = true;
+            if (f.firstLine && std::fabs(f.firstLine - base.firstLine) > 0.1) keep.para.firstLine = f.firstLine, any = true;
+            if (f.before >= 0 && std::fabs(f.before - base.before) > 0.1) keep.para.before = f.before, any = true;
+            if (f.after >= 0 && std::fabs(f.after - base.after) > 0.1) keep.para.after = f.after, any = true;
+            if (f.lineSpacing > 0 && std::fabs(f.lineSpacing - base.lineSpacing) > 0.02) keep.para.lineSpacing = f.lineSpacing, any = true;
+            if (any) {
+                StyleDef s = keep;
+                s.name = "";
+                doc.styles[id] = s;
+            }
+        }
+    }
+
+    // A style of your own: kept with the styles it is based on.
+    void useStyle(const std::string& id) {
+        std::string cur = id;
+        for (int hops = 0; hops < 8 && !cur.empty() && !doc.styles.count(cur) && !isBuiltinStyle(cur); ++hops) {
+            auto it = styles.find(cur);
+            if (it == styles.end()) break;
+            StyleDef d = it->second.def;
+            const std::string base = it->second.basedOn;
+            const std::string bb = base.empty() ? "" : builtinFor(base);
+            d.basedOn = base.empty() ? "" : (!bb.empty() ? bb : base);
+            if (d.basedOn == "Normal") d.basedOn = "";
+            doc.styles[cur] = d;
+            cur = bb.empty() ? base : "";
+        }
+    }
+
+    void loadNumbering() {
+        std::string s = entry(files, "word/numbering.xml");
+        if (s.empty()) return;
+        xml::Node root = xml::parse(s);
+        std::map<std::string, std::map<int, Level>> abstract;
+        for (const auto* a : root.all("abstractNum")) {
+            auto& levels = abstract[a->attr("w:abstractNumId")];
+            for (const auto* l : a->all("lvl")) {
+                Level lv;
+                if (const auto* f = l->child("numFmt")) lv.format = f->attr("w:val");
+                if (const auto* st = l->child("start")) lv.start = std::max(0, std::atoi(st->attr("w:val").c_str()));
+                levels[std::atoi(l->attr("w:ilvl").c_str())] = lv;
+            }
+        }
+        for (const auto* n : root.all("num")) {
+            const auto* a = n->child("abstractNumId");
+            if (!a) continue;
+            auto levels = abstract[a->attr("w:val")];
+            for (const auto* o : n->all("lvlOverride")) {
+                const int il = std::atoi(o->attr("w:ilvl").c_str());
+                if (const auto* so = o->child("startOverride")) levels[il].start = std::atoi(so->attr("w:val").c_str());
+            }
+            numLevels[n->attr("w:numId")] = levels;
+        }
+    }
+
+    std::string noteText(const xml::Node& note) {
+        Para p;
+        const int saved = curComment;
+        for (const auto* para : note.all("p")) {
+            if (!p.runs.empty()) {
+                Run sp;
+                sp.text = " ";
+                p.runs.push_back(sp);
+            }
+            collectRuns(*para, p, "", 0);
+        }
+        curComment = saved;
+        for (auto& r : p.runs) r.comment = 0, r.change = 0, r.footnote.clear();
+        mergeRuns(p.runs);
+        std::string md = trimCopy(inlineMarkdown(p.runs));
+        return md.empty() ? std::string("(note)") : md;
+    }
+
+    void loadNotes(const std::string& file, const char* element, std::map<std::string, std::string>& out) {
+        std::string s = entry(files, file);
+        if (s.empty()) return;
+        xml::Node root = xml::parse(s);
+        for (const auto* n : root.all(element)) {
+            const std::string type = n->attr("w:type");
+            if (!type.empty() && type != "normal") continue;
+            out[n->attr("w:id")] = noteText(*n);
+        }
+    }
+
+    void loadComments() {
+        std::string s = entry(files, "word/comments.xml");
+        if (s.empty()) return;
+        xml::Node root = xml::parse(s);
+        for (const auto* c : root.all("comment")) {
+            Comment cm;
+            cm.id = static_cast<int>(doc.comments.size()) + 1;
+            cm.author = c->attr("w:author");
+            cm.date = c->attr("w:date");
+            std::string text;
+            for (const auto* p : c->all("p")) {
+                Para para;
+                collectRuns(*p, para, "", 0);
+                for (auto& r : para.runs) r.comment = 0, r.change = 0, r.footnote.clear();
+                mergeRuns(para.runs);
+                std::string line = trimCopy(inlineMarkdown(para.runs));
+                if (line.empty()) continue;
+                if (!text.empty()) text += "\n";
+                text += line;
+            }
+            cm.text = text;
+            commentIds[c->attr("w:id")] = cm.id;
+            doc.comments.push_back(cm);
+        }
+        curComment = 0;
+    }
+
+    int trackChange(const xml::Node& n, bool insert) {
+        TrackedChange ch;
+        ch.id = doc.nextChangeId();
+        ch.insert = insert;
+        ch.author = n.attr("w:author");
+        ch.date = n.attr("w:date");
+        doc.changes.push_back(ch);
+        return ch.id;
+    }
+
+    // ---- paragraphs ----------------------------------------------------------------
 
     struct Para {
         Runs runs;
         std::vector<Block> images;  // images found in the paragraph
         bool pageBreakAfter = false;
-        bool pageBreakBefore = false;
+        bool toc = false;
+        int tocLevel = 3;
+        // complex fields: <w:fldChar begin/> instr <w:fldChar separate/> result <w:fldChar end/>
+        int fieldDepth = 0;
+        bool fieldResult = false;
+        bool skipResult = false;
+        std::string instr;
     };
 
-    void collectRuns(const xml::Node& n, Para& p, const std::string& link) {
+    Run runStyle(const xml::Node* rp, const std::string& link, int change) {
+        Run base;
+        base.link = link;
+        base.change = change;
+        base.comment = curComment;
+        if (!rp) return base;
+        bool hyperlinkStyle = !link.empty();
+        if (const auto* rs = rp->child("rStyle")) {
+            std::string sv = lower(rs->attr("w:val"));
+            if (sv.find("code") != std::string::npos || sv.find("verbatim") != std::string::npos) base.code = true;
+            if (sv == "strong") base.bold = true;
+            if (sv == "emphasis") base.italic = true;
+            if (sv.find("hyperlink") != std::string::npos) hyperlinkStyle = true;
+            if (sv.find("footnotereference") != std::string::npos || sv.find("endnotereference") != std::string::npos) base.vertical = 0;
+        }
+        if (const auto* b = rp->child("b")) base.bold = onFlag(b);
+        if (const auto* i = rp->child("i")) base.italic = onFlag(i);
+        base.underline = onFlag(rp->child("u")) && !hyperlinkStyle;
+        base.strike = onFlag(rp->child("strike")) || onFlag(rp->child("dstrike"));
+        if (const auto* f = rp->child("rFonts")) {
+            const std::string fam = familyName(f->hasAttr("w:ascii") ? f->attr("w:ascii") : f->attr("w:hAnsi"));
+            if (fam == "mono") base.code = true;
+            else if (!fam.empty() && fam != defaultFamily) base.font = fam;
+        }
+        if (const auto* c = rp->child("color")) {
+            const std::uint32_t col = hexColor(c->attr("w:val"));
+            if (col && !(hyperlinkStyle && rgbOf(col) == 0x0563C1)) base.color = col;
+        }
+        if (const auto* sz = rp->child("sz")) {
+            const double v = std::atof(sz->attr("w:val").c_str()) / 2.0;
+            if (v >= 1 && std::fabs(v - defaultSize) > 0.01) base.size = v;
+        }
+        if (const auto* h = rp->child("highlight")) base.highlight = highlightColor(h->attr("w:val"));
+        if (const auto* sh = rp->child("shd")) {
+            if (const std::uint32_t f = hexColor(sh->attr("w:fill"))) base.highlight = f;
+        }
+        if (const auto* va = rp->child("vertAlign")) {
+            const std::string v = va->attr("w:val");
+            base.vertical = v == "superscript" ? 1 : v == "subscript" ? -1 : 0;
+        }
+        return base;
+    }
+
+    void image(const xml::Node& part, Para& p) {
+        std::vector<const xml::Node*> blips;
+        part.descendants("blip", blips);
+        std::vector<const xml::Node*> imagedata;
+        part.descendants("imagedata", imagedata);
+        std::string rid = !blips.empty() ? blips[0]->attr("r:embed") : !imagedata.empty() ? imagedata[0]->attr("r:id") : "";
+        auto it = rels.find(rid);
+        if (it == rels.end()) return;
+        std::string bytes = entry(files, it->second);
+        if (bytes.empty()) return;
+        Block b;
+        try {
+            setImage(b, bytes);
+            if (const auto* ext = part.find("extent")) b.width = std::atof(ext->attr("cx").c_str()) / 12700.0;
+            if (const auto* dp = part.find("docPr")) b.alt = dp->attr("descr");
+            p.images.push_back(std::move(b));
+        } catch (const std::exception&) {
+        }
+    }
+
+    void fieldChar(const xml::Node& part, Para& p) {
+        const std::string t = part.attr("w:fldCharType");
+        if (t == "begin") {
+            if (++p.fieldDepth == 1) {
+                p.instr.clear();
+                p.fieldResult = false;
+                p.skipResult = false;
+            }
+        } else if (t == "separate" && p.fieldDepth == 1) {
+            p.fieldResult = true;
+            fieldStart(p.instr, p);
+        } else if (t == "end" && p.fieldDepth > 0) {
+            if (p.fieldDepth == 1 && !p.fieldResult) fieldStart(p.instr, p);  // a field with no result
+            --p.fieldDepth;
+            p.skipResult = false;
+        }
+    }
+
+    // Placeholders for page fields in headers and footers; tables of contents.
+    void fieldStart(const std::string& instruction, Para& p) {
+        const std::string in = upper(trimCopy(instruction));
+        if (startsWith(in, "TOC")) {
+            p.toc = true;
+            const auto o = in.find("\\O");
+            if (o != std::string::npos) {
+                const auto dash = in.find('-', o);
+                if (dash != std::string::npos) p.tocLevel = std::clamp(std::atoi(in.c_str() + dash + 1), 1, 9);
+            }
+            return;
+        }
+        if (!fieldPlaceholders) return;
+        const char* ph = startsWith(in, "PAGE") ? "{page}" : startsWith(in, "NUMPAGES") || startsWith(in, "SECTIONPAGES") ? "{pages}" : nullptr;
+        if (!ph || p.skipResult) return;
+        Run r;
+        r.text = ph;
+        p.runs.push_back(r);
+        p.skipResult = true;
+    }
+
+    void collectRuns(const xml::Node& n, Para& p, const std::string& link, int change) {
         for (const auto& c : n.children) {
             if (c.is("r")) {
-                Run base;
-                base.link = link;
-                if (const auto* rp = c.child("rPr")) {
-                    base.bold = onFlag(rp->child("b"));
-                    base.italic = onFlag(rp->child("i"));
-                    base.underline = onFlag(rp->child("u")) && link.empty();
-                    if (const auto* f = rp->child("rFonts")) {
-                        std::string fn = lower(f->attr("w:ascii"));
-                        base.code = fn.find("courier") != std::string::npos || fn.find("consol") != std::string::npos || fn.find("mono") != std::string::npos;
-                    }
-                    if (const auto* rs = rp->child("rStyle")) {
-                        std::string sv = lower(rs->attr("w:val"));
-                        if (sv.find("code") != std::string::npos || sv.find("verbatim") != std::string::npos) base.code = true;
-                        if (sv == "strong") base.bold = true;
-                        if (sv == "emphasis") base.italic = true;
-                    }
-                }
+                const Run base = runStyle(c.child("rPr"), link, change);
                 for (const auto& part : c.children) {
                     Run r = base;
-                    if (part.is("t")) r.text = part.allText();
-                    else if (part.is("tab")) r.text = "\t";
+                    if (part.is("fldChar")) {
+                        fieldChar(part, p);
+                        continue;
+                    }
+                    if (part.is("instrText")) {
+                        p.instr += part.allText();
+                        continue;
+                    }
+                    if (p.skipResult) continue;
+                    if (part.is("t") || part.is("delText")) r.text = part.allText();
+                    else if (part.is("tab") || part.is("ptab")) r.text = "\t";
                     else if (part.is("br") || part.is("cr")) {
                         if (part.attr("w:type") == "page") {
                             p.pageBreakAfter = true;
@@ -480,26 +517,14 @@ struct DocxReader {
                         r.text = "\n";
                     } else if (part.is("noBreakHyphen")) r.text = "-";
                     else if (part.is("sym")) r.text = "?";
-                    else if (part.is("drawing") || part.is("pict") || part.is("object")) {
-                        std::vector<const xml::Node*> blips;
-                        part.descendants("blip", blips);
-                        std::vector<const xml::Node*> imagedata;
-                        part.descendants("imagedata", imagedata);
-                        std::string rid = !blips.empty() ? blips[0]->attr("r:embed") : !imagedata.empty() ? imagedata[0]->attr("r:id") : "";
-                        auto it = rels.find(rid);
-                        if (it != rels.end()) {
-                            std::string bytes = entry(files, it->second);
-                            if (!bytes.empty()) {
-                                Block b;
-                                try {
-                                    setImage(b, bytes);
-                                    if (const auto* ext = part.find("extent")) b.width = std::atof(ext->attr("cx").c_str()) / 12700.0;
-                                    if (const auto* dp = part.find("docPr")) b.alt = dp->attr("descr");
-                                    p.images.push_back(std::move(b));
-                                } catch (const std::exception&) {
-                                }
-                            }
-                        }
+                    else if (part.is("footnoteReference") || part.is("endnoteReference")) {
+                        const auto& m = part.is("footnoteReference") ? notes : endnotes;
+                        auto it = m.find(part.attr("w:id"));
+                        r.footnote = it != m.end() ? it->second : "(note)";
+                        r.vertical = 0;
+                        r.text.clear();
+                    } else if (part.is("drawing") || part.is("pict") || part.is("object")) {
+                        image(part, p);
                         continue;
                     } else {
                         continue;
@@ -511,11 +536,52 @@ struct DocxReader {
                 auto it = rels.find(c.attr("r:id"));
                 if (it != rels.end()) target = it->second;
                 else if (c.hasAttr("w:anchor")) target = "#" + c.attr("w:anchor");
-                collectRuns(c, p, target);
-            } else if (c.is("ins") || c.is("smartTag") || c.is("customXml") || c.is("fldSimple") || c.is("sdt") || c.is("sdtContent") || c.is("bdo") || c.is("dir")) {
-                collectRuns(c, p, link);
+                collectRuns(c, p, target, change);
+            } else if (c.is("ins") || c.is("moveTo")) {
+                collectRuns(c, p, link, trackChange(c, true));
+            } else if (c.is("del") || c.is("moveFrom")) {
+                collectRuns(c, p, link, trackChange(c, false));
+            } else if (c.is("commentRangeStart")) {
+                auto it = commentIds.find(c.attr("w:id"));
+                curComment = it == commentIds.end() ? 0 : it->second;
+            } else if (c.is("commentRangeEnd")) {
+                curComment = 0;
+            } else if (c.is("fldSimple")) {
+                fieldStart(c.attr("w:instr"), p);
+                if (p.skipResult) {
+                    p.skipResult = false;  // a simple field's result is its own children
+                } else {
+                    collectRuns(c, p, link, change);
+                }
+            } else if (c.is("smartTag") || c.is("customXml") || c.is("sdt") || c.is("sdtContent") || c.is("bdo") || c.is("dir")) {
+                collectRuns(c, p, link, change);
             }
         }
+    }
+
+    // Starts a list block for a numbered or bulleted paragraph.
+    void listItem(const std::string& numId, int ilvl, const Runs& runs, std::vector<Block>& out) {
+        Level lv;
+        if (numLevels.count(numId)) {
+            auto& levels = numLevels[numId];
+            if (levels.count(0)) lv = levels[0];
+        }
+        const bool ordered = lv.format != "bullet" && lv.format != "none";
+        const std::string fmt = !ordered ? "" : lv.format == "decimal" || lv.format.empty() ? "" : lv.format;
+        const bool known = fmt.empty() || fmt == "lowerLetter" || fmt == "upperLetter" || fmt == "lowerRoman" || fmt == "upperRoman";
+        if (out.empty() || out.back().kind != Block::List || out.back().ordered != ordered || (ordered && numId != lastNumId)) {
+            Block b;
+            b.kind = Block::List;
+            b.ordered = ordered;
+            b.numbering = known ? fmt : "";
+            b.start = ordered ? std::max(0, lv.start) : 1;
+            out.push_back(b);
+        }
+        lastNumId = numId;
+        ListItem it;
+        it.level = std::clamp(ilvl, 0, 8);
+        it.runs = runs;
+        out.back().items.push_back(it);
     }
 
     void paragraph(const xml::Node& p, std::vector<Block>& out) {
@@ -523,51 +589,68 @@ struct DocxReader {
         std::string style;
         std::string numId;
         int ilvl = 0;
-        if (const auto* pp = p.child("pPr")) {
+        ParaFormat fmt;
+        const auto* pp = p.child("pPr");
+        if (pp) {
             if (const auto* ps = pp->child("pStyle")) style = ps->attr("w:val");
             if (const auto* np = pp->child("numPr")) {
                 if (const auto* id = np->child("numId")) numId = id->attr("w:val");
                 if (const auto* lv = np->child("ilvl")) ilvl = std::atoi(lv->attr("w:val").c_str());
             }
-            para.pageBreakBefore = onFlag(pp->child("pageBreakBefore"));
+            fmt = paraFormat(pp);
         }
-        collectRuns(p, para, "");
+        collectRuns(p, para, "", 0);
         mergeRuns(para.runs);
-        if (para.pageBreakBefore) {
+        if (para.toc || tocStyle(style) || nameOf(style) == "toc heading") {  // a table of contents: one block
+            if (out.empty() || out.back().kind != Block::Toc) {
+                Block t;
+                t.kind = Block::Toc;
+                t.level = para.toc ? para.tocLevel : 3;
+                if (nameOf(style) == "toc heading" && !trimCopy(plainText(para.runs)).empty()) t.runs = para.runs;
+                out.push_back(t);
+            } else if (para.toc) {
+                out.back().level = para.tocLevel;
+            }
+            return;
+        }
+        if (fmt.pageBreakBefore && (!numId.empty() && numId != "0")) {
             Block pb;
             pb.kind = Block::PageBreak;
             out.push_back(pb);
         }
-        const bool hasText = !trimCopy(plainText(para.runs)).empty();
+        bool hasText = false;
+        for (const auto& r : para.runs) hasText = hasText || !r.footnote.empty() || !trimCopy(r.text).empty();
         if (hasText) {
-            int h = headingLevel(style);
+            const int h = headingLevel(style);
             if (!numId.empty() && numId != "0" && !h) {
-                const bool ordered = numOrdered.count(numId) && numOrdered[numId].count(ilvl) ? numOrdered[numId][ilvl] : false;
-                if (out.empty() || out.back().kind != Block::List || out.back().ordered != ordered) {
-                    Block b;
-                    b.kind = Block::List;
-                    b.ordered = ordered;
-                    out.push_back(b);
-                }
-                ListItem it;
-                it.level = std::clamp(ilvl, 0, 8);
-                it.runs = para.runs;
-                out.back().items.push_back(it);
+                listItem(numId, ilvl, para.runs, out);
             } else {
                 Block b;
+                const std::string builtin = builtinFor(style);
                 if (h) {
                     b.kind = Block::Heading;
                     b.level = h;
+                } else if (builtin == "Quote" || (builtin.empty() && styleKind(style) == "quote")) {
+                    b.kind = Block::Quote;
+                } else if (builtin == "Code" || (builtin.empty() && styleKind(style) == "code")) {
+                    b.kind = Block::Code;
                 } else {
-                    std::string k = styleKind(style);
-                    b.kind = k == "quote" ? Block::Quote : k == "code" ? Block::Code : Block::Paragraph;
+                    b.kind = Block::Paragraph;
+                    if (builtin == "Title" || builtin == "Subtitle" || builtin == "Caption") b.style = builtin;
+                    else if (builtin.empty() && !style.empty()) {
+                        useStyle(style);
+                        if (doc.styles.count(style)) b.style = style;
+                    }
                 }
                 b.runs = para.runs;
+                b.fmt = fmt;
+                if (b.kind == Block::Heading) b.fmt.keepWithNext = false;
                 if (b.kind == Block::Code) {
                     Run r;
                     r.text = plainText(b.runs);
                     r.code = true;
                     b.runs = {r};
+                    b.fmt = ParaFormat{};
                     if (!out.empty() && out.back().kind == Block::Code) {  // one paragraph per line in many files
                         out.back().runs[0].text += "\n" + r.text;
                         b.kind = Block::PageBreak;  // marker: nothing to add
@@ -575,8 +658,15 @@ struct DocxReader {
                 }
                 if (b.kind != Block::PageBreak) out.push_back(std::move(b));
             }
+        } else if (fmt.pageBreakBefore) {
+            Block pb;
+            pb.kind = Block::PageBreak;
+            out.push_back(pb);
         }
-        for (auto& img : para.images) out.push_back(std::move(img));
+        for (auto& img : para.images) {
+            if (!hasText) img.fmt.align = fmt.align;
+            out.push_back(std::move(img));
+        }
         if (para.pageBreakAfter) {
             Block pb;
             pb.kind = Block::PageBreak;
@@ -584,14 +674,20 @@ struct DocxReader {
         }
     }
 
-    Runs cellRuns(const xml::Node& tc) {
+    Runs cellRuns(const xml::Node& tc, char& align) {
         Runs all;
         bool first = true;
         std::vector<const xml::Node*> ps;
         tc.descendants("p", ps);
+        align = 0;
         for (const auto* p : ps) {
             Para para;
-            collectRuns(*p, para, "");
+            collectRuns(*p, para, "", 0);
+            if (first) {
+                if (const auto* pp = p->child("pPr")) {
+                    if (const auto* jc = pp->child("jc")) align = alignOf(jc->attr("w:val"));
+                }
+            }
             if (!first && !para.runs.empty()) {
                 Run nl;
                 nl.text = "\n";
@@ -601,44 +697,193 @@ struct DocxReader {
             if (!para.runs.empty()) first = false;
         }
         mergeRuns(all);
+        if (align == 'l') align = 0;
         return all;
+    }
+
+    void table(const xml::Node& c, std::vector<Block>& out) {
+        Block b;
+        b.kind = Block::Table;
+        b.header = true;  // the first row reads as a header, as most tables are written
+        std::string tblStyle;
+        bool fixed = false, sawHeaderRow = false, firstRowOff = false, hBand = false;
+        if (const auto* pr = c.child("tblPr")) {
+            if (const auto* ts = pr->child("tblStyle")) tblStyle = ts->attr("w:val");
+            if (const auto* lay = pr->child("tblLayout")) fixed = lay->attr("w:type") == "fixed";
+            if (const auto* look = pr->child("tblLook")) {
+                firstRowOff = look->attr("w:firstRow") == "0";
+                hBand = look->attr("w:noHBand") == "0";
+            }
+        }
+        std::vector<double> grid;
+        if (const auto* g = c.child("tblGrid")) {
+            for (const auto* gc : g->all("gridCol")) grid.push_back(std::max(0.0, twipsAttr(gc, "w:w")));
+        }
+        const bool ours = tblStyle == "TableGrid" || tblStyle == "TablePlain";
+        b.borders = tblStyle != "TablePlain";
+        b.banded = ours && hBand;
+        std::vector<const xml::Node*> trs = c.all("tr");
+        for (std::size_t r = 0; r < trs.size(); ++r) {
+            const xml::Node* tr = trs[r];
+            if (const auto* trPr = tr->child("trPr")) {
+                if (r == 0 && trPr->child("tblHeader")) sawHeaderRow = true;
+            }
+            std::vector<Runs> row;
+            std::vector<CellFormat> formats;
+            auto addCell = [&](const xml::Node& cell) {
+                int span = 1;
+                std::string vmerge;
+                bool vm = false;
+                CellFormat f;
+                if (const auto* pr = cell.child("tcPr")) {
+                    if (const auto* gs = pr->child("gridSpan")) span = std::max(1, std::atoi(gs->attr("w:val").c_str()));
+                    if (const auto* v = pr->child("vMerge")) {
+                        vm = true;
+                        vmerge = v->attr("w:val");
+                    }
+                    if (const auto* sh = pr->child("shd")) f.fill = hexColor(sh->attr("w:fill"));
+                    if (const auto* va = pr->child("vAlign")) {
+                        const std::string v = va->attr("w:val");
+                        f.valign = v == "center" ? 'm' : v == "bottom" ? 'b' : 0;
+                    }
+                }
+                // shading our writer adds for header rows and bands is not a cell format
+                if (ours && f.fill && ((r == 0 && rgbOf(f.fill) == 0xEEEEEE) || rgbOf(f.fill) == 0xF6F8FB)) f.fill = 0;
+                const int col = static_cast<int>(row.size());
+                char align = 0;
+                Runs content = cellRuns(cell, align);
+                f.align = align;
+                if (vm && vmerge != "restart") {  // continues the merge above
+                    content.clear();
+                    bool extended = false;
+                    for (auto& m : b.merges) {
+                        if (m.col == col && m.row + m.rows == static_cast<int>(r)) {
+                            ++m.rows;
+                            extended = true;
+                            break;
+                        }
+                    }
+                    if (!extended && r > 0) b.merges.push_back({static_cast<int>(r) - 1, col, 2, span});
+                } else if ((vm && vmerge == "restart") || span > 1) {
+                    b.merges.push_back({static_cast<int>(r), col, 1, span});
+                }
+                row.push_back(content);
+                formats.push_back(f);
+                for (int k = 1; k < span; ++k) {
+                    row.emplace_back();
+                    formats.emplace_back();
+                }
+            };
+            for (const auto& cell : tr->children) {
+                if (cell.is("tc")) addCell(cell);
+                else if (cell.is("sdt")) {
+                    for (const auto* sc : cell.all("sdtContent")) {
+                        for (const auto* x : sc->all("tc")) addCell(*x);
+                    }
+                }
+            }
+            b.rows.push_back(row);
+            b.cellFormats.push_back(formats);
+        }
+        // merges that never grew past one cell are nothing
+        b.merges.erase(std::remove_if(b.merges.begin(), b.merges.end(), [](const CellSpan& m) { return m.rows <= 1 && m.cols <= 1; }), b.merges.end());
+        std::size_t cols = 0;
+        for (const auto& r : b.rows) cols = std::max(cols, r.size());
+        for (auto& r : b.rows) r.resize(cols);
+        bool anyFormat = false;
+        for (auto& r : b.cellFormats) {
+            r.resize(cols);
+            for (const auto& f : r) anyFormat = anyFormat || f.fill || f.align || f.valign;
+        }
+        if (!anyFormat) b.cellFormats.clear();
+        if (fixed && grid.size() == cols) b.colWidths = grid;
+        if (!sawHeaderRow && firstRowOff) b.header = false;
+        unboldHeader(b);
+        if (!b.rows.empty()) out.push_back(std::move(b));
     }
 
     void body(const xml::Node& n, std::vector<Block>& out) {
         for (const auto& c : n.children) {
             if (c.is("p")) paragraph(c, out);
-            else if (c.is("tbl")) {
-                Block b;
-                b.kind = Block::Table;
-                b.header = true;  // the first row reads as a header, as most tables are written
-                for (const auto* tr : c.all("tr")) {
-                    std::vector<Runs> row;
-                    for (const auto& cell : tr->children) {
-                        if (cell.is("tc")) {
-                            int span = 1;
-                            if (const auto* pr = cell.child("tcPr")) {
-                                if (const auto* gs = pr->child("gridSpan")) span = std::max(1, std::atoi(gs->attr("w:val").c_str()));
-                            }
-                            row.push_back(cellRuns(cell));
-                            for (int k = 1; k < span; ++k) row.emplace_back();
-                        } else if (cell.is("sdt")) {
-                            for (const auto* tc : cell.all("sdtContent")) {
-                                for (const auto* x : tc->all("tc")) row.push_back(cellRuns(*x));
-                            }
-                        }
-                    }
-                    b.rows.push_back(row);
+            else if (c.is("tbl")) table(c, out);
+            else if (c.is("sdt")) {
+                bool isToc = false;
+                if (const auto* pr = c.child("sdtPr")) {
+                    if (const auto* g = pr->find("docPartGallery")) isToc = g->attr("w:val") == "Table of Contents";
                 }
-                std::size_t cols = 0;
-                for (const auto& r : b.rows) cols = std::max(cols, r.size());
-                for (auto& r : b.rows) r.resize(cols);
-                if (!b.rows.empty()) out.push_back(std::move(b));
-            } else if (c.is("sdt")) {
-                if (const auto* sc = c.child("sdtContent")) body(*sc, out);
+                const auto* sc = c.child("sdtContent");
+                if (!sc) continue;
+                if (!isToc) {
+                    body(*sc, out);
+                    continue;
+                }
+                Block t;
+                t.kind = Block::Toc;
+                t.level = 3;
+                std::vector<Block> inner;
+                body(*sc, inner);
+                for (const auto& x : inner) {
+                    if (x.kind == Block::Toc) {
+                        t.level = x.level;
+                        if (!x.runs.empty()) t.runs = x.runs;
+                    } else if (t.runs.empty() && (x.kind == Block::Paragraph || x.kind == Block::Heading)) {
+                        t.runs = x.runs;  // the title, in files that give it a plain style
+                    }
+                }
+                if (plainText(t.runs) == "Contents") t.runs.clear();
+                out.push_back(t);
             } else if (c.is("customXml") || c.is("ins")) {
                 body(c, out);
             }
         }
+    }
+
+    // A header or footer part as one line of text: tabs become " | ", page fields {page} and {pages}.
+    std::string band(const std::string& rid) {
+        auto it = rels.find(rid);
+        if (it == rels.end()) return "";
+        std::string x = entry(files, it->second);
+        if (x.empty()) return "";
+        xml::Node root = xml::parse(x);
+        fieldPlaceholders = true;
+        std::string out;
+        std::vector<const xml::Node*> ps;
+        root.descendants("p", ps);
+        for (const auto* p : ps) {
+            Para para;
+            collectRuns(*p, para, "", 0);
+            std::vector<Runs> parts(1);
+            for (auto r : para.runs) {
+                std::size_t from = 0;
+                for (std::size_t k = 0; k <= r.text.size(); ++k) {
+                    if (k == r.text.size() || r.text[k] == '\t') {
+                        Run piece = r;
+                        piece.text = r.text.substr(from, k - from);
+                        piece.comment = piece.change = 0;
+                        if (!piece.text.empty()) parts.back().push_back(piece);
+                        if (k < r.text.size()) parts.emplace_back();
+                        from = k + 1;
+                    }
+                }
+            }
+            std::string line;
+            for (std::size_t k = 0; k < parts.size(); ++k) {
+                mergeRuns(parts[k]);
+                std::string md = trimCopy(inlineMarkdown(parts[k]));
+                std::string esc;
+                for (char ch : md) {
+                    if (ch == '|') esc += '\\';
+                    esc += ch;
+                }
+                if (k) line += " | ";
+                line += esc;
+            }
+            if (trimCopy(line).empty() || line == " | " || line == " |  | ") continue;
+            if (!out.empty()) out += " ";
+            out += line;
+        }
+        fieldPlaceholders = false;
+        return trimCopy(out);
     }
 };
 
@@ -669,8 +914,22 @@ TextDocument readDocx(const std::string& bytes) {
             else r.rels[rel->attr("Id")] = t.size() && t[0] == '/' ? t.substr(1) : dir + t;
         }
     }
-    r.loadStyles();
-    r.loadNumbering();
+    try {
+        r.loadStyles();
+    } catch (const std::exception&) {
+    }
+    r.builtinChanges();
+    try {
+        r.loadNumbering();
+    } catch (const std::exception&) {
+    }
+    try {
+        r.loadNotes(dir + "footnotes.xml", "footnote", r.notes);
+        r.loadNotes(dir + "endnotes.xml", "endnote", r.endnotes);
+        r.loadComments();
+    } catch (const std::exception&) {
+    }
+    r.doc.changes.clear();  // changes inside notes and comments are not kept
     xml::Node root = xml::parse(docXml);
     const xml::Node* body = root.child("body");
     if (!body) throw std::runtime_error("document has no body");
@@ -684,8 +943,43 @@ TextDocument readDocx(const std::string& bytes) {
             }
         }
         if (const auto* m = sect->child("pgMar")) {
-            double left = std::atof(m->attr("w:left").c_str()) / 20;
-            if (left > 0 && left < 200) r.doc.page.margin = left;
+            auto margin = [&](const char* key, double& out) {
+                double v = std::fabs(std::atof(m->attr(key).c_str())) / 20;
+                if (m->hasAttr(key) && v < 400) out = v;
+            };
+            margin("w:top", r.doc.page.top);
+            margin("w:bottom", r.doc.page.bottom);
+            margin("w:left", r.doc.page.left);
+            margin("w:right", r.doc.page.right);
+        }
+        HeaderFooter& hf = r.doc.headerFooter;
+        hf.differentFirst = sect->child("titlePg") && onFlag(sect->child("titlePg"));
+        bool anyFooter = false;
+        for (const auto& c : sect->children) {
+            const bool head = c.is("headerReference"), foot = c.is("footerReference");
+            if (!head && !foot) continue;
+            const std::string type = c.attr("w:type");
+            std::string text;
+            try {
+                text = r.band(c.attr("r:id"));
+            } catch (const std::exception&) {
+                continue;
+            }
+            if (type == "first") (head ? hf.firstHeader : hf.firstFooter) = text;
+            else if (type.empty() || type == "default") (head ? hf.header : hf.footer) = text;
+            if (foot && (type.empty() || type == "default")) anyFooter = true;
+        }
+        if (!hf.differentFirst) hf.firstHeader.clear(), hf.firstFooter.clear();
+        if (hf.footer == "{page} / {pages}") hf.footer.clear();  // the default page numbers
+        else if (!anyFooter) r.doc.page.pageNumbers = false;
+    } else {
+        r.doc.page.pageNumbers = false;
+    }
+    if (std::string settings = entry(r.files, dir + "settings.xml"); !settings.empty()) {
+        try {
+            xml::Node s = xml::parse(settings);
+            r.doc.trackChanges = onFlag(s.child("trackRevisions"));
+        } catch (const std::exception&) {
         }
     }
     if (std::string core = entry(r.files, "docProps/core.xml"); !core.empty()) {
@@ -693,284 +987,6 @@ TextDocument readDocx(const std::string& bytes) {
             xml::Node c = xml::parse(core);
             if (const auto* t = c.child("title")) r.doc.title = t->allText();
             if (const auto* a = c.child("creator")) r.doc.author = a->allText();
-        } catch (const std::exception&) {
-        }
-    }
-    return r.doc;
-}
-
-// ---- reading ODT ------------------------------------------------------------------
-
-namespace {
-
-struct OdtReader {
-    std::map<std::string, std::string> files;
-    struct TextStyle {
-        bool bold = false, italic = false, underline = false, code = false;
-        bool pageBreakBefore = false;
-        std::string parent;
-    };
-    std::map<std::string, TextStyle> styles;
-    std::map<std::string, bool> listOrdered;  // list style -> first level is numbered
-    std::map<std::string, std::string> parentOf;
-    TextDocument doc;
-
-    void loadStyles(const xml::Node& container) {
-        for (const auto* s : container.all("style")) {
-            TextStyle t;
-            t.parent = s->attr("style:parent-style-name");
-            if (const auto* tp = s->child("text-properties")) {
-                t.bold = tp->attr("fo:font-weight") == "bold";
-                t.italic = tp->attr("fo:font-style") == "italic";
-                std::string u = tp->attr("style:text-underline-style");
-                t.underline = !u.empty() && u != "none";
-                std::string fn = lower(tp->attr("style:font-name"));
-                t.code = fn.find("mono") != std::string::npos || fn.find("courier") != std::string::npos;
-            }
-            if (const auto* pp = s->child("paragraph-properties")) t.pageBreakBefore = pp->attr("fo:break-before") == "page";
-            styles[s->attr("style:name")] = t;
-        }
-        for (const auto* ls : container.all("list-style")) {
-            bool ordered = false;
-            for (const auto& c : ls->children) {
-                if (c.is("list-level-style-number") || c.is("list-level-style-bullet")) {
-                    ordered = c.is("list-level-style-number");
-                    break;
-                }
-            }
-            listOrdered[ls->attr("style:name")] = ordered;
-        }
-    }
-
-    std::string styleChainName(const std::string& name) {
-        // display names like "Heading_20_1", "Quotations", "Preformatted_20_Text"
-        std::string n = name;
-        for (int hops = 0; hops < 8 && !n.empty(); ++hops) {
-            std::string l = lower(n);
-            if (startsWith(l, "heading") || l == "title" || l.find("quotation") != std::string::npos || l.find("preformatted") != std::string::npos ||
-                l.find("source") != std::string::npos) {
-                return l;
-            }
-            n = styles.count(n) ? styles[n].parent : "";
-        }
-        return "";
-    }
-
-    void spans(const xml::Node& n, Runs& out, Run base) {
-        for (const auto& c : n.children) {
-            if (c.isText()) {
-                Run r = base;
-                r.text = c.text;
-                out.push_back(r);
-            } else if (c.is("s")) {
-                Run r = base;
-                r.text = std::string(static_cast<std::size_t>(std::max(1, std::atoi(c.attr("text:c").c_str()))), ' ');
-                out.push_back(r);
-            } else if (c.is("tab")) {
-                Run r = base;
-                r.text = "\t";
-                out.push_back(r);
-            } else if (c.is("line-break")) {
-                Run r = base;
-                r.text = "\n";
-                out.push_back(r);
-            } else if (c.is("span")) {
-                Run r = base;
-                auto it = styles.find(c.attr("text:style-name"));
-                if (it != styles.end()) {
-                    r.bold = r.bold || it->second.bold;
-                    r.italic = r.italic || it->second.italic;
-                    r.underline = r.underline || it->second.underline;
-                    r.code = r.code || it->second.code;
-                }
-                spans(c, out, r);
-            } else if (c.is("a")) {
-                Run r = base;
-                r.link = c.attr("xlink:href");
-                spans(c, out, r);
-            } else if (c.is("note") || c.is("annotation") || c.is("bookmark") || c.is("bookmark-start") || c.is("frame")) {
-                continue;
-            } else {
-                spans(c, out, base);
-            }
-        }
-    }
-
-    void frames(const xml::Node& n, std::vector<Block>& out) {
-        std::vector<const xml::Node*> fr;
-        n.descendants("frame", fr);
-        for (const auto* f : fr) {
-            const auto* img = f->child("image");
-            if (!img) continue;
-            std::string href = img->attr("xlink:href");
-            std::string bytes = entry(files, href);
-            if (bytes.empty()) continue;
-            Block b;
-            try {
-                setImage(b, bytes);
-            } catch (const std::exception&) {
-                continue;
-            }
-            std::string w = f->attr("svg:width");
-            double v = std::atof(w.c_str());
-            if (endsWith(w, "cm")) b.width = v / 2.54 * 72;
-            else if (endsWith(w, "mm")) b.width = v / 25.4 * 72;
-            else if (endsWith(w, "in")) b.width = v * 72;
-            else if (endsWith(w, "pt")) b.width = v;
-            if (const auto* d = f->child("desc")) b.alt = d->allText();
-            else b.alt = f->attr("draw:name");
-            out.push_back(std::move(b));
-        }
-    }
-
-    Block textBlock(const xml::Node& p, bool heading) {
-        Block b;
-        std::string style = p.attr("text:style-name");
-        Run base;
-        auto it = styles.find(style);
-        if (it != styles.end()) {
-            base.bold = it->second.bold;
-            base.italic = it->second.italic;
-        }
-        spans(p, b.runs, base);
-        mergeRuns(b.runs);
-        if (heading) {
-            b.kind = Block::Heading;
-            b.level = std::clamp(std::atoi(p.attr("text:outline-level").c_str()), 1, 6);
-            for (auto& r : b.runs) r.bold = false;
-        } else {
-            std::string chain = styleChainName(style);
-            if (startsWith(chain, "heading")) {
-                b.kind = Block::Heading;
-                const auto digit = chain.find_first_of("0123456789");
-                const int n = digit == std::string::npos ? 1 : std::atoi(chain.c_str() + digit);
-                b.level = std::clamp(n, 1, 6);
-            } else if (chain == "title") {
-                b.kind = Block::Heading;
-                b.level = 1;
-            } else if (chain.find("quotation") != std::string::npos) {
-                b.kind = Block::Quote;
-            } else if (chain.find("preformatted") != std::string::npos || chain.find("source") != std::string::npos) {
-                b.kind = Block::Code;
-            }
-        }
-        return b;
-    }
-
-    void list(const xml::Node& l, int level, Block& block) {
-        for (const auto* item : l.all("list-item")) {
-            for (const auto& c : item->children) {
-                if (c.is("p") || c.is("h")) {
-                    ListItem it;
-                    it.level = level;
-                    spans(c, it.runs, Run{});
-                    mergeRuns(it.runs);
-                    if (!trimCopy(plainText(it.runs)).empty()) block.items.push_back(it);
-                } else if (c.is("list")) {
-                    list(c, level + 1, block);
-                }
-            }
-        }
-    }
-
-    void body(const xml::Node& n, std::vector<Block>& out) {
-        for (const auto& c : n.children) {
-            if (c.is("h") || c.is("p")) {
-                auto st = styles.find(c.attr("text:style-name"));
-                if (st != styles.end() && st->second.pageBreakBefore && !out.empty()) {
-                    Block pb;
-                    pb.kind = Block::PageBreak;
-                    out.push_back(pb);
-                }
-                Block b = textBlock(c, c.is("h"));
-                if (!trimCopy(plainText(b.runs)).empty()) {
-                    if (b.kind == Block::Code) {
-                        Run r;
-                        r.text = plainText(b.runs);
-                        r.code = true;
-                        b.runs = {r};
-                        if (!out.empty() && out.back().kind == Block::Code) {
-                            out.back().runs[0].text += "\n" + r.text;
-                        } else {
-                            out.push_back(std::move(b));
-                        }
-                    } else {
-                        out.push_back(std::move(b));
-                    }
-                }
-                frames(c, out);
-            } else if (c.is("list")) {
-                Block b;
-                b.kind = Block::List;
-                std::string ls = c.attr("text:style-name");
-                b.ordered = listOrdered.count(ls) ? listOrdered[ls] : false;
-                list(c, 0, b);
-                if (!b.items.empty()) out.push_back(std::move(b));
-            } else if (c.is("table")) {
-                Block b;
-                b.kind = Block::Table;
-                std::vector<const xml::Node*> rows;
-                std::function<void(const xml::Node&)> collect = [&](const xml::Node& x) {
-                    for (const auto& ch : x.children) {
-                        if (ch.is("table-row")) rows.push_back(&ch);
-                        else if (ch.is("table-header-rows") || ch.is("table-rows") || ch.is("table-row-group")) collect(ch);
-                    }
-                };
-                collect(c);
-                for (const auto* row : rows) {
-                    std::vector<Runs> cells;
-                    for (const auto& cell : row->children) {
-                        if (!cell.is("table-cell") && !cell.is("covered-table-cell")) continue;
-                        Runs rs;
-                        bool first = true;
-                        for (const auto* p : cell.all("p")) {
-                            if (!first) {
-                                Run nl;
-                                nl.text = "\n";
-                                rs.push_back(nl);
-                            }
-                            spans(*p, rs, Run{});
-                            first = false;
-                        }
-                        mergeRuns(rs);
-                        int rep = std::max(1, std::atoi(cell.attr("table:number-columns-repeated").c_str()));
-                        for (int k = 0; k < rep && k < 64; ++k) cells.push_back(rs);
-                    }
-                    b.rows.push_back(cells);
-                }
-                std::size_t cols = 0;
-                for (const auto& r : b.rows) cols = std::max(cols, r.size());
-                for (auto& r : b.rows) r.resize(cols);
-                if (!b.rows.empty()) out.push_back(std::move(b));
-            } else if (c.is("section") || c.is("index-body") || c.is("table-of-content")) {
-                body(c, out);
-            }
-        }
-    }
-};
-
-}  // namespace
-
-TextDocument readOdt(const std::string& bytes) {
-    OdtReader r;
-    r.files = unzip(bytes);
-    std::string content = entry(r.files, "content.xml");
-    if (content.empty()) throw std::runtime_error("not an OpenDocument file (no content.xml)");
-    if (std::string st = entry(r.files, "styles.xml"); !st.empty()) {
-        xml::Node s = xml::parse(st);
-        if (const auto* os = s.child("styles")) r.loadStyles(*os);
-    }
-    xml::Node root = xml::parse(content);
-    if (const auto* as = root.child("automatic-styles")) r.loadStyles(*as);
-    const xml::Node* bodyNode = root.child("body");
-    const xml::Node* text = bodyNode ? bodyNode->child("text") : nullptr;
-    if (!text) throw std::runtime_error("not a text document (no office:text)");
-    r.body(*text, r.doc.blocks);
-    if (std::string meta = entry(r.files, "meta.xml"); !meta.empty()) {
-        try {
-            xml::Node m = xml::parse(meta);
-            if (const auto* t = m.find("title")) r.doc.title = t->allText();
-            if (const auto* a = m.find("initial-creator")) r.doc.author = a->allText();
         } catch (const std::exception&) {
         }
     }

@@ -196,6 +196,8 @@ Mesh plane(double width, double depth, int nx, int ny) {
     return m;
 }
 
+std::vector<std::uint32_t> triangulate(const Polygon2& shape) { return detail::triangulate(shape.outer, shape.holes); }
+
 Mesh extrude(const Polygon2& shape, double height, bool center) {
     need(height > 0, "extrude height must be positive");
     std::vector<Vec2> outer = cleanRing(shape.outer);

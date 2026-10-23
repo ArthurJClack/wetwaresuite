@@ -165,6 +165,15 @@ std::unique_ptr<Attachment> FitDoc::preview() const {
     return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(mesh::render(m, 512, 512, ro)), "preview.png"});
 }
 
+bool FitDoc::renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const {
+    if (width == 0 && height == 0) return true;
+    std::vector<raster::Color> colors;
+    Mesh m = sceneMesh(*this, {}, &colors);
+    mesh::RenderOptions ro;
+    ro.faceColors = std::move(colors);
+    return mesh::renderOrbit(m, view, width, height, rgba, ro);
+}
+
 namespace detail {
 
 // ---- params ----

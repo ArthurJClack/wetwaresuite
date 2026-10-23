@@ -144,6 +144,7 @@ bool Shell::accentButton(const char* label, ImVec2 size) {
 }
 
 void Shell::frame() {
+    animating_ = false;  // set again by whatever draws something moving
     drainDialogs();
     backgroundTicks();
     if (paletteStale_ && loadPalette()) applyStyle(dpi_);
@@ -157,6 +158,7 @@ void Shell::frame() {
         if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Y) || ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Z)) redo();
     }
     if (form_ && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Enter)) runForm();
+    if (!app_.launcher.empty()) return launcherFrame();
 
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
@@ -437,7 +439,33 @@ void Shell::documentView() {
     ImGui::SameLine();
     ImGui::TextDisabled("%s", doc->summary().c_str());
     suggestionBannerView();
+    if (doc->kind() == "pdf" && find("pdf.view")) {
+        pdfView();
+        return;
+    }
+    transportBar();
+    if (CellGrid layout; doc->grid(layout) && !layout.sheets.empty()) {
+        gridView(layout);
+        return;
+    }
     canvasToolbar();
+    TimelineLayout layout;
+    if (doc->timeline(layout)) {
+        // the preview on top, the timeline below
+        const float want = timelineHeight(layout);
+        const float avail = ImGui::GetContentRegionAvail().y;
+        const float tl = std::min(want, avail * 0.6f);
+        ImGui::BeginChild("preview", {0, std::max(64.0f, avail - tl - ImGui::GetStyle().ItemSpacing.y)});
+        if (doc->kind() == "song" && find("beats.notes"))
+            pianoRollView();  // songs: the pattern's notes over the arrangement (sound_view.cpp)
+        else
+            canvasView();
+        ImGui::EndChild();
+        ImGui::BeginChild("timeline", {0, 0});
+        timelineView(layout);
+        ImGui::EndChild();
+        return;
+    }
     canvasView();
 }
 
@@ -463,6 +491,8 @@ void Shell::rightPanel() {
         }
         if (!result_->attachments.empty()) wrappedMuted(std::to_string(result_->attachments.size()) + " file(s) made in memory.");
     }
+    layersPanel();  // image documents only (layers_view.cpp)
+    soundPanel();   // audio projects and songs (sound_view.cpp)
     ImGui::Spacing();
     ImGui::Separator();
     if (ImGui::CollapsingHeader("History", ImGuiTreeNodeFlags_DefaultOpen)) historyPanel();

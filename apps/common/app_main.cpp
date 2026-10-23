@@ -12,6 +12,7 @@
 #include "launch.hpp"
 #include "wetwaresuite/core/cli.hpp"
 #include "wetwaresuite/mcp/server.hpp"
+#include "wetwaresuite/playback/player.hpp"
 #include "wetwaresuite/mcp/transport.hpp"
 
 namespace wetwaresuite::apps {
@@ -180,13 +181,19 @@ int appMain(int argc, char** argv, const MainSpec& spec) {
                 else file = args[i];
             }
             cli::Batch batch(session);
-            if (file.empty() || file == "-") return batch.run(std::cin, std::cout, std::cerr, keepGoing) == 0 ? 0 : 1;
+            if (file.empty() || file == "-") {
+                const int rc = batch.run(std::cin, std::cout, std::cerr, keepGoing) == 0 ? 0 : 1;
+                playback::finishBeforeExit();
+                return rc;
+            }
             std::ifstream in(file);
             if (!in) {
                 std::cerr << "cannot open " << file << "\n";
                 return 2;
             }
-            return batch.run(in, std::cout, std::cerr, keepGoing) == 0 ? 0 : 1;
+            const int rc = batch.run(in, std::cout, std::cerr, keepGoing) == 0 ? 0 : 1;
+            playback::finishBeforeExit();  // let a played sound finish
+            return rc;
         }
         std::size_t start = cmd == "run" ? 1 : 0;
         if (start >= args.size()) {
@@ -206,6 +213,7 @@ int appMain(int argc, char** argv, const MainSpec& spec) {
         Result r = session.run(id, params);
         std::string text = cli::format(r);
         (r.ok ? std::cout : std::cerr) << text << (text.empty() ? "" : "\n");
+        if (r.ok) playback::finishBeforeExit();  // `audio.play path=a.wav` is heard, not cut off
         return r.ok ? 0 : 1;
     } catch (const std::exception& e) {
         std::cerr << "error: " << e.what() << "\n";

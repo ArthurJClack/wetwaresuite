@@ -31,6 +31,10 @@ Mesh torus(double major, double minor, int segments = 32, int tubeSegments = 16)
 // Flat XY rectangle facing +Z, centred, with normals and UVs. Open (one-sided).
 Mesh plane(double width, double depth, int divisionsX = 1, int divisionsY = 1);
 
+// Triangulates a 2D region (ear clipping). Indices run over outer, then each
+// hole in turn; three per triangle, counter-clockwise.
+std::vector<std::uint32_t> triangulate(const Polygon2& shape);
+
 // Extrudes a 2D region along +Z from z=0 to z=height (or centred).
 Mesh extrude(const Polygon2& shape, double height, bool center = false);
 // Revolves a closed 2D profile about the Z axis. Profile x is the radius

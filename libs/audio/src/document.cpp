@@ -1,6 +1,7 @@
 #include "wetwaresuite/audio/document.hpp"
 
 #include <algorithm>
+#include <cstdio>
 
 #include "wetwaresuite/audio/analysis.hpp"
 #include "wetwaresuite/audio/io.hpp"
@@ -43,6 +44,53 @@ std::unique_ptr<Attachment> ProjectDoc::preview() const {
     return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(renderProject(project)), "project.png"});
 }
 
+bool ProjectDoc::timeline(TimelineLayout& out) const {
+    out.docParam = "project";
+    out.tracks.clear();
+    for (std::size_t ti = 0; ti < project.tracks.size(); ++ti) {
+        const Track& t = project.tracks[ti];
+        TimelineTrack tt;
+        tt.id = std::to_string(ti);
+        tt.name = (t.name.empty() ? "track " + std::to_string(ti) : t.name) + (t.mute ? " (muted)" : t.solo ? " (solo)" : "");
+        tt.kind = "audio";
+        for (std::size_t ci = 0; ci < t.clips.size(); ++ci) {
+            const Clip& c = t.clips[ci];
+            TimelineClip tc;
+            tc.id = std::to_string(ci);
+            tc.label = c.name;
+            tc.start = c.at;
+            tc.length = c.seconds();
+            tc.headroom = c.offset;
+            tc.tailroom = std::max(0.0, c.sourceSeconds() - c.offset - c.seconds());
+            tt.clips.push_back(tc);
+        }
+        out.tracks.push_back(std::move(tt));
+    }
+    return true;
+}
+
+std::string ProjectDoc::timelineCommand(const TimelineEdit& e) const {
+    char buf[48];
+    auto t4 = [&buf](double v) {
+        std::snprintf(buf, sizeof buf, "%.4f", v);
+        return std::string(buf);
+    };
+    const std::string which = " track=" + e.track + " clip=" + e.clip;
+    switch (e.kind) {
+        case TimelineEditKind::Move: {
+            std::string line = "audio.clip_set" + which + " at=" + t4(std::max(0.0, e.start));
+            if (!e.toTrack.empty() && e.toTrack != e.track) line += " to_track=" + e.toTrack;
+            return line;
+        }
+        case TimelineEditKind::TrimStart: return "audio.clip_trim" + which + " start=" + t4(std::max(0.0, e.start));
+        case TimelineEditKind::TrimEnd: return "audio.clip_trim" + which + " length=" + t4(std::max(0.001, e.length));
+        case TimelineEditKind::Split: return "audio.clip_split" + which + " at=" + t4(e.at);
+        case TimelineEditKind::Delete: return "audio.clip_remove" + which;
+        default: break;
+    }
+    return {};
+}
+
 std::shared_ptr<AudioDoc> newAudio(Buffer b) {
     auto doc = std::make_shared<AudioDoc>();
     doc->audio = std::move(b);
@@ -58,6 +106,7 @@ std::shared_ptr<AudioDoc> openAudio(const std::filesystem::path& path) {
 Result AudioEdit::apply() {
     before_ = doc_->audio;
     beforeNoise_ = doc_->noise;
+    beforeMarkers_ = doc_->markers;
     Result r;
     try {
         r = fn_(*doc_);
@@ -71,6 +120,7 @@ Result AudioEdit::apply() {
 void AudioEdit::revert() {
     doc_->audio = before_;
     doc_->noise = beforeNoise_;
+    doc_->markers = beforeMarkers_;
 }
 
 Result ProjectEdit::apply() {

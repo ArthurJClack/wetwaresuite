@@ -786,6 +786,7 @@ std::string toPdf(const Board& board, const RenderOptions& options) {
     const double k = o.scale;
     const double W = r.w() * k, H = r.h() * k;
     pdfdoc::Writer w;
+    pdfdoc::UnicodeFallback uni(w);
     const int catalog = w.reserve(), pages = w.reserve(), page = w.reserve();
     std::map<int, int> fonts;           // standard font -> object
     std::map<int, std::string> alphas;  // alpha*100 -> gs name
@@ -837,7 +838,7 @@ std::string toPdf(const Board& board, const RenderOptions& options) {
             c << "q ";
             if (x->color.a < 255) c << gs(x->color.a / 255.0);
             c << rgb(x->color) << " rg BT /F" << fi << " " << num(x->size) << " Tf 1 0 0 -1 " << num(x->x) << " " << num(x->y) << " Tm "
-              << pdfdoc::text(x->text) << " Tj ET Q\n";
+              << uni.show(x->text, "F" + std::to_string(fi), x->size) << " ET Q\n";
         } else if (const auto* im = std::get_if<ImageOp>(&op.v)) {
             const int id = pdfdoc::addImage(w, *im->img);
             const std::string name = "Im" + std::to_string(images.size() + 1);
@@ -848,7 +849,7 @@ std::string toPdf(const Board& board, const RenderOptions& options) {
     const int content = w.addStream("", c.str());
     std::string res = "<< /Font <<";
     for (const auto& [fi, id] : fonts) res += " /F" + std::to_string(fi) + " " + std::to_string(id) + " 0 R";
-    res += " >> /ExtGState <<";
+    res += uni.resource() + " >> /ExtGState <<";
     for (const auto& [key, name] : alphas) res += " /" + name + " << /ca " + num(key / 100.0) + " /CA " + num(key / 100.0) + " >>";
     res += " >> /XObject <<";
     for (const auto& [name, id] : images) res += " /" + name + " " + std::to_string(id) + " 0 R";
@@ -857,8 +858,9 @@ std::string toPdf(const Board& board, const RenderOptions& options) {
                     " /Contents " + std::to_string(content) + " 0 R >>");
     w.set(pages, "<< /Type /Pages /Kids [" + std::to_string(page) + " 0 R] /Count 1 >>");
     w.set(catalog, "<< /Type /Catalog /Pages " + std::to_string(pages) + " 0 R >>");
+    uni.finish();
     int info = 0;
-    if (!board.title.empty()) info = w.add("<< /Title " + pdfdoc::text(board.title) + " /Producer (wetwaresuite board) >>");
+    if (!board.title.empty()) info = w.add("<< /Title " + pdfdoc::infoText(board.title) + " /Producer (wetwaresuite board) >>");
     return w.finish(catalog, info);
 }
 

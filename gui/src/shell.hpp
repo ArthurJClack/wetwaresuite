@@ -29,7 +29,39 @@ struct Texture {
     ImTextureID id() const { return static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(tex)); }
 };
 
-enum class CanvasTool { Move, Brush, Eraser, Fill, Heal, Remove };
+enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur, Pick, Anchor };
+enum class SelectShape { Rect, Ellipse, Lasso, Wand };
+
+// Click tools for game levels (levels.*) and pixel-art sprites (forge.sprite_*), game_view.cpp.
+enum class GameTool { Move, Paint, Rect, Erase, Fill, Object, Pick, Pencil, Eraser, Line, Box, Ellipse, Bucket };
+
+struct GameCanvas {
+    std::string doc, kind;       // the document the state is for; kind "level" or "sprite"
+    std::uint64_t seen = ~0ull;  // Shell change count the info was read at
+    GameTool tool = GameTool::Move;
+    bool dragging = false;
+    ImVec2 dragFrom{0, 0}, dragTo{0, 0};  // picture px
+    std::vector<double> points;           // level: cells x,y; sprite: pixels x,y
+    std::string error;
+    // level
+    int mapW = 0, mapH = 0, tileW = 16, tileH = 16;
+    std::vector<std::string> layers, layerKinds, tilesets;
+    int layer = 0, tileset = 0, tile = 0;
+    Texture tilesetTex;
+    std::string tilesetFor;  // doc/tileset/change the texture shows
+    int tsColumns = 1, tsTiles = 0, tsTileW = 16, tsTileH = 16;
+    bool grid = true;
+    // sprite
+    int frame = 0, frames = 1, spriteLayer = 0, width = 0, height = 0;
+    std::vector<std::string> spriteLayers, palette, tags, tagRanges;
+    std::vector<bool> layerShown;
+    std::vector<int> durations;
+    bool onion = false, playing = false, filled = false;
+    double playClock = 0;
+    float color[4] = {0, 0, 0, 1};
+    std::vector<std::uint8_t> picture;  // the frame on the canvas, RGBA, for the colour picker
+    int pictureW = 0, pictureH = 0;
+};
 
 // A retouch command waiting to run: it runs on the frame after it is queued, so the
 // window first shows "Working..." over the canvas.
@@ -70,6 +102,105 @@ struct Canvas {
     std::string removeMarkDoc;
     bool autoRemove = false;  // remove as soon as the stroke ends
     std::optional<PendingRetouch> pending;
+    // retouch brushes (brush_tools.cpp): clone, dodge/burn/sponge, smudge, blur/sharpen
+    HealSource cloneSource;   // Alt+click spot the clone stamp copies from
+    float strength = 50;      // exposure / strength 0..100
+    std::string toneRange = "midtones";
+    bool sharpen = false;     // the Blur tool sharpens instead
+
+    // the 3D view (orbit.cpp), for documents that can draw themselves from any angle
+    bool is3d = false;
+    std::string shown3dDoc;
+    OrbitView orbit;
+    bool orbitDirty = true;
+    bool orbitDragging = false;
+    bool orbitSharpPending = false;
+    int orbitW = 0, orbitH = 0;
+
+    // selecting (selection_view.cpp)
+    SelectShape selectShape = SelectShape::Rect;
+    float tolerance = 32;
+    bool contiguous = true;
+    bool selecting = false;
+    ImVec2 selectStart{0, 0};          // picture px
+    std::vector<double> lasso;         // picture px, x,y pairs
+    int version = 0;                   // goes up whenever the picture is refreshed
+    std::string antsDoc;
+    int antsVersion = -1;
+    int antsStep = 1;                  // picture px per mask cell the outline was traced on
+    std::vector<float> ants;           // selection outline, x0,y0,x1,y1 in picture px
+
+    // vector drawings (vector_view.cpp): the picked shape, its box and anchors, in drawing units
+    std::string vecSel;
+    std::uint64_t vecLoaded = ~0ull;  // changes_ when the box and anchors were read
+    bool vecHasBox = false;
+    float vecBox[4] = {0, 0, 0, 0};  // x, y, w, h
+    std::vector<float> vecNodes;      // per anchor: x, y, in x, in y, out x, out y
+    int vecDrag = 0;                  // 0 none, 1 move, 2 scale handle, 3 anchor part
+    int vecHandle = 0;                // scale: handle 0..7; anchor: node * 3 + part (0 anchor, 1 in, 2 out)
+    ImVec2 vecStart{0, 0}, vecNow{0, 0};
+
+    GameCanvas game;
+};
+
+// The play bar's view of playback (transport.cpp), read back from <tool>.playhead.
+struct Transport {
+    std::string tool;  // audio, beats or cut
+    std::string doc;   // the document the window last started
+    std::string source;
+    bool playing = false, paused = false, loop = false, silent = false;
+    double position = 0, length = 0, start = 0, end = 0;
+    double cue = 0;  // where Play starts when nothing is playing
+    float volumeDb = 0;
+};
+
+// The timeline panel's own state (timeline_view.cpp).
+struct TimelineState {
+    std::string doc;
+    double zoom = 0;    // px per second, 0 = fit
+    double scroll = 0;  // seconds at the left edge
+    double cursor = 0;  // where Split cuts
+    std::string selTrack, selClip;
+    enum class Drag { None, Cursor, Move, TrimStart, TrimEnd } drag = Drag::None;
+    double grabT = 0, origStart = 0, origLength = 0, headroom = -1, tailroom = -1;
+};
+
+// The cell grid shown for spreadsheet documents (grid_view.cpp).
+struct GridState {
+    std::string doc;
+    int sheet = -1;  // -1: start on the document's active sheet
+    int row = 0, col = 0;
+    bool editing = false;
+    bool focusEdit = false;   // give the cell editor keyboard focus next frame
+    bool caretToEnd = false;  // started by typing: keep the typed text, caret after it
+    bool scrollToSel = false;
+    bool textInput = false;  // we turned SDL text input on
+    std::string buffer;   // the cell editor's text
+    std::string formula;  // the formula bar's text
+    int formulaRow = -1, formulaCol = -1, formulaSheet = -1;
+};
+
+// Clicking on a circuit document (panel_circuit.cpp): the tool and a wire/trace being drawn.
+struct CircuitCanvas {
+    std::string doc, view = "schematic";  // schematic, pcb or 3d
+    std::string tool = "select";          // select, place, wire, move, delete, trace, via
+    std::string symbol = "resistor", value, layer = "F";
+    bool hasStart = false;  // the first click of a wire or trace
+    double startX = 0, startY = 0;  // model point (grid units or mm)
+    ImVec2 startPx{0, 0};           // picture px
+    std::string moving;             // part picked up by the move tool
+};
+
+// Clicking on a map document (maps_view.cpp): the tool, points being drawn, a feature being moved.
+struct MapsCanvas {
+    std::string doc;
+    std::string tool = "identify";  // pan, identify, measure, point, line, area, move, delete, route
+    std::string layer = "drawn", props, profile = "car", search, bookmark;
+    std::vector<double> points;     // lat,lon pairs clicked so far
+    std::vector<ImVec2> pointsPx;   // the same, picture px
+    std::string movingLayer;        // move tool: what was picked up
+    std::int64_t movingIndex = -1, movingVertex = -1;
+    ImVec2 movingFrom{0, 0};
 };
 
 // Where a native file dialog's answer goes.
@@ -98,6 +229,7 @@ public:
     }
     bool wantsQuit() const { return quit_; }
     int tickMs() const;  // > 0: wake the window this often (timers, running programs, live graphs)
+    bool animating() const { return animating_; }  // something on screen moves (the selection outline)
 
     static Uint32 wakeEvent;  // pushed from dialog threads to wake the event loop
     static ImFont* monoFont;  // a fixed-width font for code and terminals (null: the UI font)
@@ -125,6 +257,7 @@ private:
 
     // canvas (canvas.cpp)
     void canvasView();
+    void canvasArea();
     void canvasToolbar();
     void refreshCanvas();
     void beginStroke(ImVec2 screen, float pressure, bool pen, bool eraser);
@@ -132,6 +265,24 @@ private:
     void endStroke();
     ImVec2 toImage(ImVec2 screen) const;
     bool toolAvailable(CanvasTool tool) const;
+    // circuit documents (panel_circuit.cpp): schematic / board / 3D, and click tools that run circuit.* commands
+    bool circuitDoc() const;
+    bool circuitEditing() const;  // a click tool is on, so a left drag doesn't pan
+    void circuitToolbar();
+    void circuitCanvas(ImDrawList* dl, ImVec2 origin, bool hovered, bool clicked);
+    void circuitClick(ImVec2 picture);
+    // map documents (maps_view.cpp): click tools that run maps.* commands, zoom, bookmarks and search
+    bool mapsDoc() const;
+    bool mapsEditing() const;  // a click tool is on, so a left drag doesn't pan
+    void mapsToolbar();
+    void mapsCanvas(ImDrawList* dl, ImVec2 origin, bool hovered, bool clicked);
+    void mapsClick(ImVec2 picture);
+    void mapsFinish();
+
+    // the 3D view (orbit.cpp)
+    bool probe3d(const Document& doc) const;
+    void orbitToolbar();
+    void orbitCanvas(ImDrawList* dl, ImVec2 origin, ImVec2 size, bool hovered, bool active);
 
     // retouching by painting (retouch.cpp): Heal and Remove
     void retouchSettings();
@@ -142,6 +293,68 @@ private:
     void queueRetouch(const std::string& command, const std::string& title, Params params);
     void runPendingRetouch();
     bool pictureSize(int& width, int& height) const;
+    // the retouch brushes (brush_tools.cpp) and the layers panel (layers_view.cpp)
+    static bool brushTool(CanvasTool tool);
+    void brushToolSettings();
+    bool brushToolPress(ImVec2 screen);  // true when the click picked a clone source
+    void runBrushTool();
+    void drawBrushTool(ImDrawList* dl, ImVec2 origin, bool hovered);
+    void layersPanel();
+    void soundPanel();     // effects rack and envelope of audio projects and songs (sound_view.cpp)
+    void pianoRollView();  // the notes of a song pattern (sound_view.cpp)
+
+    // the play bar over sound documents (transport.cpp)
+    bool playTarget(std::string& tool, Params& target) const;
+    void transportBar();
+    void pollTransport();
+    void startPlaying(double from);
+    void togglePlay();
+    void seekTo(double seconds);
+    // the timeline under video edits and audio projects (timeline_view.cpp)
+    float timelineHeight(const TimelineLayout& layout) const;
+    void timelineView(const TimelineLayout& layout);
+    void runTimelineEdit(const TimelineLayout& layout, const TimelineEdit& edit);
+    // spreadsheet grid (grid_view.cpp)
+    void gridView(const CellGrid& layout);
+    // the PDF editor (pdf_view.cpp)
+    void pdfView();
+    void pdfToolbar();
+    void pdfThumbs(float width);
+    void pdfPage();
+    void pdfPopup();
+    void pdfLoad(bool force);
+    void pdfRun(const std::string& command, Params params, const std::string& title);
+    void pdfRelease();
+    bool commitCell(const CellGrid& layout, int sheet, int row, int col, const std::string& input);
+    // selections on the canvas (selection_view.cpp)
+    void selectSettings();
+    void selectPress(ImVec2 screen);
+    void selectDrag(ImVec2 screen);
+    void selectRelease(ImVec2 screen);
+    void drawSelection(ImDrawList* dl, ImVec2 origin, bool hovered);
+    void runSelect(Params params, const char* title);
+    // vector drawings on the canvas (vector_view.cpp): pick, move, scale, anchors, align
+    bool vectorDoc() const;
+    void vectorSettings();
+    void vectorPress(ImVec2 screen);
+    void vectorDrag(ImVec2 screen);
+    void vectorRelease();
+    void vectorKeys();
+    void drawVector(ImDrawList* dl, ImVec2 origin);
+
+    // game levels and sprites on the canvas (game_view.cpp)
+    bool gameActive() const;  // the current document is a level or sprite with its commands here
+    void gameSync();          // re-read the document's layers, tilesets, frames, palette
+    std::string gamePicture();  // PNG for the canvas, empty when not a game document
+    void gameToolbar();
+    void gameSide();
+    void gameInput(ImDrawList* dl, ImVec2 origin, bool hovered, bool active);
+    bool gamePainting() const;
+    void gameRun(const std::string& id, Params params, const std::string& title);
+    void gameLevelSide();
+    void gameSpriteSide();
+    void gameLevelRelease();
+    void gameSpriteRelease();
 
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);
@@ -229,6 +442,11 @@ private:
     void sendTo(const std::string& app);
     void launchApp(const std::string& app, const std::string& path);
 
+    // the launcher (launcher_view.cpp): a grid of apps, each started as its own program
+    void launcherFrame();
+    void launcherOpen(const std::string& path);
+    void launcherStart(const std::string& app, const std::string& path);
+
     Session& session_;
     AppInfo app_;
     SDL_Window* window_;
@@ -250,6 +468,7 @@ private:
     float textScale_ = 1.0f;
     float dpi_ = 1.0f;
     bool quit_ = false;
+    bool animating_ = false;
     bool showHome_ = true;
     std::string currentDoc_;
     std::map<std::string, std::string> docTool_;  // doc id -> tool that made it
@@ -268,6 +487,12 @@ private:
     bool scrollToResult_ = false;
 
     Canvas canvas_;
+    Transport transport_;
+    float playheadFraction_ = -1;  // where to draw the playhead over a waveform, 0..1
+    TimelineState timeline_;
+    GridState grid_;
+    CircuitCanvas circuit_;
+    MapsCanvas maps_;
     float penPressure_ = 1.0f;
     bool penDown_ = false;
     bool penEraser_ = false;
@@ -280,6 +505,10 @@ private:
     OpenSuggestion suggestion_;
     std::vector<SendChoice> sendChoices_;
     std::string launchOffer_;  // app to offer to start after a send
+    std::string installed_;      // the launcher: comma list from app.installed
+    bool installedStale_ = true;  // re-read it (the window got focus: the hub may have added an app)
+    std::string launcherNote_;   // the launcher's last answer
+    bool launcherNoteOk_ = true;
 
     std::unique_ptr<ToolPanels> panels_;
     std::string panel_;          // tool whose panel fills the middle; empty = home or a document

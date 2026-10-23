@@ -3,8 +3,10 @@
 ; workflow packs into the zip:
 ;   iscc /DAppVersion=0.2.0 /DStageDir=C:\path\to\wetwaresuite-windows-x64 /DOutputDir=C:\out wetwaresuite.iss
 ; installs for the current user by default (no admin prompt), adds a start menu
-; folder with every app, an optional desktop shortcut, optional PATH entry, and
-; a normal uninstaller under Settings > Apps.
+; folder with the launcher and every app (each opens in its own window, with its
+; own icon), the file types each app opens ("Open with", and the default for
+; wetwaresuite's own formats), optional desktop shortcuts and PATH entry, and a
+; normal uninstaller under Settings > Apps.
 
 #ifndef AppVersion
   #define AppVersion "0.0.0"
@@ -43,16 +45,19 @@ SolidCompression=yes
 WizardStyle=modern
 ChangesEnvironment=yes
 CloseApplications=yes
+ChangesAssociations=yes
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
+Name: "desktopapps"; Description: "a desktop shortcut for every app too"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+Name: "filetypes"; Description: "open files in the right app (adds each app to ""Open with"" for the files it opens)"; GroupDescription: "extras:"
 Name: "addtopath"; Description: "use the apps from a terminal (adds them to PATH)"; GroupDescription: "extras:"; Flags: unchecked
 
 [Files]
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{autoprograms}\wetwaresuite\wetwaresuite"; Filename: "{app}\wetwaresuite-gui.exe"; Comment: "every tool in one window"
+Name: "{autoprograms}\wetwaresuite\wetwaresuite"; Filename: "{app}\wetwaresuite-gui.exe"; Comment: "pick an app: each one opens in its own window"
 ; one entry per app, same list as packaging/apps.tsv (the downloads workflow checks they match)
 Name: "{autoprograms}\wetwaresuite\wetwaresuite image"; Filename: "{app}\wetwaresuite-image.exe"; Comment: "photos, painting and textures"
 Name: "{autoprograms}\wetwaresuite\wetwaresuite draw"; Filename: "{app}\wetwaresuite-draw.exe"; Comment: "vector art, fonts and whiteboards"
@@ -68,9 +73,24 @@ Name: "{autoprograms}\wetwaresuite\wetwaresuite system"; Filename: "{app}\wetwar
 Name: "{autoprograms}\wetwaresuite\wetwaresuite files"; Filename: "{app}\wetwaresuite-files.exe"; Comment: "open, convert and find any file"
 Name: "{autoprograms}\wetwaresuite\uninstall wetwaresuite"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\wetwaresuite"; Filename: "{app}\wetwaresuite-gui.exe"; Tasks: desktopicon
+Name: "{autodesktop}\wetwaresuite image"; Filename: "{app}\wetwaresuite-image.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite draw"; Filename: "{app}\wetwaresuite-draw.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite model"; Filename: "{app}\wetwaresuite-model.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite game"; Filename: "{app}\wetwaresuite-game.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite cad"; Filename: "{app}\wetwaresuite-cad.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite electronics"; Filename: "{app}\wetwaresuite-electronics.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite sound"; Filename: "{app}\wetwaresuite-sound.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite video"; Filename: "{app}\wetwaresuite-video.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite office"; Filename: "{app}\wetwaresuite-office.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite maps"; Filename: "{app}\wetwaresuite-maps.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite system"; Filename: "{app}\wetwaresuite-system.exe"; Tasks: desktopapps
+Name: "{autodesktop}\wetwaresuite files"; Filename: "{app}\wetwaresuite-files.exe"; Tasks: desktopapps
 
 [Registry]
 Root: HKCU; Subkey: "Environment"; ValueType: expandsz; ValueName: "Path"; ValueData: "{olddata};{app}"; Tasks: addtopath; Check: NeedsAddPath(ExpandConstant('{app}'))
+
+; which app opens which file type: made from apps/common/apps.cpp by packaging/file_types.py
+#include "associations.iss"
 
 [Run]
 Filename: "{app}\wetwaresuite-gui.exe"; Description: "{cm:LaunchProgram,wetwaresuite}"; Flags: nowait postinstall skipifsilent

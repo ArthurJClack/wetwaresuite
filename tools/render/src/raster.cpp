@@ -2,6 +2,7 @@
 // in horizontal bands (one thread each), deferred shading with the same BRDF
 // and lights as the path tracer, sky ambient and reflections, optional
 // ray-traced shadows, a blended pass for glass and cut-outs, 2x supersampling.
+#include <algorithm>
 #include <array>
 
 #include "internal.hpp"

@@ -1,9 +1,12 @@
 #include "wetwaresuite/raster/ora.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
 #include <map>
 #include <stdexcept>
@@ -68,21 +71,6 @@ std::string xmlUnescape(const std::string& s) {
         }
     }
     return out;
-}
-
-const std::map<std::string, Blend>& oraOps() {
-    static const std::map<std::string, Blend> ops = {
-        {"svg:src-over", Blend::Normal},   {"svg:multiply", Blend::Multiply}, {"svg:screen", Blend::Screen},
-        {"svg:overlay", Blend::Overlay},   {"svg:plus", Blend::Add},          {"svg:darken", Blend::Darken},
-        {"svg:lighten", Blend::Lighten},   {"svg:difference", Blend::Difference}};
-    return ops;
-}
-
-std::string oraOp(Blend b) {
-    for (const auto& [name, blend] : oraOps()) {
-        if (blend == b) return name;
-    }
-    return "svg:src-over";
 }
 
 // Attribute value from a tag's text, e.g. attr("<layer name=\"a\"", "name") == "a".
@@ -209,27 +197,145 @@ std::vector<ZipEntry> readZip(const std::string& z) {
     return entries;
 }
 
+namespace {
+
+// ORA has the SVG compositing ops; our other modes go in wetwaresuite-blend (other apps show them as normal).
+const std::map<Blend, std::string>& svgOps() {
+    static const std::map<Blend, std::string> ops = {
+        {Blend::Normal, "svg:src-over"},       {Blend::Multiply, "svg:multiply"},     {Blend::Screen, "svg:screen"},
+        {Blend::Overlay, "svg:overlay"},       {Blend::Add, "svg:plus"},              {Blend::Darken, "svg:darken"},
+        {Blend::Lighten, "svg:lighten"},       {Blend::Difference, "svg:difference"}, {Blend::ColorBurn, "svg:color-burn"},
+        {Blend::ColorDodge, "svg:color-dodge"}, {Blend::SoftLight, "svg:soft-light"}, {Blend::HardLight, "svg:hard-light"},
+        {Blend::Exclusion, "svg:exclusion"},   {Blend::Hue, "svg:hue"},               {Blend::Saturation, "svg:saturation"},
+        {Blend::Color, "svg:color"},           {Blend::Luminosity, "svg:luminosity"}};
+    return ops;
+}
+
+std::string num(double v) {
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%g", v);
+    return buf;
+}
+
+std::string escapeAttr(const std::string& s) {
+    std::string out;
+    for (char c : xmlEscape(s)) {
+        if (c == '\n') out += "&#10;";
+        else if (c == '\t') out += "&#9;";
+        else out += c;
+    }
+    return out;
+}
+
+std::string unescapeAttr(std::string s) {
+    for (auto [from, to] : {std::pair<const char*, const char*>{"&#10;", "\n"}, {"&#9;", "\t"}}) {
+        for (auto pos = s.find(from); pos != std::string::npos; pos = s.find(from, pos + 1)) s.replace(pos, std::strlen(from), to);
+    }
+    return s;
+}
+
+Image maskPicture(const Mask& m) {
+    Image gray(m.width, m.height);
+    for (int y = 0; y < gray.height(); ++y) {
+        for (int x = 0; x < gray.width(); ++x) gray.set(x, y, {m.at(x, y), m.at(x, y), m.at(x, y), 255});
+    }
+    return gray;
+}
+
+// The attributes every layer and group shares: name, opacity, visibility, blend, plus ours.
+std::string commonAttrs(const Layer& l, std::size_t i, std::vector<ZipEntry>& files) {
+    auto op = svgOps().find(l.blend);
+    std::string a = " name=\"" + escapeAttr(l.name) + "\" opacity=\"" + num(l.opacity) + "\" visibility=\"" + (l.visible ? "visible" : "hidden") +
+                    "\" composite-op=\"" + (op == svgOps().end() ? "svg:src-over" : op->second) + "\"";
+    if (op == svgOps().end()) a += " wetwaresuite-blend=\"" + toString(l.blend) + "\"";
+    // masks, clipping, styles and the rest aren't in the ORA spec: our own attributes, other apps skip them
+    if (!l.mask.empty()) {
+        const std::string maskSrc = "data/mask" + std::to_string(i) + ".png";
+        a += " wetwaresuite-mask=\"" + maskSrc + "\"";
+        if (!l.maskEnabled) a += " wetwaresuite-mask-enabled=\"false\"";
+        files.push_back({maskSrc, encodePng(maskPicture(l.mask))});
+    }
+    if (l.clip) a += " wetwaresuite-clip=\"true\"";
+    if (l.fill != 1.0) a += " wetwaresuite-fill=\"" + num(l.fill) + "\"";
+    if (l.lockAlpha) a += " wetwaresuite-lock-alpha=\"true\"";
+    if (l.kind != LayerKind::Pixel && l.kind != LayerKind::Group) a += " wetwaresuite-kind=\"" + toString(l.kind) + "\"";
+    for (const auto& [k, v] : l.settings) a += " wetwaresuite-set-" + k + "=\"" + escapeAttr(v) + "\"";
+    if (l.style.any()) a += " wetwaresuite-style=\"" + escapeAttr(styleToText(l.style)) + "\"";
+    return a;
+}
+
+// Writes layers [lo, hi) top first; groups become nested <stack>s, as in the ORA spec.
+void writeStack(const LayeredImage& img, int lo, int hi, std::string& xml, std::vector<ZipEntry>& files) {
+    for (int i = hi - 1; i >= lo; --i) {
+        const Layer& l = img.layers[static_cast<std::size_t>(i)];
+        const auto idx = static_cast<std::size_t>(i);
+        if (l.kind == LayerKind::Group) {
+            xml += "<stack" + commonAttrs(l, idx, files) + " isolation=\"" + (l.passThrough ? "auto" : "isolate") + "\"" +
+                   (l.collapsed ? " wetwaresuite-collapsed=\"true\"" : "") + ">\n";
+            const int start = groupStart(img.layers, i);
+            writeStack(img, start, i, xml, files);
+            xml += "</stack>\n";
+            i = start;
+            continue;
+        }
+        const std::string src = "data/layer" + std::to_string(i) + ".png";
+        xml += "<layer" + commonAttrs(l, idx, files) + " src=\"" + src + "\" x=\"0\" y=\"0\"/>\n";
+        // adjustment layers have no pixels: a 1x1 clear picture keeps other apps happy
+        files.push_back({src, encodePng(l.image.empty() ? Image(1, 1) : l.image)});
+    }
+}
+
+void readCommon(const std::string& t, Layer& layer, const std::map<std::string, std::string>& files, int width, int height) {
+    layer.name = unescapeAttr(attr(t, "name"));
+    layer.opacity = attrNumber(t, "opacity", 1.0);
+    layer.visible = attr(t, "visibility") != "hidden";
+    layer.blend = Blend::Normal;
+    for (const auto& [b, name] : svgOps()) {
+        if (name == attr(t, "composite-op")) layer.blend = b;
+    }
+    if (auto b = parseBlend(attr(t, "wetwaresuite-blend"))) layer.blend = *b;
+    if (std::string maskSrc = attr(t, "wetwaresuite-mask"); !maskSrc.empty()) {
+        auto mf = files.find(maskSrc);
+        if (mf != files.end()) {
+            Image gray = decode(mf->second);
+            layer.mask = Mask(width, height);
+            for (int my = 0; my < std::min(height, gray.height()); ++my) {
+                for (int mx = 0; mx < std::min(width, gray.width()); ++mx) layer.mask.row(my)[mx] = gray.pixel(mx, my)[0];
+            }
+            layer.maskEnabled = attr(t, "wetwaresuite-mask-enabled") != "false";
+        }
+    }
+    layer.clip = attr(t, "wetwaresuite-clip") == "true";
+    layer.fill = attrNumber(t, "wetwaresuite-fill", 1.0);
+    layer.lockAlpha = attr(t, "wetwaresuite-lock-alpha") == "true";
+    if (auto k = parseLayerKind(attr(t, "wetwaresuite-kind"))) layer.kind = *k;
+    for (std::size_t pos = t.find(" wetwaresuite-set-"); pos != std::string::npos; pos = t.find(" wetwaresuite-set-", pos + 1)) {
+        const std::size_t keyAt = pos + 18, eq = t.find('=', keyAt);
+        if (eq == std::string::npos) break;
+        const std::string key = t.substr(keyAt, eq - keyAt);
+        layer.settings[key] = unescapeAttr(attr(t, "wetwaresuite-set-" + key));
+    }
+    if (std::string st = attr(t, "wetwaresuite-style"); !st.empty()) {
+        std::string error;
+        if (!styleFromText(unescapeAttr(st), layer.style, error)) layer.style = {};
+    }
+}
+
+}  // namespace
+
 void saveOra(const LayeredImage& img, const std::filesystem::path& path) {
     std::vector<ZipEntry> entries;
     entries.push_back({"mimetype", "image/openraster"});  // must come first, stored
-    std::string stack = "<?xml version='1.0' encoding='UTF-8'?>\n<image version=\"0.0.5\" w=\"" +
-                        std::to_string(img.width) + "\" h=\"" + std::to_string(img.height) + "\">\n<stack>\n";
+    std::string stack = "<?xml version='1.0' encoding='UTF-8'?>\n<image version=\"0.0.5\" w=\"" + std::to_string(img.width) + "\" h=\"" +
+                        std::to_string(img.height) + "\">\n<stack>\n";
     std::vector<ZipEntry> layerFiles;
-    for (std::size_t i = img.layers.size(); i-- > 0;) {  // ORA lists the top layer first
-        const auto& layer = img.layers[i];
-        std::string src = "data/layer" + std::to_string(i) + ".png";
-        stack += "<layer name=\"" + xmlEscape(layer.name) + "\" src=\"" + src + "\" x=\"0\" y=\"0\" opacity=\"" +
-                 std::to_string(layer.opacity) + "\" visibility=\"" + (layer.visible ? "visible" : "hidden") +
-                 "\" composite-op=\"" + oraOp(layer.blend) + "\"/>\n";
-        layerFiles.push_back({src, encodePng(layer.image)});
-    }
+    writeStack(img, 0, static_cast<int>(img.layers.size()), stack, layerFiles);
     stack += "</stack>\n</image>\n";
     entries.push_back({"stack.xml", stack});
     for (auto& f : layerFiles) entries.push_back(std::move(f));
     Image merged = composite(img.layers, img.width, img.height);
     entries.push_back({"mergedimage.png", encodePng(merged)});
     entries.push_back({"Thumbnails/thumbnail.png", previewPng(merged, 256)});
-
     std::ofstream out(path, std::ios::binary);
     if (!out) throw std::runtime_error("cannot write " + path.string());
     std::string zip = writeZip(entries);
@@ -242,11 +348,9 @@ LayeredImage loadOra(const std::filesystem::path& path) {
     std::string bytes((std::istreambuf_iterator<char>(in)), {});
     std::map<std::string, std::string> files;
     for (auto& e : readZip(bytes)) files[e.name] = std::move(e.data);
-
     auto stackIt = files.find("stack.xml");
     if (stackIt == files.end()) throw std::runtime_error(path.string() + " has no stack.xml, so it isn't an OpenRaster file");
     const std::string& xml = stackIt->second;
-
     LayeredImage out;
     auto imageTag = xml.find("<image");
     if (imageTag == std::string::npos) throw std::runtime_error("stack.xml has no <image>");
@@ -254,26 +358,48 @@ LayeredImage loadOra(const std::filesystem::path& path) {
     out.width = static_cast<int>(attrNumber(tag, "w", 0));
     out.height = static_cast<int>(attrNumber(tag, "h", 0));
     if (out.width <= 0 || out.height <= 0) throw std::runtime_error("stack.xml has no image size");
-
     std::vector<Layer> topFirst;
-    for (auto pos = xml.find("<layer"); pos != std::string::npos; pos = xml.find("<layer", pos + 1)) {
-        std::string t = xml.substr(pos, xml.find('>', pos) - pos);
+    int open = 0;  // stacks open; the first is the image's root stack
+    for (std::size_t pos = xml.find('<', imageTag + 1); pos != std::string::npos; pos = xml.find('<', pos + 1)) {
+        const std::size_t end = xml.find('>', pos);
+        if (end == std::string::npos) break;
+        const std::string t = xml.substr(pos, end - pos);
+        if (t.rfind("</stack", 0) == 0) {
+            open = std::max(0, open - 1);
+            continue;
+        }
+        const bool isStack = t.rfind("<stack", 0) == 0 && (t.size() == 6 || std::isspace(static_cast<unsigned char>(t[6])));
+        const bool isLayer = t.rfind("<layer", 0) == 0 && (t.size() == 6 || std::isspace(static_cast<unsigned char>(t[6])));
+        const bool selfClosing = !t.empty() && t.back() == '/';
+        if (isStack) {
+            if (open++ == 0) continue;  // the root
+            Layer group;
+            readCommon(t, group, files, out.width, out.height);
+            group.kind = LayerKind::Group;
+            group.depth = open - 2;
+            group.passThrough = attr(t, "isolation") != "isolate";
+            group.collapsed = attr(t, "wetwaresuite-collapsed") == "true";
+            topFirst.push_back(std::move(group));
+            if (selfClosing) --open;
+            continue;
+        }
+        if (!isLayer) continue;
         std::string src = attr(t, "src");
         auto file = files.find(src);
         if (file == files.end()) throw std::runtime_error("layer file missing: " + src);
         Layer layer;
-        layer.name = attr(t, "name");
-        layer.opacity = attrNumber(t, "opacity", 1.0);
-        layer.visible = attr(t, "visibility") != "hidden";
-        auto op = oraOps().find(attr(t, "composite-op"));
-        layer.blend = op == oraOps().end() ? Blend::Normal : op->second;
-        Image png = decode(file->second);
-        int x = static_cast<int>(attrNumber(t, "x", 0)), y = static_cast<int>(attrNumber(t, "y", 0));
-        layer.image = Image(out.width, out.height);
-        blendOnto(layer.image, png, x, y, Blend::Normal, 1.0);  // place at its offset on a full-size layer
+        readCommon(t, layer, files, out.width, out.height);
+        layer.depth = std::max(0, open - 1);
+        if (layer.kind != LayerKind::Adjustment) {
+            Image png = decode(file->second);
+            int x = static_cast<int>(attrNumber(t, "x", 0)), y = static_cast<int>(attrNumber(t, "y", 0));
+            layer.image = Image(out.width, out.height);
+            blendOnto(layer.image, png, x, y, Blend::Normal, 1.0);  // place at its offset on a full-size layer
+        }
         topFirst.push_back(std::move(layer));
     }
-    out.layers.assign(topFirst.rbegin(), topFirst.rend());
+    out.layers.assign(std::make_move_iterator(topFirst.rbegin()), std::make_move_iterator(topFirst.rend()));
+    normalizeDepths(out.layers);
     if (out.layers.empty()) out.layers.push_back({"Background", Image(out.width, out.height)});
     return out;
 }

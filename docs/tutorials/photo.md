@@ -1,6 +1,6 @@
 # Photo: editing images
 
-`photo` is the suite's image editor: open, adjust, crop, resize, rotate, apply effects, batch-process folders and save. It reads PNG, JPEG, BMP, TGA, GIF, PSD (flattened), HDR, PNM and layered OpenRaster (`.ora`), and saves PNG, JPEG, BMP, TGA, PPM and `.ora`.
+`photo` is the suite's image editor: open, adjust, crop, resize, rotate, select parts of the picture (including the main subject), mask layers, bend tones with curves, free-transform, warp and liquify, retouch, batch-process folders and save. Adjustment layers (levels, curves, hue/saturation, colour balance, black and white, exposure, vibrance, gradient map, selective colour and more) change the look without touching the pixels, and a filter menu covers blurs, sharpening, noise, stylize, render, distort and lens correction. It reads PNG, JPEG, BMP, TGA, GIF, HDR, PNM, layered Photoshop `.psd` and layered OpenRaster (`.ora`), and saves those plus TIFF and WebP. Painting, layer groups, layer styles and text live in [paint](paint.md), which works on the same documents.
 
 Every task below is a command, and the desktop window (see [the window tutorial](gui.md)) runs exactly these commands from its buttons, sliders and search box. Each task is shown three ways:
 
@@ -112,7 +112,7 @@ photo.save doc=$p path=framed.jpg quality=88
 
 Notes:
 
-- `photo.rotate` only does quarter turns (90, 180, 270, or negative for counter-clockwise). Free-angle straightening is not available yet.
+- `photo.rotate` turns by any angle. Quarter turns (90, 180, 270, negative for counter-clockwise) are exact. To straighten a crooked horizon use a small angle with `fit=crop`, which cuts away the empty corners: `photo.rotate doc=$p angle=-2.5 fit=crop`. `fit=expand` (the default) grows the canvas instead and `fit=keep` keeps its size; `background=` colours the new corners.
 - `photo.canvas_size` keeps the pixels where `anchor` says (default `center`; also `top-left`, `bottom`, and so on) and fills the new area with transparency. Formats without transparency, such as JPEG, show it as white; the two `paint.layer_*` lines give it a colour instead. Photo and paint work on the same documents, so mixing them is normal.
 - Crop, resize, rotate, flip and canvas size apply to every layer, so layers stay aligned.
 
@@ -235,7 +235,7 @@ Make the area a little bigger than the thing you're fixing: a few pixels of marg
 
 ### In the window: just paint over it
 
-The easiest way: no numbers at all. Open your picture (**Open a file** on the home screen). Above the picture you'll see the tools **Move, Brush, Eraser, Fill, Heal, Remove**. Hold the mouse still over any of them to read what it does.
+The easiest way: no numbers at all. Open your picture (**Open a file** on the home screen). Above the picture you'll see the tools **Move, Select, Brush, Eraser, Fill, Heal, Remove**, then the retouch brushes **Clone, Dodge, Burn, Sponge, Smudge, Blur** (see [paint, Task 8](paint.md#task-8-retouch-brushes-clone-dodge-burn-sponge-smudge-blur-colour-replace)). Hold the mouse still over any of them to read what it does.
 
 **Heal: make a spot, pimple or scratch disappear**
 
@@ -317,18 +317,217 @@ Claude calls `photo_open`, `photo_preview` to find the spot and the wire, `photo
 - All three work on the active layer (or `layer=`), and `preview=true` attaches a picture of the result.
 - Each result says how many pixels changed (`pixels`); the healing brush and seamless clone also report `iterations` and `converged` (whether the blending finished fully; it practically always does).
 
+## Task 8: selections, masks, curves and free transform
+
+A **selection** is the part of the picture your next edits change. While something is selected, adjustments, effects, curves, colour balance, painting and filling only touch the inside; the rest stays as it was. Soft (feathered) edges blend in.
+
+**In the window.** Pick the **Select** tool above the picture, choose **Box**, **Oval**, **Lasso** or **Wand**, and drag (or click, for the wand). Hold **Shift** to add to the selection and **Alt** to take away. The selection shows as a moving dashed outline. **Deselect** (Ctrl+D), **Invert** (Ctrl+Shift+I), **All** (Ctrl+A) and **Delete** are next to the shapes. Then run any action on the left, such as Curves or Adjust colours, and it only changes what's selected.
+
+![a box selection with marching ants in the image app](images/gui-image-select.jpg)
+
+**Batch.** Brighten only the sky, warm the midtones, then put the subject on its own layer and turn it a little:
+
+```text
+photo.open path=beach.jpg -> p
+# the wand takes the blue sky, joined to the pixel at 40,20
+photo.select doc=$p shape=wand x=40 y=20 tolerance=40
+photo.select_modify doc=$p action=feather amount=6
+photo.curves doc=$p preset=brighten
+photo.select doc=$p shape=none
+photo.color_balance doc=$p midtones=12,0,-18
+# lasso around the person, copy them to a new layer, tilt it 5 degrees
+photo.select doc=$p shape=lasso points=420,300,610,280,650,700,400,720
+photo.copy_to_layer doc=$p
+photo.select doc=$p shape=none
+photo.transform doc=$p angle=5 scale=110
+photo.save doc=$p path=beach.ora
+```
+
+**Layer masks** hide part of a layer without erasing it, so you can change your mind later. Select what should stay visible, then `photo.mask action=add` (it takes the selection). `action=invert` flips it, `disable`/`enable` turn it off and on, `apply` bakes it in and `delete` throws it away. A **clipping mask** (`photo.clip`) makes a layer show only where the layer below has pixels, like a texture inside a shape:
+
+```text
+photo.select doc=$p shape=ellipse x=100 y=100 width=400 height=300
+photo.mask doc=$p action=add layer=1
+photo.clip doc=$p layer=2
+```
+
+**Curves** take points as input,output pairs from 0 to 255: `points=0,0,64,48,192,210,255,255` is a gentle S that adds contrast. `channel=red` (or green, blue) bends one colour only. Presets: `contrast`, `strong_contrast`, `brighten`, `darken`, `fade`, `invert`.
+
+**Free transform** (`photo.transform`) rotates by any angle, scales, skews and moves the selected pixels, or the whole layer when nothing is selected. `corners=` gives perspective instead: where the top-left, top-right, bottom-right and bottom-left corners of the selection's box go, and `from=` says where those corners are now. Straighten a poster photographed at an angle by giving its four corners as `from` and a rectangle as `corners`, then crop to it:
+
+```text
+photo.open path=poster.jpg -> p
+# the poster's corners in the photo (read them off photo_preview or the window)
+photo.transform doc=$p from=212,140,1010,96,1060,860,180,790 corners=150,100,1050,100,1050,800,150,800
+photo.crop doc=$p x=150 y=100 width=900 height=700
+```
+
+**Claude.**
+
+> In /home/me/portrait.jpg, make the background behind the person darker and a bit blue, but don't touch the person.
+
+Claude calls `photo_open`, `photo_preview` to see the picture, `photo_select` (lasso or wand around the person, then `invert`), `photo_select_modify` to feather, `photo_curves` with `preset=darken`, `photo_color_balance`, `photo_preview` to check, and `photo_save`.
+
+Notes:
+
+- Selections are part of the undo history: Ctrl+Z (or `undo`) brings back the previous selection.
+- Selections aren't saved in files. Layer masks and clipping are saved in `.ora` (other apps that open the `.ora` show those layers unmasked); flattened formats like PNG and JPEG show the result.
+- Crop, resize, rotate, flip and canvas size move the selection and masks along with the pixels.
+
+## Task 9: adjustment layers
+
+An **adjustment layer** changes the look of every layer below it without touching their pixels, so you can change it, hide it, fade it, mask it or delete it later. Put it in a group, or set `clip=true`, to change only some layers.
+
+| `type` | Settings |
+| --- | --- |
+| `brightness_contrast` | `brightness`, `contrast` -100..100 |
+| `levels` | `black`, `white`, `gamma`, `out_black`, `out_white`, `channel` (`rgb`, `red`, `green`, `blue`) |
+| `curves` | `points` (input,output pairs 0..255) or `preset`, `channel` |
+| `exposure` | `exposure` (stops), `offset`, `gamma` |
+| `vibrance` | `vibrance`, `saturation` -100..100 |
+| `hue_saturation` | `hue` (degrees), `saturation`, `lightness`, `range` (`master`, `reds`, `yellows`, `greens`, `cyans`, `blues`, `magentas`), `colorize` |
+| `color_balance` | `shadows`, `midtones`, `highlights` (each cyan-red, magenta-green, yellow-blue), `preserve_luminosity` |
+| `black_white` | `reds`, `yellows`, `greens`, `cyans`, `blues`, `magentas` (%), `tint`, `tint_color` |
+| `photo_filter` | `color` (warming `#ec8a00`, cooling `#006dff`), `density`, `preserve_luminosity` |
+| `channel_mixer` | `red`, `green`, `blue` (each: from red %, green %, blue %, constant %), `monochrome` |
+| `invert` | none |
+| `posterize` | `levels` 2..255 |
+| `threshold` | `level` 1..255 |
+| `gradient_map` | `colors` from shadows to highlights, `reverse` |
+| `selective_color` | `range` (the colours above plus `whites`, `neutrals`, `blacks`), `cyan`, `magenta`, `yellow`, `black` -100..100, `method` (`relative`, `absolute`) |
+
+**Batch.**
+
+```text
+# grade.txt
+photo.open path=poster.png -> p
+photo.adjustment_layer doc=$p type=curves preset=contrast
+photo.adjustment_layer doc=$p type=hue_saturation saturation=-30 range=reds name="Calmer reds"
+# with a selection, the adjustment layer gets a mask: only the oval brightens
+photo.select doc=$p shape=ellipse x=100 y=100 width=300 height=200
+photo.adjustment_layer doc=$p type=exposure exposure=0.7
+photo.select doc=$p shape=none
+photo.adjustment_layer doc=$p type=gradient_map colors=#1b1b3a,#d1495b,#ffe9a8 opacity=40
+# change them later: only the settings you give change
+photo.adjustment_edit doc=$p layer=4 opacity=60
+photo.adjustment_edit doc=$p layer=2 hue=20
+paint.layer_set doc=$p layer=3 visible=false
+photo.info doc=$p
+photo.save doc=$p path=graded.ora
+```
+
+`photo.info` lists them with their settings:
+
+```
+800x500, 5 layers, active layer 2 "Calmer reds", poster.png
+  4: gradient_map (gradient_map adjustment, normal, opacity 60%) [colors=#1b1b3a,#d1495b,#ffe9a8]
+  3: exposure (exposure adjustment, normal, opacity 100%, masked) [exposure=0.7]
+  2: Calmer reds (hue_saturation adjustment, normal, opacity 100%, active) [hue=20 range=reds saturation=-30]
+  1: curves (curves adjustment, normal, opacity 100%) [preset=contrast]
+  0: Background (normal, opacity 100%)
+```
+
+- `photo.adjustment_edit` takes the same settings; `type=` switches to another adjustment and `reset=true` starts from the defaults. A setting that belongs to another type is refused with a message saying which type it is for.
+- Adjustment layers take blend modes, opacity, masks (`photo.mask`) and clipping like any layer. `paint.layer_merge_down` on one applies it to the layer below; `paint.flatten` applies them all.
+- `photo.apply_adjustment` applies the same adjustments straight to a layer's pixels (inside the selection when there is one), for when you don't need to change it later: `photo.apply_adjustment doc=$p type=black_white reds=60 yellows=80 tint=true tint_color=#a07850`.
+- They're saved in `.ora`. A `.psd` can't hold them: they're saved as empty hidden layers and the save result says so in a `note:`.
+
+**Claude.**
+
+> Open /home/me/street.jpg and give it a moody look I can still tweak: more contrast, cooler shadows, a bit less saturation. Save it as street.ora.
+
+Claude calls `photo_open`, `photo_adjustment_layer` three times (`curves`, `color_balance` with `shadows`, `vibrance` or `hue_saturation`), `photo_preview`, maybe `photo_adjustment_edit` to fine-tune, and `photo_save`.
+
+**In the window.** In the **Layers** section on the right, pick a type from **Add adjustment...**. It's added above the active layer (only inside the selection, if there is one) and its settings appear below the layer list: drag a slider or change a box and the picture updates when you let go. Use the layer's **Blend**, **Opacity**, **Clip to below** and eye box like any other layer's.
+
+## Task 10: filters (blur, sharpen, noise, stylize, render, distort)
+
+Each filter works on the active layer (or `layer=`, or `all_layers=true`), only inside the selection when there is one, as one undo step.
+
+| Command | `kind` | What it does |
+| --- | --- | --- |
+| `photo.blur` | `gaussian` (`radius`), `motion` (`angle`, `distance`), `spin` (`amount` degrees), `zoom` (`amount` 0..100) | spin and zoom turn around or streak out from `center_x`, `center_y` |
+| `photo.sharpen` | `unsharp_mask` (`amount` %, `radius`, `threshold`), `high_pass` (`radius`) | high pass leaves only fine detail on gray: put it on a copy set to `overlay` |
+| `photo.noise` | `add` (`amount`, `distribution`, `monochrome`, `seed`), `median` (`radius`), `despeckle`, `dust_scratches` (`radius`, `threshold`) | |
+| `photo.stylize` | `emboss` (`angle`, `height`, `amount`), `find_edges`, `oil_paint` (`radius`) | |
+| `photo.clouds` | | soft cloud noise between `from` and `to`, `scale`, `seed`; `blend=difference` for difference clouds |
+| `photo.displace` | | moves pixels by a map (`map_layer` or `map_path`): red pushes sideways, green up and down, by up to `scale_x`/`scale_y` px |
+| `photo.lens_correction` | | `distortion` (negative fixes barrel bulging), `vignette` (positive brightens dark corners), `chromatic` (removes colour fringes) |
+| `photo.warp` | | bend smoothly: `preset` (`arc`, `bulge`, `wave`, `flag`, `rise`, `twist`) with `bend` -100..100, or your own grid (`cols`, `rows`, `moves`) |
+| `photo.liquify` | | push pixels with a brush along `points`: `mode` `push`, `bloat`, `pucker`, `twirl_right`, `twirl_left`; `size`, `pressure` |
+
+**Batch.**
+
+```text
+# filters.txt
+photo.open path=poster.png -> f
+photo.blur doc=$f kind=motion angle=30 distance=25
+photo.sharpen doc=$f kind=unsharp_mask amount=150 radius=2 threshold=4
+photo.noise doc=$f kind=add amount=12 monochrome=true
+photo.noise doc=$f kind=despeckle
+photo.stylize doc=$f kind=oil_paint radius=4
+photo.lens_correction doc=$f distortion=-20 vignette=-40
+photo.warp doc=$f preset=arc bend=25
+# swell the star (one point = hold the brush still), then push the text sideways
+photo.liquify doc=$f mode=bloat points=400,140 size=160 pressure=60
+photo.liquify doc=$f mode=push points=400,380,460,380 size=80
+photo.save doc=$f path=filtered.png
+
+# a texture from nothing: clouds, then emboss them
+photo.new width=400 height=300 -> g
+photo.clouds doc=$g from=#203060 to=#d0e0ff scale=150 seed=7
+photo.stylize doc=$g kind=emboss angle=120
+photo.save doc=$g path=clouds.png
+```
+
+A warp grid has `(cols+1) x (rows+1)` control points spread evenly over the image, and `moves` gives a `dx,dy` for each one, row by row from the top-left: with `cols=1 rows=1`, `moves=0,0,0,0,-40,0,40,0` keeps the top edge and pulls the bottom corners outwards.
+
+Run it with `wetwaresuite-image batch filters.txt`, or one filter on its own from the CLI: `wetwaresuite-image photo.blur ...` only changes a document in memory, so filters always go in a batch script (open, filter, save) or a Claude session.
+
+**Claude.**
+
+> Make /home/me/car.jpg look fast: a motion blur along the road, but keep the car sharp. Then add a bit of film grain.
+
+Claude calls `photo_open`, `photo_select` around the car and `invert`, `photo_blur` with `kind=motion` and the road's `angle`, `photo_select` with `shape=none`, `photo_noise` with `kind=add monochrome=true`, `photo_preview` and `photo_save`.
+
+**In the window.** Switch **Mode** to **Advanced** to see every filter under **Actions**, or press **Ctrl+K** and type its name (`blur`, `sharpen`, `noise`, `emboss`, `oil`, `clouds`, `lens`, `warp`, `liquify`). Fill in the form and press **Run**; **Ctrl+Z** takes it back. Liquify and the custom warp grid take their points as typed numbers; there's no on-canvas liquify brush yet.
+
+## Task 11: select subject and refine edge
+
+`photo.select_subject` selects the main thing in the picture: everything unlike the colours around the edges, joined up and with its holes filled. It works best on a plain or simple background (a product shot, a portrait against a wall). `photo.refine_edge` then makes the selection's edge follow the picture, so hair, fur and soft edges come out cleaner: `radius` is how far it looks (px), `smooth` rounds the edge off, `contrast` 0..100 hardens it and `shift` -100..100 grows or shrinks it. `target=mask` refines a layer mask instead.
+
+```text
+# cutout.txt: lift a product off its white background onto a new layer
+photo.open path=mug.jpg -> m
+photo.select_subject doc=$m tolerance=40
+photo.refine_edge doc=$m radius=6 smooth=2 contrast=20
+photo.copy_to_layer doc=$m
+photo.select doc=$m shape=none
+paint.layer_set doc=$m layer=0 visible=false
+photo.save doc=$m path=mug-cutout.png
+```
+
+`select_subject` takes `mode` (`replace`, `add`, `subtract`, `intersect`) like `photo.select`, and reports the box and how much of the picture it took (`coverage`). If it took too much or too little, change `tolerance` (how different from the background a colour must be).
+
+**Claude.** *"Cut the dog out of /home/me/dog.jpg onto a transparent background."* Claude calls `photo_open`, `photo_select_subject`, `photo_preview` to check, `photo_refine_edge`, `photo_copy_to_layer`, hides the background with `paint_layer_set` and saves a PNG.
+
+**In the window.** Press **Ctrl+K**, type `subject` and run **Select subject**; the dashed outline shows what it took. Then run **Refine edge** the same way, or add a mask from the selection with **Add mask** in the **Layers** section.
+
 ## Saving
 
 The extension of `path` picks the format:
 
 | Extension | Keeps layers | Notes |
 | --- | --- | --- |
-| `.ora` | yes | OpenRaster; opens in the suite, Krita, GIMP and MyPaint |
+| `.ora` | yes, everything | OpenRaster; keeps groups, masks, clipping, styles and editable text, shape and adjustment layers. Opens in the suite, Krita, GIMP and MyPaint |
+| `.psd` | yes | Photoshop; keeps layers, groups, masks, blend modes, opacity and clipping (also opens in GIMP, Krita and Photopea). Styles are drawn into the pixels, text and shape layers become pixels and adjustment layers become empty hidden layers: the result lists each as a `note:` |
 | `.png` | no | lossless, keeps transparency |
 | `.jpg` / `.jpeg` | no | `quality` 1..100 (default 90); transparency becomes white |
+| `.webp` | no | `quality` 1..99 is lossy, `quality=100` is lossless; keeps transparency |
+| `.tif` / `.tiff` | no | lossless (Deflate), 8-bit RGB or RGBA |
 | `.bmp`, `.tga`, `.ppm` | no | |
 
-Other formats (WebP, TIFF, AVIF, HEIC) go through [convert](convert.md): save a PNG, then `wetwaresuite convert.file input=out.png output=out.webp`.
+Opening also reads TIFFs from scanners and cameras (1 to 16-bit and float, gray, RGB, palette or CMYK, uncompressed, LZW, PackBits or Deflate, strips or tiles; the first page of a multi-page file) and still WebP. JPEG-compressed TIFFs and animated WebP aren't read. Other formats (AVIF, HEIC) go through [convert](convert.md): save a PNG, then `wetwaresuite convert.file input=out.png output=out.avif`.
 
 In a CLI run, `photo.preview` (and `preview=true`) only reports the size of the PNG it made; previews are meant for Claude. To look at a result yourself, save it.
 
@@ -427,13 +626,15 @@ Change the canvas without scaling; new area is transparent.
 | `preview` | boolean | no | false | attach a preview |
 
 ### photo.rotate
-Rotate clockwise by quarter turns.
+Rotate clockwise by any angle. Quarter turns are exact; other angles are resampled smoothly.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `doc` | string | yes | image id |
-| `angle` | integer | yes | 90, 180 or 270; negative for counter-clockwise; must be a multiple of 90 |
-| `preview` | boolean | no | attach a preview |
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| `angle` | number | yes | | degrees clockwise; negative for counter-clockwise |
+| `fit` | `expand`, `keep`, `crop` | no | `expand` | for angles that aren't quarter turns: grow the canvas, keep its size, or cut away the empty corners (straighten) |
+| `background` | colour | no | `transparent` | colour for the new corners |
+| `preview` | boolean | no | false | attach a preview |
 
 ### photo.flip
 Mirror the whole image.
@@ -523,6 +724,108 @@ Process every image in a folder. Does not use open documents; not undoable.
 | `overwrite` | boolean | no | false | replace results that already exist (sources are never replaced) |
 
 Returns `processed` and `failed` counts. Fails if no images are found.
+
+### photo.select
+Choose the part of the picture that edits change.
+
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| `shape` | `rect`, `ellipse`, `lasso`, `wand`, `color`, `layer`, `all`, `none`, `invert` | yes | | how to select |
+| `x`, `y` | number | for rect, ellipse, wand | | top-left corner, or the pixel the wand (or colour) starts from |
+| `width`, `height` | number | for rect, ellipse | | size of the box |
+| `points` | number list | for lasso | | outline as x,y pairs |
+| `tolerance` | integer | no | 32 | wand/color: how different a pixel may be (0..255 per channel) |
+| `contiguous` | boolean | no | true | wand: only pixels joined to the start |
+| `color` | colour | no | | color: the colour to select (default: the pixel at x,y) |
+| `fuzz` | integer | no | 0 | color: extra range where pixels fade out |
+| `sample` | `image`, `layer` | no | `image` | wand/color look at the whole picture or one layer |
+| `mode` | `replace`, `add`, `subtract`, `intersect` | no | `replace` | how it combines with the current selection |
+| `feather` | number | no | 0 | soften the new shape's edge, px |
+| `antialias` | boolean | no | true | smooth edges on ellipses and lassos |
+| `layer` | integer | no | active | the layer for `shape=layer` and `sample=layer` |
+| `preview` | boolean | no | false | attach a preview |
+
+Returns `selected`, `x`, `y`, `width`, `height` (the box around the selection) and `coverage` (0..1).
+
+### photo.select_modify
+`action` = `grow`, `shrink`, `feather` or `border`, `amount` in px.
+
+### photo.fill_selection
+Fill the selection (or the whole layer) with `color` at `opacity` (0..100) on `layer`.
+
+### photo.delete_selected
+Make the selected pixels of `layer` transparent.
+
+### photo.copy_to_layer
+Copy the selected pixels of `layer` to a new layer above it; `cut=true` moves them, `name=` names the new layer. The new layer becomes active.
+
+### photo.crop_selection
+Crop the image to the box around the selection.
+
+### photo.mask
+Layer masks. `action` = `add` (with `from` = `selection` (default), `reveal_all`, `hide_all` or `transparency`), `invert`, `enable`, `disable`, `apply`, `delete` or `select` (load the mask as the selection). `layer` picks the layer.
+
+### photo.clip
+Clip `layer` to the layer below it (`on=false` unclips).
+
+### photo.curves
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| `points` | number list | one of these | | input,output pairs 0..255, at least two |
+| `preset` | `contrast`, `strong_contrast`, `brighten`, `darken`, `fade`, `invert` | one of these | | a ready-made curve |
+| `channel` | `rgb`, `red`, `green`, `blue` | no | `rgb` | which channel |
+| `layer`, `all_layers`, `preview` | | no | | as for photo.adjust |
+
+### photo.color_balance
+`shadows`, `midtones`, `highlights`: three numbers each, -100..100, for cyan(-)/red(+), magenta(-)/green(+), yellow(-)/blue(+). `preserve_luminosity` (default true) keeps the brightness. Takes `layer`, `all_layers`, `preview`.
+
+### photo.transform
+| Parameter | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `doc` | string | yes | | image id |
+| `angle` | number | no | 0 | rotate clockwise, degrees |
+| `scale` | number | no | 100 | percent, both ways |
+| `scale_x`, `scale_y` | number | no | | percent, one way (override `scale`) |
+| `skew_x`, `skew_y` | number | no | 0 | slant, degrees |
+| `move_x`, `move_y` | number | no | 0 | px |
+| `pivot_x`, `pivot_y` | number | no | middle of the selection or layer | point to turn and scale around |
+| `corners` | number list | no | | perspective: 8 numbers, where the box's top-left, top-right, bottom-right and bottom-left go |
+| `from` | number list | no | the box's corners | perspective: where those four corners are now |
+| `smooth` | boolean | no | true | bilinear; false = nearest (pixel art) |
+| `layer` | integer | no | active | layer to transform |
+| `preview` | boolean | no | false | attach a preview |
+
+### photo.adjustment_layer
+Add an adjustment layer above `layer` (default the active one). Takes `type` (required), `name`, `clip`, `opacity` and the settings for that type (see Task 9). With a selection, the layer is masked to it. Undoable.
+
+### photo.adjustment_edit
+Change the adjustment layer `layer`: `type`, `reset`, `opacity` and any settings for its type. Only what you pass changes.
+
+### photo.apply_adjustment
+Apply an adjustment straight to the pixels of `layer` (or `all_layers=true`), inside the selection when there is one. Takes `type` and the same settings.
+
+### Filters
+`photo.blur`, `photo.sharpen`, `photo.noise`, `photo.stylize`, `photo.clouds`, `photo.displace`, `photo.lens_correction`, `photo.warp` and `photo.liquify` take `layer`, `all_layers` and `preview`, plus:
+
+| Command | Parameters (default) |
+| --- | --- |
+| `photo.blur` | `kind` (`gaussian`), `radius` (4), `angle` (0), `distance` (20), `amount` (10), `center_x`, `center_y` (middle) |
+| `photo.sharpen` | `kind` (`unsharp_mask`), `amount` (100), `radius` (2), `threshold` (0) |
+| `photo.noise` | `kind` (`add`), `amount` (10), `distribution` (`gaussian`), `monochrome` (false), `radius` (2), `threshold` (20), `seed` (1) |
+| `photo.stylize` | `kind` (required: `emboss`, `find_edges`, `oil_paint`), `angle` (135), `height` (2), `amount` (100), `radius` (4) |
+| `photo.clouds` | `from` (`#000000`), `to` (`#ffffff`), `scale` (128), `seed` (1), `blend` (`normal`), `opacity` (100) |
+| `photo.displace` | `map_layer` or `map_path`, `scale_x`, `scale_y` (10), `wrap` (false) |
+| `photo.lens_correction` | `distortion`, `vignette` -100..100, `chromatic` -10..10 (all 0) |
+| `photo.warp` | `preset` (`none`), `bend` (30), `cols`, `rows` (4), `moves` |
+| `photo.liquify` | `points` (required), `mode` (`push`), `size` (60), `pressure` (50) |
+
+### photo.select_subject
+Select the main subject. `tolerance` (1..255, default 40), `mode` (`replace`, `add`, `subtract`, `intersect`). Returns the box and `coverage`.
+
+### photo.refine_edge
+Make the selection's (`target=selection`) or the mask's (`target=mask`, of `layer`) edge follow the picture: `radius` (4), `smooth` (0), `contrast` (0..100, 0), `shift` (-100..100, 0).
 
 ### Area parameters (photo.heal and photo.remove_object)
 

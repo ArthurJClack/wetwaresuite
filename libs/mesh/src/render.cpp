@@ -50,6 +50,17 @@ Camera camera(View v) {
     return c;
 }
 
+Camera camera(const Orbit& o) {
+    const double rad = 3.14159265358979323846 / 180.0;
+    const double yaw = o.yaw * rad, pitch = std::clamp(o.pitch, -89.9, 89.9) * rad;
+    const Vec3 eye{std::cos(pitch) * std::sin(yaw), -std::cos(pitch) * std::cos(yaw), std::sin(pitch)};
+    Camera c;
+    c.forward = normalize(-eye);
+    c.right = normalize(cross(c.forward, Vec3{0, 0, 1}));
+    c.up = cross(c.right, c.forward);
+    return c;
+}
+
 std::uint8_t clampByte(double v) { return static_cast<std::uint8_t>(std::min(255.0, std::max(0.0, v) + 0.5)); }
 
 }  // namespace
@@ -61,7 +72,7 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
 
     const int ss = o.antialias ? 2 : 1;
     const int W = width * ss, H = height * ss;
-    const Camera cam = camera(o.view);
+    const Camera cam = o.orbit ? camera(*o.orbit) : camera(o.view);
 
     Mesh smoothMesh;
     const Mesh* mp = &input;
@@ -86,8 +97,21 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
     }
     const double ex = std::max(maxX - minX, 1e-12), ey = std::max(maxY - minY, 1e-12);
     const double avail = 1.0 - 2.0 * std::clamp(o.margin, 0.0, 0.45);
-    const double scale = std::min(W * avail / ex, H * avail / ey);
-    const double cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    double scale = std::min(W * avail / ex, H * avail / ey);
+    double cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    if (o.orbit) {
+        // fit the bounding sphere, not this view's outline, so orbiting doesn't change the size
+        Vec3 lo{1e300, 1e300, 1e300}, hi{-1e300, -1e300, -1e300};
+        for (const Vec3& p : m.positions) {
+            lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
+            hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
+        }
+        const Vec3 centre = (lo + hi) * 0.5;
+        const double radius = std::max(length(hi - lo) / 2, 1e-12);
+        scale = std::min(W, H) * avail / (2 * radius) * std::clamp(o.orbit->zoom, 1e-3, 1e4);
+        cx = dot(centre, cam.right) - o.orbit->panX * radius;
+        cy = dot(centre, cam.up) - o.orbit->panY * radius;
+    }
     for (auto& s : scr) {
         s.x = (s.x - cx) * scale + W / 2.0;
         s.y = H / 2.0 - (s.y - cy) * scale;

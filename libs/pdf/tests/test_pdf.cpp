@@ -140,6 +140,36 @@ void testHandWritten() {
     CHECK(f.pageText(0) == "Hello there");
 }
 
+void testUnicode() {
+    // Greek and Cyrillic aren't in the standard fonts: they're embedded from the built-in font
+    const std::string mixed = "Price \xE2\x82\xAC" "5 \xD0\x9F\xD1\x80\xD0\xB8\xD0\xB2\xD0\xB5\xD1\x82 \xCE\xA9mega";  // €, Привет, Ωmega
+    Page p;
+    p.text(72, 100, mixed, {}, 24);
+    p.text(72, 140, "plain latin", {}, 12);
+    CHECK(textWidth({}, mixed, 24) > textWidth({}, "Price \xE2\x82\xAC" "5  mega", 24) + 60);
+    std::string bytes = writePdf({p}, {"\xD0\x9E\xD1\x82\xD1\x87\xD1\x91\xD1\x82", "", ""});
+    CHECK(bytes.find("/Subtype /Type0") != std::string::npos);
+    CHECK(bytes.find("/FU ") != std::string::npos);
+    CHECK(bytes.size() < 40000);  // a subset, not the whole font
+    PdfFile f(bytes);
+    const std::string t = f.pageText(0);
+    CHECK(t.find(mixed) != std::string::npos);
+    CHECK(f.infoField("Title") == "\xD0\x9E\xD1\x82\xD1\x87\xD1\x91\xD1\x82");
+    // latin-only files stay as before: no embedded font
+    CHECK(writePdf({Page{}}).find("Type0") == std::string::npos);
+
+    // the preview draws the Cyrillic letters too
+    Page q;
+    q.text(10, 40, "\xD0\x96\xD0\x96\xD0\x96", {}, 40);
+    raster::Image img = renderPage(q, 1.0);
+    int dark = 0;
+    for (int y = 5; y < 45; ++y)
+        for (int x = 10; x < 110; ++x) dark += img.at(x, y).r < 100 ? 1 : 0;
+    CHECK(dark > 300);
+    // characters no font has still become '?'
+    CHECK(textWidth({}, "\xE4\xB8\xAD", 10) == textWidth({}, "?", 10));
+}
+
 }  // namespace
 
 int main() {
@@ -150,5 +180,6 @@ int main() {
     testRender();
     testImages();
     testHandWritten();
+    testUnicode();
     return check::summary("pdf");
 }

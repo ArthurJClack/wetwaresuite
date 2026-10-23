@@ -37,7 +37,10 @@ int main() {
     CHECK(convert::backendFor(s, "a.OBJ", "3mf") == "mesh");
     CHECK(convert::backendFor(s, "a.stl", "png") == "mesh");  // rendered preview
     CHECK(convert::backendFor(s, "a.png", "stl").empty());
-    CHECK(convert::backendFor(s, "a.fbx", "stl").empty());
+    CHECK(convert::backendFor(s, "a.fbx", "stl") == "mesh");
+    CHECK(convert::backendFor(s, "a.dae", "stl").empty());
+    CHECK(convert::backendFor(s, "a.tif", "png") == "raster");
+    if (raster::webpSupported()) CHECK(convert::backendFor(s, "a.tif", "webp") == "raster");
 
     Result r = s.run("convert.file", {{"input", (dir / "pics" / "a.png").string()}, {"output", (dir / "a.jpg").string()}});
     CHECK(r.ok);
@@ -75,7 +78,7 @@ int main() {
                                         {"width", std::int64_t{200}}, {"view", std::string("top")}});
     CHECK(pic.ok);
     CHECK(raster::load(dir / "pipe.png").width() == 200 && raster::load(dir / "pipe.png").height() == 200);
-    Result later = s.run("convert.file", {{"input", (dir / "models" / "cube.stl").string()}, {"output", (dir / "cube.fbx").string()}});
+    Result later = s.run("convert.file", {{"input", (dir / "models" / "cube.stl").string()}, {"output", (dir / "cube.dae").string()}});
     CHECK(!later.ok && later.message.find("isn't supported yet") != std::string::npos);
     Result meshes = s.run("convert.batch", {{"input_dir", (dir / "models").string()}, {"to", std::string("ply")},
                                             {"output_dir", (dir / "ply").string()}});

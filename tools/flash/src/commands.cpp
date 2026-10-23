@@ -494,6 +494,7 @@ void registerCommands(Session& session) {
     registerInspect(session);
     registerFlashCmd(session);
     registerMonitor(session);
+    registerBuildCommands(session);
 }
 
 }  // namespace wetwaresuite::flash

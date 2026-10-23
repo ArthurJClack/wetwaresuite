@@ -165,6 +165,26 @@ double integratedLoudness(const Buffer& b, Range r) {
     return std::max(-70.0, gatedLoudness(windows(blocks.sub, 4), -10.0));
 }
 
+std::vector<double> loudnessCurve(const Buffer& b, Range r, double windowSeconds, double stepSeconds) {
+    r = clampRange(b, r);
+    std::vector<double> out;
+    if (r.size() == 0) return out;
+    const auto blocks = subBlocks(b, r);
+    const auto width = static_cast<std::size_t>(std::max(1.0, std::round(windowSeconds * 10)));
+    const auto step = static_cast<std::size_t>(std::max(1.0, std::round(stepSeconds * 10)));
+    // value k covers the window ending at (k+1) steps, or as much as there is so far
+    double sum = 0;
+    for (std::size_t i = 0; i < blocks.sub.size(); ++i) {
+        sum += blocks.sub[i];
+        if (i >= width) sum -= blocks.sub[i - width];
+        if ((i + 1) % step == 0 || i + 1 == blocks.sub.size()) {
+            const std::size_t have = std::min(width, i + 1);
+            out.push_back(std::max(-70.0, toLufs(std::max(0.0, sum) / static_cast<double>(have))));
+        }
+    }
+    return out;
+}
+
 Levels measure(const Buffer& b, Range r, bool truePeak) {
     r = clampRange(b, r);
     Levels L;

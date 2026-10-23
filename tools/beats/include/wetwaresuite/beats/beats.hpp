@@ -22,6 +22,10 @@ public:
     std::string kind() const override { return "song"; }
     std::string summary() const override;
     std::unique_ptr<Attachment> preview() const override;  // arrangement PNG
+    // The arrangement as a timeline: a lane per track, a clip per placement. Dragging moves
+    // a placement by whole bars (beats.arrange_move), dragging its end sets the repeats.
+    bool timeline(TimelineLayout& out) const override;
+    std::string timelineCommand(const TimelineEdit& e) const override;
 };
 
 // Snapshots the song before `fn`; restores it on undo and when fn fails.

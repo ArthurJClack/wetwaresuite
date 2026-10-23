@@ -99,7 +99,9 @@ std::vector<const CommandInfo*> toolCommands(const std::string& tool, const std:
 // ---- opening files ---------------------------------------------------------
 
 // Which "<tool>.open" commands to try for a file, best guess first: tools whose
-// open command mentions the file's extension come before the rest.
+// open command mentions the file's extension come before the rest. Commands
+// named "<tool>.<thing>_open" that take path= and mention the extension (such
+// as forge.sprite_open for .aseprite) are tried too.
 std::vector<std::string> openCandidates(const std::string& path, const std::vector<std::string>& tools,
                                         const std::vector<CommandInfo>& commands);
 
@@ -164,6 +166,20 @@ bool healStrokeParams(const std::string& doc, const std::vector<double>& points,
 // Params for photo.remove_object from a painted stroke (same rules as above).
 bool removeStrokeParams(const std::string& doc, const std::vector<double>& points, double brushSize, int width, int height,
                         Params& out, std::string& error);
+
+// The retouch brushes on the canvas toolbar: clone, dodge, burn, sponge, smudge, blur and
+// sharpen. Turns a painted stroke into the command (paint.clone, paint.dodge, paint.smudge or
+// paint.blur_brush) and its params. Clone needs `cloneOffset` (source minus stroke start, from
+// a HealSource); without one it fails with a plain-word error saying to Alt+click a spot first.
+struct BrushToolSettings {
+    std::string brush = "soft";
+    double size = 20, opacity = 100;
+    double strength = 50;  // dodge/burn/sponge exposure, smudge and blur/sharpen strength, 0..100
+    std::string range = "midtones";  // dodge and burn
+};
+bool brushToolParams(const std::string& tool, const std::string& doc, const std::vector<double>& points,
+                     const std::vector<double>& pressures, const BrushToolSettings& settings, const double* cloneOffset,
+                     std::string& command, Params& out, std::string& error);
 
 // ---- tools ------------------------------------------------------------------
 

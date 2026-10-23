@@ -12,6 +12,7 @@
 #include "wetwaresuite/mesh/ops.hpp"
 #include "wetwaresuite/mesh/render.hpp"
 #include "wetwaresuite/raster/codec.hpp"
+#include "blend.hpp"
 
 namespace wetwaresuite::cad {
 
@@ -58,6 +59,7 @@ ParamSpec specFor(const FieldDef& f) {
         case FieldKind::Integer: s.description += " (whole number or expression)"; break;
         case FieldKind::Points: s.description += " (comma-separated numbers or expressions)"; break;
         case FieldKind::Ref: s.description += " (name of an earlier feature)"; break;
+        case FieldKind::Refs: s.description += " (names of earlier features, comma-separated)"; break;
         case FieldKind::Choice: s.choices = f.choices; break;
         case FieldKind::Bool: s.type = ParamType::Bool; break;
         case FieldKind::Text: break;
@@ -194,7 +196,12 @@ std::vector<std::string> featureUsers(const CadDoc& doc, const std::string& name
         if (!t) continue;
         for (const auto& field : t->fields) {
             auto it = f.values.find(field.name);
-            if (field.kind == FieldKind::Ref && it != f.values.end() && it->second == name) {
+            if (it == f.values.end()) continue;
+            bool uses = field.kind == FieldKind::Ref && it->second == name;
+            if (field.kind == FieldKind::Refs) {
+                for (const auto& item : splitList(it->second)) uses = uses || item == name;
+            }
+            if (uses) {
                 users.push_back(f.name);
                 break;
             }
@@ -336,6 +343,13 @@ void registerFeatureCommand(Session& session, const FeatureType& t) {
                 if (!setField(f, field.name, fieldText(it->second), error)) return Result::failure(error);
             }
             const std::string name = f.name;
+            // join / cut / intersect without a target works on the last body, like SolidWorks' merge result
+            if (ft->field("operation") && ft->field("target") && !f.values.count("target")) {
+                const std::string op = f.values.count("operation") ? f.values["operation"] : ft->field("operation")->fallback;
+                if (op != "new" && !doc.bodies.empty()) f.values["target"] = doc.bodies.back().feature;
+                else if (op == "join") f.values["operation"] = "new";
+                else if (op != "new") return Result::failure(op + " needs a body to work on: add one first or give target=");
+            }
             doc.features.push_back(std::move(f));
             return edited("added " + type + " " + name, p, name);
         })));
@@ -343,8 +357,49 @@ void registerFeatureCommand(Session& session, const FeatureType& t) {
 
 }  // namespace
 
+// cad.edges: the sharp edges fillet and chamfer can pick, with points to pass as near=.
+void registerEdgeCommand(Session& session) {
+    session.registry().add(
+        {"cad.edges", "List Edges",
+         "List the sharp edges of the model or of one feature (where flat faces meet at angle degrees or more): "
+         "midpoint, length, direction and outer/inner. Pass a midpoint to cad.fillet or cad.chamfer as near=x,y,z.",
+         {docParam(), optionalFeature(), {"angle", ParamType::Number, "smallest angle between the faces, degrees", false, {}, 30.0}},
+         false, true},
+        cadCommand(session, [](CadDoc& doc, const Params& p) {
+            std::string error;
+            const Mesh* m = target(doc, p, error);
+            if (!m) return Result::failure(error);
+            const auto edges = detail::sharpEdges(*m, numberParam(p, "angle", 30));
+            std::string text;
+            NumberList mids;
+            int outer = 0;
+            for (std::size_t i = 0; i < edges.size(); ++i) {
+                const auto& e = edges[i];
+                const Vec3 mid = (e.a + e.b) * 0.5, d = mesh::normalize(e.b - e.a);
+                const char* along = std::abs(d.z) > 1 - 1e-9 ? "z" : std::abs(d.x) > 1 - 1e-9 ? "x" : std::abs(d.y) > 1 - 1e-9 ? "y" : "slanted";
+                text += "\n  " + std::to_string(i + 1) + ": " + num(mid.x) + "," + num(mid.y) + "," + num(mid.z) + "  length " +
+                        num(mesh::length(e.b - e.a)) + ", along " + along + ", " + (e.convex ? "outer" : "inner") + ", " + num(e.angle) + " deg";
+                mids.insert(mids.end(), {mid.x, mid.y, mid.z});
+                outer += e.convex ? 1 : 0;
+            }
+            Result r = Result::success(std::to_string(edges.size()) + " sharp edges (" + std::to_string(outer) + " outer, " +
+                                       std::to_string(edges.size() - static_cast<std::size_t>(outer)) + " inner)" + text);
+            r.with("count", static_cast<std::int64_t>(edges.size())).with("midpoints", mids);
+            return r;
+        }, false));
+}
+
+void registerSketchCommands(Session& session);
+void registerSketchConstraintCommands(Session& session);
+void registerAssemblyCommands(Session& session);
+void registerDrawingCommands(Session& session);
+
 void registerCommands(Session& session) {
     auto& reg = session.registry();
+    registerSketchCommands(session);
+    registerSketchConstraintCommands(session);
+    registerAssemblyCommands(session);
+    registerDrawingCommands(session);
 
     // ---- documents ----------------------------------------------------------------
 
@@ -358,9 +413,10 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"cad.open", "Open Part",
-             "Open a .wwcad part (parameters and feature tree), or import a mesh file (stl, obj, ply, off, glb, gltf, "
-             "3mf) as a new part with one fixed 'imported' feature. Returns the document id.",
-             {{"path", ParamType::String, "path to a .wwcad or mesh file", true}}, false, true},
+             "Open a .wwcad part (parameters and feature tree), or import a STEP or mesh file (step, stl, obj, ply, off, "
+             "glb, gltf, 3mf, fbx) as a new part with one fixed 'imported' feature. STEP faces (planes, cylinders, cones, "
+             "spheres, tori, B-splines) are turned into fine triangles. Returns the document id.",
+             {{"path", ParamType::String, "path to a .wwcad, .step or mesh file", true}}, false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     try {
@@ -372,7 +428,7 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"cad.import", "Import Mesh",
-             "Add a mesh file (stl, obj, ply, off, glb, gltf, 3mf) to a part as a fixed 'imported' feature, which "
+             "Add a mesh or STEP file (stl, obj, ply, off, glb, gltf, 3mf, fbx, step) to a part as a fixed 'imported' feature, which "
              "booleans, holes and patterns can use like any other.",
              [] {
                  std::vector<ParamSpec> s{docParam(), {"path", ParamType::String, "mesh file", true}};
@@ -400,8 +456,8 @@ void registerCommands(Session& session) {
             })));
 
     reg.add({"cad.save", "Save Part",
-             "Save a part. .wwcad keeps the parameters and feature tree (reopen with cad.open); stl, obj, ply, off, "
-             "glb, gltf or 3mf export the solid; png, jpg, bmp, tga or ppm render a picture (view, size).",
+             "Save a part. .wwcad keeps the parameters and feature tree (reopen with cad.open); step exports a solid "
+             "B-rep for other CAD programs (flat faces; curved ones as facets); stl, obj, ply, off, glb, gltf, 3mf or fbx export the mesh; png, jpg, bmp, tga or ppm render a picture (view, size).",
              {docParam(),
               {"path", ParamType::String, "output file; the extension picks the format", true},
               {"ascii", ParamType::Bool, "STL/PLY: write text instead of binary", false, {}, false},
@@ -432,7 +488,7 @@ void registerCommands(Session& session) {
                     return r;
                 }
                 if (!mesh::canWrite(path)) {
-                    return Result::failure("unknown format '" + ext + "': use .wwcad, stl, obj, ply, off, glb, gltf, 3mf, png or jpg");
+                    return Result::failure("unknown format '" + ext + "': use .wwcad, step, stl, obj, ply, off, glb, gltf, 3mf, fbx, png or jpg");
                 }
                 mesh::SaveOptions so;
                 so.ascii = boolParam(p, "ascii", false);
@@ -587,6 +643,8 @@ void registerCommands(Session& session) {
 
     // ---- features ----------------------------------------------------------------------
 
+    registerEdgeCommand(session);
+
     for (const auto& t : featureTypes()) {
         if (t.type != "imported") registerFeatureCommand(session, t);
     }
@@ -703,7 +761,13 @@ void registerCommands(Session& session) {
                     const FeatureType* t = featureType(other.type);
                     for (const auto& field : t->fields) {
                         auto it = other.values.find(field.name);
-                        if (field.kind == FieldKind::Ref && it != other.values.end() && it->second == from) it->second = to;
+                        if (it == other.values.end()) continue;
+                        if (field.kind == FieldKind::Ref && it->second == from) it->second = to;
+                        if (field.kind == FieldKind::Refs) {
+                            std::string list;
+                            for (const auto& item : splitList(it->second)) list += (list.empty() ? "" : ",") + (item == from ? to : item);
+                            it->second = list;
+                        }
                     }
                 }
                 if (auto it = doc.results.find(from); it != doc.results.end()) {

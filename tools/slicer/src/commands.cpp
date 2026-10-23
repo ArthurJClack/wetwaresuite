@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
+#include <stdexcept>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -34,11 +36,74 @@ std::string duration(double seconds) {
     return std::to_string(s) + "s";
 }
 
+// One model on the bed.
+struct Part {
+    std::string name;
+    mesh::Mesh mesh;
+};
+
 // Everything undo has to restore.
 struct PrintState {
-    mesh::Mesh mesh;
+    std::vector<Part> parts;
     Config config;
+
+    // every part together, as it gets sliced
+    mesh::Mesh plate() const {
+        if (parts.size() == 1) return parts.front().mesh;
+        mesh::Mesh all;
+        for (const auto& p : parts) mesh::append(all, p.mesh);
+        return all;
+    }
 };
+
+std::string partList(const PrintState& st) {
+    std::string s;
+    for (const auto& p : st.parts) s += (s.empty() ? "" : ", ") + p.name;
+    return s;
+}
+
+// Fits when every part is inside the bed volume.
+Fit plateFit(const PrintState& st) {
+    if (st.parts.empty()) return {false, "there's nothing on the bed"};
+    if (st.parts.size() == 1) return checkFit(st.parts.front().mesh, st.config.printer);
+    for (const auto& p : st.parts) {
+        Fit f = checkFit(p.mesh, st.config.printer);
+        if (!f.fits) {
+            const auto pos = f.reason.find("the model");
+            if (pos != std::string::npos) f.reason.replace(pos, 9, p.name);
+            if (auto r = f.reason.find("run slicer.place to centre it"); r != std::string::npos) f.reason.replace(r, 29, "run slicer.arrange");
+            return f;
+        }
+    }
+    return {};
+}
+
+// Pairs of parts whose footprints overlap (they would print fused together).
+std::vector<std::pair<std::size_t, std::size_t>> overlaps(const PrintState& st) {
+    std::vector<std::pair<std::size_t, std::size_t>> out;
+    std::vector<mesh::Bounds> b;
+    for (const auto& p : st.parts) b.push_back(mesh::bounds(p.mesh));
+    for (std::size_t i = 0; i < b.size(); ++i) {
+        for (std::size_t j = i + 1; j < b.size(); ++j) {
+            if (b[i].min.x < b[j].max.x && b[j].min.x < b[i].max.x && b[i].min.y < b[j].max.y && b[j].min.y < b[i].max.y) out.push_back({i, j});
+        }
+    }
+    return out;
+}
+
+// Re-packs every part on the bed. Returns an error message, or empty.
+std::string arrangeParts(PrintState& st, double spacing) {
+    std::vector<mesh::Bounds> boxes;
+    for (const auto& p : st.parts) boxes.push_back(mesh::bounds(p.mesh));
+    auto centres = arrange(boxes, st.config.printer, spacing);
+    if (!centres) {
+        return "the parts don't all fit on the " + st.config.printer.name + "'s " + fmt(st.config.printer.bedX, 0) + " x " +
+               fmt(st.config.printer.bedY, 0) + " mm bed " + (spacing > 0 ? fmt(spacing, 1) + " mm apart" : "") +
+               " (remove some, scale them down or lower spacing)";
+    }
+    for (std::size_t i = 0; i < st.parts.size(); ++i) moveCenterTo(st.parts[i].mesh, (*centres)[i].x, (*centres)[i].y);
+    return {};
+}
 
 struct Sliced {
     SliceResult result;
@@ -53,19 +118,22 @@ public:
 
     std::string kind() const override { return "print"; }
     std::string summary() const override {
-        const mesh::Vec3 sz = mesh::bounds(state.mesh).size();
-        std::string s = name + ": " + fmt(sz.x) + " x " + fmt(sz.y) + " x " + fmt(sz.z) + " mm on " + state.config.printer.name + ", " +
+        const mesh::Vec3 sz = mesh::bounds(state.plate()).size();
+        std::string s = name + (state.parts.size() > 1 ? " (" + std::to_string(state.parts.size()) + " parts)" : "") + ": " + fmt(sz.x) + " x " + fmt(sz.y) + " x " + fmt(sz.z) + " mm on " + state.config.printer.name + ", " +
                         state.config.filament.name + ", " + state.config.settings.quality + " " + fmt(state.config.settings.layerHeight, 2) +
                         " mm layers";
-        if (!checkFit(state.mesh, state.config.printer).fits) s += ", DOESN'T FIT";
+        if (!plateFit(state).fits) s += ", DOESN'T FIT";
         if (sliced) s += ", sliced: " + std::to_string(sliced->result.layers.size()) + " layers, " + duration(sliced->gcode.seconds);
         return s;
     }
     std::unique_ptr<Attachment> preview() const override;
+    bool renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const override {
+        return mesh::renderOrbit(state.plate(), view, width, height, rgba);
+    }
 };
 
 raster::Image renderOnBed(const PrintState& st, mesh::View view, int size, bool bed) {
-    mesh::Mesh scene = st.mesh;
+    mesh::Mesh scene = st.plate();
     if (bed) {
         const Printer& p = st.config.printer;
         mesh::Mesh plate = mesh::box({p.bedX, p.bedY, 0.8}, false);
@@ -154,17 +222,21 @@ std::vector<ParamSpec> settingsParams() {
         integer("top_layers", "solid layers on top surfaces"),
         integer("bottom_layers", "solid layers on bottom surfaces"),
         num("infill", "sparse infill density in percent (100 = solid)"),
-        {"infill_pattern", ParamType::String, "sparse infill pattern", false, {"lines", "grid", "triangles"}},
+        {"infill_pattern", ParamType::String, "sparse infill pattern (gyroid and cubic are strong in every direction)", false,
+         {"lines", "grid", "triangles", "cubic", "gyroid", "concentric"}},
         num("speed", "print speed in mm/s"),
         num("first_layer_speed", "first layer speed in mm/s"),
         num("travel_speed", "travel speed in mm/s"),
         num("retraction", "retraction length in mm (0 = off)"),
         num("retraction_speed", "retraction speed in mm/s"),
+        num("z_hop", "lift the nozzle this many mm on retracted travels (0 = off)"),
         integer("skirt", "skirt loops around the first layer (0 = none)"),
         num("skirt_distance", "gap between skirt and part (or brim) in mm"),
         num("brim", "brim width in mm (0 = none)"),
         {"supports", ParamType::String, "support columns under overhangs: everywhere, or only those standing on the bed", false,
          {"none", "everywhere", "buildplate"}},
+        {"support_style", ParamType::String, "columns go straight down; tree grows branches that merge into trunks (less plastic, easier to remove)",
+         false, {"columns", "tree"}},
         num("support_angle", "overhang angle from vertical that needs support, degrees"),
         num("support_density", "support line density in percent"),
         {"seam", ParamType::String, "where wall loops start", false, {"nearest", "rear", "random"}},
@@ -225,6 +297,7 @@ std::string applySettings(Config& c, const Params& p) {
                    number("infill", s.infill, 0, 100), number("speed", s.speed, 1, 1000),
                    number("first_layer_speed", s.firstLayerSpeed, 1, 1000), number("travel_speed", s.travelSpeed, 1, 2000),
                    number("retraction", s.retraction, 0, 20), number("retraction_speed", s.retractionSpeed, 1, 200),
+                   number("z_hop", s.zHop, 0, 10),
                    whole("skirt", s.skirt, 0, 20), number("skirt_distance", s.skirtDistance, 0, 100), number("brim", s.brim, 0, 50),
                    number("support_angle", s.supportAngle, 0, 89), number("support_density", s.supportDensity, 1, 100)}) {
         if (err.empty()) err = e;
@@ -232,6 +305,7 @@ std::string applySettings(Config& c, const Params& p) {
     if (!err.empty()) return err;
     if (p.count("infill_pattern")) s.infillPattern = stringParam(p, "infill_pattern");
     if (p.count("supports")) s.supports = stringParam(p, "supports");
+    if (p.count("support_style")) s.supportStyle = stringParam(p, "support_style");
     if (p.count("seam")) s.seam = stringParam(p, "seam");
     if (p.count("start_gcode")) pr.startGcode = stringParam(p, "start_gcode");
     if (p.count("end_gcode")) pr.endGcode = stringParam(p, "end_gcode");
@@ -259,6 +333,7 @@ std::string settingsText(const Config& c) {
            fmt(c.filament.bedTemp, 0) + " C, " + s.quality + ": " + fmt(s.layerHeight, 2) + " mm layers, " +
            std::to_string(s.perimeters) + " walls, " + std::to_string(s.topLayers) + " top / " + std::to_string(s.bottomLayers) +
            " bottom, " + fmt(s.infill, 0) + "% " + s.infillPattern + " infill, " + fmt(s.speed, 0) + " mm/s, supports " + s.supports +
+           (s.supports != "none" ? " (" + s.supportStyle + ")" : "") + (s.zHop > 0 ? ", z hop " + fmt(s.zHop, 2) + " mm" : "") +
            (s.brim > 0 ? ", brim " + fmt(s.brim, 1) + " mm" : "") + (s.skirt > 0 ? ", skirt " + std::to_string(s.skirt) : "");
 }
 
@@ -281,6 +356,8 @@ Result& addSettings(Result& r, const Config& c) {
         .with("infill_pattern", s.infillPattern)
         .with("speed", s.speed)
         .with("supports", s.supports)
+        .with("support_style", s.supportStyle)
+        .with("z_hop", s.zHop)
         .with("brim", s.brim)
         .with("skirt", static_cast<std::int64_t>(s.skirt))
         .with("seam", s.seam);
@@ -288,12 +365,18 @@ Result& addSettings(Result& r, const Config& c) {
 }
 
 Result& addPlacement(Result& r, const PrintState& st) {
-    const mesh::Bounds b = mesh::bounds(st.mesh);
-    const Fit fit = checkFit(st.mesh, st.config.printer);
+    const mesh::Bounds b = mesh::bounds(st.plate());
+    const Fit fit = plateFit(st);
     r.with("size", NumberList{b.size().x, b.size().y, b.size().z})
         .with("center", NumberList{b.center().x, b.center().y})
-        .with("fits", fit.fits);
+        .with("fits", fit.fits)
+        .with("parts", static_cast<std::int64_t>(st.parts.size()));
     if (!fit.fits) r.with("problem", fit.reason);
+    const auto ov = overlaps(st);
+    if (!ov.empty()) {
+        r.with("overlap", st.parts[ov.front().first].name + " and " + st.parts[ov.front().second].name +
+                              " overlap and would print stuck together (run slicer.arrange)");
+    }
     return r;
 }
 
@@ -301,6 +384,7 @@ Result placed(const std::string& msg, const PrintDoc& doc, const Params& p) {
     Result r = Result::success(msg);
     r.with("doc", stringParam(p, "doc"));
     addPlacement(r, doc.state);
+    if (auto ov = r.field("overlap")) r.message += "; warning: " + toText(*ov);
     if (boolParam(p, "preview", false)) r.attach({"image/png", raster::encodePng(renderOnBed(doc.state, mesh::View::Iso, 512, true)), "print.png"});
     return r;
 }
@@ -331,10 +415,10 @@ ActionFactory readCommand(Session& session, std::function<Result(PrintDoc&, cons
 
 std::shared_ptr<const Sliced> ensureSliced(PrintDoc& doc) {
     if (doc.sliced) return doc.sliced;
-    const Fit fit = checkFit(doc.state.mesh, doc.state.config.printer);
+    const Fit fit = plateFit(doc.state);
     if (!fit.fits) throw std::runtime_error("can't slice: " + fit.reason);
     auto s = std::make_shared<Sliced>();
-    s->result = slice(doc.state.mesh, doc.state.config);
+    s->result = slice(doc.state.plate(), doc.state.config);
     s->gcode = toGcode(s->result, doc.state.config, doc.name);
     doc.sliced = s;
     return s;
@@ -409,10 +493,67 @@ bool writeFile(const std::string& path, const std::string& text) {
 std::shared_ptr<PrintDoc> newJob(mesh::Mesh m, const std::string& name) {
     if (m.empty()) throw std::runtime_error(name + " has no triangles to print");
     auto doc = std::make_shared<PrintDoc>();
-    doc->state.mesh = std::move(m);
+    doc->state.parts.push_back({fs::path(name).stem().string(), std::move(m)});
     doc->state.config = defaultConfig();
     doc->name = name;
     return doc;
+}
+
+ParamSpec objectParam() {
+    return {"object", ParamType::String, "which part when there are several: its name or number (default: all)", false};
+}
+
+// The parts a command works on: object= (a name or a number from 1), or all.
+std::vector<Part*> targets(PrintState& st, const Params& p) {
+    std::vector<Part*> out;
+    if (!p.count("object")) {
+        for (auto& part : st.parts) out.push_back(&part);
+        return out;
+    }
+    const std::string want = stringParam(p, "object");
+    for (auto& part : st.parts) {
+        if (part.name == want) return {&part};
+    }
+    char* end = nullptr;
+    const long k = std::strtol(want.c_str(), &end, 10);
+    if (end && *end == 0 && k >= 1 && static_cast<std::size_t>(k) <= st.parts.size()) return {&st.parts[static_cast<std::size_t>(k - 1)]};
+    throw std::runtime_error("no part called '" + want + "' on the bed (parts: " + partList(st) + ")");
+}
+
+mesh::Bounds groupBounds(const std::vector<Part*>& parts) {
+    mesh::Bounds b;
+    bool first = true;
+    for (const Part* part : parts) {
+        const mesh::Bounds pb = mesh::bounds(part->mesh);
+        if (first) b = pb;
+        else b.min = {std::min(b.min.x, pb.min.x), std::min(b.min.y, pb.min.y), std::min(b.min.z, pb.min.z)},
+             b.max = {std::max(b.max.x, pb.max.x), std::max(b.max.y, pb.max.y), std::max(b.max.z, pb.max.z)};
+        first = false;
+    }
+    return b;
+}
+
+// Moves parts together: their group centre to (x, y), or by (x, y). Each stays on the bed.
+void moveGroup(const std::vector<Part*>& parts, double x, double y, bool absolute) {
+    const mesh::Vec3 c = groupBounds(parts).center();
+    const double dx = absolute ? x - c.x : x, dy = absolute ? y - c.y : y;
+    for (Part* part : parts) {
+        const mesh::Vec3 pc = mesh::bounds(part->mesh).center();
+        moveCenterTo(part->mesh, pc.x + dx, pc.y + dy);
+    }
+}
+
+std::string uniqueName(const PrintState& st, const std::string& base) {
+    auto taken = [&](const std::string& n) {
+        for (const auto& p : st.parts) {
+            if (p.name == n) return true;
+        }
+        return false;
+    };
+    if (!taken(base)) return base;
+    for (int i = 2;; ++i) {
+        if (!taken(base + "_" + std::to_string(i))) return base + "_" + std::to_string(i);
+    }
 }
 
 }  // namespace
@@ -422,7 +563,7 @@ void registerCommands(Session& session) {
     Session* s = &session;
 
     std::vector<ParamSpec> loadParams = {
-        {"path", ParamType::String, "model file: stl, obj, ply, off, 3mf, glb or gltf", false},
+        {"path", ParamType::String, "model file: stl, obj, ply, off, 3mf, glb, gltf, fbx or step", false},
         {"mesh", ParamType::String, "or the id of a mesh already open in this session (e.g. mesh1 from cad)", false},
         {"lay_flat", ParamType::Bool, "turn the largest flat face down first", false, {}, false},
         num("scale", "scale factor, e.g. 25.4 for a model drawn in inches"),
@@ -457,16 +598,16 @@ void registerCommands(Session& session) {
                         if (auto err = applySettings(doc->state.config, p); !err.empty()) return Result::failure(err);
                         const double sc = numberParam(p, "scale", 1.0);
                         if (!(sc > 0)) return Result::failure("scale must be positive");
-                        if (sc != 1.0) mesh::transform(doc->state.mesh, mesh::Mat4::scale(sc));
-                        if (boolParam(p, "lay_flat", false)) layFlat(doc->state.mesh);
-                        centerOnBed(doc->state.mesh, doc->state.config.printer);
+                        if (sc != 1.0) mesh::transform(doc->state.parts[0].mesh, mesh::Mat4::scale(sc));
+                        if (boolParam(p, "lay_flat", false)) layFlat(doc->state.parts[0].mesh);
+                        centerOnBed(doc->state.parts[0].mesh, doc->state.config.printer);
                         const std::string id = s->workspace().add(doc, "print");
                         Params q = p;
                         q["doc"] = id;
-                        Result r = placed("loaded " + name + " as " + id + " (" + std::to_string(doc->state.mesh.triangleCount()) +
+                        Result r = placed("loaded " + name + " as " + id + " (" + std::to_string(doc->state.parts[0].mesh.triangleCount()) +
                                               " triangles) on the " + doc->state.config.printer.name,
                                           *doc, q);
-                        const Fit fit = checkFit(doc->state.mesh, doc->state.config.printer);
+                        const Fit fit = plateFit(doc->state);
                         if (!fit.fits) r.message += "; warning: " + fit.reason;
                         return r;
                     } catch (const std::exception& e) {
@@ -485,62 +626,146 @@ void registerCommands(Session& session) {
             });
 
     reg.add({"slicer.place", "Place on bed",
-             "Drop the model onto the bed (lowest point at z=0) and centre it, or put its centre at x, y.",
-             {docParam(), num("x", "centre x on the bed in mm (default: bed centre)"), num("y", "centre y in mm"), previewParam()},
+             "Drop the model onto the bed (lowest point at z=0) and centre it, or put its centre at x, y. With several parts, "
+             "object picks one (by name or number); without it the whole group moves.",
+             {docParam(), num("x", "centre x on the bed in mm (default: bed centre)"), num("y", "centre y in mm"), objectParam(), previewParam()},
              true},
             editCommand(session, [](PrintDoc& d, const Params& p) {
                 const Printer& pr = d.state.config.printer;
-                moveCenterTo(d.state.mesh, numberParam(p, "x", pr.bedX / 2), numberParam(p, "y", pr.bedY / 2));
+                moveGroup(targets(d.state, p), numberParam(p, "x", pr.bedX / 2), numberParam(p, "y", pr.bedY / 2), true);
                 return placed("placed on the bed", d, p);
             }));
 
     reg.add({"slicer.move", "Move model",
-             "Slide the model across the bed by x, y mm (or to centre x, y with absolute=true). It always stays on the bed surface.",
+             "Slide the model across the bed by x, y mm (or to centre x, y with absolute=true). It always stays on the bed surface. "
+             "With several parts, object picks one; without it they all move together.",
              {docParam(), num("x", "mm along x"), num("y", "mm along y"),
-              {"absolute", ParamType::Bool, "x, y are the new centre instead of an offset", false, {}, false}, previewParam()},
+              {"absolute", ParamType::Bool, "x, y are the new centre instead of an offset", false, {}, false}, objectParam(), previewParam()},
              true},
             editCommand(session, [](PrintDoc& d, const Params& p) {
-                const mesh::Vec3 c = mesh::bounds(d.state.mesh).center();
-                if (boolParam(p, "absolute", false)) moveCenterTo(d.state.mesh, numberParam(p, "x", c.x), numberParam(p, "y", c.y));
-                else moveCenterTo(d.state.mesh, c.x + numberParam(p, "x", 0), c.y + numberParam(p, "y", 0));
+                auto parts = targets(d.state, p);
+                const mesh::Vec3 c = groupBounds(parts).center();
+                if (boolParam(p, "absolute", false)) moveGroup(parts, numberParam(p, "x", c.x), numberParam(p, "y", c.y), true);
+                else moveGroup(parts, numberParam(p, "x", 0), numberParam(p, "y", 0), false);
                 return placed("moved", d, p);
             }));
 
     reg.add({"slicer.rotate", "Rotate model",
-             "Rotate the model about its centre by x, then y, then z degrees, then drop it back onto the bed in the same spot.",
+             "Rotate the model about its centre by x, then y, then z degrees, then drop it back onto the bed in the same spot. "
+             "With several parts each turns about its own centre (object picks one).",
              {docParam(), num("x", "degrees about x"), num("y", "degrees about y"), num("z", "degrees about z (spins it on the bed)"),
-              previewParam()},
+              objectParam(), previewParam()},
              true},
             editCommand(session, [](PrintDoc& d, const Params& p) {
-                const mesh::Vec3 c = mesh::bounds(d.state.mesh).center();
                 const mesh::Vec3 deg{numberParam(p, "x", 0), numberParam(p, "y", 0), numberParam(p, "z", 0)};
-                mesh::transform(d.state.mesh, mesh::Mat4::translate(c) * mesh::Mat4::rotate(deg) * mesh::Mat4::translate(-c));
-                moveCenterTo(d.state.mesh, c.x, c.y);
+                for (Part* part : targets(d.state, p)) {
+                    const mesh::Vec3 c = mesh::bounds(part->mesh).center();
+                    mesh::transform(part->mesh, mesh::Mat4::translate(c) * mesh::Mat4::rotate(deg) * mesh::Mat4::translate(-c));
+                    moveCenterTo(part->mesh, c.x, c.y);
+                }
                 return placed("rotated", d, p);
             }));
 
     reg.add({"slicer.scale", "Scale model",
-             "Scale the model about its centre: factor for all axes (e.g. 2, or 0.5), or x, y, z factors. It stays on the bed in the same spot.",
-             {docParam(), num("factor", "uniform scale factor"), num("x", "x factor"), num("y", "y factor"), num("z", "z factor"), previewParam()},
+             "Scale the model about its centre: factor for all axes (e.g. 2, or 0.5), or x, y, z factors. It stays on the bed in the "
+             "same spot. With several parts each scales about its own centre (object picks one).",
+             {docParam(), num("factor", "uniform scale factor"), num("x", "x factor"), num("y", "y factor"), num("z", "z factor"), objectParam(),
+              previewParam()},
              true},
             editCommand(session, [](PrintDoc& d, const Params& p) {
                 const double f = numberParam(p, "factor", 1.0);
                 const mesh::Vec3 k{numberParam(p, "x", 1.0) * f, numberParam(p, "y", 1.0) * f, numberParam(p, "z", 1.0) * f};
                 if (!(k.x > 0 && k.y > 0 && k.z > 0)) return Result::failure("scale factors must be positive");
-                const mesh::Vec3 c = mesh::bounds(d.state.mesh).center();
-                mesh::transform(d.state.mesh, mesh::Mat4::translate(c) * mesh::Mat4::scale(k) * mesh::Mat4::translate(-c));
-                moveCenterTo(d.state.mesh, c.x, c.y);
+                for (Part* part : targets(d.state, p)) {
+                    const mesh::Vec3 c = mesh::bounds(part->mesh).center();
+                    mesh::transform(part->mesh, mesh::Mat4::translate(c) * mesh::Mat4::scale(k) * mesh::Mat4::translate(-c));
+                    moveCenterTo(part->mesh, c.x, c.y);
+                }
                 return placed("scaled", d, p);
             }));
 
     reg.add({"slicer.lay_flat", "Lay flat",
-             "Turn the model so its largest flat outside face lies on the bed (good for parts exported standing up or tilted).",
-             {docParam(), previewParam()}, true},
+             "Turn the model so its largest flat outside face lies on the bed (good for parts exported standing up or tilted). "
+             "With several parts each is laid flat (object picks one).",
+             {docParam(), objectParam(), previewParam()}, true},
             editCommand(session, [](PrintDoc& d, const Params& p) {
-                const mesh::Vec3 c = mesh::bounds(d.state.mesh).center();
-                const bool changed = layFlat(d.state.mesh);
-                moveCenterTo(d.state.mesh, c.x, c.y);
+                bool changed = false;
+                for (Part* part : targets(d.state, p)) {
+                    const mesh::Vec3 c = mesh::bounds(part->mesh).center();
+                    changed = layFlat(part->mesh) || changed;
+                    moveCenterTo(part->mesh, c.x, c.y);
+                }
                 return placed(changed ? "laid flat on its largest face" : "already lying on its largest flat face", d, p);
+            }));
+
+    reg.add({"slicer.add", "Add model",
+             "Put another model (or several copies) on the same bed: path is a model file, mesh an open mesh, or object copies "
+             "a part already on the bed. Everything is then arranged on the bed unless arrange=false. Each part gets a name "
+             "(from the file) that object= uses in the other commands.",
+             {docParam(), {"path", ParamType::String, "model file (any mesh format)", false},
+              {"mesh", ParamType::String, "or the id of an open mesh document", false},
+              {"object", ParamType::String, "or copy this part already on the bed (name or number)", false},
+              {"copies", ParamType::Int, "how many to add", false, {}, std::int64_t{1}},
+              num("scale", "scale factor for a new model"),
+              {"lay_flat", ParamType::Bool, "turn the largest flat face down first", false, {}, false},
+              {"name", ParamType::String, "name for the new part (default: from the file)", false},
+              {"arrange", ParamType::Bool, "re-pack every part on the bed afterwards", false, {}, true},
+              num("spacing", "gap between parts when arranging, mm (default 5)"), previewParam()},
+             true},
+            editCommand(session, [s](PrintDoc& d, const Params& p) {
+                Part base;
+                if (p.count("object")) {
+                    base = *targets(d.state, p).front();
+                } else if (p.count("mesh")) {
+                    const std::string id = stringParam(p, "mesh");
+                    auto md = s->workspace().getAs<mesh::MeshDoc>(id);
+                    if (!md) return Result::failure("no open mesh called '" + id + "'");
+                    base = {id, md->mesh};
+                } else if (p.count("path")) {
+                    const std::string path = stringParam(p, "path");
+                    base = {fs::path(path).stem().string(), mesh::load(path)};
+                } else {
+                    return Result::failure("pass path=model.stl, mesh=<open mesh id> or object=<part on the bed>");
+                }
+                if (base.mesh.empty()) return Result::failure(base.name + " has no triangles to print");
+                if (!p.count("object")) {
+                    const double sc = numberParam(p, "scale", 1.0);
+                    if (!(sc > 0)) return Result::failure("scale must be positive");
+                    if (sc != 1.0) mesh::transform(base.mesh, mesh::Mat4::scale(sc));
+                    if (boolParam(p, "lay_flat", false)) layFlat(base.mesh);
+                    centerOnBed(base.mesh, d.state.config.printer);
+                }
+                if (p.count("name")) base.name = stringParam(p, "name");
+                const auto copies = intParam(p, "copies", 1);
+                if (copies < 1 || copies > 500) return Result::failure("copies must be between 1 and 500");
+                for (std::int64_t i = 0; i < copies; ++i) {
+                    Part part = base;
+                    part.name = uniqueName(d.state, base.name);
+                    d.state.parts.push_back(std::move(part));
+                }
+                if (boolParam(p, "arrange", true)) {
+                    if (auto err = arrangeParts(d.state, numberParam(p, "spacing", 5.0)); !err.empty()) return Result::failure(err);
+                }
+                return placed("added " + std::to_string(copies) + " x " + base.name + "; on the bed: " + partList(d.state), d, p);
+            }));
+
+    reg.add({"slicer.arrange", "Arrange parts",
+             "Pack every part on the bed in rows, spacing mm apart, the group centred. Fails (and changes nothing) when they don't all fit.",
+             {docParam(), num("spacing", "gap between parts in mm (default 5)"), previewParam()}, true},
+            editCommand(session, [](PrintDoc& d, const Params& p) {
+                if (auto err = arrangeParts(d.state, numberParam(p, "spacing", 5.0)); !err.empty()) return Result::failure(err);
+                return placed("arranged " + std::to_string(d.state.parts.size()) + " parts: " + partList(d.state), d, p);
+            }));
+
+    reg.add({"slicer.remove", "Remove part",
+             "Take one part off the bed (object: its name or number). The last part can't be removed; close the job instead.",
+             {docParam(), {"object", ParamType::String, "the part's name or number (slicer.info lists them)", true}, previewParam()}, true},
+            editCommand(session, [](PrintDoc& d, const Params& p) {
+                Part* part = targets(d.state, p).front();
+                if (d.state.parts.size() == 1) return Result::failure("that's the only part on the bed (close the job with slicer.close)");
+                const std::string name = part->name;
+                d.state.parts.erase(d.state.parts.begin() + (part - d.state.parts.data()));
+                return placed("removed " + name + "; on the bed: " + partList(d.state), d, p);
             }));
 
     std::vector<ParamSpec> setParams = {docParam()};
@@ -554,11 +779,14 @@ void registerCommands(Session& session) {
                 if (auto err = applySettings(c, p); !err.empty()) return Result::failure(err);
                 const bool printerChanged = c.printer.bedX != d.state.config.printer.bedX || c.printer.bedY != d.state.config.printer.bedY;
                 d.state.config = c;
-                if (printerChanged) centerOnBed(d.state.mesh, c.printer);
+                if (printerChanged) {
+                    if (d.state.parts.size() == 1) centerOnBed(d.state.parts.front().mesh, c.printer);
+                    else arrangeParts(d.state, 5.0);  // when they no longer fit, slicer.info says so
+                }
                 Result r = Result::success(settingsText(c));
                 r.with("doc", stringParam(p, "doc"));
                 addSettings(r, c);
-                const Fit fit = checkFit(d.state.mesh, c.printer);
+                const Fit fit = plateFit(d.state);
                 r.with("fits", fit.fits);
                 if (!fit.fits) r.with("problem", fit.reason);
                 return r;
@@ -569,21 +797,31 @@ void registerCommands(Session& session) {
              "take solid, the settings, and the slice estimates once sliced.",
              {docParam()}, false, true},
             readCommand(session, [](PrintDoc& d, const Params& p) {
-                const double vol = std::abs(mesh::volume(d.state.mesh));
+                const mesh::Mesh plate = d.state.plate();
+                const double vol = std::abs(mesh::volume(plate));
                 const Config& c = d.state.config;
-                const Fit fit = checkFit(d.state.mesh, c.printer);
-                const mesh::Vec3 sz = mesh::bounds(d.state.mesh).size();
-                std::string msg = d.name + ": " + fmt(sz.x) + " x " + fmt(sz.y) + " x " + fmt(sz.z) + " mm, " + fmt(vol / 1000.0, 2) +
+                const Fit fit = plateFit(d.state);
+                const mesh::Vec3 sz = mesh::bounds(plate).size();
+                std::string msg = d.name + (d.state.parts.size() > 1 ? " (" + std::to_string(d.state.parts.size()) + " parts)" : "") + ": " + fmt(sz.x) + " x " + fmt(sz.y) + " x " + fmt(sz.z) + " mm, " + fmt(vol / 1000.0, 2) +
                                   " cm3 (" + fmt(vol / 1000.0 * c.filament.density, 1) + " g if printed solid in " + c.filament.name + "); " +
                                   (fit.fits ? "fits the " + c.printer.name : "DOESN'T FIT: " + fit.reason) + "\n" + settingsText(c);
+                if (d.state.parts.size() > 1) {
+                    for (std::size_t i = 0; i < d.state.parts.size(); ++i) {
+                        const mesh::Bounds b = mesh::bounds(d.state.parts[i].mesh);
+                        msg += "\n  " + std::to_string(i + 1) + ". " + d.state.parts[i].name + ": " + fmt(b.size().x) + " x " + fmt(b.size().y) +
+                               " x " + fmt(b.size().z) + " mm at " + fmt(b.center().x) + ", " + fmt(b.center().y);
+                    }
+                    for (const auto& [i, j] : overlaps(d.state)) msg += "\n  " + d.state.parts[i].name + " and " + d.state.parts[j].name + " overlap (run slicer.arrange)";
+                }
                 if (d.sliced) msg += "\nsliced: " + statsText(*d.sliced);
                 Result r = Result::success(msg);
                 r.with("doc", stringParam(p, "doc")).with("model", d.name);
                 addPlacement(r, d.state);
                 r.with("volume_cm3", std::round(vol / 10.0) / 100.0)
                     .with("solid_grams", std::round(vol / 1000.0 * c.filament.density * 10) / 10.0)
-                    .with("triangles", static_cast<std::int64_t>(d.state.mesh.triangleCount()))
-                    .with("watertight", mesh::isWatertight(d.state.mesh));
+                    .with("triangles", static_cast<std::int64_t>(plate.triangleCount()))
+                    .with("watertight", mesh::isWatertight(plate));
+                r.with("part_names", partList(d.state));
                 addSettings(r, c);
                 if (d.sliced) addStats(r, *d.sliced);
                 return r;
@@ -685,7 +923,7 @@ void registerCommands(Session& session) {
             }));
 
     std::vector<ParamSpec> oneShot = {
-        {"input", ParamType::String, "model file: stl, obj, ply, off, 3mf, glb or gltf", true},
+        {"input", ParamType::String, "model file: stl, obj, ply, off, 3mf, glb, gltf, fbx or step", true},
         {"output", ParamType::String, "G-code file to write (default: input with .gcode)", false},
         {"lay_flat", ParamType::Bool, "turn the largest flat face down first", false, {}, false},
         num("scale", "scale factor"),
@@ -706,10 +944,10 @@ void registerCommands(Session& session) {
                         if (auto err = applySettings(doc->state.config, p); !err.empty()) return Result::failure(err);
                         const double sc = numberParam(p, "scale", 1.0);
                         if (!(sc > 0)) return Result::failure("scale must be positive");
-                        if (sc != 1.0) mesh::transform(doc->state.mesh, mesh::Mat4::scale(sc));
-                        if (boolParam(p, "lay_flat", false)) layFlat(doc->state.mesh);
-                        if (p.count("rotate_z")) mesh::transform(doc->state.mesh, mesh::Mat4::rotateZ(numberParam(p, "rotate_z")));
-                        centerOnBed(doc->state.mesh, doc->state.config.printer);
+                        if (sc != 1.0) mesh::transform(doc->state.parts[0].mesh, mesh::Mat4::scale(sc));
+                        if (boolParam(p, "lay_flat", false)) layFlat(doc->state.parts[0].mesh);
+                        if (p.count("rotate_z")) mesh::transform(doc->state.parts[0].mesh, mesh::Mat4::rotateZ(numberParam(p, "rotate_z")));
+                        centerOnBed(doc->state.parts[0].mesh, doc->state.config.printer);
                         auto sl = ensureSliced(*doc);
                         if (!writeFile(output, sl->gcode.text)) return Result::failure("couldn't write " + output);
                         Result r = Result::success("sliced " + doc->name + " for the " + doc->state.config.printer.name + " in " +

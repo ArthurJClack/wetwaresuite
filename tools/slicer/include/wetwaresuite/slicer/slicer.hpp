@@ -41,12 +41,14 @@ struct Settings {
     double lineWidth = 0;  // 0 = nozzle x 1.125
     int perimeters = 2, topLayers = 4, bottomLayers = 4;
     double infill = 20;  // percent
-    std::string infillPattern = "grid";  // lines, grid, triangles
+    std::string infillPattern = "grid";  // lines, grid, triangles, cubic, gyroid, concentric
     double speed = 50, firstLayerSpeed = 20, travelSpeed = 150;  // mm/s
     double retraction = 0.8, retractionSpeed = 35, retractMinTravel = 1.5;
+    double zHop = 0;  // mm the nozzle lifts on retracted travels
     int skirt = 1;
     double skirtDistance = 5, brim = 0;  // mm
     std::string supports = "none";       // none, everywhere, buildplate
+    std::string supportStyle = "columns";  // columns (straight down) or tree (branches that merge)
     double supportAngle = 50, supportDensity = 15;
     std::string seam = "nearest";  // nearest, rear, random
 };
@@ -81,6 +83,11 @@ Fit checkFit(const mesh::Mesh& m, const Printer& printer);
 
 enum class PathType { Skirt, Brim, OuterWall, InnerWall, SolidInfill, Infill, Support };
 const char* toString(PathType type);
+
+// Packs parts (their XY footprints, as bounding boxes) onto the bed in rows,
+// `spacing` mm apart, the whole group centred. Returns the new centre of
+// each part, or nullopt when they don't all fit.
+std::optional<std::vector<Vec2>> arrange(const std::vector<mesh::Bounds>& parts, const Printer& printer, double spacing);
 
 struct Path {
     PathType type = PathType::OuterWall;

@@ -141,6 +141,10 @@ void Shell::vectorPress(ImVec2 screen) {
     const float reach = 6 * u / std::max(canvas_.zoom, 0.01f);  // 6 screen px in drawing units
     canvas_.vecStart = canvas_.vecNow = at;
     canvas_.vecDrag = 0;
+    if (vectorDrawTool(canvas_.tool)) {  // drawing a new shape: see vectorRelease
+        canvas_.vecDrag = 4;
+        return;
+    }
     if (canvas_.tool == CanvasTool::Anchor && !canvas_.vecNodes.empty()) {
         const auto& n = canvas_.vecNodes;
         float best = reach;
@@ -198,9 +202,70 @@ void Shell::vectorDrag(ImVec2 screen) {
     }
 }
 
+// the shape being drawn, before the command runs
+void Shell::drawVectorDraft(ImDrawList* dl, ImVec2 p0) const {
+    if (canvas_.vecDrag != 4) return;
+    const float u = unitsPerPx(canvas_.summary, canvas_.texture);
+    auto screen = [&](ImVec2 at) { return ImVec2{p0.x + at.x / u * canvas_.zoom, p0.y + at.y / u * canvas_.zoom}; };
+    const ImVec2 a = screen(canvas_.vecStart), b = screen(vectorDrawEnd());
+    const ImU32 col = ImGui::ColorConvertFloat4ToU32(accent_);
+    if (canvas_.tool == CanvasTool::VecLine) {
+        dl->AddLine(a, b, col, 2);
+    } else if (canvas_.tool == CanvasTool::VecEllipse) {
+        dl->AddEllipse({(a.x + b.x) / 2, (a.y + b.y) / 2}, {std::abs(b.x - a.x) / 2, std::abs(b.y - a.y) / 2}, col, 0, 0, 2);
+    } else {
+        dl->AddRect({std::min(a.x, b.x), std::min(a.y, b.y)}, {std::max(a.x, b.x), std::max(a.y, b.y)}, col, 0, 0, 2);
+    }
+}
+
+ImVec2 Shell::vectorDrawEnd() const {
+    ImVec2 end = canvas_.vecNow;
+    if (ImGui::GetIO().KeyShift && canvas_.tool != CanvasTool::VecLine) {  // a square or a circle
+        const float dx = end.x - canvas_.vecStart.x, dy = end.y - canvas_.vecStart.y;
+        const float side = std::max(std::abs(dx), std::abs(dy));
+        end = {canvas_.vecStart.x + (dx < 0 ? -side : side), canvas_.vecStart.y + (dy < 0 ? -side : side)};
+    }
+    return end;
+}
+
+void Shell::vectorDrawRelease() {
+    const ImVec2 a = canvas_.vecStart, b = vectorDrawEnd();
+    const double x0 = std::min(a.x, b.x), y0 = std::min(a.y, b.y), w = std::abs(b.x - a.x), h = std::abs(b.y - a.y);
+    if (w < 1 && h < 1) return;  // a click, not a drag
+    const std::string colour = toHex({canvas_.color[0], canvas_.color[1], canvas_.color[2], canvas_.color[3]});
+    Params p{{"doc", currentDoc_}};
+    std::string id, title;
+    if (canvas_.tool == CanvasTool::VecLine) {
+        id = "vector.add_line", title = "Line";
+        p["x1"] = static_cast<double>(a.x), p["y1"] = static_cast<double>(a.y);
+        p["x2"] = static_cast<double>(b.x), p["y2"] = static_cast<double>(b.y);
+        p["stroke"] = colour;
+    } else if (canvas_.tool == CanvasTool::VecEllipse) {
+        if (w < 1 || h < 1) return;
+        id = "vector.add_ellipse", title = "Ellipse";
+        p["cx"] = x0 + w / 2, p["cy"] = y0 + h / 2, p["rx"] = w / 2, p["ry"] = h / 2;
+        p["fill"] = colour;
+    } else {
+        if (w < 1 || h < 1) return;
+        id = "vector.add_rect", title = "Rectangle";
+        p["x"] = x0, p["y"] = y0, p["width"] = w, p["height"] = h;
+        p["fill"] = colour;
+    }
+    Result r = run(id, p);
+    resultFor_ = title;
+    if (r.ok) canvas_.vecSel = fieldText(r, "shape");  // the new shape is picked, ready to adjust
+    canvas_.vecLoaded = ~0ull;
+    r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+    result_ = std::move(r);
+}
+
 void Shell::vectorRelease() {
     const int drag = canvas_.vecDrag;
     canvas_.vecDrag = 0;
+    if (drag == 4) {
+        vectorDrawRelease();
+        return;
+    }
     const float dx = canvas_.vecNow.x - canvas_.vecStart.x, dy = canvas_.vecNow.y - canvas_.vecStart.y;
     if (!drag || canvas_.vecSel.empty() || (std::abs(dx) < 1e-3f && std::abs(dy) < 1e-3f)) return;
     Params p{{"doc", currentDoc_}};

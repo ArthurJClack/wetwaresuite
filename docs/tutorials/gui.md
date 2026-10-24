@@ -118,7 +118,8 @@ know Photoshop, Word or Onshape you already know where things are:
    there is one: **V** move, **M** select, **B** brush, **E** eraser, **G** fill, **J** heal, **S** clone).
    The picked tool's settings (size, opacity, shape...) show in the **options bar** over the picture.
 4. **File tabs** over the middle: **Start** (the start screen) and one tab per open file. Click the
-   **x** on a tab to close that file. The system app has a tab per panel instead (Calculator, Code,
+   **x** on a tab to close that file. A dot after a file's name means it has changes you haven't
+   saved; closing it (or quitting) asks whether to save them first. The system app has a tab per panel instead (Calculator, Code,
    Files, Terminal, Monitor, Clock).
 5. **The right side** has tabs too: **Properties** (the picked action's settings, or what the open
    file is), **Layers** for pictures, **Effects** for sound projects and songs, and **History**.
@@ -130,7 +131,7 @@ What each app's window is modeled on:
 | app | modeled on | ribbon tabs | tool rail |
 |-----|-----------|-------------|-----------|
 | image | Photoshop, GIMP | Photo, Paint (one row) | Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur |
-| draw | Illustrator, Inkscape | Vector, Fonts, Whiteboard (one row) | Move, Pick, Anchors |
+| draw | Illustrator, Inkscape | Vector, Fonts, Whiteboard (one row) | Move, Pick, Anchors, Rectangle, Ellipse, Line |
 | model | Blender | Model, Sculpt, Render, Animate | (the 3D view turns with the mouse) |
 | game | Aseprite, Tiled | Sprite, Mesh, Textures, Level, World (one row) | Pencil, Eraser, Line, Box, Ellipse, Bucket, Pick / Paint, Rect, Erase, Fill, Object |
 | cad | Onshape, SolidWorks | Part, Assembly, Drawing, 3D print, Scan fit | (the 3D view turns with the mouse) |
@@ -195,7 +196,10 @@ type. You don't have to spell them exactly: `brsh` finds "Brush stroke". Use the
 ## 4. Fill in the form and press Run
 
 Picking an action, from search, a menu, the ribbon or a card, shows its form on the right. Every
-box is already filled with a sensible value, so often you only press **Run** (or **Ctrl+Enter**).
+box is already filled with a sensible value, so often you only press the big button at the bottom of
+the panel (or **Ctrl+Enter**). It says what it does: **Create** for something new, **Open**, **Save**,
+**Export**, or **Apply** for everything else, and it stays in the same place however long the form is.
+Buttons that need an open file are greyed out until you open or make one.
 
 - **Numbers with a known range** (like opacity 0 to 100) are sliders. Drag them, or Ctrl+click one
   to type a value.
@@ -207,7 +211,7 @@ box is already filled with a sensible value, so often you only press **Run** (or
   can also type or paste a path.
 - **Document** picks which open file the action works on. It starts on the file you are looking at.
 
-After you press Run, the result shows under the form: **Done** in green with what happened, or
+After you press it, the result shows under the form: **Done** in green with what happened, or
 **That didn't work** in red with the reason in plain words, for example *Please fill in "Height".*
 Nothing changes when an action fails.
 
@@ -265,6 +269,18 @@ Video edits add an editor's tools:
 - Small yellow diamonds along a clip are its **keyframes**. Clicking a clip outlines the clips linked to it (its sound) too, and they move and trim together.
 
 Every drag is one ordinary command (`cut.move_clip`, `cut.trim_clip`, `audio.clip_set`, `audio.clip_trim`, `audio.clip_split`...), so it shows in the history and **Undo** takes it back, and a script or Claude can do exactly the same.
+
+### Documents: type to add a paragraph
+
+A Word-style document (in the office app) has a **write bar** over the page: pick what to add
+(paragraph, heading, list item...), type the text and press **Enter**. It goes in at the end and the
+box empties, ready for the next one, so you can keep typing paragraph after paragraph.
+
+### Drawings: drag out shapes
+
+In the draw app, **Rectangle** (**M**), **Ellipse** (**L**) and **Line** on the tool rail draw a shape
+where you drag, in the colour on the options bar. Hold **Shift** for a square or a circle. The new
+shape is picked when you let go, so you can move it or change it on the right at once.
 
 ### Spreadsheets: type into the cells
 

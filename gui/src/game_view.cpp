@@ -263,8 +263,8 @@ void Shell::gameInput(ImDrawList* dl, ImVec2 origin, bool hovered, bool active) 
         g.dragFrom = g.dragTo = {static_cast<float>(cx), static_cast<float>(cy)};
         g.points = {static_cast<double>(cx), static_cast<double>(cy)};
     }
-    // drag
-    if (g.dragging && active) {
+    // drag (also on the release frame, so a fast flick keeps its last cells)
+    if (g.dragging) {
         const int ex = std::clamp(cx, 0, std::max(0, cols - 1)), ey = std::clamp(cy, 0, std::max(0, rows - 1));
         g.dragTo = {static_cast<float>(ex), static_cast<float>(ey)};
         const bool path = g.tool == GameTool::Paint || g.tool == GameTool::Pencil || g.tool == GameTool::Eraser;

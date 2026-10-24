@@ -51,7 +51,7 @@ const std::map<std::string, std::vector<TabSpec>>& curated() {
             {"Layers", {"layer_add:New layer", "layer_duplicate:Duplicate", "layer_merge_down:Merge down", "merge_visible:Merge visible", "flatten:Flatten", "layer_style:Layer style"}}}}}},
         {"draw",
          {{"Vector", "vector", "",
-           {{"Shapes", {"add_rect", "add_ellipse", "add_polygon", "add_line", "pen", "add_text"}},
+           {{"Shapes", {"add_rect:Rectangle", "add_ellipse:Ellipse", "add_polygon:Polygon", "add_line:Line", "pen", "add_text:Text"}},
             {"Style", {"style", "gradient", "stroke_style", "text_style", "effect"}},
             {"Arrange", {"align", "distribute", "reorder", "group", "ungroup", "transform"}},
             {"Combine", {"boolean", "shape_builder", "outline_stroke", "to_path", "clip", "trace"}}}},

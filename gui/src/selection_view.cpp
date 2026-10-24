@@ -107,7 +107,7 @@ void Shell::selectSettings() {
         ImGui::SetItemTooltip("Make the selected pixels of the current layer see-through (Delete)");
     }
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Shift adds to the selection, Alt takes away. Actions on the left (curves, transform, mask...) then only change what's selected.");
+    ImGui::TextDisabled("Shift adds to the selection, Alt takes away. Ribbon actions (Curves, Levels, Fill selection...) then only change what's selected.");
     ImGui::PopTextWrapPos();
     // shortcuts while the picture is up and no text box has the keyboard
     if (!ImGui::GetIO().WantTextInput) {

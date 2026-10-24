@@ -73,6 +73,9 @@ bool showLevel(SDL_Renderer* renderer, Texture& tex, MipCache& mc, float zoom, b
 bool Shell::toolAvailable(CanvasTool tool) const {
     if (tool == CanvasTool::Move) return true;
     if (tool == CanvasTool::Pick || tool == CanvasTool::Anchor) return vectorDoc();
+    if (tool == CanvasTool::VecRect) return vectorDoc() && find("vector.add_rect");
+    if (tool == CanvasTool::VecEllipse) return vectorDoc() && find("vector.add_ellipse");
+    if (tool == CanvasTool::VecLine) return vectorDoc() && find("vector.add_line");
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc || doc->kind() != "image") return false;
     switch (tool) {
@@ -196,6 +199,9 @@ const CanvasToolDef kCanvasTools[] = {
     {"Anchors", CanvasTool::Anchor, "A",
      "Click a path to show its anchors and handles, drag them to reshape it (Alt breaks a smooth pair). "
      "Alt+click on the path adds an anchor"},
+    {"Rectangle", CanvasTool::VecRect, "M", "Drag to draw a rectangle (Shift makes a square)"},
+    {"Ellipse", CanvasTool::VecEllipse, "L", "Drag to draw an ellipse (Shift makes a circle)"},
+    {"Line", CanvasTool::VecLine, "", "Drag to draw a straight line"},
     {"Select", CanvasTool::Select, "M",
      "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
      "Alt takes away. Edits then only change inside it"},
@@ -281,6 +287,11 @@ void Shell::canvasToolbar() {
     }
     if (canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor) {
         vectorSettings();
+        return;
+    }
+    if (vectorDrawTool(canvas_.tool)) {
+        barLabel(canvas_.tool == CanvasTool::VecLine ? "Colour" : "Fill");
+        ImGui::ColorEdit4("##shapecolour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
         return;
     }
     if (canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove) {
@@ -546,20 +557,21 @@ void Shell::canvasArea() {
         const bool pen = io.MouseSource == ImGuiMouseSource_Pen || penDown_;
         beginStroke(io.MousePos, pen ? penPressure_ : 1.0f, pen, pen && penEraser_);
     }
-    if (canvas_.stroking && active) addStrokePoint(io.MousePos, canvas_.usedPen ? penPressure_ : 1.0f);
+    if (canvas_.stroking) addStrokePoint(io.MousePos, canvas_.usedPen ? penPressure_ : 1.0f);
     if (canvas_.stroking && !active) endStroke();
     if (painting && canvas_.tool == CanvasTool::Select) {
         if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) selectPress(io.MousePos);
         if (canvas_.selecting && active) selectDrag(io.MousePos);
         if (canvas_.selecting && !active) selectRelease(io.MousePos);
     }
-    const bool vectorTool = canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor;
+    const bool vectorTool = canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor || vectorDrawTool(canvas_.tool);
     if (painting && vectorTool) {
         if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) vectorPress(io.MousePos);
-        if (canvas_.vecDrag && active) vectorDrag(io.MousePos);
+        if (canvas_.vecDrag) vectorDrag(io.MousePos);
         if (canvas_.vecDrag && !active) vectorRelease();
         if (hovered) vectorKeys();
     }
+    drawVectorDraft(dl, p0);
     if (painting && canvas_.tool == CanvasTool::Fill && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         const ImVec2 img = toImage(io.MousePos);
         if (img.x >= 0 && img.y >= 0 && img.x < w && img.y < h && find("paint.fill")) {

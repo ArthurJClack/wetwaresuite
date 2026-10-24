@@ -179,7 +179,7 @@ void Shell::frame() {
     const bool docShown = !showHome_ && panel_.empty() && !currentDoc_.empty();
     // the right side: Properties / Layers / History, beside an open file. The start screen and
     // the system panels (which have their own sidebars) only get it once an action is picked
-    const bool rightShown = panels && showProps_ && (docShown || form_);
+    const bool rightShown = panels && showProps_ && ((docShown && !gameActive()) || form_);
     const bool railShown = panels && showRail_ && docShown && railCount_ > 0;
     if (railShown != railWas_) canvas_.fit = true;  // the canvas got wider or narrower: fit the picture again
     railWas_ = railShown;

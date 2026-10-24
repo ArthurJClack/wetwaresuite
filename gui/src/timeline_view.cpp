@@ -376,7 +376,7 @@ void Shell::timelineView(const TimelineLayout& layout) {
             dl->AddText({x0 + 4, y1 - ImGui::GetFontSize() - 2}, text, clockText(st.drag == TimelineState::Drag::TrimEnd ? dragStart + dragLength : dragStart).c_str());
         }
     }
-    if (layout.tracks.empty()) dl->AddText({o.x + nameW + 8, o.y + rulerH + 8}, muted, "No tracks yet: add a clip with an action on the right.");
+    if (layout.tracks.empty()) dl->AddText({o.x + nameW + 8, o.y + rulerH + 8}, muted, "No tracks yet: add one with Clip (or Audio, Title) on the ribbon.");
 
     // in/out range and markers on the ruler
     if (layout.inPoint >= 0 || layout.outPoint >= 0) {

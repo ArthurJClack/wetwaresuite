@@ -80,8 +80,7 @@ void Shell::mapsToolbar() {
         }
         ImGui::SetItemTooltip("How you travel");
     }
-    // the view: zoom, everything, bookmarks, search
-    ImGui::NewLine();
+    // the view, on the next row: zoom, everything, bookmarks, search
     auto view = [&](Params p, const char* what) {
         p["doc"] = currentDoc_;
         Result r = run("maps.view", p);

@@ -17,7 +17,7 @@ else()
   set(WETWARESUITE_GUI_WARNINGS -Wall -Wextra -Wpedantic -Wno-missing-field-initializers)
 endif()
 
-add_library(wetwaresuite_gui_logic src/logic.cpp src/handoff.cpp src/palette.cpp)
+add_library(wetwaresuite_gui_logic src/logic.cpp src/layout.cpp src/handoff.cpp src/palette.cpp)
 target_include_directories(wetwaresuite_gui_logic PUBLIC include)
 target_link_libraries(wetwaresuite_gui_logic PUBLIC wetwaresuite::core)
 
@@ -28,6 +28,9 @@ if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_gui_palette tests/test_palette.cpp)
   target_link_libraries(test_gui_palette PRIVATE wetwaresuite_gui_logic wetwaresuite_check)
   add_test(NAME gui_palette COMMAND test_gui_palette)
+  add_executable(test_gui_layout tests/test_layout.cpp)
+  target_link_libraries(test_gui_layout PRIVATE wetwaresuite_gui_logic wetwaresuite_check)
+  add_test(NAME gui_layout COMMAND test_gui_layout)
 endif()
 if(WETWARESUITE_BUILD_TESTS AND TARGET wetwaresuite_photo AND TARGET wetwaresuite_paint)
   add_executable(test_gui_logic tests/test_logic.cpp)
@@ -161,7 +164,7 @@ if(_ww_sdl)
     DEPENDS ${_icon_png} ${CMAKE_CURRENT_SOURCE_DIR}/embed.cmake
     COMMENT "Embedding the window icon")
 
-  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/canvas.cpp src/retouch.cpp src/game_view.cpp src/handoff_panels.cpp src/colours.cpp src/transport.cpp src/orbit.cpp src/timeline_view.cpp src/grid_view.cpp src/selection_view.cpp src/vector_view.cpp src/brush_tools.cpp src/layers_view.cpp src/sound_view.cpp src/launcher_view.cpp src/window.cpp ${_font_cpp} ${_icon_cpp}
+  add_library(wetwaresuite_gui src/shell.cpp src/panels.cpp src/chrome.cpp src/canvas.cpp src/retouch.cpp src/game_view.cpp src/handoff_panels.cpp src/colours.cpp src/transport.cpp src/orbit.cpp src/timeline_view.cpp src/grid_view.cpp src/selection_view.cpp src/vector_view.cpp src/brush_tools.cpp src/layers_view.cpp src/sound_view.cpp src/launcher_view.cpp src/window.cpp ${_font_cpp} ${_icon_cpp}
     # the system tools' panels: calculator, code editor, files, terminal, monitor, clock
     src/tool_panels.cpp src/code_editor.cpp src/panel_calc.cpp src/panel_code.cpp src/panel_explorer.cpp
     src/panel_terminal.cpp src/panel_monitor.cpp src/panel_clock.cpp src/pdf_view.cpp

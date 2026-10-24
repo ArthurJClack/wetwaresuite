@@ -9,6 +9,9 @@
 #include <map>
 
 #include "shell.hpp"
+// after imgui.h
+#include "imgui_internal.h"
+#include "imgui_stdlib.h"
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/document.hpp"
 #include "wetwaresuite/raster/pyramid.hpp"
@@ -70,6 +73,9 @@ bool showLevel(SDL_Renderer* renderer, Texture& tex, MipCache& mc, float zoom, b
 bool Shell::toolAvailable(CanvasTool tool) const {
     if (tool == CanvasTool::Move) return true;
     if (tool == CanvasTool::Pick || tool == CanvasTool::Anchor) return vectorDoc();
+    if (tool == CanvasTool::VecRect) return vectorDoc() && find("vector.add_rect");
+    if (tool == CanvasTool::VecEllipse) return vectorDoc() && find("vector.add_ellipse");
+    if (tool == CanvasTool::VecLine) return vectorDoc() && find("vector.add_line");
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc || doc->kind() != "image") return false;
     switch (tool) {
@@ -176,6 +182,69 @@ void Shell::refreshCanvas() {
     }
 }
 
+namespace {
+
+// The picture and drawing tools in the rail, with their Photoshop letters.
+struct CanvasToolDef {
+    const char* name;
+    CanvasTool tool;
+    const char* key;
+    const char* tip;
+};
+const CanvasToolDef kCanvasTools[] = {
+    {"Move", CanvasTool::Move, "V", "Drag to move around, scroll to zoom"},
+    {"Pick", CanvasTool::Pick, "Q",
+     "Click a shape to pick it, drag to move it, drag a corner or edge handle to resize (Shift keeps the "
+     "proportions). Arrow keys nudge, Delete removes"},
+    {"Anchors", CanvasTool::Anchor, "A",
+     "Click a path to show its anchors and handles, drag them to reshape it (Alt breaks a smooth pair). "
+     "Alt+click on the path adds an anchor"},
+    {"Rectangle", CanvasTool::VecRect, "M", "Drag to draw a rectangle (Shift makes a square)"},
+    {"Ellipse", CanvasTool::VecEllipse, "L", "Drag to draw an ellipse (Shift makes a circle)"},
+    {"Line", CanvasTool::VecLine, "", "Drag to draw a straight line"},
+    {"Select", CanvasTool::Select, "M",
+     "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
+     "Alt takes away. Edits then only change inside it"},
+    {"Brush", CanvasTool::Brush, "B", "Paint with the mouse or a pen (pressure works)"},
+    {"Eraser", CanvasTool::Eraser, "E", "Rub out paint on the current layer"},
+    {"Fill", CanvasTool::Fill, "G", "Click to fill an area with the colour, like a paint bucket"},
+    {"Heal", CanvasTool::Heal, "J",
+     "Paint over a spot, pimple or scratch to make it disappear. To copy texture from a clean spot, "
+     "Alt+click it first (Option+click on a Mac)"},
+    {"Remove", CanvasTool::Remove, "R",
+     "Paint over something you don't want (a person, a sign, a wire), then press Remove: the gap is filled "
+     "from the picture around it"},
+    {"Clone", CanvasTool::Clone, "S",
+     "Paint with a copy of another part of the picture: Alt+click (Option+click on a Mac) the spot to copy "
+     "from, then paint"},
+    {"Dodge", CanvasTool::Dodge, "O", "Paint to lighten (like dodging a print)"},
+    {"Burn", CanvasTool::Burn, "", "Paint to darken"},
+    {"Sponge", CanvasTool::Sponge, "", "Paint to wash the colour out"},
+    {"Smudge", CanvasTool::Smudge, "W", "Drag colours along like a finger in wet paint"},
+    {"Blur", CanvasTool::Blur, "U", "Paint to soften (or sharpen) just there"}};
+
+}  // namespace
+
+void Shell::canvasTools() {
+    const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
+                                  CanvasTool::Remove, CanvasTool::Clone, CanvasTool::Dodge, CanvasTool::Smudge, CanvasTool::Blur};
+    if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
+    for (const auto& t : kCanvasTools) {
+        if (!toolAvailable(t.tool)) continue;
+        if (railItem(t.name, t.key, t.tip, canvas_.tool == t.tool)) canvas_.tool = t.tool;
+    }
+}
+
+void Shell::railTools() {
+    auto doc = session_.workspace().get(currentDoc_);
+    if (!doc || canvas_.is3d) return;
+    if (doc->kind() == "pdf" && find("pdf.view")) return;  // the PDF editor has its own tools
+    if (circuitDoc()) return circuitTools();
+    if (mapsDoc()) return mapsTools();
+    if (gameActive()) return gameTools();
+    canvasTools();
+}
+
 void Shell::canvasToolbar() {
     if (canvas_.is3d) {
         orbitToolbar();
@@ -196,6 +265,10 @@ void Shell::canvasToolbar() {
         circuitToolbar();
         return;
     }
+    if (const std::string opener = docOpener(currentDoc_); opener == "office.doc_new" || opener == "office.doc_open") {
+        writeBar();
+        return;
+    }
     if (mapsDoc()) {
         mapsToolbar();
         return;
@@ -204,55 +277,21 @@ void Shell::canvasToolbar() {
         gameToolbar();
         return;
     }
-    const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
-                                  CanvasTool::Remove, CanvasTool::Clone, CanvasTool::Dodge, CanvasTool::Smudge, CanvasTool::Blur};
-    if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
-    ImGui::SameLine();
-    ImGui::TextUnformatted("  Tool:");
-    const struct {
-        const char* name;
-        CanvasTool tool;
-        const char* tip;
-    } tools[] = {{"Move", CanvasTool::Move, "Drag to move around, scroll to zoom"},
-                 {"Pick", CanvasTool::Pick,
-                  "Click a shape to pick it, drag to move it, drag a corner or edge handle to resize (Shift keeps the "
-                  "proportions). Arrow keys nudge, Delete removes"},
-                 {"Anchors", CanvasTool::Anchor,
-                  "Click a path to show its anchors and handles, drag them to reshape it (Alt breaks a smooth pair). "
-                  "Alt+click on the path adds an anchor"},
-                 {"Select", CanvasTool::Select,
-                  "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
-                  "Alt takes away. Edits then only change inside it"},
-                 {"Brush", CanvasTool::Brush, "Paint with the mouse or a pen (pressure works)"},
-                 {"Eraser", CanvasTool::Eraser, "Rub out paint on the current layer"},
-                 {"Fill", CanvasTool::Fill, "Click to fill an area with the colour, like a paint bucket"},
-                 {"Heal", CanvasTool::Heal,
-                  "Paint over a spot, pimple or scratch to make it disappear. To copy texture from a clean spot, "
-                  "Alt+click it first (Option+click on a Mac)"},
-                 {"Remove", CanvasTool::Remove,
-                  "Paint over something you don't want (a person, a sign, a wire), then press Remove: the gap is filled "
-                  "from the picture around it"},
-                 {"Clone", CanvasTool::Clone,
-                  "Paint with a copy of another part of the picture: Alt+click (Option+click on a Mac) the spot to copy "
-                  "from, then paint"},
-                 {"Dodge", CanvasTool::Dodge, "Paint to lighten (like dodging a print)"},
-                 {"Burn", CanvasTool::Burn, "Paint to darken"},
-                 {"Sponge", CanvasTool::Sponge, "Paint to wash the colour out"},
-                 {"Smudge", CanvasTool::Smudge, "Drag colours along like a finger in wet paint"},
-                 {"Blur", CanvasTool::Blur, "Paint to soften (or sharpen) just there"}};
-    for (const auto& t : tools) {
-        if (!toolAvailable(t.tool)) continue;
-        ImGui::SameLine();
-        // wrap onto the next line instead of running off a narrow window
-        const ImGuiStyle& style = ImGui::GetStyle();
-        const float need = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(t.name).x;
-        if (ImGui::GetContentRegionAvail().x < need) ImGui::NewLine();
-        if (ImGui::RadioButton(t.name, canvas_.tool == t.tool)) canvas_.tool = t.tool;
-        ImGui::SetItemTooltip("%s", t.tip);
-    }
     if (canvas_.tool == CanvasTool::Move || !toolAvailable(canvas_.tool)) return;
+    for (const auto& t : kCanvasTools) {
+        if (t.tool != canvas_.tool) continue;
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted((std::string("   ") + t.name + ":").c_str());  // the options bar names its tool, like Photoshop's
+        ImGui::SameLine();
+    }
     if (canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor) {
         vectorSettings();
+        return;
+    }
+    if (vectorDrawTool(canvas_.tool)) {
+        barLabel(canvas_.tool == CanvasTool::VecLine ? "Colour" : "Fill");
+        ImGui::ColorEdit4("##shapecolour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
         return;
     }
     if (canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove) {
@@ -267,24 +306,26 @@ void Shell::canvasToolbar() {
         brushToolSettings();
         return;
     }
-    // the tool's settings go on their own line so narrow windows still show them
+    // the tool's settings follow its name on the options bar
     const float unit = ImGui::GetFontSize();
-    bool first = true;
+    bool first = false;
     auto next = [&first] {
         if (!first) ImGui::SameLine();
         first = false;
     };
     if (canvas_.tool == CanvasTool::Brush || canvas_.tool == CanvasTool::Fill) {
         next();
-        ImGui::ColorEdit4("Colour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
+        barLabel("Colour");
+        ImGui::ColorEdit4("##colour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
     }
     if (canvas_.tool == CanvasTool::Fill) return;
     if (const CommandInfo* stroke = find("paint.stroke")) {
         for (const auto& p : stroke->params) {
             if (p.name != "brush" || p.choices.empty()) continue;
             next();
+            barLabel("Tip");
             ImGui::SetNextItemWidth(unit * 6);
-            if (ImGui::BeginCombo("Brush", canvas_.brush.c_str())) {
+            if (ImGui::BeginCombo("##tip", canvas_.brush.c_str())) {
                 for (const auto& c : p.choices) {
                     if (ImGui::Selectable(c.c_str(), c == canvas_.brush)) canvas_.brush = c;
                 }
@@ -293,11 +334,49 @@ void Shell::canvasToolbar() {
         }
     }
     next();
-    ImGui::SetNextItemWidth(unit * 7);
-    ImGui::SliderFloat("Size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
+    barLabel("Size");
+    ImGui::SetNextItemWidth(unit * 5.5f);
+    ImGui::SliderFloat("##size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
     next();
-    ImGui::SetNextItemWidth(unit * 6);
-    ImGui::SliderFloat("Opacity", &canvas_.opacity, 1, 100, "%.0f%%");
+    barLabel("Opacity");
+    ImGui::SetNextItemWidth(unit * 4.5f);
+    ImGui::SliderFloat("##opacity", &canvas_.opacity, 1, 100, "%.0f%%");
+}
+
+// A text document: type a paragraph under the toolbar and Enter adds it to the end, so writing
+// doesn't need the Add form every time.
+void Shell::writeBar() {
+    const float unit = ImGui::GetFontSize();
+    static const char* kinds[] = {"paragraph", "heading", "list", "numbered", "quote"};
+    ImGui::SameLine(0, unit);
+    ImGui::SetNextItemWidth(unit * 6.5f);
+    if (ImGui::BeginCombo("##kind", writeKind_.c_str())) {
+        for (const char* k : kinds) {
+            if (ImGui::Selectable(k, writeKind_ == k)) writeKind_ = k;
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("What the next line adds");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    // the box stays active after Enter, so the next line can be typed straight away
+    ImGuiIO& io = ImGui::GetIO();
+    const bool keep = io.ConfigInputTextEnterKeepActive;
+    io.ConfigInputTextEnterKeepActive = true;
+    const bool entered = ImGui::InputTextWithHint("##write", "Type here, Enter adds it to the end (**bold**, *italic*)", &writeText_,
+                                                  ImGuiInputTextFlags_EnterReturnsTrue);
+    io.ConfigInputTextEnterKeepActive = keep;
+    if (entered && !writeText_.empty()) {
+        Result r = run("office.doc_add", {{"doc", currentDoc_}, {"kind", writeKind_}, {"text", writeText_}});
+        resultFor_ = "Add";
+        r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+        if (r.ok) {
+            writeText_.clear();
+            if (ImGuiInputTextState* box = ImGui::GetInputTextState(ImGui::GetItemID())) box->ReloadUserBufAndMoveToEnd();
+        }
+        result_ = std::move(r);
+        canvas_.dirty = true;
+    }
 }
 
 ImVec2 Shell::toImage(ImVec2 screen) const {
@@ -478,20 +557,21 @@ void Shell::canvasArea() {
         const bool pen = io.MouseSource == ImGuiMouseSource_Pen || penDown_;
         beginStroke(io.MousePos, pen ? penPressure_ : 1.0f, pen, pen && penEraser_);
     }
-    if (canvas_.stroking && active) addStrokePoint(io.MousePos, canvas_.usedPen ? penPressure_ : 1.0f);
+    if (canvas_.stroking) addStrokePoint(io.MousePos, canvas_.usedPen ? penPressure_ : 1.0f);
     if (canvas_.stroking && !active) endStroke();
     if (painting && canvas_.tool == CanvasTool::Select) {
         if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) selectPress(io.MousePos);
         if (canvas_.selecting && active) selectDrag(io.MousePos);
         if (canvas_.selecting && !active) selectRelease(io.MousePos);
     }
-    const bool vectorTool = canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor;
+    const bool vectorTool = canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor || vectorDrawTool(canvas_.tool);
     if (painting && vectorTool) {
         if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) vectorPress(io.MousePos);
-        if (canvas_.vecDrag && active) vectorDrag(io.MousePos);
+        if (canvas_.vecDrag) vectorDrag(io.MousePos);
         if (canvas_.vecDrag && !active) vectorRelease();
         if (hovered) vectorKeys();
     }
+    drawVectorDraft(dl, p0);
     if (painting && canvas_.tool == CanvasTool::Fill && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         const ImVec2 img = toImage(io.MousePos);
         if (img.x >= 0 && img.y >= 0 && img.x < w && img.y < h && find("paint.fill")) {

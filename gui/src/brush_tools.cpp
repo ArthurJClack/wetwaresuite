@@ -37,18 +37,20 @@ const char* toolName(CanvasTool t, bool sharpen) {
 
 void Shell::brushToolSettings() {
     const float unit = ImGui::GetFontSize();
-    ImGui::SetNextItemWidth(unit * 7);
-    ImGui::SliderFloat("Size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
+    barLabel("Size");
+    ImGui::SetNextItemWidth(unit * 5.5f);
+    ImGui::SliderFloat("##size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
     ImGui::SameLine();
     const CanvasTool t = canvas_.tool;
     const bool tone = t == CanvasTool::Dodge || t == CanvasTool::Burn || t == CanvasTool::Sponge;
-    ImGui::SetNextItemWidth(unit * 6);
-    ImGui::SliderFloat(tone ? "Exposure" : t == CanvasTool::Clone ? "Opacity" : "Strength", t == CanvasTool::Clone ? &canvas_.opacity : &canvas_.strength, 1,
-                       100, "%.0f%%");
+    barLabel(tone ? "Exposure" : t == CanvasTool::Clone ? "Opacity" : "Strength");
+    ImGui::SetNextItemWidth(unit * 4.5f);
+    ImGui::SliderFloat("##strength", t == CanvasTool::Clone ? &canvas_.opacity : &canvas_.strength, 1, 100, "%.0f%%");
     if (t == CanvasTool::Dodge || t == CanvasTool::Burn) {
         ImGui::SameLine();
+        barLabel("Range");
         ImGui::SetNextItemWidth(unit * 6.5f);
-        if (ImGui::BeginCombo("Range", canvas_.toneRange.c_str())) {
+        if (ImGui::BeginCombo("##range", canvas_.toneRange.c_str())) {
             for (const char* r : {"shadows", "midtones", "highlights"}) {
                 if (ImGui::Selectable(r, canvas_.toneRange == r)) canvas_.toneRange = r;
             }

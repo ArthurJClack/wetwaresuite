@@ -285,20 +285,6 @@ Result Shell::query(const std::string& id, const Params& params) {
     return session_.run(id, params);
 }
 
-void Shell::panelList() {
-    bool any = false;
-    for (const auto& p : kPanels) any = any || hasPanel(p.tool);
-    if (!any) return;
-    tp::title("Open", 1.1f);
-    for (const auto& p : kPanels) {
-        if (!hasPanel(p.tool)) continue;
-        const bool on = !showHome_ && panel_ == p.tool;
-        if (ImGui::Selectable(pro_ ? p.advanced : p.simple, on)) openPanel(p.tool);
-    }
-    ImGui::Spacing();
-    ImGui::Separator();
-}
-
 void Shell::toolPanelView() {
     if (panel_ == "calc") calcPanel();
     else if (panel_ == "code") codePanel();
@@ -307,6 +293,15 @@ void Shell::toolPanelView() {
     else if (panel_ == "monitor") monitorPanel();
     else if (panel_ == "clock") clockPanel();
     else homeView();
+}
+
+bool Shell::settling() {
+    std::string key = std::to_string(changes_) + "|" + currentDoc_ + "|" + panel_ + (showHome_ ? "|home" : "|doc") + "|" +
+                      std::to_string(docIds().size()) + (form_ ? "|" + form_->command : std::string()) + "|" +
+                      std::to_string(ImGui::GetActiveID()) + "|" + std::to_string(ImGui::GetIO().WantTextInput);
+    if (key == settledKey_) return false;
+    settledKey_ = std::move(key);
+    return true;
 }
 
 int Shell::tickMs() const {

@@ -1,5 +1,5 @@
-// The panels: top bar with search, actions on the left, the home screen or the
-// open document in the middle, the action's form, result and history on the right.
+// The panels: the frame's layout (the parts themselves are in chrome.cpp), the
+// start screen or the open document in the middle, the action's form and result.
 #include <algorithm>
 #include <cmath>
 #include <filesystem>
@@ -160,100 +160,63 @@ void Shell::frame() {
     if (form_ && ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Enter)) runForm();
     if (!app_.launcher.empty()) return launcherFrame();
 
+    shortcuts();
+
     const ImGuiViewport* vp = ImGui::GetMainViewport();
     ImGui::SetNextWindowPos(vp->WorkPos);
     ImGui::SetNextWindowSize(vp->WorkSize);
     ImGui::Begin("##root", nullptr,
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
-                     ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar);
-    topBar();
+                     ImGuiWindowFlags_NoBringToFrontOnFocus | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_MenuBar);
+    menuBar();
+    rootPopups();
+    const bool panels = !focusMode_;
+    if (panels && layout_.ribbon && showRibbon_) ribbon();
+    const ImGuiStyle& style = ImGui::GetStyle();
     const float unit = ImGui::GetFontSize();
+    const float statusH = panels && showStatus_ ? ImGui::GetFrameHeight() + style.ItemSpacing.y : 0.0f;
+    const bool panelShown = !showHome_ && !panel_.empty();  // a system tool's panel fills the middle
+    const bool docShown = !showHome_ && panel_.empty() && !currentDoc_.empty();
+    // the right side: Properties / Layers / History, beside an open file. The start screen and
+    // the system panels (which have their own sidebars) only get it once an action is picked
+    const bool rightShown = panels && showProps_ && ((docShown && !gameActive()) || form_);
+    const bool railShown = panels && showRail_ && docShown && railCount_ > 0;
+    if (railShown != railWas_) canvas_.fit = true;  // the canvas got wider or narrower: fit the picture again
+    railWas_ = railShown;
+    ImGui::BeginChild("body", {0, -statusH}, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
     const float avail = ImGui::GetContentRegionAvail().x;
-    const float leftW = std::clamp(avail * 0.2f, unit * 10, unit * 16);
-    const bool panelShown = !showHome_ && !panel_.empty();  // a tool panel gets more of the width
-    const float rightW = panelShown ? std::clamp(avail * 0.2f, unit * 11, unit * 16) : std::clamp(avail * 0.27f, unit * 13, unit * 22);
-    ImGui::BeginChild("left", {leftW, 0}, ImGuiChildFlags_Borders);
-    leftPanel();
-    ImGui::EndChild();
-    ImGui::SameLine();
-    const float centerW = std::max(unit * 8, ImGui::GetContentRegionAvail().x - rightW - ImGui::GetStyle().ItemSpacing.x);
+    if (railShown) {
+        float railW = unit * 4;
+        for (const char* l : {"Anchors", "Identify", "Measure", "Ellipse", "Select"}) railW = std::max(railW, ImGui::CalcTextSize(l).x);
+        railW += unit * 1.2f + style.FramePadding.x * 2 + style.WindowPadding.x * 2;
+        ImGui::BeginChild("rail", {railW, 0}, ImGuiChildFlags_Borders);
+        toolRail();
+        ImGui::EndChild();
+        ImGui::SameLine();
+    } else if (docShown && !focusMode_ && showRail_) {
+        // count the rail's tools for the next frame without drawing them
+        railCount_ = 0;
+        railTools();
+    }
+    const float rightW = rightShown ? std::clamp(avail * 0.24f, unit * 13, unit * 20) : 0.0f;
+    const float centerW = rightShown ? std::max(unit * 8, ImGui::GetContentRegionAvail().x - rightW - style.ItemSpacing.x) : 0.0f;
     ImGui::BeginChild("center", {centerW, 0}, ImGuiChildFlags_Borders, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-    if (!showHome_ && !panel_.empty()) toolPanelView();
+    docTabs();
+    if (panelShown) toolPanelView();
     else if (showHome_ || currentDoc_.empty()) homeView();
     else documentView();
     ImGui::EndChild();
-    ImGui::SameLine();
-    ImGui::BeginChild("right", {0, 0}, ImGuiChildFlags_Borders);
-    rightPanel();
+    if (rightShown) {
+        ImGui::SameLine();
+        ImGui::BeginChild("right", {0, 0}, ImGuiChildFlags_Borders);
+        propertiesPanel();
+        ImGui::EndChild();
+    }
     ImGui::EndChild();
+    if (statusH > 0) statusBar();
     ImGui::End();
     searchPopup();
     dueBanner();
-}
-
-void Shell::topBar() {
-    ImGui::PushStyleColor(ImGuiCol_Text, title_);
-    ImGui::AlignTextToFramePadding();
-    heading(app_.name, 1.2f);
-    ImGui::PopStyleColor();
-    ImGui::SameLine();
-    if (ImGui::Button("Home")) showHome_ = true;
-    ImGui::SameLine();
-    if (ImGui::Button("Open...")) showOpenDialog();
-    ImGui::SetItemTooltip("Open a file from your computer (Ctrl+O)");
-    ImGui::SameLine();
-    if (ImGui::Button("New...")) ImGui::OpenPopup("new");
-    newPopup();
-    ImGui::SameLine();
-
-    const float unit = ImGui::GetFontSize();
-    const float rightSide = unit * 17;
-    ImGui::SetNextItemWidth(std::max(unit * 8, ImGui::GetContentRegionAvail().x - rightSide));
-    if (focusSearch_) {
-        ImGui::SetKeyboardFocusHere();
-        focusSearch_ = false;
-    }
-    bool enter = ImGui::InputTextWithHint("##search", "Search for an action...  (Ctrl+K)", &query_, ImGuiInputTextFlags_EnterReturnsTrue);
-    const bool active = ImGui::IsItemActive();
-    const ImVec2 boxMin = ImGui::GetItemRectMin(), boxMax = ImGui::GetItemRectMax();
-    if (active) {
-        if (ImGui::IsKeyPressed(ImGuiKey_DownArrow)) ++searchPick_;
-        if (ImGui::IsKeyPressed(ImGuiKey_UpArrow)) searchPick_ = std::max(0, searchPick_ - 1);
-        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) query_.clear();
-    }
-    if (enter && !query_.empty()) {
-        auto hits = search(query_, commands_, 12);
-        if (!hits.empty()) {
-            select(hits[static_cast<std::size_t>(std::clamp(searchPick_, 0, static_cast<int>(hits.size()) - 1))].command->id);
-            query_.clear();
-        }
-    }
-    searchMin_ = boxMin;
-    searchMax_ = boxMax;
-    searchActive_ = active;
-
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!session_.history().canUndo());
-    if (ImGui::Button("Undo")) undo();
-    ImGui::EndDisabled();
-    ImGui::SetItemTooltip("Take back the last change (Ctrl+Z)");
-    ImGui::SameLine();
-    ImGui::BeginDisabled(!session_.history().canRedo());
-    if (ImGui::Button("Redo")) redo();
-    ImGui::EndDisabled();
-    ImGui::SetItemTooltip("Put back what you took back (Ctrl+Y)");
-    ImGui::SameLine();
-    if (ImGui::Button(pro_ ? "Mode: Advanced" : "Mode: Simple")) pro_ = !pro_;
-    ImGui::SetItemTooltip("Simple shows the most common actions. Advanced shows every action. Both are free.");
-    ImGui::SameLine();
-    if (ImGui::Button("Aa") || openSettings_) {
-        paletteStale_ = true;  // show what other apps may have saved meanwhile
-        openSettings_ = false;
-        ImGui::OpenPopup("settings");
-        ImGui::SetNextWindowPos({ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y + 2}, ImGuiCond_Always, {1, 0});  // under Aa
-    }
-    ImGui::SetItemTooltip("Text size and colours");
-    settingsPopup();
 }
 
 void Shell::searchPopup() {
@@ -290,10 +253,12 @@ void Shell::newPopup() {
     if (!ImGui::BeginPopup("new")) return;
     ImGui::TextDisabled("Start something new:");
     bool any = false;
+    // every kind of new file: image.new, office.doc_new, office.sheet_new...
     for (const auto& tool : tools_) {
-        if (const CommandInfo* c = find(tool + ".new")) {
+        for (const auto& c : commands_) {
+            if (c.id.compare(0, tool.size() + 1, tool + ".") != 0 || commandVerb(c.id) != "new") continue;
             any = true;
-            if (ImGui::Selectable((c->title + "  (" + toolTitle(tool) + ")").c_str())) select(c->id);
+            if (ImGui::Selectable((c.title + "  (" + toolTitle(tool) + ")").c_str())) select(c.id);
         }
     }
     if (!any) ImGui::TextUnformatted("Nothing to create in this app.");
@@ -309,54 +274,6 @@ void Shell::settingsPopup() {
     ImGui::EndPopup();
 }
 
-void Shell::leftPanel() {
-    panelList();
-    heading("Actions", 1.1f);
-    if (!pro_) wrappedMuted("The most common ones. Switch to Advanced for all of them.");
-    for (const auto& tool : tools_) {
-        if (tools_.size() > 1) {
-            if (expandTool_ == tool) {
-                ImGui::SetNextItemOpen(true);
-                expandTool_.clear();
-            } else {
-                ImGui::SetNextItemOpen(tools_.size() <= 3, ImGuiCond_Once);
-            }
-            if (!ImGui::CollapsingHeader(toolTitle(tool).c_str())) continue;
-        }
-        std::vector<const CommandInfo*> list;
-        if (pro_) {
-            list = toolCommands(tool, commands_);
-        } else {
-            for (const auto& id : beginnerCommands(tool, commands_)) list.push_back(find(id));
-        }
-        ImGui::PushID(tool.c_str());
-        for (const CommandInfo* c : list) {
-            if (!c) continue;
-            if (ImGui::Selectable(c->title.c_str(), form_ && form_->command == c->id)) select(c->id);
-            ImGui::SetItemTooltip("%s", c->description.c_str());
-        }
-        ImGui::PopID();
-    }
-    const auto ids = docIds();
-    if (ids.empty()) return;
-    ImGui::Spacing();
-    ImGui::Separator();
-    heading("Open files", 1.1f);
-    for (const auto& id : ids) {
-        auto doc = session_.workspace().get(id);
-        std::string label = id;
-        if (doc && !doc->path.empty()) label += "  " + fileName(doc->path);
-        if (ImGui::Selectable(label.c_str(), id == currentDoc_ && !showHome_)) {
-            if (currentDoc_ != id) canvas_.fit = true;
-            currentDoc_ = id;
-            showHome_ = false;
-            panel_ = panelForDoc(id);
-            canvas_.dirty = true;
-        }
-        if (doc) ImGui::SetItemTooltip("%s", doc->summary().c_str());
-    }
-}
-
 void Shell::homeView() {
     const float unit = ImGui::GetFontSize();
     ImGui::BeginChild("home", {0, 0}, ImGuiChildFlags_None);
@@ -367,8 +284,7 @@ void Shell::homeView() {
     const ImVec2 big{unit * 11, unit * 3};
     if (accentButton("Open a file", big)) showOpenDialog();
     ImGui::SameLine();
-    if (accentButton("Start something new", big)) ImGui::OpenPopup("new");
-    newPopup();
+    if (accentButton("Start something new", big)) openNew_ = true;
     ImGui::SameLine();
     if (ImGui::Button("Find an action", big)) focusSearch_ = true;
 
@@ -434,10 +350,6 @@ void Shell::documentView() {
         showHome_ = true;
         return;
     }
-    heading(doc->path.empty() ? currentDoc_ : currentDoc_ + "  " + fileName(doc->path), 1.1f);
-    sendButton();
-    ImGui::SameLine();
-    ImGui::TextDisabled("%s", doc->summary().c_str());
     suggestionBannerView();
     if (doc->kind() == "pdf" && find("pdf.view")) {
         pdfView();
@@ -471,7 +383,8 @@ void Shell::documentView() {
 
 void Shell::rightPanel() {
     formPanel();
-    if (result_) {
+    // a form shows its own result; brush strokes, undo and saves report on the status bar
+    if (result_ && form_ && resultFor_ == form_->title) {
         ImGui::Spacing();
         ImGui::Separator();
         const bool ok = result_->ok;
@@ -491,21 +404,26 @@ void Shell::rightPanel() {
         }
         if (!result_->attachments.empty()) wrappedMuted(std::to_string(result_->attachments.size()) + " file(s) made in memory.");
     }
-    layersPanel();  // image documents only (layers_view.cpp)
-    soundPanel();   // audio projects and songs (sound_view.cpp)
-    ImGui::Spacing();
-    ImGui::Separator();
-    if (ImGui::CollapsingHeader("History", ImGuiTreeNodeFlags_DefaultOpen)) historyPanel();
 }
 
 void Shell::formPanel() {
     if (!form_) {
-        heading("Pick an action", 1.1f);
-        wrappedMuted("Choose one on the left, or type what you want to do in the search box at the top.");
+        // nothing picked: what's open, and where the actions are
+        auto doc = session_.workspace().get(currentDoc_);
+        if (doc && !showHome_ && panel_.empty()) {
+            heading(doc->path.empty() ? currentDoc_ : fileName(doc->path), 1.1f);
+            wrappedMuted(doc->summary());
+            if (!doc->path.empty()) wrappedMuted(doc->path);
+            if (handoff_ && session_.registry().find("app.targets") && ImGui::Button("Send to another app...")) openSend_ = true;
+            ImGui::Spacing();
+        }
+        wrappedMuted(layout_.ribbon ? "Pick a button on the ribbon or an action from the menus, and its settings show up here."
+                                    : "Pick an action from the menus, and its settings show up here.");
+        wrappedMuted("Ctrl+K finds any action by typing.");
         return;
     }
     heading(form_->title, 1.25f);
-    wrappedMuted(form_->description);
+    wrappedMuted(readableDescription(form_->description, commands_));
     ImGui::Spacing();
     bool needsDoc = false;
     for (std::size_t i = 0; i < form_->fields.size(); ++i) {
@@ -515,9 +433,6 @@ void Shell::formPanel() {
         field(f, i);
     }
     if (needsDoc && docIds().empty()) wrappedMuted("Open a file or start a new one first: this action works on an open file.");
-    ImGui::Spacing();
-    if (accentButton("Run", {-1, ImGui::GetFontSize() * 2.2f})) runForm();
-    ImGui::SetItemTooltip("Do it (Ctrl+Enter)");
 }
 
 void Shell::field(Field& f, std::size_t index) {

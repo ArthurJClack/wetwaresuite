@@ -23,6 +23,33 @@ bool Shell::mapsDoc() const {
 
 bool Shell::mapsEditing() const { return mapsDoc() && maps_.tool != "pan"; }
 
+void Shell::mapsTools() {
+    if (maps_.doc != currentDoc_) maps_ = MapsCanvas{currentDoc_};
+    struct ToolDef {
+        const char* label;
+        const char* tool;
+        const char* key;
+        const char* tip;
+    };
+    const ToolDef tools[] = {{"Pan", "pan", "H", "Drag to move around, scroll to zoom the picture"},
+                             {"Identify", "identify", "I", "Click a feature to see its properties"},
+                             {"Measure", "measure", "M", "Click points to measure a distance; with 3 or more, the area too. Right-click or Esc starts again"},
+                             {"Point", "point", "P", "Click to add a point to the layer named on the options bar"},
+                             {"Line", "line", "L", "Click each corner of a line; right-click or Enter finishes it"},
+                             {"Area", "area", "A", "Click each corner of an area; right-click or Enter finishes it"},
+                             {"Move", "move", "V", "Click a point or a line's corner, then where it should go"},
+                             {"Delete", "delete", "D", "Click a feature to delete it (Alt+click a corner deletes just that corner)"},
+                             {"Route", "route", "R", "Click the start, then the end: a route along the roads layer"}};
+    for (const auto& t : tools) {
+        if (railItem(t.label, t.key, t.tip, maps_.tool == t.tool)) {
+            maps_.tool = t.tool;
+            maps_.points.clear();
+            maps_.pointsPx.clear();
+            maps_.movingLayer.clear();
+        }
+    }
+}
+
 void Shell::mapsToolbar() {
     if (maps_.doc != currentDoc_) maps_ = MapsCanvas{currentDoc_};
     auto show = [&](Result r, const std::string& what) {
@@ -31,34 +58,6 @@ void Shell::mapsToolbar() {
         result_ = std::move(r);
         canvas_.dirty = true;
     };
-    struct ToolDef {
-        const char* label;
-        const char* tool;
-        const char* tip;
-    };
-    const ToolDef tools[] = {{"Pan", "pan", "Drag to move around, scroll to zoom the picture"},
-                             {"Identify", "identify", "Click a feature to see its properties"},
-                             {"Measure", "measure", "Click points to measure a distance; with 3 or more, the area too. Right-click or Esc starts again"},
-                             {"Point", "point", "Click to add a point to the layer named on the right"},
-                             {"Line", "line", "Click each corner of a line; right-click or Enter finishes it"},
-                             {"Area", "area", "Click each corner of an area; right-click or Enter finishes it"},
-                             {"Move", "move", "Click a point or a line's corner, then where it should go"},
-                             {"Delete", "delete", "Click a feature to delete it (Alt+click a corner deletes just that corner)"},
-                             {"Route", "route", "Click the start, then the end: a route along the roads layer"}};
-    ImGui::SameLine();
-    ImGui::TextUnformatted("  Tool:");
-    for (const auto& t : tools) {
-        ImGui::SameLine();
-        const float need = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(t.label).x;
-        if (ImGui::GetContentRegionAvail().x < need) ImGui::NewLine();
-        if (ImGui::RadioButton(t.label, maps_.tool == t.tool)) {
-            maps_.tool = t.tool;
-            maps_.points.clear();
-            maps_.pointsPx.clear();
-            maps_.movingLayer.clear();
-        }
-        ImGui::SetItemTooltip("%s", t.tip);
-    }
     const float unit = ImGui::GetFontSize();
     if (maps_.tool == "point" || maps_.tool == "line" || maps_.tool == "area") {
         ImGui::SameLine();
@@ -81,8 +80,7 @@ void Shell::mapsToolbar() {
         }
         ImGui::SetItemTooltip("How you travel");
     }
-    // the view: zoom, everything, bookmarks, search
-    ImGui::NewLine();
+    // the view, on the next row: zoom, everything, bookmarks, search
     auto view = [&](Params p, const char* what) {
         p["doc"] = currentDoc_;
         Result r = run("maps.view", p);

@@ -6,7 +6,7 @@
 wetwaresuite capture.screenshot output=region.png x=100 y=50 width=400 height=300
 ```
 
-In the video app (`wetwaresuite-video`) the capture actions are on the left and a scene opens as a picture of its layout. Each task below shows the CLI way, the batch-script way and the "ask Claude" way. Every CLI and batch example here was run against the real binary, on Linux with a virtual 800x600 screen (that's why the sizes below are small; your desktop gives your screen's size).
+In the video app (`wetwaresuite-video`) the capture actions are in the **Capture** menu and ribbon tab, and a scene opens as a picture of its layout. Each task below shows the CLI way, the batch-script way and the "ask Claude" way. Every CLI and batch example here was run against the real binary, on Linux with a virtual 800x600 screen (that's why the sizes below are small; your desktop gives your screen's size).
 
 ## What you need
 

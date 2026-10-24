@@ -263,8 +263,10 @@ Form buildForm(const CommandInfo& info, const std::vector<std::string>& docs, co
             f.set = true;
             const std::string name = lower(spec.name);
             if (f.kind == FieldKind::Integer || f.kind == FieldKind::Number) {
-                if (name == "width") f.number = 1920;
-                else if (name == "height") f.number = 1080;
+                // pixel art starts small; pictures and videos start at full HD
+                const bool small = info.id.find("sprite") != std::string::npos;
+                if (name == "width") f.number = small ? 32 : 1920;
+                else if (name == "height") f.number = small ? 32 : 1080;
                 else if (f.min) f.number = std::max(0.0, *f.min);
             } else if (f.kind == FieldKind::Choice) {
                 f.text = spec.choices.front();
@@ -385,7 +387,8 @@ std::vector<std::string> beginnerCommands(const std::string& tool, const std::ve
             if (suffixOf(c->id) == v) take(c);
         }
         for (const auto* c : mine) {
-            if (startsWith(suffixOf(c->id), v + "_")) {
+            // open_url, or a family's own: office.doc_open, forge.sprite_new
+            if (startsWith(suffixOf(c->id), v + "_") || endsWith(suffixOf(c->id), "_" + v)) {
                 take(c);
                 break;  // one variant per verb keeps the list short
             }
@@ -393,7 +396,7 @@ std::vector<std::string> beginnerCommands(const std::string& tool, const std::ve
     }
     for (const auto* c : mine) {
         const std::string verb = suffixOf(c->id);
-        if (verb != "preview" && verb != "close" && !contains(verb, "batch")) take(c);
+        if (verb != "preview" && verb != "close" && !endsWith(verb, "_close") && !contains(verb, "batch")) take(c);
     }
     return out;
 }

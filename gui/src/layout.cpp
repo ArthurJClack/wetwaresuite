@@ -87,7 +87,7 @@ const std::map<std::string, std::vector<TabSpec>>& curated() {
         {"cad",
          {{"Part", "cad", "",
            {{"Sketch", {"sketch:New sketch", "sketch_rect", "sketch_circle", "sketch_line", "sketch_arc", "sketch_slot", "sketch_dimension:Dimension"}},
-            {"Features", {"extrude:Extrude", "revolve:Revolve", "sweep", "loft", "hole", "thread"}},
+            {"Features", {"sketch_extrude:Extrude", "sketch_revolve:Revolve", "sweep", "loft", "hole", "thread"}},
             {"Modify", {"fillet", "chamfer", "shell", "draft", "mirror", "pattern_linear:Pattern", "pattern_circular:Circular pattern", "boolean"}},
             {"Shapes", {"box", "cylinder", "sphere", "cone", "torus"}},
             {"Inspect", {"measure_distance:Distance", "measure_mass:Mass", "measure_section:Section", "param_set:Parameter", "drawing:Make drawing"}}}},
@@ -368,6 +368,19 @@ std::string commandVerb(const std::string& id) {
         if (s.size() > v.size() && s.compare(s.size() - v.size() - 1, v.size() + 1, "_" + v) == 0) return v;
     }
     return {};
+}
+
+void prefillMadeNames(Form& form, const std::vector<std::string>& made) {
+    for (auto& f : form.fields) {
+        if (f.kind != FieldKind::Text || f.hidden || !f.text.empty() || f.spec.name.empty()) continue;
+        for (auto it = made.rbegin(); it != made.rend(); ++it) {
+            const std::string& n = *it;
+            if (n.size() <= f.spec.name.size() || n.compare(0, f.spec.name.size(), f.spec.name) != 0) continue;
+            if (!std::all_of(n.begin() + static_cast<std::ptrdiff_t>(f.spec.name.size()), n.end(), [](char c) { return std::isdigit(static_cast<unsigned char>(c)); })) continue;
+            setFieldText(f, n);
+            break;
+        }
+    }
 }
 
 std::string readableDescription(const std::string& text, const std::vector<CommandInfo>& commands) {

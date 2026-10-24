@@ -297,7 +297,8 @@ void Shell::toolPanelView() {
 
 bool Shell::settling() {
     std::string key = std::to_string(changes_) + "|" + currentDoc_ + "|" + panel_ + (showHome_ ? "|home" : "|doc") + "|" +
-                      std::to_string(docIds().size()) + (form_ ? "|" + form_->command : std::string());
+                      std::to_string(docIds().size()) + (form_ ? "|" + form_->command : std::string()) + "|" +
+                      std::to_string(ImGui::GetActiveID()) + "|" + std::to_string(ImGui::GetIO().WantTextInput);
     if (key == settledKey_) return false;
     settledKey_ = std::move(key);
     return true;

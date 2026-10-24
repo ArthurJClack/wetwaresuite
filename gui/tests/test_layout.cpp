@@ -47,6 +47,15 @@ void testMenuGroups() {
 }
 
 void testRibbon() {
+    {
+        CommandInfo rect = cmd("cad.sketch_rect", "Sketch Rectangle");
+        ParamSpec sketch;
+        sketch.name = "sketch";
+        rect.params.push_back(sketch);
+        Form f = buildForm(rect);
+        prefillMadeNames(f, {"sketch1", "sketch2", "extrude1", "sketchy"});
+        CHECK(f.fields[0].text == "sketch2");
+    }
     const auto cmds = office();
     const auto tabs = ribbonTabs("office", {"office", "pdf", "notes"}, cmds);
     // curated tabs whose commands exist: Document, Sheet, PDF; Notes falls back to its common actions; Slides has none here

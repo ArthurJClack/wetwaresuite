@@ -541,9 +541,20 @@ void Shell::propertiesPanel() {
     const bool layers = hasLayers(), effects = hasEffects();
     if (!ImGui::BeginTabBar("props")) return;
     if (ImGui::BeginTabItem("Properties", nullptr, pickProps_ ? ImGuiTabItemFlags_SetSelected : 0)) {
-        ImGui::BeginChild("p");
+        // the form scrolls; its button stays put under it, like a dialog's OK
+        const float buttonH = ImGui::GetFontSize() * 2.2f;
+        const std::string shownForm = form_ ? form_->command : std::string();
+        if (shownForm != propsForm_) {  // a newly picked action starts at its top
+            propsForm_ = shownForm;
+            ImGui::SetNextWindowScroll({0, 0});
+        }
+        ImGui::BeginChild("p", {0, form_ ? -(buttonH + ImGui::GetStyle().ItemSpacing.y) : 0.0f});
         rightPanel();
         ImGui::EndChild();
+        if (form_) {
+            if (accentButton(runLabel(form_->command).c_str(), {-1, buttonH})) runForm();
+            ImGui::SetItemTooltip("Do it (Ctrl+Enter)");
+        }
         ImGui::EndTabItem();
     }
     if (layers && ImGui::BeginTabItem("Layers")) {
@@ -598,11 +609,18 @@ void Shell::statusBar() {
         if (!canvas_.is3d && canvas_.texture.tex) right += "   " + std::to_string(static_cast<int>(std::lround(canvas_.zoom * 100))) + "%";
     }
     if (!right.empty()) {
-        const float w = ImGui::CalcTextSize(right.c_str()).x;
         ImGui::SameLine();
-        const float x = ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - w;
-        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX() + unit, x));
+        // cut the file's summary short rather than run over the message on the left
+        const float room = ImGui::GetContentRegionAvail().x - unit;
+        const std::string full = right;
+        if (ImGui::CalcTextSize(right.c_str()).x > room) {
+            while (!right.empty() && ImGui::CalcTextSize((right + "...").c_str()).x > room) right.pop_back();
+            if (!right.empty()) right += "...";
+        }
+        const float w = ImGui::CalcTextSize(right.c_str()).x;
+        ImGui::SetCursorPosX(std::max(ImGui::GetCursorPosX() + unit, ImGui::GetCursorPosX() + ImGui::GetContentRegionAvail().x - w));
         ImGui::TextDisabled("%s", right.c_str());
+        if (right != full) ImGui::SetItemTooltip("%s", full.c_str());
     }
 }
 

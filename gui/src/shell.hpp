@@ -20,6 +20,25 @@
 
 namespace wetwaresuite::gui {
 
+// Adds one typed character (a code point) to UTF-8 text.
+inline void appendUtf8(std::string& out, unsigned c) {
+    if (c < 0x80) {
+        out += static_cast<char>(c);
+    } else if (c < 0x800) {
+        out += static_cast<char>(0xC0 | (c >> 6));
+        out += static_cast<char>(0x80 | (c & 0x3F));
+    } else if (c < 0x10000) {
+        out += static_cast<char>(0xE0 | (c >> 12));
+        out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (c & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (c >> 18));
+        out += static_cast<char>(0x80 | ((c >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (c & 0x3F));
+    }
+}
+
 // An options-bar label in front of its control, the way Photoshop's bar reads ("Size [12 px]").
 // Call it before SetNextItemWidth, and give the control a "##" label.
 inline void barLabel(const char* text) {
@@ -184,6 +203,7 @@ struct GridState {
     bool caretToEnd = false;  // started by typing: keep the typed text, caret after it
     bool scrollToSel = false;
     bool textInput = false;  // we turned SDL text input on
+    int editCount = 0;       // each edit gets a fresh editor, so the last one's text can't come back
     std::string buffer;   // the cell editor's text
     std::string formula;  // the formula bar's text
     int formulaRow = -1, formulaCol = -1, formulaSheet = -1;
@@ -277,6 +297,7 @@ private:
     bool runOnDoc(const std::string& commandId, const std::string& doc);
     void saveDoc(bool askWhere);
     void askSavePath(const std::string& command, const std::string& doc, const std::string& start);
+    void writeBar();
     void saveDocTo(const std::string& command, const std::string& doc, const std::string& path);
     void closeDoc(const std::string& id);  // asks first when it has unsaved changes
     void closeDocNow(const std::string& id);
@@ -524,6 +545,9 @@ private:
     bool askQuit_ = false, openAskSave_ = false;
     bool animating_ = false;
     std::string settledKey_;
+    std::string propsForm_;
+    std::string writeText_, writeKind_ = "paragraph";  // the text document's write bar
+    std::vector<std::string> madeNames_;  // features and layers the last actions made (sketch1...), newest last  // the form the properties tab last showed
     bool showHome_ = true;
     std::string currentDoc_;
     std::map<std::string, std::string> docTool_;  // doc id -> tool that made it

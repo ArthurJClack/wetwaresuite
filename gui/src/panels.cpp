@@ -253,10 +253,12 @@ void Shell::newPopup() {
     if (!ImGui::BeginPopup("new")) return;
     ImGui::TextDisabled("Start something new:");
     bool any = false;
+    // every kind of new file: image.new, office.doc_new, office.sheet_new...
     for (const auto& tool : tools_) {
-        if (const CommandInfo* c = find(tool + ".new")) {
+        for (const auto& c : commands_) {
+            if (c.id.compare(0, tool.size() + 1, tool + ".") != 0 || commandVerb(c.id) != "new") continue;
             any = true;
-            if (ImGui::Selectable((c->title + "  (" + toolTitle(tool) + ")").c_str())) select(c->id);
+            if (ImGui::Selectable((c.title + "  (" + toolTitle(tool) + ")").c_str())) select(c.id);
         }
     }
     if (!any) ImGui::TextUnformatted("Nothing to create in this app.");
@@ -431,9 +433,6 @@ void Shell::formPanel() {
         field(f, i);
     }
     if (needsDoc && docIds().empty()) wrappedMuted("Open a file or start a new one first: this action works on an open file.");
-    ImGui::Spacing();
-    if (accentButton(runLabel(form_->command).c_str(), {-1, ImGui::GetFontSize() * 2.2f})) runForm();
-    ImGui::SetItemTooltip("Do it (Ctrl+Enter)");
 }
 
 void Shell::field(Field& f, std::size_t index) {

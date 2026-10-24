@@ -10,6 +10,7 @@
 #include <string>
 
 #include "imgui_impl_sdl3.h"
+#include "imgui_internal.h"
 #include "imgui_impl_sdlrenderer3.h"
 #include "shell.hpp"
 #include "wetwaresuite/raster/codec.hpp"
@@ -210,6 +211,8 @@ int run(Session& session, const AppInfo& app, const RunOptions& options) {
             SDL_RenderPresent(renderer);
             --framesLeft;
             if (shell.settling()) framesLeft = std::max(framesLeft, 4);
+            // ImGui hands fast typing over one key per frame: draw until it has used it all
+            if (GImGui->InputEventsQueue.Size > 0) framesLeft = std::max(framesLeft, 3);
             if (shell.wantsQuit()) running = false;
         }
     }

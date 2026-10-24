@@ -9,6 +9,9 @@
 #include <map>
 
 #include "shell.hpp"
+// after imgui.h
+#include "imgui_internal.h"
+#include "imgui_stdlib.h"
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/document.hpp"
 #include "wetwaresuite/raster/pyramid.hpp"
@@ -256,6 +259,10 @@ void Shell::canvasToolbar() {
         circuitToolbar();
         return;
     }
+    if (const std::string opener = docOpener(currentDoc_); opener == "office.doc_new" || opener == "office.doc_open") {
+        writeBar();
+        return;
+    }
     if (mapsDoc()) {
         mapsToolbar();
         return;
@@ -323,6 +330,42 @@ void Shell::canvasToolbar() {
     barLabel("Opacity");
     ImGui::SetNextItemWidth(unit * 4.5f);
     ImGui::SliderFloat("##opacity", &canvas_.opacity, 1, 100, "%.0f%%");
+}
+
+// A text document: type a paragraph under the toolbar and Enter adds it to the end, so writing
+// doesn't need the Add form every time.
+void Shell::writeBar() {
+    const float unit = ImGui::GetFontSize();
+    static const char* kinds[] = {"paragraph", "heading", "list", "numbered", "quote"};
+    ImGui::SameLine(0, unit);
+    ImGui::SetNextItemWidth(unit * 6.5f);
+    if (ImGui::BeginCombo("##kind", writeKind_.c_str())) {
+        for (const char* k : kinds) {
+            if (ImGui::Selectable(k, writeKind_ == k)) writeKind_ = k;
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("What the next line adds");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    // the box stays active after Enter, so the next line can be typed straight away
+    ImGuiIO& io = ImGui::GetIO();
+    const bool keep = io.ConfigInputTextEnterKeepActive;
+    io.ConfigInputTextEnterKeepActive = true;
+    const bool entered = ImGui::InputTextWithHint("##write", "Type here, Enter adds it to the end (**bold**, *italic*)", &writeText_,
+                                                  ImGuiInputTextFlags_EnterReturnsTrue);
+    io.ConfigInputTextEnterKeepActive = keep;
+    if (entered && !writeText_.empty()) {
+        Result r = run("office.doc_add", {{"doc", currentDoc_}, {"kind", writeKind_}, {"text", writeText_}});
+        resultFor_ = "Add";
+        r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+        if (r.ok) {
+            writeText_.clear();
+            if (ImGuiInputTextState* box = ImGui::GetInputTextState(ImGui::GetItemID())) box->ReloadUserBufAndMoveToEnd();
+        }
+        result_ = std::move(r);
+        canvas_.dirty = true;
+    }
 }
 
 ImVec2 Shell::toImage(ImVec2 screen) const {

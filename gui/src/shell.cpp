@@ -142,6 +142,14 @@ void Shell::noteChange(const std::string& id, const Params& params, const Result
 Result Shell::run(const std::string& id, const Params& params) {
     Result r = session_.run(id, params);
     if (r.ok) noteChange(id, params, r);
+    if (r.ok) {  // names of things just made, so the next form can offer them
+        for (const auto& [key, v] : r.data) {
+            auto s = std::get_if<std::string>(&v);
+            if (!s || s->empty() || !std::isdigit(static_cast<unsigned char>(s->back())) || session_.workspace().get(*s)) continue;
+            madeNames_.push_back(*s);
+        }
+        if (madeNames_.size() > 64) madeNames_.erase(madeNames_.begin(), madeNames_.end() - 64);
+    }
     if (r.ok) {
         const CommandInfo* info = find(id);
         if (!info || !info->readOnly) ++changes_;
@@ -179,6 +187,7 @@ void Shell::select(const std::string& commandId) {
     const CommandInfo* info = find(commandId);
     if (!info) return;
     form_ = buildForm(*info, docIds(), currentDoc_);
+    prefillMadeNames(*form_, madeNames_);
     result_.reset();
     pickProps_ = true;
     showProps_ = true;

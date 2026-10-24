@@ -78,6 +78,9 @@ FieldKind kindFor(const ParamSpec& spec, const std::string& commandId);
 // Builds a form with defaults filled in. `docs` are the open document ids;
 // `currentDoc` pre-selects the document the person is looking at.
 Form buildForm(const CommandInfo& info, const std::vector<std::string>& docs = {}, const std::string& currentDoc = {});
+// Fill empty text boxes named like something just made: a "sketch" box gets sketch2 when the
+// last thing made was sketch2 (names are newest last).
+void prefillMadeNames(Form& form, const std::vector<std::string>& made);
 
 // Turns a form back into params. Returns false and sets `error` (plain words) when
 // a required field is empty or a number list doesn't parse.

@@ -268,6 +268,7 @@ void Shell::canvasToolbar() {
     for (const auto& t : kCanvasTools) {
         if (t.tool != canvas_.tool) continue;
         ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
         ImGui::TextUnformatted((std::string("   ") + t.name + ":").c_str());  // the options bar names its tool, like Photoshop's
         ImGui::SameLine();
     }
@@ -296,15 +297,17 @@ void Shell::canvasToolbar() {
     };
     if (canvas_.tool == CanvasTool::Brush || canvas_.tool == CanvasTool::Fill) {
         next();
-        ImGui::ColorEdit4("Colour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
+        barLabel("Colour");
+        ImGui::ColorEdit4("##colour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
     }
     if (canvas_.tool == CanvasTool::Fill) return;
     if (const CommandInfo* stroke = find("paint.stroke")) {
         for (const auto& p : stroke->params) {
             if (p.name != "brush" || p.choices.empty()) continue;
             next();
+            barLabel("Tip");
             ImGui::SetNextItemWidth(unit * 6);
-            if (ImGui::BeginCombo("Brush", canvas_.brush.c_str())) {
+            if (ImGui::BeginCombo("##tip", canvas_.brush.c_str())) {
                 for (const auto& c : p.choices) {
                     if (ImGui::Selectable(c.c_str(), c == canvas_.brush)) canvas_.brush = c;
                 }
@@ -313,11 +316,13 @@ void Shell::canvasToolbar() {
         }
     }
     next();
-    ImGui::SetNextItemWidth(unit * 7);
-    ImGui::SliderFloat("Size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
+    barLabel("Size");
+    ImGui::SetNextItemWidth(unit * 5.5f);
+    ImGui::SliderFloat("##size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
     next();
-    ImGui::SetNextItemWidth(unit * 6);
-    ImGui::SliderFloat("Opacity", &canvas_.opacity, 1, 100, "%.0f%%");
+    barLabel("Opacity");
+    ImGui::SetNextItemWidth(unit * 4.5f);
+    ImGui::SliderFloat("##opacity", &canvas_.opacity, 1, 100, "%.0f%%");
 }
 
 ImVec2 Shell::toImage(ImVec2 screen) const {

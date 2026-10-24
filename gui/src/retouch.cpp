@@ -47,8 +47,9 @@ bool Shell::pictureSize(int& width, int& height) const {
 
 void Shell::retouchSettings() {
     const float unit = ImGui::GetFontSize();
-    ImGui::SetNextItemWidth(unit * 7);
-    ImGui::SliderFloat("Size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
+    barLabel("Size");
+    ImGui::SetNextItemWidth(unit * 5.5f);
+    ImGui::SliderFloat("##size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
     ImGui::SetItemTooltip("How wide the brush is. Make it a little bigger than the thing you're fixing");
     ImGui::SameLine();
     if (canvas_.tool == CanvasTool::Heal) {

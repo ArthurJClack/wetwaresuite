@@ -360,6 +360,71 @@ std::string openerStem(const std::string& opener) {
     return s.substr(0, us);
 }
 
+std::string commandVerb(const std::string& id) {
+    const std::string s = suffix(id);
+    for (const char* verb : {"save_as", "open", "new", "load", "import", "save", "export"}) {
+        const std::string v = verb;
+        if (s == v) return v;
+        if (s.size() > v.size() && s.compare(s.size() - v.size() - 1, v.size() + 1, "_" + v) == 0) return v;
+    }
+    return {};
+}
+
+std::string readableDescription(const std::string& text, const std::vector<CommandInfo>& commands) {
+    // "Add geometry with cad.sketch_line" reads "Add geometry with Sketch Line" in a window
+    auto word = [](char c) { return std::isalnum(static_cast<unsigned char>(c)) || c == '_'; };
+    std::string out;
+    std::size_t i = 0;
+    while (i < text.size()) {
+        if (!word(text[i]) || (i > 0 && word(text[i - 1]))) {
+            out += text[i++];
+            continue;
+        }
+        std::size_t j = i;
+        while (j < text.size() && word(text[j])) ++j;
+        if (j + 1 < text.size() && text[j] == '.' && word(text[j + 1])) {
+            std::size_t k = j + 1;
+            while (k < text.size() && word(text[k])) ++k;
+            const std::string id = text.substr(i, k - i);
+            auto it = std::find_if(commands.begin(), commands.end(), [&](const CommandInfo& c) { return c.id == id; });
+            if (it != commands.end()) {
+                out += it->title;
+                i = k;
+                continue;
+            }
+        }
+        out += text.substr(i, j - i);
+        i = j;
+    }
+    return out;
+}
+
+std::string firstSentence(const std::string& text) {
+    for (std::size_t i = 0; i + 1 < text.size(); ++i) {
+        const bool abbreviation = text[i] == '.' && i >= 2 && text[i - 2] == '.';  // e.g. i.e.
+        if ((text[i] == '.' || text[i] == '!' || text[i] == '?') && text[i + 1] == ' ' && !abbreviation) return text.substr(0, i + 1);
+    }
+    return text;
+}
+
+bool needsDocument(const CommandInfo& c) {
+    return std::any_of(c.params.begin(), c.params.end(), [&](const ParamSpec& p) {
+        return p.required && kindFor(p, c.id) == FieldKind::Document;
+    });
+}
+
+bool oneShotCommand(const std::string& id) { return !commandVerb(id).empty(); }
+
+std::string runLabel(const std::string& id) {
+    const std::string verb = commandVerb(id);
+    if (verb == "new") return "Create";
+    if (verb == "open" || verb == "load") return "Open";
+    if (verb == "import") return "Import";
+    if (verb == "save" || verb == "save_as") return "Save";
+    if (verb == "export") return "Export";
+    return "Apply";
+}
+
 int ribbonTabFor(const std::vector<RibbonTab>& tabs, const std::string& opener) {
     if (opener.empty()) return -1;
     const std::string tool = prefix(opener), stem = openerStem(opener);

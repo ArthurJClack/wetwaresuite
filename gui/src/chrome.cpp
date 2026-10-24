@@ -113,7 +113,7 @@ void Shell::fileMenu() {
             if (!lastTool.empty() && tool != lastTool) ImGui::Separator();
             lastTool = tool;
             if (ImGui::MenuItem(c->title.c_str())) select(c->id);
-            ImGui::SetItemTooltip("%s", c->description.c_str());
+            ImGui::SetItemTooltip("%s", firstSentence(readableDescription(c->description, commands_)).c_str());
         }
         ImGui::EndMenu();
     }
@@ -122,7 +122,7 @@ void Shell::fileMenu() {
     }
     ImGui::Separator();
     if (ImGui::MenuItem("Close", "Ctrl+W", false, onDoc)) closeDoc(currentDoc_);
-    if (ImGui::MenuItem("Quit", "Ctrl+Q")) quit_ = true;
+    if (ImGui::MenuItem("Quit", "Ctrl+Q") && requestQuit()) quit_ = true;
     ImGui::EndMenu();
 }
 
@@ -167,22 +167,50 @@ void Shell::toolMenu(const std::string& tool) {
         if (ImGui::MenuItem(("Open " + toolTitle(tool)).c_str(), nullptr, !showHome_ && panel_ == tool)) openPanel(tool);
         ImGui::Separator();
     }
-    auto item = [this](const CommandInfo* c) {
-        if (ImGui::MenuItem(c->title.c_str(), nullptr, form_ && form_->command == c->id)) pick(c->id);
-        ImGui::SetItemTooltip("%s", c->description.c_str());
+    const bool noFiles = docIds().empty();
+    auto item = [this, noFiles](const CommandInfo* c) {
+        const bool off = noFiles && needsDocument(*c);  // greyed out until a file is open
+        if (ImGui::MenuItem(c->title.c_str(), nullptr, form_ && form_->command == c->id, !off)) pick(c->id);
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", firstSentence(readableDescription(c->description, commands_)).c_str());
     };
-    // the ribbon's groups first, as titled sections (Image, Adjust, Select, Filters...)
-    std::vector<const CommandInfo*> shown;
+    // the ribbon's groups first (Image, Adjust, Select, Filters...): titled sections when they
+    // fit on screen, else submenus like Photoshop's Image > Adjustments
+    std::vector<const RibbonTab*> tabs;
+    std::size_t count = 0;
     for (const auto& tab : ribbonTabs_) {
         if (tab.tool != tool) continue;
-        for (const auto& g : tab.groups) {
-            ImGui::SeparatorText(g.title.c_str());
-            for (const auto* c : g.commands) {
-                if (std::find(shown.begin(), shown.end(), c) != shown.end()) continue;
-                item(c);
-                shown.push_back(c);
+        tabs.push_back(&tab);
+        for (const auto& g : tab.groups) count += g.commands.size();
+    }
+    const bool nest = count > 16;
+    std::vector<const CommandInfo*> shown;
+    auto groupItems = [&](const RibbonGroup& g) {
+        for (const auto* c : g.commands) {
+            if (std::find(shown.begin(), shown.end(), c) != shown.end()) continue;
+            item(c);
+            shown.push_back(c);
+        }
+    };
+    for (const RibbonTab* tab : tabs) {
+        const bool tabMenu = nest && tabs.size() > 1;  // office: Sheet >, Document >, Slides >
+        if (tabMenu && !ImGui::BeginMenu(tab->title.c_str())) {
+            for (const auto& g : tab->groups) shown.insert(shown.end(), g.commands.begin(), g.commands.end());
+            continue;
+        }
+        for (const auto& g : tab->groups) {
+            if (nest && !tabMenu) {
+                if (ImGui::BeginMenu(g.title.c_str())) {
+                    groupItems(g);
+                    ImGui::EndMenu();
+                } else {
+                    shown.insert(shown.end(), g.commands.begin(), g.commands.end());
+                }
+            } else {
+                ImGui::SeparatorText(g.title.c_str());
+                groupItems(g);
             }
         }
+        if (tabMenu) ImGui::EndMenu();
     }
     // then everything else, alphabetical, with families (layer_*, page_*...) in submenus
     auto groups = menuGroups(tool, commands_);
@@ -322,6 +350,7 @@ void Shell::ribbon() {
                 const float h = (compact ? rowH : rowH + ImGui::GetTextLineHeight() + style.ItemSpacing.y) + style.ScrollbarSize * 0.5f + style.ItemSpacing.y * 0.5f;
                 ImGui::PushStyleVar(ImGuiStyleVar_ScrollbarSize, style.ScrollbarSize * 0.5f);
                 ImGui::BeginChild("groups", {0, h}, ImGuiChildFlags_None, ImGuiWindowFlags_HorizontalScrollbar);
+                const bool noFiles = docIds().empty();
                 for (std::size_t g = 0; g < tab.groups.size(); ++g) {
                     const RibbonGroup& group = tab.groups[g];
                     if (g > 0) {
@@ -342,10 +371,21 @@ void Shell::ribbon() {
                         if (on) ImGui::PushStyleColor(ImGuiCol_Button, ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive));
                         ImGui::PushID(c->id.c_str());
                         const std::string& label = b < group.labels.size() ? group.labels[b] : c->title;
+                        // greyed out until there's a file to work on, like Office with no document
+                        const bool off = noFiles && needsDocument(*c);
+                        ImGui::BeginDisabled(off);
                         if (ImGui::Button(label.c_str())) pick(c->id);
+                        ImGui::EndDisabled();
                         ImGui::PopID();
                         if (on) ImGui::PopStyleColor();
-                        ImGui::SetItemTooltip("%s\n%s", c->title.c_str(), c->description.c_str());
+                        if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled) && ImGui::BeginTooltip()) {
+                            ImGui::PushTextWrapPos(unit * 26);
+                            ImGui::Text("%s  (%s)", c->title.c_str(), group.title.c_str());
+                            ImGui::TextDisabled("%s", firstSentence(readableDescription(c->description, commands_)).c_str());
+                            if (off) ImGui::TextUnformatted("Open a file or start a new one first (Ctrl+O, Ctrl+N).");
+                            ImGui::PopTextWrapPos();
+                            ImGui::EndTooltip();
+                        }
                     }
                     if (!compact) {
                         // the group's name centred under its buttons, like Office
@@ -356,7 +396,6 @@ void Shell::ribbon() {
                     }
                     ImGui::PopID();
                     ImGui::EndGroup();
-                    if (compact) ImGui::SetItemTooltip("%s", group.title.c_str());
                 }
                 ImGui::EndChild();
                 ImGui::PopStyleVar();
@@ -389,7 +428,8 @@ void Shell::docTabs() {
     for (const auto& id : docIds()) {
         if (!panelForDoc(id).empty()) continue;  // code files and terminals live in their panel
         auto doc = session_.workspace().get(id);
-        tabs.emplace_back(id, doc && !doc->path.empty() ? fileName(doc->path) : id);
+        // a dot marks changes that aren't saved yet, like most editors
+        tabs.emplace_back(id, (doc && !doc->path.empty() ? fileName(doc->path) : id) + (unsaved_.count(id) ? " \xe2\x80\xa2" : ""));
     }
     std::string clicked, closing;
     if (ImGui::BeginTabBar("files", ImGuiTabBarFlags_FittingPolicyScroll | ImGuiTabBarFlags_NoTooltip)) {
@@ -629,24 +669,108 @@ void Shell::saveDoc(bool askWhere) {
         hasPath = true;
         if (!doc->path.empty()) setFieldText(field, doc->path);
     }
+    if (hasPath && (askWhere || doc->path.empty())) {
+        // where to: the system's save window, like any other app
+        askSavePath(id, currentDoc_, doc->path);
+        return;
+    }
+    saveDocTo(id, currentDoc_, doc->path);
+}
+
+void Shell::saveDocTo(const std::string& command, const std::string& docId, const std::string& path) {
+    const CommandInfo* info = find(command);
+    if (!info || !session_.workspace().get(docId)) return;
+    Form f = buildForm(*info, docIds(), docId);
+    for (auto& field : f.fields) {
+        if (field.spec.name == "path" && !path.empty()) setFieldText(field, path);
+    }
     Params params;
     std::string error;
-    if (askWhere || (hasPath && doc->path.empty()) || !toParams(f, params, error)) {
+    if (!toParams(f, params, error)) {  // something else to fill in first
         form_ = std::move(f);
         result_.reset();
         pickProps_ = showProps_ = true;
         return;
     }
     resultFor_ = "Save";
-    Result r = run(id, params);
+    Result r = run(command, params);
     r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
     result_ = std::move(r);
 }
 
 void Shell::closeDoc(const std::string& id) {
+    if (unsaved_.count(id) && session_.workspace().get(id)) {
+        askClose_ = id;
+        askQuit_ = false;
+        openAskSave_ = true;
+        return;
+    }
+    closeDocNow(id);
+}
+
+bool Shell::requestQuit() {
+    for (auto it = unsaved_.begin(); it != unsaved_.end();) it = session_.workspace().get(*it) ? std::next(it) : unsaved_.erase(it);
+    if (unsaved_.empty()) return true;
+    if (!askQuit_) {  // SDL sends close-requested and quit together: ask once
+        askQuit_ = true;
+        askClose_.clear();
+        openAskSave_ = true;
+    }
+    return false;
+}
+
+void Shell::askSavePopup() {
+    if (!ImGui::BeginPopupModal("Save changes?", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) return;
+    const float unit = ImGui::GetFontSize();
+    auto name = [this](const std::string& id) {
+        auto doc = session_.workspace().get(id);
+        return doc && !doc->path.empty() ? fileName(doc->path) : id;
+    };
+    if (askQuit_) {
+        std::string list;
+        for (const auto& id : unsaved_) list += (list.empty() ? "" : ", ") + name(id);
+        ImGui::Text("These files have changes that aren't saved: %s", list.c_str());
+        ImGui::Spacing();
+        if (accentButton("Keep working", {unit * 9, 0}) || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+            askQuit_ = false;
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Quit without saving", {unit * 10, 0})) quit_ = true;
+    } else {
+        ImGui::Text("Save the changes to %s before closing it?", name(askClose_).c_str());
+        ImGui::Spacing();
+        if (accentButton("Save", {unit * 6, 0})) {
+            closeAfterSave_ = askClose_;
+            showDoc(askClose_);
+            saveDoc(false);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Don't save", {unit * 6, 0})) {
+            unsaved_.erase(askClose_);
+            closeDocNow(askClose_);
+            ImGui::CloseCurrentPopup();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Cancel", {unit * 6, 0}) || ImGui::IsKeyPressed(ImGuiKey_Escape)) ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
+void Shell::closeDocNow(const std::string& id) {
     const std::string close = siblingCommand(docOpener(id), "close", commands_);
     if (close.empty() || !runOnDoc(close, id)) return;
     docOpener_.erase(id);
+    unsaved_.erase(id);
+    if (form_) {  // a form still aimed at the closed file goes too
+        for (const auto& f : form_->fields) {
+            if (f.kind == FieldKind::Document && f.text == id) {
+                form_.reset();
+                break;
+            }
+        }
+    }
     syncDocs();
     if (docIds().empty()) showHome_ = true;
 }
@@ -661,7 +785,7 @@ void Shell::shortcuts() {
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_W) && !showHome_ && panel_.empty() && !currentDoc_.empty()) closeDoc(currentDoc_);
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Tab)) nextTab(1);
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiMod_Shift | ImGuiKey_Tab)) nextTab(-1);
-    if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Q)) quit_ = true;
+    if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Q) && requestQuit()) quit_ = true;
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_0)) canvas_.fit = true;
     if (ImGui::IsKeyChordPressed(ImGuiMod_Ctrl | ImGuiKey_Space)) focusMode_ = !focusMode_;
     if (ImGui::IsKeyPressed(ImGuiKey_F1, false)) openShortcuts_ = true;
@@ -708,6 +832,12 @@ void Shell::rootPopups() {
         openShortcuts_ = false;
     }
     shortcutsPopup();
+    if (openAskSave_) {
+        ImGui::OpenPopup("Save changes?");
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, {0.5f, 0.5f});
+        openAskSave_ = false;
+    }
+    askSavePopup();
     if (openSettings_) {
         paletteStale_ = true;  // show what other apps may have saved meanwhile
         openSettings_ = false;

@@ -8,6 +8,7 @@
 #include <map>
 #include <memory>
 #include <optional>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -18,6 +19,14 @@
 #include "wetwaresuite/gui/palette.hpp"
 
 namespace wetwaresuite::gui {
+
+// An options-bar label in front of its control, the way Photoshop's bar reads ("Size [12 px]").
+// Call it before SetNextItemWidth, and give the control a "##" label.
+inline void barLabel(const char* text) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(text);
+    ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+}
 
 // An RGBA texture on the renderer, remade when its picture changes.
 struct Texture {
@@ -207,9 +216,10 @@ struct MapsCanvas {
 struct ToolPanels;  // tool_panels.hpp
 
 struct DialogTarget {
-    enum Kind { OpenDocument, FormField, PanelFolder } kind = OpenDocument;
-    std::string command;  // FormField: the form it belongs to; PanelFolder: what the folder is for
+    enum Kind { OpenDocument, FormField, PanelFolder, SaveDocument } kind = OpenDocument;
+    std::string command;  // FormField: the form it belongs to; PanelFolder: what the folder is for; SaveDocument: the save command
     std::size_t field = 0;
+    std::string doc;  // SaveDocument: the file to save
 };
 
 class Shell {
@@ -228,8 +238,13 @@ public:
         openPanelFor(commandId);
     }
     bool wantsQuit() const { return quit_; }
+    // the window's close button or Ctrl+Q: true when nothing unsaved stands in the way, else it asks
+    bool requestQuit();
     int tickMs() const;  // > 0: wake the window this often (timers, running programs, live graphs)
     bool animating() const { return animating_; }  // something on screen moves (the selection outline)
+    // true once after the window's state changed (a file made, opened, closed or shown), so the
+    // loop draws a few more frames: new tabs and views take a frame or two to settle
+    bool settling();
 
     static Uint32 wakeEvent;  // pushed from dialog threads to wake the event loop
     static ImFont* monoFont;  // a fixed-width font for code and terminals (null: the UI font)
@@ -261,7 +276,12 @@ private:
     void pick(const std::string& commandId);  // a menu or ribbon button: runs at once, or shows its settings first
     bool runOnDoc(const std::string& commandId, const std::string& doc);
     void saveDoc(bool askWhere);
-    void closeDoc(const std::string& id);
+    void askSavePath(const std::string& command, const std::string& doc, const std::string& start);
+    void saveDocTo(const std::string& command, const std::string& doc, const std::string& path);
+    void closeDoc(const std::string& id);  // asks first when it has unsaved changes
+    void closeDocNow(const std::string& id);
+    void askSavePopup();
+    void noteChange(const std::string& id, const Params& params, const Result& r);
     void showDoc(const std::string& id);
     void nextTab(int step);
     std::string docOpener(const std::string& id) const;
@@ -498,7 +518,12 @@ private:
     float textScale_ = 1.0f;
     float dpi_ = 1.0f;
     bool quit_ = false;
+    std::set<std::string> unsaved_;  // files changed since they were opened or saved
+    std::string askClose_;           // the file the "save changes?" question is about
+    std::string closeAfterSave_;     // close this file once its save goes through
+    bool askQuit_ = false, openAskSave_ = false;
     bool animating_ = false;
+    std::string settledKey_;
     bool showHome_ = true;
     std::string currentDoc_;
     std::map<std::string, std::string> docTool_;  // doc id -> tool that made it

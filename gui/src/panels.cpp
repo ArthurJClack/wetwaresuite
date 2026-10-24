@@ -381,7 +381,8 @@ void Shell::documentView() {
 
 void Shell::rightPanel() {
     formPanel();
-    if (result_) {
+    // a form shows its own result; brush strokes, undo and saves report on the status bar
+    if (result_ && form_ && resultFor_ == form_->title) {
         ImGui::Spacing();
         ImGui::Separator();
         const bool ok = result_->ok;
@@ -420,7 +421,7 @@ void Shell::formPanel() {
         return;
     }
     heading(form_->title, 1.25f);
-    wrappedMuted(form_->description);
+    wrappedMuted(readableDescription(form_->description, commands_));
     ImGui::Spacing();
     bool needsDoc = false;
     for (std::size_t i = 0; i < form_->fields.size(); ++i) {
@@ -431,7 +432,7 @@ void Shell::formPanel() {
     }
     if (needsDoc && docIds().empty()) wrappedMuted("Open a file or start a new one first: this action works on an open file.");
     ImGui::Spacing();
-    if (accentButton("Run", {-1, ImGui::GetFontSize() * 2.2f})) runForm();
+    if (accentButton(runLabel(form_->command).c_str(), {-1, ImGui::GetFontSize() * 2.2f})) runForm();
     ImGui::SetItemTooltip("Do it (Ctrl+Enter)");
 }
 

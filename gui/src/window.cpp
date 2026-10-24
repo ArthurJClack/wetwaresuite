@@ -176,8 +176,9 @@ int run(Session& session, const AppInfo& app, const RunOptions& options) {
             while (got) {
                 shell.onEvent(e);
                 ImGui_ImplSDL3_ProcessEvent(&e);
-                if (e.type == SDL_EVENT_QUIT) running = false;
-                if (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && e.window.windowID == SDL_GetWindowID(window)) running = false;
+                const bool closing = e.type == SDL_EVENT_QUIT ||
+                                     (e.type == SDL_EVENT_WINDOW_CLOSE_REQUESTED && e.window.windowID == SDL_GetWindowID(window));
+                if (closing && shell.requestQuit()) running = false;  // unsaved files: it asks first
                 if (e.type == SDL_EVENT_WINDOW_DISPLAY_SCALE_CHANGED) shell.applyStyle(SDL_GetWindowDisplayScale(window));
                 framesLeft = 3;
                 got = SDL_PollEvent(&e);
@@ -208,6 +209,7 @@ int run(Session& session, const AppInfo& app, const RunOptions& options) {
             }
             SDL_RenderPresent(renderer);
             --framesLeft;
+            if (shell.settling()) framesLeft = std::max(framesLeft, 4);
             if (shell.wantsQuit()) running = false;
         }
     }

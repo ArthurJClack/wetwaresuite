@@ -295,6 +295,14 @@ void Shell::toolPanelView() {
     else homeView();
 }
 
+bool Shell::settling() {
+    std::string key = std::to_string(changes_) + "|" + currentDoc_ + "|" + panel_ + (showHome_ ? "|home" : "|doc") + "|" +
+                      std::to_string(docIds().size()) + (form_ ? "|" + form_->command : std::string());
+    if (key == settledKey_) return false;
+    settledKey_ = std::move(key);
+    return true;
+}
+
 int Shell::tickMs() const {
     if (canvas_.game.playing && !showHome_) return 20;  // a sprite animation is playing (game_view.cpp)
     if (!panels_) return 0;

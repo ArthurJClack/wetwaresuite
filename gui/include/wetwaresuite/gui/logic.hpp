@@ -228,6 +228,20 @@ std::vector<RibbonTab> ribbonTabs(const std::string& appId, const std::vector<st
 std::string shortLabel(const std::string& title, const std::string& group, const std::string& tab);
 // "office.sheet_open" -> "sheet"; "photo.open" -> "".
 std::string openerStem(const std::string& opener);
+
+// "new", "open", "load", "import", "save", "save_as" or "export" for a file command such as
+// image.new or office.sheet_save, empty for the rest.
+std::string commandVerb(const std::string& id);
+// a command's description for people: command ids it names (cad.sketch_line) become their titles
+std::string readableDescription(const std::string& text, const std::vector<CommandInfo>& commands);
+// up to the first full stop, for tooltips
+std::string firstSentence(const std::string& text);
+// whether a command works on an open file (a required document field)
+bool needsDocument(const CommandInfo& c);
+// file commands are done once they run, like a dialog's OK, so their form closes after
+bool oneShotCommand(const std::string& id);
+// what the properties panel's big button says for a command: Create, Open, Save, Export or Apply
+std::string runLabel(const std::string& id);
 // The tab for a document made by `opener`, or -1.
 int ribbonTabFor(const std::vector<RibbonTab>& tabs, const std::string& opener);
 // The command that does `verb` (save, close, info...) to a document made by `opener`:

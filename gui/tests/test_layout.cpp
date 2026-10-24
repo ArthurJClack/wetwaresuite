@@ -94,6 +94,25 @@ void testShortLabels() {
     CHECK(shortLabel("Add Layer", "Layers", "Level") == "Add");
 }
 
+void testRunLabels() {
+    CHECK(commandVerb("image.new") == "new" && commandVerb("office.sheet_save") == "save" && commandVerb("photo.save_as") == "save_as");
+    CHECK(commandVerb("photo.resize").empty() && commandVerb("office.renew").empty());
+    CHECK(oneShotCommand("office.doc_open") && !oneShotCommand("photo.crop"));
+    const auto cmds = office();
+    CHECK(readableDescription("Then office.sheet_set it, see cad.foo or 1.5 mm.", cmds) == "Then Set Cells it, see cad.foo or 1.5 mm.");
+    CHECK(firstSentence("Scale it. Then more.") == "Scale it." && firstSentence("No stop") == "No stop");
+    CHECK(firstSentence("Pick (e.g. 1.5 mm) now. Next.") == "Pick (e.g. 1.5 mm) now.");
+    CommandInfo resize = cmd("photo.resize", "Resize");
+    ParamSpec doc;
+    doc.name = "doc";
+    doc.type = ParamType::String;
+    resize.params.push_back(doc);
+    CHECK(needsDocument(resize) && !needsDocument(cmd("photo.new", "New image")));
+    resize.params[0].required = false;
+    CHECK(!needsDocument(resize));
+    CHECK(runLabel("image.new") == "Create" && runLabel("cad.export") == "Export" && runLabel("photo.resize") == "Apply");
+}
+
 }  // namespace
 
 int main() {
@@ -102,5 +121,6 @@ int main() {
     testRibbon();
     testSiblings();
     testShortLabels();
+    testRunLabels();
     return check::summary("gui_layout");
 }

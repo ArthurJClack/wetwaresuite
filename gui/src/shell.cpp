@@ -115,8 +115,33 @@ void Shell::syncDocs() {
     canvas_.dirty = true;
 }
 
+void Shell::noteChange(const std::string& id, const Params& params, const Result& r) {
+    std::string doc;
+    if (auto it = params.find("doc"); it != params.end()) {
+        if (auto s = std::get_if<std::string>(&it->second)) doc = *s;
+    }
+    if (doc.empty()) {
+        if (const Value* v = r.field("doc")) {
+            if (auto s = std::get_if<std::string>(v)) doc = *s;
+        }
+    }
+    if (doc.empty()) return;
+    const std::string verb = commandVerb(id);
+    if (verb == "save" || verb == "save_as" || verb == "new" || verb == "open" || verb == "load" || verb == "import") {
+        unsaved_.erase(doc);
+        if (closeAfterSave_ == doc && (verb == "save" || verb == "save_as")) {
+            closeAfterSave_.clear();
+            closeDocNow(doc);
+        }
+        return;
+    }
+    const CommandInfo* info = find(id);
+    if (verb.empty() && info && !info->readOnly && session_.workspace().get(doc)) unsaved_.insert(doc);
+}
+
 Result Shell::run(const std::string& id, const Params& params) {
     Result r = session_.run(id, params);
+    if (r.ok) noteChange(id, params, r);
     if (r.ok) {
         const CommandInfo* info = find(id);
         if (!info || !info->readOnly) ++changes_;
@@ -170,8 +195,13 @@ void Shell::runForm() {
     }
     Result r = run(form_->command, params);
     r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+    const bool done = r.ok && oneShotCommand(form_->command);
     result_ = std::move(r);
     scrollToResult_ = true;
+    if (done) {  // like a New or Save dialog's OK: the panel goes back to the file
+        form_.reset();
+        return;
+    }
     // documents may have changed: refresh document pickers to what's open now
     const auto ids = docIds();
     for (auto& f : form_->fields) {
@@ -186,6 +216,7 @@ void Shell::undo() {
     beforeHistoryStep();
     ++changes_;
     if (session_.history().undo()) {
+        if (!currentDoc_.empty()) unsaved_.insert(currentDoc_);
         result_ = Result::success("Undone.");
         resultFor_ = "Undo";
     }
@@ -196,6 +227,7 @@ void Shell::redo() {
     beforeHistoryStep();
     ++changes_;
     if (session_.history().redo()) {
+        if (!currentDoc_.empty()) unsaved_.insert(currentDoc_);
         result_ = Result::success("Redone.");
         resultFor_ = "Redo";
     }
@@ -271,6 +303,11 @@ void Shell::showOpenDialog() {
     SDL_ShowOpenFileDialog(onDialog, req, window_, nullptr, 0, nullptr, false);
 }
 
+void Shell::askSavePath(const std::string& command, const std::string& doc, const std::string& start) {
+    auto* req = new DialogRequest{{DialogTarget::SaveDocument, command, 0, doc}};
+    SDL_ShowSaveFileDialog(onDialog, req, window_, nullptr, 0, start.empty() ? nullptr : start.c_str());
+}
+
 void Shell::askFolder(const std::string& purpose) {
     auto* req = new DialogRequest{{DialogTarget::PanelFolder, purpose, 0}};
     SDL_ShowOpenFolderDialog(onDialog, req, window_, nullptr, false);
@@ -302,6 +339,8 @@ void Shell::drainDialogs() {
     for (const auto& [target, path] : results) {
         if (target.kind == DialogTarget::OpenDocument) {
             openFile(path);
+        } else if (target.kind == DialogTarget::SaveDocument) {
+            saveDocTo(target.command, target.doc, path);
         } else if (target.kind == DialogTarget::PanelFolder) {
             folderChosen(target.command, path);
         } else if (form_ && form_->command == target.command && target.field < form_->fields.size()) {

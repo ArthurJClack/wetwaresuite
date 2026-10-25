@@ -177,11 +177,32 @@ void Shell::timelineView(const TimelineLayout& layout) {
             runTimelineEdit(layout, e);
         }
     }
+    // stepping the playhead like other editors: Left/Right one frame (Shift: one second), Home/End
+    if (layout.cursor >= 0 && !io.WantTextInput && !io.KeyCtrl && !timelinePlaying()) {
+        double to = -1;
+        const bool left = ImGui::IsKeyPressed(ImGuiKey_LeftArrow), right = ImGui::IsKeyPressed(ImGuiKey_RightArrow);
+        if (left || right) {
+            auto doc = session_.workspace().get(currentDoc_);
+            auto player = doc ? doc->player() : nullptr;
+            const double frame = player && player->fps() > 0 ? 1.0 / player->fps() : 1.0 / 30;
+            to = layout.cursor + (right ? 1 : -1) * (io.KeyShift ? 1.0 : frame);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Home, false)) to = 0;
+        if (ImGui::IsKeyPressed(ImGuiKey_End, false)) to = end;
+        if (to >= 0 || left || right) {
+            to = std::clamp(to, 0.0, end);
+            if (std::fabs(to - layout.cursor) < 1e-9) to = -1;
+        }
+        if (to >= 0) {
+            st.cursor = to;
+            runTimelineEdit(layout, {TimelineEditKind::Cursor, {}, {}, {}, 0, 0, to});
+        }
+    }
     ImGui::SameLine();
     if (ImGui::Button("Fit")) st.zoom = 0;
     ImGui::SetItemTooltip("Show the whole timeline");
     ImGui::SameLine();
-    ImGui::TextDisabled("cursor %s   drag clips to move, edges to trim, Ctrl+scroll to zoom", clockText(st.cursor).c_str());
+    ImGui::TextDisabled("cursor %s   drag clips to move, edges to trim, arrows step a frame, Ctrl+scroll to zoom", clockText(st.cursor).c_str());
 
     // geometry
     std::size_t toggleCount = 0;
@@ -286,8 +307,14 @@ void Shell::timelineView(const TimelineLayout& layout) {
             if (st.drag == TimelineState::Drag::Cursor) st.selClip.clear();
         }
     }
-    if (active && st.drag == TimelineState::Drag::Cursor) st.cursor = std::max(0.0, hoverT);
+    if (active && st.drag == TimelineState::Drag::Cursor) {
+        st.cursor = std::max(0.0, hoverT);
+        // the picture follows the mouse (video_play.cpp) instead of waiting for the button to come up
+        if (st.cursor != scrubTime_) scrubMovedAt_ = SDL_GetTicks();
+        if (!timelinePlaying()) scrubTime_ = st.cursor;
+    }
     if (ImGui::IsItemDeactivated() && st.drag == TimelineState::Drag::Cursor) {
+        scrubTime_ = -1;
         if (layout.cursor >= 0) runTimelineEdit(layout, {TimelineEditKind::Cursor, {}, {}, {}, 0, 0, st.cursor});
         if (timelinePlaying()) seekTo(st.cursor);  // the picture and sound jump there too
         st.drag = TimelineState::Drag::None;

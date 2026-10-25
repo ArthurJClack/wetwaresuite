@@ -360,6 +360,7 @@ void testWindowHooks(Session& s, const fs::path& dir) {
     Result r = run(s, "cut.open path=" + q(png));
     CHECK(r.ok && num(r, "width") == 120 && num(r, "height") == 40 && near(num(r, "duration"), 5));
     auto still = doc(s, toText(r.value));
+    const std::string stillId = toText(r.value);
     CHECK(still && still->track("v1") && still->track("v1")->clips.size() == 1 && still->path.empty());
     const std::string wav = writeTone(dir / "beep.wav", 2, 440, 0.5);
     r = run(s, "cut.open path=" + q(wav));
@@ -382,6 +383,30 @@ void testWindowHooks(Session& s, const fs::path& dir) {
     // ... and they land on the timeline
     CHECK(run(s, still->timelineCommand(drop) + " doc=" + toText(r.value)).ok);  // into the sound timeline
     CHECK(sound->track("a1")->clips.size() == 2 && near(sound->duration(), 4, 0.01));
+
+    // the clip panel: a picture's settings (no sound ones), each one a cut.set_clip
+    {
+        const std::string id = still->tracks.front().clips.front().id;
+        const auto props = still->clipProperties(id);
+        auto has = [&](const char* name) {
+            return std::any_of(props.begin(), props.end(), [&](const ClipProperty& p) { return p.name == name; });
+        };
+        CHECK(has("opacity") && has("fade_in") && has("grayscale") && !has("volume") && !has("speed"));
+        CHECK(sound->clipProperties(sound->track("a1")->clips.front().id).size() == 6);  // speed, fades, volume, pan, mute
+        CHECK(still->clipProperties("c99").empty());
+        wetwaresuite::TimelineEdit set{TimelineEditKind::SetProperty, id};
+        set.name = "opacity";
+        set.at = 0.5;
+        CHECK(still->timelineCommand(set) == "cut.set_clip clip=" + id + " opacity=0.5000");
+        set.name = "grayscale";
+        set.at = 1;
+        CHECK(still->timelineCommand(set) == "cut.set_clip clip=" + id + " grayscale=true");
+        set.name = "bad name=1";
+        CHECK(still->timelineCommand(set).empty());
+        set.name = "opacity";
+        set.at = 0.25;
+        CHECK(run(s, still->timelineCommand(set) + " doc=" + stillId).ok && near(still->findClip(id)->opacity, 0.25));
+    }
 
     // the layout says where each clip's media comes from
     TimelineLayout layout;

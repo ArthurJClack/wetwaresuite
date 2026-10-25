@@ -5,6 +5,7 @@
 #include <filesystem>
 
 #include "shell.hpp"
+#include "wetwaresuite/core/cli.hpp"
 // after imgui.h
 #include "imgui_stdlib.h"
 
@@ -502,6 +503,7 @@ void Shell::rightPanel() {
 
 void Shell::formPanel() {
     if (!form_) {
+        if (clipPanel()) return;
         heading("Pick an action", 1.1f);
         wrappedMuted("Choose one on the left, or type what you want to do in the search box at the top.");
         return;
@@ -646,6 +648,91 @@ void Shell::historyPanel() {
         else ImGui::TextDisabled("%s", line.c_str());
     }
     if (session_.history().canRedo()) wrappedMuted("Some steps were undone: Redo brings them back.");
+}
+
+}  // namespace wetwaresuite::gui
+
+namespace wetwaresuite::gui {
+
+bool Shell::clipPanel() {
+    TimelineState& st = timeline_;
+    auto doc = session_.workspace().get(currentDoc_);
+    TimelineLayout layout;
+    if (!doc || st.doc != currentDoc_ || st.selClip.empty() || !doc->timeline(layout)) return false;
+    const std::vector<ClipProperty> props = doc->clipProperties(st.selClip);
+    if (props.empty()) return false;
+    std::string label = st.selClip;
+    for (const auto& t : layout.tracks)
+        for (const auto& c : t.clips)
+            if (c.id == st.selClip) label = c.label.empty() ? c.id : c.label;
+    heading(label, 1.25f);
+    wrappedMuted("Drag a slider to change this clip (Ctrl+click to type a value). Each change is one step in the history.");
+    std::string group;
+    for (const auto& p : props) {
+        ImGui::PushID(p.name.c_str());
+        if (p.group != group) {
+            group = p.group;
+            ImGui::Spacing();
+            ImGui::TextDisabled("%s", group.c_str());
+        }
+        auto apply = [&](double value) {
+            TimelineEdit e{TimelineEditKind::SetProperty, st.selClip};
+            e.name = p.name;
+            e.at = value;
+            runTimelineEdit(layout, e);
+        };
+        if (p.toggle) {
+            bool on = p.value != 0;
+            if (ImGui::Checkbox(p.label.c_str(), &on)) apply(on ? 1 : 0);
+        } else {
+            auto it = clipEdits_.find(p.name);
+            float v = it != clipEdits_.end() ? it->second : static_cast<float>(p.value);
+            ImGui::TextUnformatted(p.label.c_str());
+            ImGui::SetNextItemWidth(-ImGui::GetFrameHeight() - ImGui::GetStyle().ItemSpacing.x);
+            // wide positive ranges (speed 0.25..4x, scale) get a log scale, so 1x sits in the middle
+            const ImGuiSliderFlags flags = p.min > 0 && p.max / p.min >= 10 ? ImGuiSliderFlags_Logarithmic : ImGuiSliderFlags_None;
+            if (ImGui::SliderFloat("##v", &v, static_cast<float>(p.min), static_cast<float>(p.max), p.format.c_str(), flags)) clipEdits_[p.name] = v;
+            if (ImGui::IsItemDeactivated()) {
+                if (ImGui::IsItemDeactivatedAfterEdit() && std::fabs(v - p.value) > 1e-6) apply(v);
+                clipEdits_.erase(p.name);
+            }
+            ImGui::SameLine();
+            // back to where a new clip starts
+            const double neutral = p.name == "speed" || p.name == "opacity" || p.name == "scale" || p.name == "contrast" || p.name == "saturation" ||
+                                           p.name == "volume"
+                                       ? 1.0
+                                       : 0.0;
+            ImGui::BeginDisabled(std::fabs(p.value - neutral) < 1e-6);
+            if (ImGui::Button("R", {ImGui::GetFrameHeight(), 0})) apply(neutral);
+            ImGui::EndDisabled();
+            ImGui::SetItemTooltip("Reset %s", p.label.c_str());
+        }
+        ImGui::PopID();
+    }
+    ImGui::Spacing();
+    // the command the sliders run, opened as a full form for everything else
+    TimelineEdit probe{TimelineEditKind::SetProperty, st.selClip};
+    probe.name = props.front().name;
+    probe.at = props.front().value;
+    const std::vector<std::string> line = cli::split(doc->timelineCommand(probe));
+    const std::string setter = line.empty() ? std::string() : line.front();
+    if (!setter.empty() && find(setter) && ImGui::Button("All settings...", {-1, 0})) {
+        select(setter);
+        if (form_) {
+            for (auto& f : form_->fields) {
+                if (f.spec.name == "clip") {
+                    f.text = st.selClip;
+                    f.set = true;
+                }
+            }
+        }
+    }
+    ImGui::SetItemTooltip("Every setting of this clip: position, crop, colour wheels, keys, title text...");
+    ImGui::Spacing();
+    ImGui::Separator();
+    heading("Pick an action", 1.0f);
+    wrappedMuted("Or choose one on the left, or type what you want to do in the search box at the top.");
+    return true;
 }
 
 }  // namespace wetwaresuite::gui

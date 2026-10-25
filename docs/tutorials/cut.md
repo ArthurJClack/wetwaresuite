@@ -1121,6 +1121,8 @@ Claude calls `cut_presets` to see the names, `cut_render` with `preset=youtube_1
 
 - **Drag a clip** to move it (onto another track of the same kind, too); its linked sound moves with it. **Drag an edge** to trim. Clips snap to the playhead, markers and other clips' edges.
 - **Click the ruler** to move the playhead. The preview shows that frame and the playhead is the document's own, so a command run from the right (Razor, Insert Edit, Add Title...) uses the same spot.
+- **Drag the playhead** to scrub: while you drag, the preview shows quick frames of each source (kept small in memory after the first look at a file), and the exact frame appears as soon as the mouse rests. **Left**/**Right** step one frame, **Shift**+arrow one second, **Home**/**End** jump to the start or end.
+- **Click a clip** and its everyday settings show on the right as sliders: speed and fades; opacity, scale and rotation; brightness, contrast, saturation and black and white; volume, pan and mute (only what fits the clip). A slider applies when you let go, so each change is one Undo step; **R** puts it back to normal, and **All settings...** opens the full **Set Clip** form for that clip. Pick an action on the left to get its form instead.
 - The buttons over the tracks: **Split** (**S**), **Delete**, **Ripple delete** (**Shift+Delete**), **Razor** (**Ctrl+K**), **Marker** (**M**), **In** (**I**), **Out** (**O**), **Transition** (**T**, a one-second crossfade into the selected clip), **Fit**.
 - Each track's head has **L** (lock), **H** (hide picture), **M** (mute) and **S** (solo) switches.
 - The ruler shows markers as flags (hover for the name) and the in/out range shaded. Transitions show as a wedge over a clip's start, keyframes as yellow diamonds.
@@ -1343,6 +1345,7 @@ All of them take `overwrite=true` to replace an existing output. Run `wetwaresui
 ## Limitations
 
 - Live playback draws each frame on the CPU at preview size: smooth for simple HD edits, choppy on heavy effects or 4K, where it skips frames to keep up with the sound.
+- Scrubbing shows nearby frames of each source while you drag; the exact frame of a long file with few keyframes can take half a second to show once you stop.
 - Rendering draws every frame on the CPU and pipes it to ffmpeg: fine for HD edits of minutes, slow for long 4K ones. There are no proxies; use `preset=draft` while you iterate.
 - Nested sequences are edited as a whole; to change what's inside, `cut.unnest`, edit, and nest again.
 - Markers stay where they are when clips move around them.

@@ -1,7 +1,9 @@
 // The cut tool: the model and its JSON, export planning, the basic commands,
 // MCP, and real exports when ffmpeg is installed. Pixels, sound and the editing
 // tools are in test_render.cpp and test_edits.cpp.
+#include <chrono>
 #include <fstream>
+#include <thread>
 
 #include "support.hpp"
 #include "wetwaresuite/core/process.hpp"
@@ -446,6 +448,20 @@ void testWithFfmpeg() {
     auto tl = s.workspace().getAs<Timeline>("cut1");
     CHECK(tl->track("a1") && tl->track("a1")->clips.size() == 2 && !tl->findClip("c1")->ownSound && tl->findClip("c1")->link == tl->findClip("c2")->link);
     CHECK(!run(s, "cut.add_clip doc=cut1 path=" + q(a) + " out=9").ok);  // past the end of the source
+
+    // scrubbing: quick frames (from small copies read in the background) that look like the exact ones
+    {
+        auto player = tl->player();
+        int w = 0, h = 0, ew = 0, eh = 0;
+        std::vector<std::uint8_t> quick, exact;
+        CHECK(player->scrub(1.0, 160, w, h, quick) && w == 160 && h == 120);
+        std::this_thread::sleep_for(std::chrono::seconds(2));  // the scrub cache fills (keyframes, then 10 a second)
+        CHECK(player->scrub(1.0, 160, w, h, quick) && player->frame(1.0, 160, ew, eh, exact) && w == ew && h == eh);
+        double diff = 0;
+        for (std::size_t i = 0; i < quick.size() && i < exact.size(); ++i) diff += std::abs(quick[i] - exact[i]);
+        CHECK(quick.size() == exact.size() && diff / static_cast<double>(quick.size()) < 12);
+        CHECK(player->scrub(2.97, 160, w, h, quick) && w == 160);  // past the last small copy: the nearest one
+    }
     r = run(s, "cut.transition doc=cut1 clip=c3 type=crossfade duration=0.5 preview=true");
     CHECK(r.ok && r.attachments.size() == 1 && r.attachments[0].mime == "image/png");
     CHECK(near(tl->findClip("c3")->start, 1.5) && near(tl->duration(), 3.5));

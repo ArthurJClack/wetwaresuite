@@ -155,9 +155,11 @@ public:
     VideoPlayback(const VideoPlayback&) = delete;
     VideoPlayback& operator=(const VideoPlayback&) = delete;
     const std::string& doc() const { return doc_; }
-    void request(double seconds);  // the frame wanted now
+    // the frame wanted now; fast = a quick, possibly nearby frame (dragging the playhead)
+    void request(double seconds, bool fast = false);
     // A frame drawn since the last call: true with its pixels.
     bool take(std::vector<std::uint8_t>& rgba, int& width, int& height);
+    bool pending();  // a frame is wanted or drawn but not taken yet
 
 private:
     void work();
@@ -167,6 +169,7 @@ private:
     std::mutex lock_;
     std::condition_variable wake_;
     double want_ = -1, drawn_ = -1;
+    bool wantFast_ = false, drawnFast_ = false;
     bool stop_ = false, fresh_ = false;
     std::vector<std::uint8_t> rgba_;
     int width_ = 0, height_ = 0;
@@ -415,6 +418,10 @@ private:
     // the moving picture while a timeline plays (video_play.cpp); true when it drew the canvas
     bool videoPlaybackFrame();
     bool timelinePlaying() const;  // the current timeline is playing or paused
+    // a timeline's still picture at its playhead, drawn on the worker too (false: not a timeline)
+    bool timelineCanvas(const std::shared_ptr<Document>& doc);
+    // the selected timeline clip's everyday settings as sliders (timeline_view.cpp); false when none
+    bool clipPanel();
     void exportProgress();  // the bar and Cancel button of a background export
     void pollExport();
     const ClipStrip* clipStrip(const std::string& clipId);
@@ -548,7 +555,11 @@ private:
 
     Canvas canvas_;
     Transport transport_;
-    std::unique_ptr<VideoPlayback> video_;           // a timeline's picture while it plays
+    std::unique_ptr<VideoPlayback> video_;           // a timeline's picture: playing, scrubbed or still
+    double scrubTime_ = -1;                          // where the playhead is being dragged (-1: it isn't)
+    std::uint64_t scrubMovedAt_ = 0;                 // SDL ticks of the drag's last move
+    bool liveVideo_ = false;                         // last frame was playing or scrubbing
+    std::map<std::string, float> clipEdits_;         // clip panel sliders being dragged, applied on release
     std::map<std::string, ClipStrip> strips_;        // by doc + clip id
     bool stripsPending_ = false;                     // some clip's thumbnails are still being read
     ExportJob exportJob_;                            // an export running in the background

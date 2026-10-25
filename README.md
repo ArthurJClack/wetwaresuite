@@ -14,7 +14,7 @@ _the all-in-one lightweight software suite_
 | **linux** (any distro) | [**wetwaresuite-linux-x86_64.AppImage**](https://github.com/ArthurJClack/wetwaresuite/releases/latest/download/wetwaresuite-linux-x86_64.AppImage) | right-click > properties > allow executing (or `chmod +x`), then double-click |
 | **ubuntu / debian / mint** | [**wetwaresuite-linux-amd64.deb**](https://github.com/ArthurJClack/wetwaresuite/releases/latest/download/wetwaresuite-linux-amd64.deb) | double-click, or `sudo apt install ./wetwaresuite-linux-amd64.deb` |
 
-free forever, no account, works offline. rather not install anything? every [release](https://github.com/ArthurJClack/wetwaresuite/releases/latest) also has a zip per OS that runs straight from the folder.
+free forever, no account, works offline. rather not install anything? every [release](https://github.com/ArthurJClack/wetwaresuite/releases/latest) also has a zip per OS that runs straight from the folder. once installed it [updates itself](docs/tutorials/updates.md) once a day, quietly (one click turns that off).
 
 first run: the builds aren't code-signed yet. on windows click "More info" then "Run anyway"; on macOS right-click the app, choose Open, then Open again.
 

@@ -254,7 +254,7 @@ void Shell::topBar() {
         ImGui::OpenPopup("settings");
         ImGui::SetNextWindowPos({ImGui::GetItemRectMax().x, ImGui::GetItemRectMax().y + 2}, ImGuiCond_Always, {1, 0});  // under Aa
     }
-    ImGui::SetItemTooltip("Text size and colours");
+    ImGui::SetItemTooltip("Text size, colours and updates");
     settingsPopup();
 }
 
@@ -308,6 +308,7 @@ void Shell::settingsPopup() {
     ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12);
     if (ImGui::SliderFloat("##textsize", &textScale_, 0.75f, 2.0f, "%.2fx")) applyStyle(dpi_);
     coloursSettings();
+    updatesSettings();
     ImGui::EndPopup();
 }
 

@@ -10,6 +10,7 @@ set -euo pipefail
 
 stage=$1
 version=${2#v}
+plist_version=${version%%-*}  # Info.plist wants plain numbers (0.2.0, not 0.2.0-preview)
 out=$3
 root=$(cd "$(dirname "$0")/../.." && pwd)
 work=$(mktemp -d)
@@ -51,8 +52,8 @@ make_app() {
   <key>CFBundleExecutable</key><string>$prog</string>
   <key>CFBundleIconFile</key><string>icon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>$version</string>
-  <key>CFBundleVersion</key><string>$version</string>
+  <key>CFBundleShortVersionString</key><string>$plist_version</string>
+  <key>CFBundleVersion</key><string>$plist_version</string>
   <key>LSMinimumSystemVersion</key><string>11.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.graphics-design</string>
   <key>NSHighResolutionCapable</key><true/>

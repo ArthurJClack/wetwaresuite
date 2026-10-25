@@ -43,8 +43,19 @@ jobs:
         if: runner.os == 'Linux'
         # headers only: SDL loads X11/Wayland at run time, so the binary still runs without them
         run: sudo apt-get update && sudo apt-get install -y libx11-dev libxext-dev libxrandr-dev libxcursor-dev libxi-dev libxss-dev libxtst-dev libwayland-dev libxkbcommon-dev libegl1-mesa-dev libdbus-1-dev
+      - name: version
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # a release reports its own version, which is what the apps' updater compares with
+          # the newest release; any other build is a preview and doesn't update by itself
+          v="$VERSION"
+          [ -z "$v" ] && [[ "$GITHUB_REF" == refs/tags/v* ]] && v="$GITHUB_REF_NAME"
+          [ -z "$v" ] && v="$(sed -n 's/^project(wetwaresuite VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)-preview"
+          echo "WW_VERSION=${v#v}" >> "$GITHUB_ENV"
       - name: configure
-        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWETWARESUITE_BUILD_TESTS=OFF
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DWETWARESUITE_BUILD_TESTS=OFF "-DWETWARESUITE_VERSION=${{ env.WW_VERSION }}"
       - name: build
         run: cmake --build build --config Release --parallel 4
       - name: hub
@@ -74,18 +85,12 @@ jobs:
           for a in image draw model game cad electronics sound video office maps files; do
             [ -f "$out/wetwaresuite-$a$exe" ] || { echo "::error::missing wetwaresuite-$a$exe"; exit 1; }
           done
-          # a quick smoke test: the all-in-one answers headless
-          "$out/wetwaresuite$exe" --version
+          # a quick smoke test: the all-in-one answers headless, with the version the updater expects
+          "$out/wetwaresuite$exe" --version | grep -F "$WW_VERSION"
           if [ "$RUNNER_OS" = Windows ]; then 7z a -tzip $out.zip $out >/dev/null; else zip -qr $out.zip $out; fi
-      - name: installer version
+      - name: installer checks
         shell: bash
-        env:
-          VERSION: ${{ inputs.version }}
         run: |
-          v="$VERSION"
-          [ -z "$v" ] && [[ "$GITHUB_REF" == refs/tags/v* ]] && v="$GITHUB_REF_NAME"
-          [ -z "$v" ] && v=$(sed -n 's/^project(wetwaresuite VERSION \([0-9.]*\).*/\1/p' CMakeLists.txt)
-          echo "WW_VERSION=${v#v}" >> "$GITHUB_ENV"
           # which app opens which file type: the installers' lists must match apps/common/apps.cpp
           python3 packaging/file_types.py --check || python packaging/file_types.py --check
           # the windows start menu lists every app by hand; it must match packaging/apps.tsv
@@ -157,6 +162,8 @@ jobs:
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ inputs.version }}
         run: |
+          # the updater checks every download against these (and GitHub's own asset digests)
+          (cd dist && sha256sum -- * > SHA256SUMS && cat SHA256SUMS)
           ls -la dist
           if [[ -n "$VERSION" ]]; then
             gh release create "$VERSION" dist/* --target "$GITHUB_SHA" --title "wetwaresuite $VERSION" --notes-file packaging/release-notes.md --generate-notes

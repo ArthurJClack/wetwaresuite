@@ -1,7 +1,10 @@
 wetwaresuite - ready-to-run build
 =================================
 
-unzip this folder anywhere. nothing to install, nothing goes online.
+unzip this folder anywhere. nothing to install. the only thing that goes online
+is a once-a-day update check from the app windows (turn it off in any app's Aa
+menu, or run: wetwaresuite-files app.update_settings auto=false). see
+docs/tutorials/updates.md.
 
 open an app by double-clicking it:
 

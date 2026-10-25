@@ -279,7 +279,23 @@ void registerFileCommands(Session& session) {
                 a.insert(a.end(), {"-i", in, "-filter_complex", "[0:v]" + filter("subtitles", o) + "[v]", "-map", "[v]", "-map", "0:a?",
                                    "-c:v", "libx264", "-preset", preset, "-crf", crf, "-pix_fmt", "yuv420p", "-c:a", "copy",
                                    fs::absolute(out).string()});
-                if (std::string err = runFfmpeg(a); !err.empty()) return Result::failure(err);
+                std::string err = runFfmpeg(a);
+                const std::string ext = extOf(subs);
+                if (err.find("No such filter: 'subtitles'") != std::string::npos && (ext == "srt" || ext == "vtt")) {
+                    // ffmpeg built without libass (Homebrew's): the compositor draws the captions instead
+                    std::error_code ec;
+                    fs::remove(out, ec);  // in case the failed run left a stub
+                    std::vector<MediaInfo> infos;
+                    auto tl = timelineFor({in}, infos);
+                    ExportRequest rq;
+                    rq.mode = "encode";
+                    rq.quality = quality;
+                    rq.subtitles = subs;
+                    Result r = exportTimeline(*tl, out, p, rq);
+                    if (r.ok) r.message = "burned " + subs + " into " + out.string();
+                    return r;
+                }
+                if (!err.empty()) return Result::failure(err);
                 return written("burned " + subs + " into " + out.string(), out);
             }));
 }

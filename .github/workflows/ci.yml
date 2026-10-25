@@ -35,6 +35,16 @@ jobs:
         run: |
           set -o pipefail
           cmake --build build --config Release --parallel 4 2>&1 | tee build.log
+      - name: ffmpeg
+        # the video tests only export real files when ffmpeg is there, so every OS gets it
+        shell: bash
+        run: |
+          if command -v ffmpeg >/dev/null; then ffmpeg -hide_banner -version | head -1; exit 0; fi
+          case "$RUNNER_OS" in
+            Windows) choco install ffmpeg -y --no-progress ;;
+            macOS) brew install ffmpeg ;;
+            Linux) sudo apt-get update -qq && sudo apt-get install -y -qq ffmpeg ;;
+          esac
       - name: test
         shell: bash
         run: |

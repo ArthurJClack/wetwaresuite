@@ -19,6 +19,8 @@ Pictures are drawn and sound is mixed by `cut` itself. [ffmpeg](https://ffmpeg.o
 | macOS (Homebrew) | `brew install ffmpeg` |
 | Windows | `winget install ffmpeg` |
 
+It doesn't have to be on the `PATH` the app sees: an app started from the Dock, Start menu or a desktop icon often gets a shorter `PATH` than your terminal, so the suite also looks where Homebrew (`/opt/homebrew/bin`, `/usr/local/bin`), MacPorts, winget, Chocolatey and Scoop put it, in `C:\ffmpeg\bin`, and in its own tools folder (`%LOCALAPPDATA%\wetwaresuite\tools`, `~/Library/Application Support/wetwaresuite/tools` or `~/.local/share/wetwaresuite/tools`, or `WETWARESUITE_TOOLS_DIR`), where you can drop `ffmpeg` and `ffprobe` yourself. No restart is needed after installing it.
+
 Without ffmpeg you can still build and edit timelines of images, colour mattes, titles, captions and WAV, MP3, FLAC or Ogg sound, look at frames (`cut.preview`, `cut.export_frame`) and export the mix as `.wav`. The commands that need ffmpeg fail with this advice instead of doing something half-way:
 
 ```sh

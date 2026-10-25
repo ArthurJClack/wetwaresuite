@@ -116,7 +116,11 @@ int main() {
     // ---- telling installs apart ----
     {
         const fs::path zip = root / "zip";
+#ifdef _WIN32
+        write(zip / "wetwaresuite-hub.exe", "x");
+#else
         write(zip / "wetwaresuite-hub", "x");
+#endif
         CHECK(up::detectInstall(zip / "wetwaresuite-image", "").kind == up::Kind::Folder);
         CHECK(up::detectInstall(zip / "wetwaresuite-image", "").writable);
         write(root / "setup" / "unins000.exe", "x");

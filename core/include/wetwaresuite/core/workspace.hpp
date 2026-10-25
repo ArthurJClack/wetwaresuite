@@ -85,7 +85,7 @@ struct TimelineLayout {
     std::vector<TimelineMarker> markers;
 };
 
-enum class TimelineEditKind { Move, TrimStart, TrimEnd, Split, Delete, Cursor, Razor, RippleDelete, Toggle, Marker, InPoint, OutPoint, Transition, AddFile };
+enum class TimelineEditKind { Move, TrimStart, TrimEnd, Split, Delete, Cursor, Razor, RippleDelete, Toggle, Marker, InPoint, OutPoint, Transition, AddFile, SetProperty };
 
 struct TimelineEdit {
     TimelineEditKind kind = TimelineEditKind::Move;
@@ -94,8 +94,19 @@ struct TimelineEdit {
     std::string toTrack;  // Move: the track it lands on (may be the same)
     double start = 0;   // Move/TrimStart: new start; TrimStart keeps the end
     double length = 0;  // TrimEnd: new length
-    double at = 0;      // Split, Cursor, Razor, Marker, InPoint, OutPoint: timeline time
-    std::string name;   // Toggle: which switch; Transition: its type; AddFile: the file's path
+    double at = 0;      // Split, Cursor, Razor, Marker, InPoint, OutPoint: timeline time; SetProperty: the new value
+    std::string name;   // Toggle: which switch; Transition: its type; AddFile: the file's path; SetProperty: which one
+};
+
+// One of a selected clip's everyday settings, shown as a slider (or a switch) next to the
+// timeline. Changing it runs TimelineEditKind::SetProperty with its name and the new value.
+struct ClipProperty {
+    std::string name;   // e.g. "volume"
+    std::string label;  // e.g. "Volume"
+    std::string group;  // e.g. "Sound": properties are shown under their group
+    double value = 0, min = 0, max = 1;
+    std::string format = "%.2f";  // how the slider shows the value
+    bool toggle = false;          // on/off (value 0 or 1) instead of a slider
 };
 
 // What a clip's source looks like, for drawing on the timeline: small frames along the
@@ -116,6 +127,11 @@ public:
     virtual ~FramePlayer() = default;
     // The picture at `seconds`, at most maxWidth px wide, as rgba. False when it can't be drawn.
     virtual bool frame(double seconds, int maxWidth, int& width, int& height, std::vector<std::uint8_t>& rgba) = 0;
+    // A quick picture for dragging the playhead: may show a nearby frame of each source
+    // instead of the exact one, so it keeps up with the mouse. Defaults to frame().
+    virtual bool scrub(double seconds, int maxWidth, int& width, int& height, std::vector<std::uint8_t>& rgba) {
+        return frame(seconds, maxWidth, width, height, rgba);
+    }
     virtual double fps() const = 0;
 };
 
@@ -159,6 +175,8 @@ public:
     // The command line that makes an edit, e.g. "cut.move_clip clip=c2 start=3.5 track=v1"
     // (the caller adds the document param); empty when the edit can't be done.
     virtual std::string timelineCommand(const TimelineEdit&) const { return {}; }
+    // A timeline clip's everyday settings for the clip panel; empty when it has none.
+    virtual std::vector<ClipProperty> clipProperties(const std::string& /*clipId*/) const { return {}; }
     // A timeline clip's thumbnails and waveform. Reading them may take a while: the first calls
     // return true with `pending` set while that happens elsewhere. False when there's nothing to show.
     virtual bool clipMedia(const std::string& /*clipId*/, MediaStrip&) const { return false; }

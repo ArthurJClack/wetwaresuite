@@ -175,6 +175,7 @@ public:
     std::string timelineCommand(const wetwaresuite::TimelineEdit& edit) const override;
     bool clipMedia(const std::string& clipId, MediaStrip& out) const override;  // strips.cpp
     std::unique_ptr<FramePlayer> player() const override;
+    std::vector<ClipProperty> clipProperties(const std::string& clipId) const override;  // model.cpp
 
     double duration() const;
     Track* track(const std::string& id);

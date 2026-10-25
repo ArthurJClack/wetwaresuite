@@ -128,6 +128,8 @@ void Shell::refreshCanvas() {
         if (showLevel(renderer_, canvas_.texture, mc, zoom, true)) return;
     }
     mipCaches().erase(this);
+    if (newDoc) canvas_.texture.reset();  // not another document's picture while the first frame is drawn
+    if (timelineCanvas(doc)) return;
     // a level or sprite: the picture its click tools work on (game_view.cpp)
     std::string png = gamePicture();
     const bool game = !png.empty();

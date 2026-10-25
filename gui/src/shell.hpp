@@ -290,6 +290,9 @@ private:
     void newPopup();
     void settingsPopup();
     void coloursSettings();  // colours.cpp
+    void updatesSettings();  // updates.cpp, through the app.update_* commands
+    void readUpdates(bool now);
+    void runUpdate(const std::string& command, const Params& params);
 
     // the shared colour palette (colours.cpp), through the app.palette_* commands
     bool loadPalette();  // true when the colours changed
@@ -516,6 +519,11 @@ private:
     std::string paletteNote_;      // the last palette command's answer or error
     bool paletteNoteOk_ = true;
     bool openSettings_ = false;
+    struct Updates {
+        std::string version, status, note, why;
+        bool on = true, canAuto = false;
+    } updates_;
+    double updatesRead_ = -10;
     ImVec4 accent_{0.24f, 0.49f, 1, 1}, accentHover_, accentActive_, accentText_{1, 1, 1, 1}, title_;
     float textScale_ = 1.0f;
     float dpi_ = 1.0f;

@@ -6,6 +6,7 @@
 #include "app_commands.hpp"
 #include "apps.hpp"
 #include "launch.hpp"
+#include "update.hpp"
 
 namespace wetwaresuite::apps {
 
@@ -36,6 +37,7 @@ int runGui(Session& session, const gui::AppInfo& app, const gui::RunOptions& opt
         return 2;
     }
     releaseConsoleIfOwned();
+    if (options.screenshot.empty()) update::startBackgroundCheck();  // at most once a day, in its own process
     return gui::run(session, app, options);
 }
 

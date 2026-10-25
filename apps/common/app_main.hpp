@@ -15,7 +15,7 @@ using ToolRegistrar = std::function<void(Session&, const std::set<std::string>& 
 
 struct MainSpec {
     std::string app;      // "image"
-    std::string version;  // "0.7.0"
+    std::string version;  // "0.2.0"
     ToolRegistrar registerTools;
 };
 

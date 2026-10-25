@@ -7,6 +7,7 @@ Hands-on guides to the suite. Every example was run against the real binaries: t
 - [Headless and batch](headless-and-batch.md): batch scripts with variables and comments, shell loops, CI and cron, exit codes.
 - [The apps](apps.md): which app does what, installing only the ones you need, building only some.
 - [Workflows](workflows.md): moving work between apps step by step: a texture from image onto a model and into a game, a cad part sculpted and printed, music for a video, a logo on a poster.
+- [Updates](updates.md): how installed copies update themselves once a day (checked downloads, swapped in place, open apps keep running), what each kind of install does, checking and installing by hand, cron, Claude, and turning it off.
 - [Offline editions](offline-editions.md): everything on a USB stick (1 to 256 GB) with fonts, starter files, materials and world maps; install with no internet.
 - [Using wetwaresuite with Claude (MCP)](mcp.md): connect Claude Code or Claude Desktop, what Claude sees, example prompts, troubleshooting.
 - [Connecting an AI (optional)](ai-connect.md): `hub connect` sets up Claude Desktop and Claude Code in one command (with backups, `--dry-run` and `--remove`); `wetwaresuite mcp --http` serves the tools over HTTP to another computer, with a token.

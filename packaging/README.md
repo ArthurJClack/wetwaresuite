@@ -15,6 +15,10 @@ one-file installers per OS, built by the `downloads` workflow (`.github/workflow
 
 the AppImage's launcher and every app inside are the same builds as the zip, so `app.installed` and `app.send` find each other the same way.
 
+## updates
+
+installed copies update themselves from the newest release (see `docs/tutorials/updates.md`): the windows setup, zips and hub installs swap their programs in place from the zip, the macOS folder its `.app` bundles from the dmg, the AppImage itself; the `.deb` and all-users windows installs download and install on a click. so a release must keep these asset names, and the workflow builds a release with `-DWETWARESUITE_VERSION=<the version>` (the updater compares it with the release tag) and attaches `SHA256SUMS`. other builds report `<version>-preview` and never update by themselves.
+
 ## build one locally
 
 after a release build (`cmake --build build --config Release`, hub and share with `cargo build --release`), make the stage folder the way the workflow's `package` step does, then:

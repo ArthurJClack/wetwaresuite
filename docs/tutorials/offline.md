@@ -6,9 +6,9 @@ This page lists every feature that could ever touch a network, what it does by d
 
 ## The short version
 
-- **Nothing goes online unless you ask for it by name.** There are no update checks, no telemetry, no accounts, no licence servers and no downloads in the background.
+- **Nothing goes online unless you ask for it by name, apart from updates.** There is no telemetry, no account and no licence server. The one thing that runs by itself is the daily [update check](updates.md) an installed app's window makes (one request to GitHub, nothing about you sent); offline it quietly tries again later, and one click (or `WETWARESUITE_NO_UPDATE=1`) turns it off.
 - **Using Claude is optional.** Every command you could ask Claude to run, you can run yourself with `wetwaresuite <command>` or a batch script. `wetwaresuite mcp` only starts when an MCP client (like Claude Desktop) starts it, and it only talks to that client on your computer.
-- The only features that can use the internet are: OpenStreetMap tiles in `maps` (`basemap=osm`), `share --internet`, and Claude itself if you connect it. Each one is off until you turn it on.
+- The only other features that can use the internet are: OpenStreetMap tiles in `maps` (`basemap=osm`), `share --internet`, and Claude itself if you connect it. Each one is off until you turn it on.
 
 ## Feature by feature
 
@@ -16,6 +16,7 @@ This page lists every feature that could ever touch a network, what it does by d
 | --- | --- | --- | --- |
 | Every tool's commands (photo, paint, vector, cad, audio, cut, office, levels, render, ...) | Never | Offline | Works as is |
 | `wetwaresuite batch`, `automate` pipelines and watch folders | Never | Offline | Works as is |
+| Updates (`app.update_*`) | Yes: once a day an installed app's window asks GitHub for the newest release and installs it (never from the command line, scripts or MCP unless you run `app.update_install`). Builds from source and preview builds never check by themselves | On for installed copies | Untick **Update by itself** in the Aa menu, `app.update_settings auto=false`, or set `WETWARESUITE_NO_UPDATE=1`. Offline it fails quietly and tries again an hour later. See [updates.md](updates.md) |
 | Python client (`python/`) | Never: it starts the local `wetwaresuite` program | Offline | Works as is. To install with no internet see [below](#installing-the-python-client-offline) |
 | `wetwaresuite mcp` (stdio, for Claude Desktop / Claude Code) | No network at all: it talks through stdin/stdout to the app that started it | Only runs when an MCP client starts it | Not needed to use the suite |
 | `wetwaresuite mcp --http` | Listens on **127.0.0.1** (this computer only). Only listens on your network if you pass `--host`, and then always requires a token | Off | Not needed to use the suite. See [ai-connect.md](ai-connect.md) |

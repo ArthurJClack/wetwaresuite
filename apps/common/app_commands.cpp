@@ -7,6 +7,7 @@
 #include "handoff.hpp"
 #include "launch.hpp"
 #include "palette_commands.hpp"
+#include "update.hpp"
 #include "view_commands.hpp"
 
 namespace fs = std::filesystem;
@@ -465,6 +466,7 @@ void registerCommands(Session& session, const std::string& self) {
             [s, self](const Params& p) { return std::make_unique<FunctionAction>([s, self, p] { return receive(*s, self, p); }); });
     registerPaletteCommands(session, self);
     registerViewCommands(session);
+    update::registerCommands(session);
 }
 
 }  // namespace wetwaresuite::apps

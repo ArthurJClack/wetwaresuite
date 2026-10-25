@@ -2,6 +2,10 @@
 #include "check.hpp"
 #include "wetwaresuite/core/process.hpp"
 
+#include <cstdlib>
+#include <filesystem>
+#include <fstream>
+
 using namespace wetwaresuite;
 
 namespace {
@@ -102,6 +106,34 @@ int main() {
         ChildProcess missing;
         CHECK(!missing.start({"no-such-program-wetwaresuite"}, {}, error));
         CHECK(!error.empty());
+    }
+
+    // a program off PATH is still found in the suite's tools folder (where an app started
+    // from the desktop, with a short PATH, looks for ffmpeg and friends)
+    {
+        namespace fs = std::filesystem;
+        const fs::path tools = fs::temp_directory_path() / "wetwaresuite_core_tools";
+        fs::remove_all(tools);
+        fs::create_directories(tools);
+#ifdef _WIN32
+        const fs::path fake = tools / "wetwaresuite-fake-tool.exe";
+        _putenv_s("WETWARESUITE_TOOLS_DIR", tools.string().c_str());
+#else
+        const fs::path fake = tools / "wetwaresuite-fake-tool";
+        setenv("WETWARESUITE_TOOLS_DIR", tools.string().c_str(), 1);
+#endif
+        CHECK(suiteToolsDir() == tools);
+        CHECK(!findProgram("wetwaresuite-fake-tool"));
+        std::ofstream(fake) << "#!/bin/sh\n";
+        fs::permissions(fake, fs::perms::owner_all);
+        auto found = findProgram("wetwaresuite-fake-tool");
+        CHECK(found && *found == fake);
+#ifdef _WIN32
+        _putenv_s("WETWARESUITE_TOOLS_DIR", "");
+#else
+        unsetenv("WETWARESUITE_TOOLS_DIR");
+#endif
+        fs::remove_all(tools);
     }
 
     return check::summary("core");

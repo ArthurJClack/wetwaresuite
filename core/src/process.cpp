@@ -71,6 +71,83 @@ std::wstring quoteArg(const std::wstring& arg) {
 
 }  // namespace
 
+namespace {
+
+std::string envText(const char* name) {
+    const char* v = std::getenv(name);
+    return v ? std::string(v) : std::string();
+}
+
+std::optional<std::filesystem::path> programIn(const std::filesystem::path& dir, const std::string& name) {
+    namespace fs = std::filesystem;
+#ifdef _WIN32
+    static const std::vector<std::string> suffixes = {".exe", ".com", ".bat", ""};
+#else
+    static const std::vector<std::string> suffixes = {""};
+#endif
+    for (const auto& suffix : suffixes) {
+        fs::path candidate = dir / (name + suffix);
+        std::error_code ec;
+        if (fs::is_regular_file(candidate, ec)) {
+#ifndef _WIN32
+            if (access(candidate.c_str(), X_OK) != 0) continue;
+#endif
+            return candidate;
+        }
+    }
+    return std::nullopt;
+}
+
+// Folders outside PATH where programs are often installed.
+std::vector<std::filesystem::path> usualProgramDirs() {
+    namespace fs = std::filesystem;
+    std::vector<fs::path> dirs = {suiteToolsDir()};
+#ifdef _WIN32
+    const std::string local = envText("LOCALAPPDATA"), user = envText("USERPROFILE");
+    if (!local.empty()) {
+        dirs.push_back(fs::path(local) / "Microsoft" / "WinGet" / "Links");
+        // winget unpacks zips like Gyan.FFmpeg_.../ffmpeg-7.1-full_build/bin
+        std::error_code ec;
+        for (fs::directory_iterator it(fs::path(local) / "Microsoft" / "WinGet" / "Packages", ec), end; !ec && it != end; it.increment(ec)) {
+            std::error_code ec2;
+            for (fs::directory_iterator sub(it->path(), ec2), send; !ec2 && sub != send; sub.increment(ec2)) dirs.push_back(sub->path() / "bin");
+        }
+    }
+    if (!user.empty()) dirs.push_back(fs::path(user) / "scoop" / "shims");
+    const std::string programData = envText("ProgramData"), programFiles = envText("ProgramFiles");
+    dirs.push_back(fs::path(programData.empty() ? "C:\\ProgramData" : programData) / "chocolatey" / "bin");
+    dirs.push_back(fs::path(programFiles.empty() ? "C:\\Program Files" : programFiles) / "ffmpeg" / "bin");
+    dirs.push_back("C:\\ffmpeg\\bin");
+#else
+#ifdef __APPLE__
+    dirs.insert(dirs.end(), {"/opt/homebrew/bin", "/usr/local/bin", "/opt/local/bin"});
+#else
+    dirs.insert(dirs.end(), {"/usr/local/bin", "/usr/bin", "/snap/bin"});
+#endif
+    if (const std::string home = envText("HOME"); !home.empty()) dirs.push_back(fs::path(home) / ".local" / "bin");
+#endif
+    return dirs;
+}
+
+}  // namespace
+
+std::filesystem::path suiteToolsDir() {
+    namespace fs = std::filesystem;
+    if (const std::string dir = envText("WETWARESUITE_TOOLS_DIR"); !dir.empty()) return dir;
+#ifdef _WIN32
+    std::string base = envText("LOCALAPPDATA");
+    if (base.empty()) base = envText("APPDATA");
+    return (base.empty() ? fs::temp_directory_path() : fs::path(base)) / "wetwaresuite" / "tools";
+#elif defined(__APPLE__)
+    const std::string home = envText("HOME");
+    return (home.empty() ? fs::temp_directory_path() : fs::path(home) / "Library" / "Application Support") / "wetwaresuite" / "tools";
+#else
+    if (const std::string xdg = envText("XDG_DATA_HOME"); !xdg.empty()) return fs::path(xdg) / "wetwaresuite" / "tools";
+    const std::string home = envText("HOME");
+    return (home.empty() ? fs::temp_directory_path() : fs::path(home) / ".local" / "share") / "wetwaresuite" / "tools";
+#endif
+}
+
 std::optional<std::filesystem::path> findProgram(const std::string& name) {
     namespace fs = std::filesystem;
     if (name.find('/') != std::string::npos || name.find('\\') != std::string::npos) {
@@ -78,34 +155,24 @@ std::optional<std::filesystem::path> findProgram(const std::string& name) {
         if (fs::exists(name, ec)) return fs::path(name);
         return std::nullopt;
     }
-    const char* pathEnv = std::getenv("PATH");
-    if (!pathEnv) return std::nullopt;
 #ifdef _WIN32
     const char sep = ';';
-    const std::vector<std::string> suffixes = {".exe", ".com", ".bat", ""};
 #else
     const char sep = ':';
-    const std::vector<std::string> suffixes = {""};
 #endif
-    std::string paths = pathEnv;
+    const std::string paths = envText("PATH");
     std::size_t start = 0;
-    while (start <= paths.size()) {
+    while (!paths.empty() && start <= paths.size()) {
         auto end = paths.find(sep, start);
         std::string dir = paths.substr(start, end == std::string::npos ? std::string::npos : end - start);
         if (!dir.empty()) {
-            for (const auto& suffix : suffixes) {
-                fs::path candidate = fs::path(dir) / (name + suffix);
-                std::error_code ec;
-                if (fs::is_regular_file(candidate, ec)) {
-#ifndef _WIN32
-                    if (access(candidate.c_str(), X_OK) != 0) continue;
-#endif
-                    return candidate;
-                }
-            }
+            if (auto found = programIn(dir, name)) return found;
         }
         if (end == std::string::npos) break;
         start = end + 1;
+    }
+    for (const auto& dir : usualProgramDirs()) {
+        if (auto found = programIn(dir, name)) return found;
     }
     return std::nullopt;
 }

@@ -374,7 +374,7 @@ void testWindowHooks(Session& s, const fs::path& dir) {
     wetwaresuite::TimelineEdit drop;
     drop.kind = TimelineEditKind::AddFile;
     drop.name = (dir / "a b$#.png").generic_string();
-    CHECK(still->timelineCommand(drop) == "cut.add_clip path=" + (dir / "a\\ b\\$\\#.png").generic_string());
+    CHECK(still->timelineCommand(drop) == "cut.add_clip path=" + dir.generic_string() + "/a\\ b\\$\\#.png");  // not `dir / ...`: windows reads \\ as a folder
     CHECK(cli::split(still->timelineCommand(drop))[1] == "path=" + drop.name);
     drop.name = wav;
     drop.track = "a1";

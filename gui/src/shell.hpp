@@ -4,11 +4,14 @@
 
 #include <SDL3/SDL.h>
 
+#include <condition_variable>
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "imgui.h"
@@ -143,6 +146,46 @@ struct Canvas {
     GameCanvas game;
 };
 
+// A timeline's moving picture while it plays (video_play.cpp): frames drawn on a worker
+// thread by the document's FramePlayer, newest request first.
+class VideoPlayback {
+public:
+    VideoPlayback(std::string doc, std::unique_ptr<FramePlayer> player, int maxWidth);
+    ~VideoPlayback();  // stops the worker
+    VideoPlayback(const VideoPlayback&) = delete;
+    VideoPlayback& operator=(const VideoPlayback&) = delete;
+    const std::string& doc() const { return doc_; }
+    void request(double seconds);  // the frame wanted now
+    // A frame drawn since the last call: true with its pixels.
+    bool take(std::vector<std::uint8_t>& rgba, int& width, int& height);
+
+private:
+    void work();
+    std::string doc_;
+    std::unique_ptr<FramePlayer> player_;
+    int maxWidth_;
+    std::mutex lock_;
+    std::condition_variable wake_;
+    double want_ = -1, drawn_ = -1;
+    bool stop_ = false, fresh_ = false;
+    std::vector<std::uint8_t> rgba_;
+    int width_ = 0, height_ = 0;
+    std::thread worker_;
+};
+
+// Thumbnails and a waveform for one timeline clip, from Document::clipMedia (timeline_view.cpp).
+struct ClipStrip {
+    MediaStrip media;
+    std::vector<Texture> frames;
+};
+
+// An export running in the background (<tool>.render background=true), polled for progress.
+struct ExportJob {
+    std::string tool, id, output;
+    double progress = 0;
+    std::uint64_t polledAt = 0;  // SDL ticks
+};
+
 // The play bar's view of playback (transport.cpp), read back from <tool>.playhead.
 struct Transport {
     std::string tool;  // audio, beats or cut
@@ -207,8 +250,8 @@ struct MapsCanvas {
 struct ToolPanels;  // tool_panels.hpp
 
 struct DialogTarget {
-    enum Kind { OpenDocument, FormField, PanelFolder } kind = OpenDocument;
-    std::string command;  // FormField: the form it belongs to; PanelFolder: what the folder is for
+    enum Kind { OpenDocument, FormField, PanelFolder, AddMedia } kind = OpenDocument;
+    std::string command;  // FormField: the form it belongs to; PanelFolder: what the folder is for; AddMedia: the timeline
     std::size_t field = 0;
 };
 
@@ -363,6 +406,15 @@ private:
     void undo();
     void redo();
     void showOpenDialog();
+    void showAddMediaDialog();  // files to put on the open timeline
+    // A file dropped on the window: onto the open timeline when it takes it, else opened.
+    void dropFile(const std::string& path);
+    // the moving picture while a timeline plays (video_play.cpp); true when it drew the canvas
+    bool videoPlaybackFrame();
+    bool timelinePlaying() const;  // the current timeline is playing or paused
+    void exportProgress();  // the bar and Cancel button of a background export
+    void pollExport();
+    const ClipStrip* clipStrip(const std::string& clipId);
     void showFieldDialog(std::size_t index);
     void drainDialogs();
     void loadRecent();
@@ -488,6 +540,10 @@ private:
 
     Canvas canvas_;
     Transport transport_;
+    std::unique_ptr<VideoPlayback> video_;           // a timeline's picture while it plays
+    std::map<std::string, ClipStrip> strips_;        // by doc + clip id
+    bool stripsPending_ = false;                     // some clip's thumbnails are still being read
+    ExportJob exportJob_;                            // an export running in the background
     float playheadFraction_ = -1;  // where to draw the playhead over a waveform, 0..1
     TimelineState timeline_;
     GridState grid_;

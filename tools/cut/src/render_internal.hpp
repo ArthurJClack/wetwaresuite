@@ -74,5 +74,7 @@ struct FrameContext::Impl {
 FrameContext& previewContext();
 // Forgets the decoded sound of every source (part of clearCaches).
 void clearSoundCache();
+// Forgets the thumbnails and waveforms read for the timeline (part of clearCaches).
+void clearStrips();
 
 }  // namespace wetwaresuite::cut

@@ -236,7 +236,7 @@ Form buildForm(const CommandInfo& info, const std::vector<std::string>& docs, co
         f.label = labelFor(spec.name);
         f.help = capitalise(spec.description);
         f.required = spec.required;
-        f.hidden = spec.name == "preview" && spec.type == ParamType::Bool;
+        f.hidden = (spec.name == "preview" || spec.name == "background") && spec.type == ParamType::Bool;
         double lo, hi;
         if (parseRange(spec.description, lo, hi)) {
             f.min = lo;
@@ -385,7 +385,9 @@ std::vector<std::string> beginnerCommands(const std::string& tool, const std::ve
             if (suffixOf(c->id) == v) take(c);
         }
         for (const auto* c : mine) {
-            if (startsWith(suffixOf(c->id), v + "_")) {
+            const std::string verb = suffixOf(c->id);
+            // export_status, export_cancel: watching a job isn't a first thing to do
+            if (startsWith(verb, v + "_") && !endsWith(verb, "_status") && !endsWith(verb, "_cancel")) {
                 take(c);
                 break;  // one variant per verb keeps the list short
             }

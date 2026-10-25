@@ -381,7 +381,7 @@ void Shell::onEvent(const SDL_Event& e) {
             installedStale_ = true;
             break;
         case SDL_EVENT_DROP_FILE:
-            if (e.drop.data) openFile(e.drop.data);
+            if (e.drop.data) dropFile(e.drop.data);
             break;
         default: break;
     }
@@ -407,7 +407,7 @@ void Shell::canvasView() {
 
 void Shell::canvasArea() {
     if (canvas_.pending && canvas_.pending->shown) runPendingRetouch();  // the busy sign is on screen: run it now
-    refreshCanvas();
+    if (!videoPlaybackFrame()) refreshCanvas();  // a playing timeline draws its own frames
     ImGuiIO& io = ImGui::GetIO();
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const ImVec2 size{std::max(avail.x, 32.0f), std::max(avail.y, 32.0f)};

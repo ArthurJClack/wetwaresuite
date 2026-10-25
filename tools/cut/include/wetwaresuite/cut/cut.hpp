@@ -173,6 +173,8 @@ public:
     std::unique_ptr<Attachment> preview() const override;
     bool timeline(TimelineLayout& out) const override;
     std::string timelineCommand(const wetwaresuite::TimelineEdit& edit) const override;
+    bool clipMedia(const std::string& clipId, MediaStrip& out) const override;  // strips.cpp
+    std::unique_ptr<FramePlayer> player() const override;
 
     double duration() const;
     Track* track(const std::string& id);
@@ -260,6 +262,11 @@ struct Preset {
     int crf = 22;
     std::string speed = "veryfast";
     int fps = 0;  // 0 = the timeline's
+    // a platform's upload limits (0 = none): longer edits are refused, and a file size limit
+    // sets the bitrate (and shrinks big pictures) so the file fits
+    double maxSeconds = 0;
+    double maxMB = 0;  // megabytes of 1,000,000 bytes
+    int maxFps = 0;    // the timeline's rate, but no faster than this
 };
 const std::vector<Preset>& presets();
 const Preset* findPreset(const std::string& name);
@@ -276,6 +283,7 @@ struct ExportRequest {
     int gifFps = 15, gifWidth = 480;
     std::string listPath;          // where the caller will write the concat list for stream copy
     std::string audioPath;         // where the caller writes the mixed sound (WAV) for encoding
+    double shrink = 1;             // a retry after missing a file size limit: less bitrate (gif: smaller, fewer frames)
 };
 
 // The ffmpeg run that encodes composited frames read from stdin (rawvideo rgba) plus a mixed WAV.
@@ -290,7 +298,11 @@ struct EncodePlan {
     std::string reframe = "fit";
     bool streamCopy = false;
     std::string concatList;
+    double maxBytes = 0;  // the preset's file size limit, checked after encoding
+    int videoKbps = 0;    // the bitrate cap that limit set (0 = none)
 };
+// "TikTok: up to 10:00, 287 MB, 30 fps" (empty when the preset has no limits).
+std::string presetLimits(const Preset& preset);
 // Plans an export. Pure: touches no files. Throws std::runtime_error with a readable reason.
 EncodePlan planExport(const Timeline& timeline, const ExportRequest& request, bool hasSound);
 // Why the timeline can't be rendered by stream copy to this extension, or empty if it can.

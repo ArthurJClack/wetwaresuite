@@ -514,13 +514,22 @@ void Shell::canvasArea() {
         return;
     }
     const float w = static_cast<float>(t.srcWidth), h = static_cast<float>(t.srcHeight);
+    auto shownDoc = session_.workspace().get(currentDoc_);
+    // documents read like Word: pages fill the width from the top, the wheel scrolls (Ctrl+wheel zooms)
+    const bool pages = shownDoc && shownDoc->kind() == "doc" && h > w * 1.6f;
     if (canvas_.fit) {
         // pixel art is tiny: let fit zoom further in on levels and sprites
         canvas_.zoom = std::min({size.x * 0.95f / w, size.y * 0.95f / h, gameActive() ? 48.0f : 8.0f});
         canvas_.pan = {(size.x - w * canvas_.zoom) / 2, (size.y - h * canvas_.zoom) / 2};
+        if (pages) {
+            canvas_.zoom = std::min(size.x * 0.95f / w, 1.0f);
+            canvas_.pan = {(size.x - w * canvas_.zoom) / 2, 12};
+        }
         canvas_.fit = false;
     }
-    if (hovered && io.MouseWheel != 0 && !canvas_.stroking) {
+    if (pages && hovered && io.MouseWheel != 0 && !io.KeyCtrl) {
+        canvas_.pan.y = std::clamp(canvas_.pan.y + io.MouseWheel * ImGui::GetFontSize() * 5, size.y * 0.5f - h * canvas_.zoom, 12.0f);
+    } else if (hovered && io.MouseWheel != 0 && !canvas_.stroking) {
         const ImVec2 img = toImage(io.MousePos);
         canvas_.zoom = std::clamp(canvas_.zoom * std::pow(1.15f, io.MouseWheel), 0.02f, 64.0f);
         canvas_.pan = {io.MousePos.x - v0.x - img.x * canvas_.zoom, io.MousePos.y - v0.y - img.y * canvas_.zoom};
@@ -529,7 +538,6 @@ void Shell::canvasArea() {
     const bool painting = game ? gamePainting() && !ImGui::IsKeyDown(ImGuiKey_Space)
                                : toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
                                      !canvas_.pending;
-    auto shownDoc = session_.workspace().get(currentDoc_);
     const bool waveform = shownDoc && shownDoc->kind() == "audio";  // left-drag picks a time range instead
     const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
                                     (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking &&
@@ -610,6 +618,7 @@ void Shell::canvasArea() {
     drawBrushTool(dl, p0, hovered);
 
     if (waveform) audioCanvas(dl, p0, p1, hovered, active);
+    if (shownDoc && shownDoc->kind() == "doc" && !painting) docCanvas(dl, p0, hovered);
     // the playhead over a waveform; a click (not a drag) moves it there
     if (playheadFraction_ >= 0) {
         const float x = p0.x + (p1.x - p0.x) * std::clamp(playheadFraction_, 0.0f, 1.0f);
@@ -687,6 +696,100 @@ void Shell::audioCanvas(ImDrawList* dl, ImVec2 p0, ImVec2 p1, bool hovered, bool
         dl->AddLine({x0, p0.y}, {x0, p1.y}, ImGui::ColorConvertFloat4ToU32(c), 1.5f);
         dl->AddLine({x1, p0.y}, {x1, p1.y}, ImGui::ColorConvertFloat4ToU32(c), 1.5f);
     }
+}
+
+// Word's way, roughly: click a paragraph on the page and type. The block is framed and its
+// text (inline Markdown for styles) opens in a box beside it; Save puts it back as one undo step.
+void Shell::docCanvas(ImDrawList* dl, ImVec2 p0, bool hovered) {
+    DocBlockEdit& e = docEdit_;
+    if (e.doc != currentDoc_) e = {currentDoc_};
+    ImGuiIO& io = ImGui::GetIO();
+    if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] < 16 &&
+        !ImGui::IsKeyDown(ImGuiKey_Space) && find("office.doc_hit")) {
+        const ImVec2 img = toImage(io.MousePos);
+        Result r = query("office.doc_hit", {{"doc", currentDoc_}, {"sheet_y", static_cast<double>(img.y)}});
+        auto num = [&r](const char* key) {
+            const Value* v = r.field(key);
+            if (auto d = v ? std::get_if<double>(v) : nullptr) return *d;
+            if (auto i = v ? std::get_if<std::int64_t>(v) : nullptr) return static_cast<double>(*i);
+            return 0.0;
+        };
+        auto text = [&r](const char* key) {
+            const Value* v = r.field(key);
+            auto s = v ? std::get_if<std::string>(v) : nullptr;
+            return s ? *s : std::string();
+        };
+        if (r.ok && text("kind") != "image" && text("kind") != "pagebreak" && text("kind") != "toc") {
+            e.block = static_cast<int>(num("block"));
+            e.kind = text("kind");
+            e.text = text("text");
+            while (!e.text.empty() && e.text.back() == '\n') e.text.pop_back();
+            e.top = static_cast<float>(num("sheet_top"));
+            e.bottom = static_cast<float>(num("sheet_bottom"));
+            e.focus = true;
+        } else {
+            e.block = 0;
+            if (r.ok) {
+                result_ = Result::success("That block can't be typed into here; use the " + text("kind") + " actions on the right.");
+                resultFor_ = "Edit";
+            }
+        }
+    }
+    if (e.block <= 0) return;
+    const Texture& t = canvas_.texture;
+    const ImVec2 a{p0.x - 4, p0.y + e.top * canvas_.zoom - 3}, b{p0.x + static_cast<float>(t.srcWidth) * canvas_.zoom + 4, p0.y + e.bottom * canvas_.zoom + 3};
+    const ImVec4 c = accent_;
+    dl->AddRectFilled(a, b, ImGui::ColorConvertFloat4ToU32({c.x, c.y, c.z, 0.08f}));
+    dl->AddRect(a, b, ImGui::ColorConvertFloat4ToU32(c), 3, 0, 2);
+
+    // the editor floats just under the block (above it near the bottom of the view)
+    const float unit = ImGui::GetFontSize();
+    const float boxW = std::min(unit * 34, canvas_.viewSize.x - unit * 2);
+    const float boxH = unit * 12;
+    float x = std::clamp(a.x + unit * 2, canvas_.viewMin.x + 8, canvas_.viewMin.x + canvas_.viewSize.x - boxW - 8);
+    float y = b.y + 6;
+    if (y + boxH > canvas_.viewMin.y + canvas_.viewSize.y) y = std::max(canvas_.viewMin.y + 8, a.y - boxH - 6);
+    ImGui::SetNextWindowPos({x, y}, e.focus ? ImGuiCond_Always : ImGuiCond_Appearing);  // a new block: move next to it
+    ImGui::SetNextWindowSize({boxW, 0}, ImGuiCond_Appearing);
+    bool open = true;
+    const std::string title = "Edit block " + std::to_string(e.block) + " (" + e.kind + ")###docblockedit";
+    if (ImGui::Begin(title.c_str(), &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
+        if (e.focus) {
+            ImGui::SetKeyboardFocusHere();
+            e.focus = false;
+        }
+        ImGui::InputTextMultiline("##blocktext", &e.text, {-1, unit * 7}, ImGuiInputTextFlags_WordWrap);
+        const bool save = ImGui::Button("Save") || (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && io.KeyCtrl &&
+                                                    ImGui::IsKeyPressed(ImGuiKey_Enter));
+        ImGui::SetItemTooltip("Put the new text in (Ctrl+Enter)");
+        ImGui::SameLine();
+        const bool cancel = ImGui::Button("Cancel") || (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape));
+        ImGui::SameLine();
+        const bool remove = ImGui::Button("Delete block");
+        ImGui::SameLine();
+        ImGui::TextDisabled(e.kind == "list" || e.kind == "numbered" ? "one item per line"
+                            : e.kind == "table"                      ? "one row per line, cells split by |"
+                                                                     : "**bold**, *italic*, [link](url)");
+        if (save) {
+            Result r = run("office.doc_edit", {{"doc", currentDoc_}, {"block", static_cast<std::int64_t>(e.block)}, {"text", e.text}});
+            resultFor_ = "Edit";
+            r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+            if (r.ok) e.block = 0;
+            result_ = std::move(r);
+            canvas_.dirty = true;
+        } else if (remove) {
+            Result r = run("office.doc_delete", {{"doc", currentDoc_}, {"block", static_cast<std::int64_t>(e.block)}});
+            resultFor_ = "Delete";
+            r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+            e.block = 0;
+            result_ = std::move(r);
+            canvas_.dirty = true;
+        } else if (cancel) {
+            e.block = 0;
+        }
+    }
+    ImGui::End();
+    if (!open) e.block = 0;
 }
 
 }  // namespace wetwaresuite::gui

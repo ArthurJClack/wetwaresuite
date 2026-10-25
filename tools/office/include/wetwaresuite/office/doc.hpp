@@ -209,5 +209,16 @@ std::string writeOdt(const TextDocument& doc);
 std::vector<pdf::Page> layoutDocument(const TextDocument& doc);
 // The page each heading starts on (1-based), in outline() order; used for tables of contents.
 std::vector<int> headingPages(const TextDocument& doc);
+// Where each block sits: block number (1-based), page (1-based) and its top and bottom in points.
+struct BlockBox {
+    int block = 0, page = 0;
+    double y0 = 0, y1 = 0;
+};
+std::vector<BlockBox> blockBoxes(const TextDocument& doc);
+// The document's picture (the window shows it): the first pages one under another, at this
+// many pixels per point, with a gap between them.
+constexpr double kSheetScale = 1.25;
+constexpr int kSheetGap = 16;
+constexpr int kSheetPages = 20;
 
 }  // namespace wetwaresuite::office

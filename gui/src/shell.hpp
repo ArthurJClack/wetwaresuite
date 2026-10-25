@@ -610,6 +610,15 @@ private:
     } audioSel_;
     void audioCanvas(ImDrawList* dl, ImVec2 p0, ImVec2 p1, bool hovered, bool active);
     void fillAudioRange(bool replace);
+    // documents: click a paragraph (or list, table...) on the page to change it in place
+    struct DocBlockEdit {
+        std::string doc;
+        int block = 0;  // 0: nothing open
+        std::string kind, text;
+        float top = 0, bottom = 0;  // in the page picture's pixels
+        bool focus = false;
+    } docEdit_;
+    void docCanvas(ImDrawList* dl, ImVec2 p0, bool hovered);
     TimelineState timeline_;
     GridState grid_;
     CircuitCanvas circuit_;

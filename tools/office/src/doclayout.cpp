@@ -249,6 +249,7 @@ struct Layout {
     };
     std::vector<Note> notes;
     double notesHeight = 0;
+    std::vector<BlockBox> boxes;  // where each block landed, for clicking on the page
 
     Layout(const TextDocument& d, const std::vector<int>* toc) : doc(d), tocPages(toc) {
         left = d.page.left;
@@ -721,6 +722,8 @@ struct Layout {
         for (std::size_t i = 0; i < doc.blocks.size(); ++i) {
             const Block& b = doc.blocks[i];
             const Block* next = i + 1 < doc.blocks.size() ? &doc.blocks[i + 1] : nullptr;
+            const int startPage = static_cast<int>(pages.size());
+            const double startY = y;
             switch (b.kind) {
                 case Block::Heading:
                 case Block::Paragraph:
@@ -733,6 +736,17 @@ struct Layout {
                 case Block::PageBreak:
                     if (pageHasContent) newPage();
                     break;
+            }
+            const int endPage = static_cast<int>(pages.size());
+            const int block = static_cast<int>(i) + 1;
+            if (endPage == startPage) {
+                boxes.push_back({block, startPage, startY, y});
+            } else {
+                // a block that moved to a new page, or ran over several: the part above
+                // the break is mostly spacing, so it only counts when lines were left there
+                if (bottom - startY > 24) boxes.push_back({block, startPage, startY, bottom});
+                for (int pg = startPage + 1; pg < endPage; ++pg) boxes.push_back({block, pg, top, bottom});
+                boxes.push_back({block, endPage, top, y});
             }
         }
         drawNotes();
@@ -841,6 +855,15 @@ std::vector<pdf::Page> layoutDocument(const TextDocument& doc) {
     L.run();
     L.headersAndFooters();
     return L.pages;
+}
+
+std::vector<BlockBox> blockBoxes(const TextDocument& doc) {
+    const TextDocument d = numbered(doc);
+    std::vector<int> pagesOf;
+    if (hasToc(d)) pagesOf = headingPages(doc);
+    Layout L(d, &pagesOf);
+    L.run();
+    return L.boxes;
 }
 
 }  // namespace wetwaresuite::office

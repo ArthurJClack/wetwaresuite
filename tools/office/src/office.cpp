@@ -153,7 +153,23 @@ std::string TextDoc::summary() const {
 std::unique_ptr<Attachment> TextDoc::preview() const {
     auto pages = layoutDocument(data);
     if (pages.empty()) return nullptr;
-    return std::make_unique<Attachment>(png(pdf::renderPage(pages.front(), 1.25), "page1.png"));
+    if (pages.size() == 1) return std::make_unique<Attachment>(png(pdf::renderPage(pages.front(), kSheetScale), "page1.png"));
+    // every page (up to kSheetPages), one under another, so the whole document can be scrolled through
+    const std::size_t n = std::min<std::size_t>(pages.size(), kSheetPages);
+    std::vector<raster::Image> shots;
+    int width = 0, height = 0;
+    for (std::size_t i = 0; i < n; ++i) {
+        shots.push_back(pdf::renderPage(pages[i], kSheetScale));
+        width = std::max(width, shots.back().width());
+        height += shots.back().height() + (i ? kSheetGap : 0);
+    }
+    raster::Image sheet(width, height, raster::Color{0xC8, 0xCA, 0xCE, 255});
+    int y = 0;
+    for (const auto& shot : shots) {
+        raster::blendOnto(sheet, shot, 0, y, raster::Blend::Normal, 1.0);
+        y += shot.height() + kSheetGap;
+    }
+    return std::make_unique<Attachment>(png(sheet, "pages.png"));
 }
 
 std::string DeckDoc::summary() const {

@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
+#include <iterator>
 #include <filesystem>
 #include <stdexcept>
 
@@ -194,6 +196,10 @@ bool Timeline::timeline(TimelineLayout& out) const {
             tc.start = c.start;
             tc.length = c.length();
             tc.link = c.link;
+            tc.picture = c.kind == "video" || c.kind == "image";
+            tc.sound = c.kind == "audio" || (c.kind == "video" && c.ownSound && c.hasAudio);
+            tc.sourceIn = c.hold ? c.in : c.reverse ? c.out : c.in;
+            tc.speed = c.hold || c.kind == "image" ? 0 : c.reverse ? -c.speed : c.speed;
             const bool fromSource = (c.kind == "video" || c.kind == "audio") && !c.hold && !c.reverse;
             tc.trimStart = c.kind != "nest" || c.in > 0;
             if (fromSource && c.speed > 0) {
@@ -227,6 +233,21 @@ std::string Timeline::timelineCommand(const wetwaresuite::TimelineEdit& e) const
         case TimelineEditKind::Marker: return "cut.add_marker t=" + t4(std::max(0.0, e.at));
         case TimelineEditKind::InPoint: return "cut.set_in_out in=" + t4(std::max(0.0, e.at));
         case TimelineEditKind::OutPoint: return "cut.set_in_out out=" + t4(std::max(0.0, e.at));
+        case TimelineEditKind::AddFile: {
+            // sound files go on an audio track, everything else (video, stills) on a video track
+            std::string ext = fs::path(e.name).extension().string();
+            for (auto& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            static const char* sounds[] = {".wav", ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wma", ".aif", ".aiff"};
+            const bool sound = std::find(std::begin(sounds), std::end(sounds), ext) != std::end(sounds);
+            std::string path;
+            for (char ch : e.name) {
+                if (ch == '"' || ch == '$' || ch == '#' || std::isspace(static_cast<unsigned char>(ch))) path += '\\';
+                path += ch;
+            }
+            std::string line = std::string(sound ? "cut.add_audio" : "cut.add_clip") + " path=" + path;
+            if (const Track* t = track(e.track); t && (t->kind == "audio") == sound) line += " track=" + t->id;
+            return line;
+        }
         case TimelineEditKind::Toggle: {
             const Track* t = track(e.track);
             if (!t || (e.name != "locked" && e.name != "hidden" && e.name != "muted" && e.name != "solo")) return {};

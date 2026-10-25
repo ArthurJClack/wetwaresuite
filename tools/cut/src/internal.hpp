@@ -117,7 +117,9 @@ int addCaptions(Timeline& tl, const std::vector<Cue>& cues, const std::string& t
 
 // Writes the timeline (or part of it) to a file: frames from the compositor and the mixed sound
 // piped to ffmpeg, stream copy for plain cuts, or a WAV written directly with no ffmpeg at all.
-Result exportTimeline(const Timeline& tl, const std::filesystem::path& output, const Params& p, ExportRequest rq);
+// progress (0..1) is told how far it got; returning false from it cancels the export.
+Result exportTimeline(const Timeline& tl, const std::filesystem::path& output, const Params& p, ExportRequest rq,
+                      const std::function<bool(double)>& progress = {});
 
 // ---- registration, per file ----
 void registerDocumentCommands(Session& session);

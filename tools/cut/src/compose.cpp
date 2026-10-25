@@ -371,6 +371,7 @@ void clearCaches() {
     impl.readers.clear();
     impl.readerUse.clear();
     clearSoundCache();
+    clearStrips();
 }
 
 namespace {

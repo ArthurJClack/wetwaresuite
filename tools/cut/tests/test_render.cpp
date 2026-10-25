@@ -2,7 +2,9 @@
 // sound card. Media is made here (PNGs, WAVs, mattes, titles) and video files
 // are stood in for by a frame hook.
 #include <algorithm>
+#include <chrono>
 #include <fstream>
+#include <thread>
 
 #include "support.hpp"
 #include "wetwaresuite/audio/analysis.hpp"
@@ -351,6 +353,90 @@ void testVideoHook(Session& s) {
     setVideoFrameSource({});
 }
 
+// What the window uses: files opened as timelines, dropped files, thumbnails, waveforms and the player.
+void testWindowHooks(Session& s, const fs::path& dir) {
+    // a still opens as a timeline its size; a sound file as a timeline with it on a1
+    const std::string png = solidPng(dir / "wide.png", kGreen, 120, 40);
+    Result r = run(s, "cut.open path=" + q(png));
+    CHECK(r.ok && num(r, "width") == 120 && num(r, "height") == 40 && near(num(r, "duration"), 5));
+    auto still = doc(s, toText(r.value));
+    CHECK(still && still->track("v1") && still->track("v1")->clips.size() == 1 && still->path.empty());
+    const std::string wav = writeTone(dir / "beep.wav", 2, 440, 0.5);
+    r = run(s, "cut.open path=" + q(wav));
+    CHECK(r.ok && near(num(r, "duration"), 2, 0.01));
+    auto sound = doc(s, toText(r.value));
+    CHECK(sound && sound->track("a1") && !sound->track("v1"));
+    const fs::path junk = dir / "notes.xyz";
+    std::ofstream(junk) << "not media";
+    CHECK(!run(s, "cut.open path=" + q(junk)).ok);
+
+    // dropping files: pictures on a video track, sound on an audio track, odd paths escaped
+    wetwaresuite::TimelineEdit drop;
+    drop.kind = TimelineEditKind::AddFile;
+    drop.name = (dir / "a b$#.png").generic_string();
+    CHECK(still->timelineCommand(drop) == "cut.add_clip path=" + (dir / "a\\ b\\$\\#.png").generic_string());
+    CHECK(cli::split(still->timelineCommand(drop))[1] == "path=" + drop.name);
+    drop.name = wav;
+    drop.track = "a1";
+    CHECK(still->timelineCommand(drop) == "cut.add_audio path=" + wav);
+    // ... and they land on the timeline
+    CHECK(run(s, still->timelineCommand(drop) + " doc=" + toText(r.value)).ok);  // into the sound timeline
+    CHECK(sound->track("a1")->clips.size() == 2 && near(sound->duration(), 4, 0.01));
+
+    // the layout says where each clip's media comes from
+    TimelineLayout layout;
+    CHECK(still->timeline(layout) && layout.tracks.size() == 1);
+    CHECK(layout.tracks[0].clips[0].picture && !layout.tracks[0].clips[0].sound && near(layout.tracks[0].clips[0].speed, 0));
+
+    // thumbnails and waveforms come in the background
+    auto strip = [](const Timeline& tl, const std::string& clip) {
+        MediaStrip m;
+        for (int i = 0; i < 500; ++i) {
+            if (!tl.clipMedia(clip, m) || !m.pending) break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        return m;
+    };
+    MediaStrip m = strip(*still, still->track("v1")->clips[0].id);
+    CHECK(!m.pending && m.frames.size() == 1 && m.frameHeight == 54 && m.frameWidth == 162);
+    CHECK(m.frames[0].size() == static_cast<std::size_t>(m.frameWidth * m.frameHeight * 4) && m.frames[0][1] == 255);
+    m = strip(*sound, sound->track("a1")->clips[0].id);
+    CHECK(!m.pending && m.frames.empty() && near(m.peaksPerSecond, 50) && m.peaks.size() == 100);
+    CHECK(near(*std::max_element(m.peaks.begin(), m.peaks.end()), 1, 1e-4) && m.peaks[50] > 0.9f);
+    MediaStrip none;
+    CHECK(!still->clipMedia("c99", none));
+
+    // video: frames along the source from the hook, and a player that keeps a copy of the edit
+    setVideoFrameSource([](const std::string&, double t, int w, int h, raster::Image& out) {
+        out = raster::Image(w, h, {static_cast<std::uint8_t>(std::clamp(t * 20, 0.0, 255.0)), 0, 0, 255});
+        return true;
+    });
+    r = run(s, "cut.new width=64 height=36 fps=10");
+    auto tl = doc(s, toText(r.value));
+    Clip v;
+    v.kind = "video";
+    v.source = (dir / "virtual.mp4").generic_string();
+    v.out = 10;
+    v.sourceDuration = 10;
+    v.sourceWidth = 64;
+    v.sourceHeight = 36;
+    v.id = tl->newClipId();
+    tl->ensureTrack("v1").clips.push_back(v);
+    m = strip(*tl, v.id);
+    CHECK(!m.pending && m.frames.size() == 10 && m.frameWidth == 96 && near(m.frameTimes[0], 0.5) && near(m.frameTimes[9], 9.5));
+    CHECK(m.frames[3][0] == 70 && m.peaks.empty());  // 3.5 s x 20
+    auto player = tl->player();
+    CHECK(player && near(player->fps(), 10));
+    int w = 0, h = 0;
+    std::vector<std::uint8_t> rgba;
+    CHECK(player->frame(2, 32, w, h, rgba) && w == 32 && h == 18 && rgba.size() == 32u * 18 * 4);
+    CHECK(std::abs(rgba[(9 * 32 + 16) * 4] - 40) <= 3);
+    tl->tracks.clear();  // editing the document doesn't touch what's playing
+    CHECK(player->frame(4, 64, w, h, rgba) && w == 64 && std::abs(rgba[(18 * 64 + 32) * 4] - 80) <= 3);
+    CHECK(!tl->player()->frame(1, 64, w, h, rgba));  // nothing left to play
+    setVideoFrameSource({});
+}
+
 }  // namespace
 
 std::string readTextFile(const fs::path& p) {
@@ -367,6 +453,7 @@ void testRender() {
     testKeyAndTransitions(s, dir);
     testTitles(s, dir);
     testVideoHook(s);
+    testWindowHooks(s, dir);
     fs::remove_all(dir);
 }
 

@@ -1,7 +1,7 @@
 add_library(wetwaresuite_cut
   src/model.cpp src/media.cpp src/stream.cpp src/effects.cpp src/text.cpp src/compose.cpp src/mix.cpp src/export.cpp
   src/helpers.cpp src/cmd_document.cpp src/cmd_add.cpp src/cmd_edit.cpp src/cmd_trim.cpp src/cmd_sequence.cpp
-  src/cmd_effects.cpp src/cmd_titles.cpp src/cmd_audio.cpp src/cmd_export.cpp src/cmd_files.cpp)
+  src/cmd_effects.cpp src/cmd_titles.cpp src/cmd_audio.cpp src/cmd_export.cpp src/cmd_files.cpp src/strips.cpp)
 add_library(wetwaresuite::cut ALIAS wetwaresuite_cut)
 target_include_directories(wetwaresuite_cut PUBLIC include)
 target_link_libraries(wetwaresuite_cut PUBLIC wetwaresuite::core wetwaresuite::raster wetwaresuite::audio

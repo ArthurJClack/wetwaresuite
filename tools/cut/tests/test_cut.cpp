@@ -239,7 +239,8 @@ void testPlan() {
     rq.end = -1;
 
     // presets
-    CHECK(findPreset("shorts") && findPreset("shorts")->name == "vertical" && findPreset("4k")->width == 3840 && !findPreset("nope"));
+    CHECK(findPreset("shorts") && findPreset("shorts")->name == "youtube_shorts" && findPreset("4k")->width == 3840 && !findPreset("nope"));
+    CHECK(findPreset("Reels")->name == "instagram_reels" && findPreset("twitter")->name == "x" && findPreset("9:16")->name == "vertical");
     CHECK(presets().size() >= 8);
     rq.preset = "vertical";
     plan = planExport(tl, rq, true);
@@ -253,6 +254,43 @@ void testPlan() {
     CHECK(after(plan.args, "-c:v") == "prores_ks" && after(plan.args, "-c:a") == "pcm_s16le");
     rq.preset = "nope";
     CHECK(throws([&] { planExport(tl, rq, true); }, "preset"));
+
+    // platform limits: length, frame rate and file size
+    rq.output = "/out/x.mp4";
+    rq.preset = "discord";
+    plan = planExport(tl, rq, true);  // 8 s fits 10 MB easily: full 720p, capped bitrate
+    CHECK(plan.width == 1280 && plan.height == 720 && near(plan.maxBytes, 10e6) && plan.videoKbps == 9072);
+    CHECK(after(plan.args, "-maxrate") == "9072k" && after(plan.args, "-b:a") == "128k");
+    Timeline longer = tl;
+    longer.track("v1")->clips[1].out = 296;  // 5 minutes
+    plan = planExport(longer, rq, true);
+    CHECK(plan.width == 640 && plan.height == 360 && after(plan.args, "-maxrate") == "181k" && after(plan.args, "-b:a") == "64k");
+    rq.shrink = 0.5;  // a retry after missing the limit
+    CHECK(throws([&] { planExport(longer, rq, true); }, "can't fit"));
+    rq.shrink = 1;
+    longer.track("v1")->clips[1].out = 1000;
+    CHECK(throws([&] { planExport(longer, rq, true); }, "can't fit"));
+    rq.preset = "tiktok";
+    longer.track("v1")->clips[1].out = 700;
+    CHECK(throws([&] { planExport(longer, rq, true); }, "up to 10:00"));
+    rq.end = 590;  // a part that fits
+    CHECK(planExport(longer, rq, true).height == 1920);
+    rq.end = -1;
+    tl.settings.fps = 60;
+    rq.preset = "x";
+    CHECK(near(planExport(tl, rq, true).fps, 40));
+    rq.preset = "youtube_shorts";
+    CHECK(near(planExport(tl, rq, true).fps, 60));
+    tl.settings.fps = 30;
+    rq.output = "/out/a.gif";
+    rq.preset = "gif_discord";
+    plan = planExport(tl, rq, true);
+    CHECK(plan.width == 480 && near(plan.fps, 15) && near(plan.maxBytes, 10e6) && plan.videoKbps == 0);
+    rq.shrink = 0.5;
+    plan = planExport(tl, rq, true);
+    CHECK(plan.width == 240 && near(plan.fps, 11));
+    rq.shrink = 1;
+    CHECK(presetLimits(*findPreset("tiktok")) == "up to 10:00, 287 MB, 60 fps" && presetLimits(*findPreset("prores")).empty());
     rq.preset.clear();
 
     // gif, webm, sound only

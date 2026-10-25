@@ -310,7 +310,10 @@ void Shell::toolPanelView() {
 }
 
 int Shell::tickMs() const {
+    if (transport_.playing && !showHome_) return 15;  // the playhead (and a timeline's picture) moves
     if (canvas_.game.playing && !showHome_) return 20;  // a sprite animation is playing (game_view.cpp)
+    if (!exportJob_.id.empty()) return 100;           // the export's progress bar
+    if (stripsPending_ && !showHome_) return 150;     // thumbnails still coming in
     if (!panels_) return 0;
     const bool visible = !showHome_;
     int ms = 0;

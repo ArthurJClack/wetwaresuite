@@ -2,6 +2,8 @@
 // document goes through Session::run, so the window, scripts and MCP clients
 // all see the same undo history.
 #include <algorithm>
+#include <cstdio>
+#include <filesystem>
 #include <cctype>
 #include <mutex>
 #include <fstream>
@@ -160,7 +162,19 @@ void Shell::runForm() {
         result_ = Result::failure(error);
         return;
     }
+    // long jobs (exports) run in the background so the window keeps working, with a progress bar
+    const CommandInfo* info = find(form_->command);
+    const bool background = info && std::any_of(info->params.begin(), info->params.end(), [](const ParamSpec& p) {
+        return p.name == "background" && p.type == ParamType::Bool;
+    });
+    if (background) params["background"] = true;
     Result r = run(form_->command, params);
+    if (background && r.ok) {
+        if (const Value* job = r.field("job")) {
+            exportJob_ = ExportJob{form_->command.substr(0, form_->command.find('.')), toText(*job), {}, 0, 0};
+            if (const Value* out = r.field("output")) exportJob_.output = toText(*out);
+        }
+    }
     r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
     result_ = std::move(r);
     scrollToResult_ = true;
@@ -172,6 +186,42 @@ void Shell::runForm() {
             f.set = !f.text.empty();
         }
     }
+}
+
+void Shell::pollExport() {
+    ExportJob& job = exportJob_;
+    if (job.id.empty()) return;
+    const std::uint64_t now = SDL_GetTicks();
+    if (now - job.polledAt < 150) return;
+    job.polledAt = now;
+    Result r = session_.run(job.tool + ".export_status", {{"job", job.id}});
+    const Value* done = r.field("done");
+    if (r.ok && !(done && std::get_if<bool>(done) && *std::get_if<bool>(done))) {
+        if (const Value* p = r.field("progress"); p && std::get_if<double>(p)) job.progress = *std::get_if<double>(p);
+        return;
+    }
+    // finished (or gone): its result replaces the "exporting..." message
+    r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+    resultFor_ = "Export";
+    result_ = std::move(r);
+    scrollToResult_ = true;
+    job = ExportJob{};
+}
+
+void Shell::exportProgress() {
+    ExportJob& job = exportJob_;
+    if (job.id.empty()) return;
+    const std::string name = job.output.empty() ? std::string("the video") : std::filesystem::path(job.output).filename().string();
+    char overlay[64];
+    std::snprintf(overlay, sizeof overlay, "%d%%", static_cast<int>(job.progress * 100));
+    ImGui::TextUnformatted(("Exporting " + name).c_str());
+    ImGui::SameLine();
+    const float cancelW = ImGui::CalcTextSize("Cancel").x + ImGui::GetStyle().FramePadding.x * 2;
+    ImGui::ProgressBar(static_cast<float>(job.progress), {std::max(60.0f, ImGui::GetContentRegionAvail().x - cancelW - ImGui::GetStyle().ItemSpacing.x), 0},
+                       overlay);
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel##export")) session_.run(job.tool + ".export_cancel", {{"job", job.id}});
+    ImGui::SetItemTooltip("Stop the export (the half-made file is removed)");
 }
 
 void Shell::undo() {
@@ -248,6 +298,8 @@ void SDLCALL onDialog(void* userdata, const char* const* files, int) {
         auto& q = dialogQueue();
         std::lock_guard<std::mutex> lock(q.mutex);
         if (!files) q.error = std::string("Couldn't show a file window (") + SDL_GetError() + "). Type the path into the box instead.";
+        else if (req->target.kind == DialogTarget::AddMedia)
+            for (int i = 0; files[i]; ++i) q.results.emplace_back(req->target, files[i]);
         else if (files[0]) q.results.emplace_back(req->target, files[0]);
     }
     SDL_Event wake{};
@@ -261,6 +313,31 @@ void SDLCALL onDialog(void* userdata, const char* const* files, int) {
 void Shell::showOpenDialog() {
     auto* req = new DialogRequest{{DialogTarget::OpenDocument, {}, 0}};
     SDL_ShowOpenFileDialog(onDialog, req, window_, nullptr, 0, nullptr, false);
+}
+
+void Shell::showAddMediaDialog() {
+    auto* req = new DialogRequest{{DialogTarget::AddMedia, currentDoc_, 0}};
+    static const SDL_DialogFileFilter filters[] = {
+        {"Video, pictures and sound", "mp4;mov;mkv;webm;avi;m4v;png;jpg;jpeg;webp;gif;bmp;wav;mp3;flac;ogg;m4a;aac;opus;srt;vtt"},
+        {"All files", "*"}};
+    SDL_ShowOpenFileDialog(onDialog, req, window_, filters, 2, nullptr, true);
+}
+
+void Shell::dropFile(const std::string& path) {
+    // onto the timeline that's open, when it takes the file (videos, stills, sound, captions)
+    auto doc = session_.workspace().get(currentDoc_);
+    TimelineLayout layout;
+    if (!showHome_ && doc && doc->timeline(layout) && layout.tools) {
+        TimelineEdit e;
+        e.kind = TimelineEditKind::AddFile;
+        e.name = path;
+        e.track = timeline_.doc == currentDoc_ ? timeline_.selTrack : std::string();
+        if (!doc->timelineCommand(e).empty()) {
+            runTimelineEdit(layout, e);
+            return;
+        }
+    }
+    openFile(path);
 }
 
 void Shell::askFolder(const std::string& purpose) {
@@ -294,6 +371,8 @@ void Shell::drainDialogs() {
     for (const auto& [target, path] : results) {
         if (target.kind == DialogTarget::OpenDocument) {
             openFile(path);
+        } else if (target.kind == DialogTarget::AddMedia) {
+            if (target.command == currentDoc_) dropFile(path);
         } else if (target.kind == DialogTarget::PanelFolder) {
             folderChosen(target.command, path);
         } else if (form_ && form_->command == target.command && target.field < form_->fields.size()) {

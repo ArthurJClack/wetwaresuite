@@ -1032,12 +1032,26 @@ opened cut1 (1080x1920 30fps, 4 tracks, 6 clips, 13.50s, short.wwcut)
 youtube_1080p (.mp4): YouTube / Vimeo 1080p: H.264 + AAC, 1920x1080
 youtube_4k (.mp4): YouTube 4K: H.264 + AAC, 3840x2160
 youtube_720p (.mp4): 720p for quick uploads: H.264 + AAC, 1280x720
-vertical (.mp4): Shorts / Reels / TikTok: 1080x1920 (9:16), a landscape edit is cropped to fill
+youtube_shorts (.mp4): YouTube Shorts: 1080x1920 (9:16), a landscape edit is cropped to fill [up to 3:00, 60 fps]
+tiktok (.mp4): TikTok: 1080x1920 (9:16), cropped to fill [up to 10:00, 287 MB, 60 fps]
+instagram_reels (.mp4): Instagram Reels: 1080x1920 (9:16), cropped to fill [up to 3:00, 30 fps]
+instagram_story (.mp4): Instagram / Facebook Stories: 1080x1920 (9:16), cropped to fill [up to 1:00, 30 fps]
+instagram_feed (.mp4): Instagram feed post: 1080x1350 (4:5), cropped to fill [up to 60:00, 30 fps]
+facebook (.mp4): Facebook feed: 1080x1080 square, cropped to fill [up to 240:00, 30 fps]
+x (.mp4): X (Twitter): 1280x720 H.264 + AAC [up to 2:20, 512 MB, 40 fps]
+linkedin (.mp4): LinkedIn: 1920x1080 H.264 + AAC [up to 15:00, 5000 MB, 30 fps]
+discord (.mp4): Discord without Nitro: 1280x720, squeezed under the 10 MB upload limit [10 MB, 30 fps]
+whatsapp (.mp4): WhatsApp: 1280x720, squeezed under the 16 MB limit for videos [16 MB, 30 fps]
+email (.mp4): Email attachment: 1280x720, under 25 MB (Gmail, Outlook) [25 MB, 30 fps]
+vertical (.mp4): Any 9:16 phone video: 1080x1920, a landscape edit is cropped to fill
 square (.mp4): Square 1080x1080 for feeds, cropped to fill
 high_quality (.mp4): Master copy: H.264 at near-lossless quality (big files), the timeline's size
 prores (.mov): ProRes 422 HQ in .mov with uncompressed sound, for handing to other editors
 webm (.webm): WebM for the web: VP9 + Opus
 gif (.gif): Animated GIF, 480 px wide at 15 fps, no sound
+gif_discord (.gif): GIF for Discord, Slack or GitHub: 480 px wide, made smaller until it's under 10 MB [10 MB]
+gif_x (.gif): GIF for X (Twitter): 640 px wide, under 15 MB [15 MB]
+gif_small (.gif): Small reaction GIF: 320 px wide at 12 fps, under 2 MB [2 MB]
 draft (.mp4): Quick review copy: 640 px wide, fast and small
 audio_wav (.wav): Sound only: 16-bit WAV (no ffmpeg needed)
 audio_mp3 (.mp3): Sound only: MP3
@@ -1062,6 +1076,26 @@ saved the frame at 1.5s to title.png (1080x1920)
 ```
 
 - A preset picks the size, codecs and quality; the output's extension still picks the container (`.mp4`, `.mov`...). `width`/`height` override the size. When the preset's shape differs from the timeline's, `reframe=fit` letterboxes and `reframe=fill` crops (the default for `vertical` and `square`). Here the tall short became a 1920x1080 video with bars at the sides.
+- **Platform presets** carry each site's limits, shown in `[...]` by `cut.presets`: the size and shape, the longest video it takes, the biggest file and the highest frame rate. An edit longer than the limit stops with a message saying how long it may be (export a part with `range=` or `start=`/`end=`). A file-size limit (`discord`, `whatsapp`, `email`, `gif_discord`, `gif_small`...) is turned into a bitrate from the edit's length, lowering the size when the bitrate gets small; if the file still comes out too big it's made again a little smaller, up to 4 times, and the result says how big it is (`exported clip.mp4 (8.6 MB, under the 10 MB limit)`). A GIF gets smaller by losing width and frames per second. `shorts`, `reels` and `twitter` are short names for `youtube_shorts`, `instagram_reels` and `x`.
+
+  | Preset | Size | Longest | Biggest file | fps up to |
+  | --- | --- | --- | --- | --- |
+  | `youtube_shorts` | 1080x1920 | 3:00 | | 60 |
+  | `tiktok` | 1080x1920 | 10:00 | 287 MB | 60 |
+  | `instagram_reels` | 1080x1920 | 3:00 | | 30 |
+  | `instagram_story` | 1080x1920 | 1:00 | | 30 |
+  | `instagram_feed` | 1080x1350 | 60:00 | | 30 |
+  | `facebook` | 1080x1080 | 240:00 | | 30 |
+  | `x` | 1280x720 | 2:20 | 512 MB | 40 |
+  | `linkedin` | 1920x1080 | 15:00 | 5000 MB | 30 |
+  | `discord` | 1280x720 | | 10 MB | 30 |
+  | `whatsapp` | 1280x720 | | 16 MB | 30 |
+  | `email` | 1280x720 | | 25 MB | 30 |
+  | `gif_discord` | 480 wide | | 10 MB | 15 |
+  | `gif_x` | 640 wide | | 15 MB | 15 |
+  | `gif_small` | 320 wide | | 2 MB | 12 |
+
+- **Exporting in the background.** `cut.render ... background=true` returns at once with a job id (`export1`); `cut.export_status` gives its progress (0-1) and the result when it's done, and `cut.export_cancel` stops it and removes the half-written file. The window always exports this way, so it keeps working while the video is made. A job lives in the program that started it: from a one-shot `wetwaresuite run`, leave `background` off.
 - `range=in_out` exports between the in and out points; `start=`/`end=` give the range directly.
 - `cut.export_frame` saves the frame at the playhead (or `t=`). With `transparent=true` the timeline's background is left out, so a title or logo exported alone keeps its transparency in `.png` or `.webp`.
 - Proxies: there are none. Previews decode only the frames they need, at preview size, and `preset=draft` makes a fast, small review copy.
@@ -1072,11 +1106,14 @@ saved the frame at 1.5s to title.png (1080x1920)
 
 Claude calls `cut_presets` to see the names, `cut_render` with `preset=youtube_1080p` and `preset=square`, and `cut_export_frame` with `t=1.5`.
 
-**The window.** **Export** on the right takes the same `preset`, `range` and `output`; **Export Frame** saves the frame at the playhead.
+**The window.** **Export** on the right takes the same `preset`, `range` and `output` (the preset list shows each platform's limits). While it runs, a progress bar with **Cancel** shows under the form and over the timeline, and you can keep editing. **Export Frame** saves the frame at the playhead.
 
 ## The window
 
 `wetwaresuite-video` (or `wetwaresuite-video edit.wwcut`) opens the video app: the actions on the left, the preview in the middle with the timeline under it, and the selected action's form on the right.
+
+- **Open a video, picture or sound file** straight away (`wetwaresuite-video clip.mp4`, **Open**, or drop it on the window): it becomes a new timeline the size and frame rate of the file, with the file on it. Drop more files, or click **+ Media** over the tracks, to add them at the end of their track (pictures and videos on a video track, sounds on an audio track).
+- Video clips show **thumbnails** along them and sound shows its **waveform**. They're read in the background the first time, so they appear a moment after the clip does.
 
 ![a video edit's timeline: track switches, markers, in/out, a transition and keyframes](images/gui-video-timeline.jpg)
 
@@ -1085,7 +1122,7 @@ Claude calls `cut_presets` to see the names, `cut_render` with `preset=youtube_1
 - The buttons over the tracks: **Split** (**S**), **Delete**, **Ripple delete** (**Shift+Delete**), **Razor** (**Ctrl+K**), **Marker** (**M**), **In** (**I**), **Out** (**O**), **Transition** (**T**, a one-second crossfade into the selected clip), **Fit**.
 - Each track's head has **L** (lock), **H** (hide picture), **M** (mute) and **S** (solo) switches.
 - The ruler shows markers as flags (hover for the name) and the in/out range shaded. Transitions show as a wedge over a clip's start, keyframes as yellow diamonds.
-- **Play** plays the sound from the playhead. Every click is one command, so **Undo** takes it back and the history lists it.
+- **Play** (**Space**) plays the edit from the playhead: the preview shows the video live, as fast as your computer draws it (frames are skipped to keep up with the sound), and a white line follows along the timeline. Pause leaves the playhead where the picture stopped. Every click is one command, so **Undo** takes it back and the history lists it.
 
 See [the window](gui.md#the-timeline) for the parts every app shares.
 
@@ -1303,8 +1340,8 @@ All of them take `overwrite=true` to replace an existing output. Run `wetwaresui
 
 ## Limitations
 
-- The window plays the edit's sound (`cut.play`) but shows still frames, not live video: move the playhead to see a frame.
-- Rendering draws every frame on the CPU and pipes it to ffmpeg: fine for HD edits of minutes, slow for long 4K ones. There are no proxies or background renders; use `preset=draft` while you iterate.
+- Live playback draws each frame on the CPU at preview size: smooth for simple HD edits, choppy on heavy effects or 4K, where it skips frames to keep up with the sound.
+- Rendering draws every frame on the CPU and pipes it to ffmpeg: fine for HD edits of minutes, slow for long 4K ones. There are no proxies; use `preset=draft` while you iterate.
 - Nested sequences are edited as a whole; to change what's inside, `cut.unnest`, edit, and nest again.
 - Markers stay where they are when clips move around them.
 - Sound is mixed at the levels you set; there's no automatic ducking or noise reduction (the sound app has those).

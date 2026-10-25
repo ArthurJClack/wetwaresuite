@@ -147,6 +147,7 @@ void Shell::frame() {
     animating_ = false;  // set again by whatever draws something moving
     drainDialogs();
     backgroundTicks();
+    pollExport();
     if (paletteStale_ && loadPalette()) applyStyle(dpi_);
     paletteStale_ = false;
     if (palettePending_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) savePaletteNow();
@@ -484,6 +485,7 @@ void Shell::rightPanel() {
         ImGui::PopTextWrapPos();
         ImGui::PopStyleColor();
         for (const auto& line : resultLines(*result_)) wrappedMuted(line);
+        exportProgress();
         launchOfferView();
         if (scrollToResult_) {
             ImGui::SetScrollHereY(1.0f);

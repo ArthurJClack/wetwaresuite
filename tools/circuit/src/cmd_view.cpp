@@ -158,6 +158,8 @@ void registerViewCommands(Session& session) {
                     Pt out = at;
                     Result r = f.view == "pcb" ? hitBoard(doc.circuit, at, out) : hitSchematic(doc.circuit, at, out);
                     r.with("x", out.x).with("y", out.y).with("doc", stringParam(p, "doc")).with("view", f.view);
+                    // where the picture starts and how big a unit is, so a window can keep its view still as the sheet grows
+                    r.with("origin_x", f.origin.x).with("origin_y", f.origin.y).with("scale", f.scale);
                     return r;
                 },
                 View::Schematic, false));

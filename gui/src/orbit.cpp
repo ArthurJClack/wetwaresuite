@@ -47,7 +47,16 @@ void Shell::orbitToolbar() {
     }
     ImGui::SetItemTooltip("Show the whole model (or double-click it)");
     ImGui::SameLine();
-    ImGui::TextDisabled("drag to turn, right-drag to move, scroll to zoom, click to select (models)");
+    auto doc = session_.workspace().get(currentDoc_);
+    if (doc && doc->kind() == "model" && canvas_.grab) {
+        const char* what = canvas_.grab == 'G' ? "Moving" : canvas_.grab == 'R' ? "Rotating" : "Scaling";
+        ImGui::Text("%s%s%s: move the mouse, click to keep, Esc to undo; X Y Z lock an axis", what,
+                    canvas_.grabAxis.empty() ? "" : " along ", canvas_.grabAxis.c_str());
+    } else if (doc && doc->kind() == "model") {
+        ImGui::TextDisabled("drag to turn, right-drag to pan, scroll to zoom, click to select; G move, R rotate, S scale");
+    } else {
+        ImGui::TextDisabled("drag to turn, right-drag to move, scroll to zoom, double-click to fit");
+    }
 }
 
 void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bool active) {
@@ -57,7 +66,7 @@ void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bo
     const bool move = active && (ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsMouseDown(ImGuiMouseButton_Middle) ||
                                  (left && io.KeyShift));
     const float minSide = std::max(1.0f, std::min(size.x, size.y));
-    if ((io.MouseDelta.x != 0 || io.MouseDelta.y != 0) && (left || move)) {
+    if ((io.MouseDelta.x != 0 || io.MouseDelta.y != 0) && (left || move) && !canvas_.grab) {
         if (move) {
             // a model radius is about half the shorter side at zoom 1
             const double perPx = 2.0 / (minSide * 0.88 * o.zoom);
@@ -79,9 +88,72 @@ void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bo
         o.panX = o.panY = 0;
         canvas_.orbitDirty = true;
     }
+    // Blender's G, R and S: the selection follows the mouse until a click (or Enter) keeps it,
+    // Esc or a right-click puts it back; X, Y, Z lock it to an axis. One undo step either way.
+    auto doc3d = session_.workspace().get(currentDoc_);
+    const bool isModel = doc3d && doc3d->kind() == "model";
+    if (!isModel) canvas_.grab = 0;
+    if (isModel && !canvas_.grab && hovered && !io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
+        const char keys[] = {'G', 'R', 'S'};
+        const ImGuiKey codes[] = {ImGuiKey_G, ImGuiKey_R, ImGuiKey_S};
+        for (int i = 0; i < 3; ++i) {
+            if (ImGui::IsKeyPressed(codes[i], false)) {
+                canvas_.grab = keys[i];
+                canvas_.grabApplied = false;
+                canvas_.grabStart = io.MousePos;
+                canvas_.grabAxis.clear();
+            }
+        }
+    }
+    if (canvas_.grab) {
+        const char* axes[] = {"x", "y", "z"};
+        const ImGuiKey axisKeys[] = {ImGuiKey_X, ImGuiKey_Y, ImGuiKey_Z};
+        bool changed = io.MouseDelta.x != 0 || io.MouseDelta.y != 0;
+        for (int i = 0; i < 3; ++i) {
+            if (ImGui::IsKeyPressed(axisKeys[i], false)) {
+                canvas_.grabAxis = canvas_.grabAxis == axes[i] ? "" : axes[i];
+                changed = true;
+            }
+        }
+        const bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+        const bool keep = ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+                          ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+        if (cancel) {
+            if (canvas_.grabApplied) session_.history().undo();
+            canvas_.grab = 0;
+            canvas_.orbitDirty = true;
+            syncDocs();
+        } else if (changed) {
+            if (canvas_.grabApplied) session_.history().undo();
+            Params p{{"doc", currentDoc_},
+                     {"dx", static_cast<double>(io.MousePos.x - canvas_.grabStart.x)},
+                     {"dy", static_cast<double>(io.MousePos.y - canvas_.grabStart.y)},
+                     {"mode", std::string(canvas_.grab == 'G' ? "move" : canvas_.grab == 'R' ? "rotate" : "scale")},
+                     {"yaw", o.yaw}, {"pitch", o.pitch}, {"zoom", o.zoom}, {"pan_x", o.panX}, {"pan_y", o.panY},
+                     {"width", static_cast<std::int64_t>(size.x)}, {"height", static_cast<std::int64_t>(size.y)}};
+            if (!canvas_.grabAxis.empty()) p["axis"] = canvas_.grabAxis;
+            Result r = run("model.drag", p);
+            canvas_.grabApplied = r.ok;
+            if (!r.ok) {
+                result_ = Result::failure(friendlyError(r.message));
+                resultFor_ = "Move";
+                canvas_.grab = 0;
+            }
+            canvas_.orbitDirty = true;
+        }
+        if (keep && canvas_.grab) {
+            canvas_.grab = 0;
+            canvas_.grabEndClick = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+            resultFor_ = "Move";
+            result_ = Result::success(canvas_.grabApplied ? "Done. Undo puts it back." : "Nothing moved.");
+        }
+    }
+
     // a click (no drag) in a model selects what's under it: objects, or
     // vertices/edges/faces in edit mode (ctrl adds to the selection)
-    if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] < 16 &&
+    if (canvas_.grabEndClick && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        canvas_.grabEndClick = false;
+    } else if (!canvas_.grab && hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] < 16 &&
         !io.KeyShift && size.x >= 8 && size.y >= 8) {
         auto doc = session_.workspace().get(currentDoc_);
         if (doc && doc->kind() == "model") {

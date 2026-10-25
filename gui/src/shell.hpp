@@ -143,6 +143,12 @@ struct Canvas {
     bool orbitDirty = true;
     bool orbitDragging = false;
     bool orbitSharpPending = false;
+    // G / R / S in a model: move, rotate or scale the selection with the mouse (model.drag)
+    char grab = 0;             // 'G', 'R', 'S' while dragging, 0 otherwise
+    bool grabApplied = false;  // a model.drag of this grab is in the history (undone before the next one)
+    ImVec2 grabStart{0, 0};
+    std::string grabAxis;      // "", "x", "y" or "z"
+    bool grabEndClick = false; // the click that kept it isn't also a click to select
     int orbitW = 0, orbitH = 0;
 
     // selecting (selection_view.cpp)
@@ -438,6 +444,7 @@ private:
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);
     void select(const std::string& commandId);
+    void fillPicked(bool replace);  // the shape picked on the canvas goes into the form's shape box
     void runForm();
     void undo();
     void redo();

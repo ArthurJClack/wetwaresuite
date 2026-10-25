@@ -439,6 +439,17 @@ std::vector<std::string> openCandidates(const std::string& path, const std::vect
 std::optional<Rgba> parseHex(const std::string& text) {
     std::string t = lower(trim(text));
     if (t == "transparent" || t == "none") return Rgba{0, 0, 0, 0};
+    // the names and rgb() the commands take too, so the swatch matches the text
+    static const std::map<std::string, std::string> names = {
+        {"white", "#ffffff"}, {"black", "#000000"}, {"red", "#ff0000"},    {"green", "#008000"}, {"lime", "#00ff00"},
+        {"blue", "#0000ff"},  {"yellow", "#ffff00"}, {"orange", "#ffa500"}, {"purple", "#800080"}, {"pink", "#ffc0cb"},
+        {"brown", "#a52a2a"}, {"gray", "#808080"},  {"grey", "#808080"},   {"cyan", "#00ffff"},  {"magenta", "#ff00ff"},
+        {"navy", "#000080"},  {"teal", "#008080"},  {"silver", "#c0c0c0"}, {"gold", "#ffd700"},  {"maroon", "#800000"},
+        {"olive", "#808000"}};
+    if (auto it = names.find(t); it != names.end()) t = it->second;
+    int r = 0, g = 0, b = 0;
+    if (std::sscanf(t.c_str(), "rgb(%d,%d,%d)", &r, &g, &b) == 3 || std::sscanf(t.c_str(), "rgb( %d , %d , %d )", &r, &g, &b) == 3)
+        return Rgba{std::clamp(r, 0, 255) / 255.0f, std::clamp(g, 0, 255) / 255.0f, std::clamp(b, 0, 255) / 255.0f, 1.0f};
     if (t.empty() || t[0] != '#') return std::nullopt;
     t = t.substr(1);
     if (t.size() == 3 || t.size() == 4) {

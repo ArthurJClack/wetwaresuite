@@ -68,7 +68,7 @@ std::uint8_t clampByte(double v) { return static_cast<std::uint8_t>(std::min(255
 raster::Image render(const Mesh& input, int width, int height, const RenderOptions& o) {
     if (width <= 0 || height <= 0) throw std::invalid_argument("render size must be positive");
     raster::Image out(width, height, o.background);
-    if (input.empty()) return out;
+    if (input.empty() && o.lines.empty()) return out;
 
     const int ss = o.antialias ? 2 : 1;
     const int W = width * ss, H = height * ss;
@@ -95,6 +95,13 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
         minY = std::min(minY, y); maxY = std::max(maxY, y);
         minD = std::min(minD, d); maxD = std::max(maxD, d);
     }
+    for (const auto& ln : o.lines) {
+        for (const Vec3& p : ln.points) {
+            const double x = dot(p, cam.right), y = dot(p, cam.up);
+            minX = std::min(minX, x); maxX = std::max(maxX, x);
+            minY = std::min(minY, y); maxY = std::max(maxY, y);
+        }
+    }
     const double ex = std::max(maxX - minX, 1e-12), ey = std::max(maxY - minY, 1e-12);
     const double avail = 1.0 - 2.0 * std::clamp(o.margin, 0.0, 0.45);
     double scale = std::min(W * avail / ex, H * avail / ey);
@@ -102,10 +109,13 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
     if (o.orbit) {
         // fit the bounding sphere, not this view's outline, so orbiting doesn't change the size
         Vec3 lo{1e300, 1e300, 1e300}, hi{-1e300, -1e300, -1e300};
-        for (const Vec3& p : m.positions) {
+        auto grow = [&](const Vec3& p) {
             lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
             hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
-        }
+        };
+        for (const Vec3& p : m.positions) grow(p);
+        for (const auto& ln : o.lines)
+            for (const Vec3& p : ln.points) grow(p);
         const Vec3 centre = (lo + hi) * 0.5;
         const double radius = std::max(length(hi - lo) / 2, 1e-12);
         scale = std::min(W, H) * avail / (2 * radius) * std::clamp(o.orbit->zoom, 1e-3, 1e4);
@@ -206,6 +216,38 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
         }
     }
 
+    // Lines: depth-tested against the model with a little slack, so a sketch on a face shows.
+    std::vector<std::int32_t> lineId(o.lines.empty() ? 0 : npx, -1);
+    if (!o.lines.empty()) {
+        const float slack = static_cast<float>((maxD > minD ? maxD - minD : 0.0) * 0.01 + 1e-6) + static_cast<float>(1.5 / scale);
+        auto toScreen = [&](const Vec3& p) {
+            return Vec3{(dot(p, cam.right) - cx) * scale + W / 2.0, H / 2.0 - (dot(p, cam.up) - cy) * scale, dot(p, cam.forward)};
+        };
+        const int thick = ss;  // about one output pixel either side
+        for (std::size_t li = 0; li < o.lines.size(); ++li) {
+            const auto& ln = o.lines[li];
+            const std::size_t n = ln.points.size();
+            for (std::size_t i = 0; i + 1 < n + (ln.closed && n > 2 ? 1 : 0); ++i) {
+                const Vec3 a = toScreen(ln.points[i]), b = toScreen(ln.points[(i + 1) % n]);
+                const double len = std::max(std::fabs(b.x - a.x), std::fabs(b.y - a.y));
+                const int steps = std::max(1, static_cast<int>(std::ceil(len)));
+                for (int k = 0; k <= steps; ++k) {
+                    const double t = static_cast<double>(k) / steps;
+                    const int x = static_cast<int>(a.x + (b.x - a.x) * t), y = static_cast<int>(a.y + (b.y - a.y) * t);
+                    const float d = static_cast<float>(a.z + (b.z - a.z) * t);
+                    for (int dy = -thick / 2; dy <= thick / 2; ++dy) {
+                        for (int dx = -thick / 2; dx <= thick / 2; ++dx) {
+                            const int px = x + dx, py = y + dy;
+                            if (px < 0 || py < 0 || px >= W || py >= H) continue;
+                            const std::size_t q = static_cast<std::size_t>(py) * static_cast<std::size_t>(W) + static_cast<std::size_t>(px);
+                            if (d <= depth[q] + slack) lineId[q] = static_cast<std::int32_t>(li);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     const bool perFace = o.faceColors.size() == m.triangleCount();
     const double ink = 0.25;
     const double ss2 = static_cast<double>(ss * ss);
@@ -216,7 +258,13 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
                 for (int sx = 0; sx < ss; ++sx) {
                     const std::size_t k = static_cast<std::size_t>(y * ss + sy) * static_cast<std::size_t>(W) + static_cast<std::size_t>(x * ss + sx);
                     double pr, pg, pb, pa;
-                    if (faceId[k] < 0) {
+                    if (!lineId.empty() && lineId[k] >= 0) {
+                        const raster::Color& lc = o.lines[static_cast<std::size_t>(lineId[k])].color;
+                        pr = lc.r;
+                        pg = lc.g;
+                        pb = lc.b;
+                        pa = 1.0;
+                    } else if (faceId[k] < 0) {
                         pa = o.background.a / 255.0;
                         pr = o.background.r * pa;
                         pg = o.background.g * pa;

@@ -207,7 +207,9 @@ void testColoursRecentMessages() {
     CHECK(parseHex("#f80") && toHex(*parseHex("#f80")) == "#ff8800");
     CHECK(toHex(*parseHex("#11223344")) == "#11223344");
     CHECK(parseHex("transparent")->a == 0.0f);
-    CHECK(!parseHex("red") && !parseHex("#12345") && !parseHex("#gg0000"));
+    CHECK(!parseHex("#12345") && !parseHex("#gg0000") && !parseHex("reddish"));
+    CHECK(toHex(*parseHex("White")) == "#ffffff" && toHex(*parseHex("red")) == "#ff0000");  // the swatch shows a named colour
+    CHECK(toHex(*parseHex("rgb(0, 128, 255)")) == "#0080ff");
     CHECK(toHex(fromRgb24(0x3d7eff)) == "#3d7eff");
 
     std::vector<std::string> recent = {"a", "b", "c"};

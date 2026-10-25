@@ -183,6 +183,11 @@ void Shell::vectorPress(ImVec2 screen) {
     if (picked != canvas_.vecSel) {
         canvas_.vecSel = picked;
         canvas_.vecLoaded = ~0ull;  // read its box and anchors
+        // like a properties panel: the picked shape's style is ready to change
+        if (!picked.empty() && canvas_.tool == CanvasTool::Pick) {
+            if (!form_ && find("vector.style")) select("vector.style");
+            else fillPicked(true);
+        }
     }
     if (!picked.empty() && canvas_.tool == CanvasTool::Pick) canvas_.vecDrag = 1;
 }

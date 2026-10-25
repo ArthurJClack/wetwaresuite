@@ -509,11 +509,27 @@ int main() {
         CHECK(run(s, "model.select", {{"type", std::string("rect")}, {"rect", NumberList{0, 0, 1, 1}}, {"view", std::string("front")}, {"xray", true}}).ok);
         CHECK(countSelection(mesh()).verts == 8);
         CHECK(run(s, "model.select", {{"type", std::string("none")}}).ok);
-        CHECK(run(s, "model.pick", {{"u", 0.25}, {"v", 0.25}, {"view", std::string("front")}}).ok && countSelection(mesh()).verts == 1);
+        // the view fits the floor grid too (6 m across), so the 2 m cube's top-left corner is at about 0.4, 0.4
+        CHECK(run(s, "model.pick", {{"u", 0.4}, {"v", 0.4}, {"view", std::string("front")}}).ok && countSelection(mesh()).verts == 1);
         CHECK(run(s, "model.mode", {{"select_mode", std::string("edge")}}).ok);
-        CHECK(run(s, "model.pick", {{"u", 0.5}, {"v", 0.25}, {"view", std::string("front")}}).ok && countSelection(mesh()).edges == 1);
+        CHECK(run(s, "model.pick", {{"u", 0.5}, {"v", 0.4}, {"view", std::string("front")}}).ok && countSelection(mesh()).edges == 1);
         r = run(s, "model.elements", {{"what", std::string("edges")}, {"selected", true}});
         CHECK(r.ok && r.message.find("*") != std::string::npos);
+    }
+
+    // ---- dragging with the mouse (G / R / S in the window) ----
+    {
+        Session s;
+        registerCommands(s);
+        CHECK(run(s, "model.new", {}).ok);
+        CHECK(run(s, "model.select_object", {{"objects", std::string("Cube")}}).ok);
+        CHECK(run(s, "model.drag", {{"dx", 100.0}, {"axis", std::string("x")}, {"view", std::string("front")}}).ok);
+        auto d = docIn(s);
+        const Object* cube = d->object("Cube");
+        CHECK(cube->location.x > 1 && std::fabs(cube->location.y) < 1e-9 && std::fabs(cube->location.z) < 1e-9);
+        CHECK(run(s, "model.drag", {{"dx", 100.0}, {"mode", std::string("scale")}}).ok && std::fabs(d->object("Cube")->scale.x - 2) < 1e-9);
+        CHECK(run(s, "model.select_object", {{"action", std::string("none")}}).ok);
+        CHECK(!run(s, "model.drag", {{"dx", 10.0}}).ok);  // nothing selected
     }
 
     // ---- MCP ----

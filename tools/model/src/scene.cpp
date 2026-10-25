@@ -337,6 +337,23 @@ void growBounds(const std::vector<Vec3>& pts, Vec3& lo, Vec3& hi) {
     }
 }
 
+// Half the floor grid's size: 3 m, doubled until it holds the scene with room
+// to spare. It steps rather than following the scene, so moving an object
+// doesn't refit the view (it would look as if nothing moved).
+double floorExtent(const Vec3& lo, const Vec3& hi) {
+    double g = 3;
+    if (lo.x > hi.x) return g;
+    const double m = std::max({std::fabs(lo.x), std::fabs(hi.x), std::fabs(lo.y), std::fabs(hi.y)});
+    while (g < m * 1.2 && g < 1e9) g *= 2;
+    return g;
+}
+
+void growByFloor(Vec3& lo, Vec3& hi) {
+    const double g = floorExtent(lo, hi);
+    if (lo.x > hi.x) lo = hi = {0, 0, 0};
+    growBounds({{-g, -g, 0}, {g, g, 0}}, lo, hi);
+}
+
 // The active object's editable mesh in world space (positions only).
 std::vector<Vec3> cagePositions(const ModelDoc& doc, const PolyMesh& m, const Object& o) {
     const Mat4 w = doc.world(o);
@@ -388,7 +405,7 @@ Vec3 Projector::ray(double x, double y) const {
 Projector projector(const mesh::Mesh& sceneMesh, const OrbitView& view, int width, int height) {
     Vec3 lo{1e300, 1e300, 1e300}, hi{-1e300, -1e300, -1e300};
     growBounds(sceneMesh.positions, lo, hi);
-    if (lo.x > hi.x) lo = hi = {0, 0, 0};
+    growByFloor(lo, hi);
     return fit(lo, hi, view, width, height);
 }
 
@@ -432,6 +449,7 @@ ViewBuffer viewBuffer(const ModelDoc& doc, const OrbitView& view, int width, int
     if (doc.mesh.positions.empty() && !cagePts.empty()) {
         Vec3 lo{1e300, 1e300, 1e300}, hi{-1e300, -1e300, -1e300};
         growBounds(cagePts, lo, hi);
+        growByFloor(lo, hi);
         b.proj = fit(lo, hi, view, width, height);
     } else {
         b.proj = projector(doc.mesh, view, width, height);
@@ -495,7 +513,20 @@ void drawEdge(Canvas& c, const ViewBuffer& b, const Vec3& a, const Vec3& e, rast
 bool ModelDoc::renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const {
     if (width == 0 && height == 0) return true;
     if (width <= 0 || height <= 0) return false;
-    if (!mesh::renderOrbit(mesh, view, width, height, rgba, previewOptions)) return false;
+    // a floor grid with the red X and green Y axes, as in Blender; it also keeps the view still
+    mesh::RenderOptions opts = previewOptions;
+    {
+        Vec3 lo{1e300, 1e300, 1e300}, hi{-1e300, -1e300, -1e300};
+        growBounds(mesh.positions, lo, hi);
+        const double g = floorExtent(lo, hi), step = g / 6;
+        for (int i = -6; i <= 6; ++i) {
+            const double t = i * step;
+            const raster::Color grey{205, 207, 212, 255};
+            opts.lines.push_back({{{-g, t, 0}, {g, t, 0}}, i == 0 ? raster::Color{225, 110, 110, 255} : grey});
+            opts.lines.push_back({{{t, -g, 0}, {t, g, 0}}, i == 0 ? raster::Color{120, 185, 120, 255} : grey});
+        }
+    }
+    if (!mesh::renderOrbit(mesh, view, width, height, rgba, opts)) return false;
     Canvas canvas{rgba, width, height};
     const int thick = std::max(1, std::min(width, height) / 600);
     const Object* active = activeObject();

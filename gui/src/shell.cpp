@@ -188,9 +188,18 @@ void Shell::select(const std::string& commandId) {
     if (!info) return;
     form_ = buildForm(*info, docIds(), currentDoc_);
     prefillMadeNames(*form_, madeNames_);
+    fillPicked(false);
     result_.reset();
     pickProps_ = true;
     showProps_ = true;
+}
+
+void Shell::fillPicked(bool replace) {
+    if (!form_ || canvas_.vecSel.empty()) return;
+    for (auto& f : form_->fields) {
+        if (f.spec.name != "shape" && f.spec.name != "shapes") continue;
+        if (replace || f.text.empty()) setFieldText(f, canvas_.vecSel);
+    }
 }
 
 void Shell::runForm() {
@@ -246,8 +255,31 @@ void Shell::redo() {
 void Shell::openFile(const std::string& path) {
     if (!app_.launcher.empty()) return launcherOpen(path);  // the launcher hands every file to its own app
     if (openFolder(path)) return;  // a folder opens in the file manager (or as a code project)
-    const auto candidates = openCandidates(path, tools_, commands_);
+    auto candidates = openCandidates(path, tools_, commands_);
     resultFor_ = "Open a file";
+    // the suite's own file table knows best (notes.md is a document, not slides)
+    if (handoff_ && session_.registry().find("app.open_with")) {
+        const Result route = session_.run("app.open_with", {{"path", path}});
+        const std::string command = fieldText(route, "command");
+        if (fieldText(route, "app") == self_ && !command.empty()) {
+            auto it = std::find(candidates.begin(), candidates.end(), command);
+            if (it != candidates.end()) std::rotate(candidates.begin(), it, it + 1);
+        }
+    }
+    if (candidates.empty() && find("toolkit.inspect")) {
+        // the files app: say what the file is and get it ready to convert
+        Result r = run("toolkit.inspect", {{"path", path}});
+        if (r.ok && find("convert.file")) {
+            select("convert.file");
+            for (auto& f : form_->fields)
+                if (f.spec.name == "input") setFieldText(f, path);
+        }
+        r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+        result_ = std::move(r);
+        resultFor_ = "Open a file";
+        suggestOtherApp(path, true);
+        return;
+    }
     if (candidates.empty()) {
         result_ = Result::failure("This app can't open files. Try \"New\" instead.");
         suggestOtherApp(path, false);

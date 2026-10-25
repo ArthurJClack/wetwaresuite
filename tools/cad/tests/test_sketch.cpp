@@ -425,7 +425,32 @@ void testFilesUndoMcp() {
 
 }  // namespace
 
+void testSketchesShowInTheView() {
+    Session s;
+    registerCommands(s);
+    run(s, "cad.new");
+    run(s, "cad.sketch doc=cad1");
+    auto doc = s.workspace().getAs<CadDoc>("cad1");
+    // an empty sketch: the axes still draw, so the view isn't blank
+    CHECK(doc && doc->sketchLines().empty());
+    std::vector<std::uint8_t> rgba;
+    auto inked = [&] {
+        int n = 0;
+        for (std::size_t i = 0; i + 3 < rgba.size(); i += 4)
+            if (rgba[i] > 200 && rgba[i + 1] < 150 && rgba[i + 2] < 100) ++n;  // sketch orange or the red axis
+        return n;
+    };
+    CHECK(doc->renderView(OrbitView{}, 120, 90, rgba) && inked() > 5);
+    run(s, "cad.sketch_rect doc=cad1 sketch=sketch1 width=40 height=20");
+    CHECK(doc->sketchLines().size() == 4);
+    CHECK(doc->renderView(OrbitView{}, 120, 90, rgba) && inked() > 40);
+    // once extruded the sketch has done its job and hides
+    run(s, "cad.sketch_extrude doc=cad1 sketch=sketch1 depth=10");
+    CHECK(doc->sketchLines().empty());
+}
+
 int main() {
+    testSketchesShowInTheView();
     testDegreesOfFreedom();
     testExtrudeFromSketch();
     testSketchShapes();

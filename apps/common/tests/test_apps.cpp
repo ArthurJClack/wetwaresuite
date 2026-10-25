@@ -138,6 +138,15 @@ int main() {
         CHECK(apps::routeForFile("head.obj").app == "model");
         CHECK(apps::routeForFile("part.stl").app == "cad");
         CHECK(apps::routeForFile("cave.tmj").app == "game");
+        CHECK(apps::routeForFile("scan.tif").command == "photo.open");  // a plain TIFF is a picture
+        CHECK(apps::routeForFile("art.psd").command == "photo.open");
+        CHECK(apps::routeForFile("pic.webp").command == "photo.open");
+        {  // a TIFF with map tags (ModelPixelScale) is a GeoTIFF: elevation for maps
+            const auto geo = std::filesystem::temp_directory_path() / "ww-route-geo.tif";
+            std::ofstream(geo, std::ios::binary).write("II*\0\x08\0\0\0\x01\0\x0e\x83\x0c\0\x03\0\0\0\0\0\0\0\0\0\0\0", 26);
+            CHECK(apps::routeForFile(geo.string()).app == "maps");
+            std::filesystem::remove(geo);
+        }
         CHECK(apps::routeForFile("song.beats.json").command == "beats.open");  // two-part extension wins
         CHECK(apps::routeForFile("board.board.json").app == "draw");
         CHECK(apps::routeForFile("voice.wav").app == "sound");

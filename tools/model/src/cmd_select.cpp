@@ -5,6 +5,7 @@
 #include <limits>
 
 #include "cmd.hpp"
+#include "wetwaresuite/model/ops.hpp"
 
 namespace wetwaresuite::model::cmd {
 
@@ -250,6 +251,74 @@ void registerSelectCommands(Session& session) {
                 selectLinked(m, d.scene.selectMode, boolParam(p, "seams", false));
                 return done("selected linked", d, p);
             })));
+
+    reg.add({"model.drag",
+             "Move with the mouse",
+             "Move (G), rotate (R) or scale (S) what's selected by a mouse drag of dx,dy pixels in a view (the same "
+             "view params as model.pick): the selected objects in object mode, the selected vertices in edit mode. "
+             "axis=x, y or z locks it to that axis; moving follows the mouse exactly, rotating turns half a degree "
+             "per pixel (about the axis, or the vertical), scaling doubles every 100 px to the right.",
+             withDoc(join({{"dx", ParamType::Number, "pixels right", false, {}, 0.0},
+                           {"dy", ParamType::Number, "pixels down", false, {}, 0.0},
+                           {"mode", ParamType::String, "what the drag does", false, {"move", "rotate", "scale"}, std::string("move")},
+                           {"axis", ParamType::String, "lock to one axis", false, {"x", "y", "z"}}},
+                          screenParams())),
+             true},
+            edit(session, [](ModelDoc& d, const Params& p) {
+                const int W = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "width", 512), 16, 4096));
+                const int H = static_cast<int>(std::clamp<std::int64_t>(intParam(p, "height", 512), 16, 4096));
+                const double dx = numberParam(p, "dx", 0), dy = numberParam(p, "dy", 0);
+                const std::string mode = stringParam(p, "mode", "move"), axisName = stringParam(p, "axis");
+                d.refresh();
+                const Projector proj = projector(d.mesh, screenView(p), W, H);
+                std::optional<Vec3> axis;
+                if (axisName == "x") axis = Vec3{1, 0, 0};
+                if (axisName == "y") axis = Vec3{0, 1, 0};
+                if (axisName == "z") axis = Vec3{0, 0, 1};
+                Vec3 move{0, 0, 0};
+                if (axis) {  // slide along the axis as far as the mouse went along its line on screen
+                    const double sx = mesh::dot(*axis, proj.right), sy = -mesh::dot(*axis, proj.up);
+                    const double len2 = sx * sx + sy * sy;
+                    if (len2 > 1e-6) move = *axis * ((dx * sx + dy * sy) / len2 / proj.scale);
+                } else {
+                    move = (proj.right * dx - proj.up * dy) / proj.scale;
+                }
+                const double angle = dx * 0.5;
+                const Vec3 turnAxis = axis.value_or(Vec3{0, 0, 1});
+                const double factor = std::pow(2.0, dx / 100.0);
+                Vec3 grow{factor, factor, factor};
+                if (axis) grow = {axisName == "x" ? factor : 1, axisName == "y" ? factor : 1, axisName == "z" ? factor : 1};
+                Object* a = d.activeObject();
+                if (d.scene.editMode && a && d.meshOf(*a)) {
+                    PolyMesh& m = d.editMesh(*a);
+                    const auto sel = selectedVerts(m);
+                    if (sel.empty()) return Result::failure("nothing selected");
+                    const Mat4 w = d.world(*a), inv = w.inverse();
+                    Vec3 pivot{0, 0, 0};
+                    for (auto v : sel) pivot = pivot + w.point(m.verts[v].p);
+                    pivot = pivot / static_cast<double>(sel.size());
+                    Mat4 t = Mat4::translate(move);
+                    if (mode == "rotate") t = Mat4::translate(pivot) * Mat4::rotateAxis(turnAxis, angle) * Mat4::translate(-pivot);
+                    if (mode == "scale") t = Mat4::translate(pivot) * Mat4::scale(grow) * Mat4::translate(-pivot);
+                    transformSelected(m, inv * t * w);
+                    return done("dragged " + many(sel.size(), "vertex"), d, p);
+                }
+                std::vector<Object*> objs;
+                for (auto& o : d.scene.objects)
+                    if (o.selected) objs.push_back(&o);
+                if (objs.empty()) return Result::failure("nothing selected: click an object first");
+                for (Object* o : objs) {
+                    if (mode == "move") {
+                        setWorld(d, *o, Mat4::translate(move) * d.world(*o));
+                    } else if (mode == "rotate") {
+                        const Vec3 at = d.world(*o).point({0, 0, 0});
+                        setWorld(d, *o, Mat4::translate(at) * Mat4::rotateAxis(turnAxis, angle) * Mat4::translate(-at) * d.world(*o));
+                    } else {
+                        o->scale = {o->scale.x * grow.x, o->scale.y * grow.y, o->scale.z * grow.z};
+                    }
+                }
+                return done("dragged " + many(objs.size(), "object"), d, p);
+            }));
 
     reg.add({"model.pick",
              "Click to select",

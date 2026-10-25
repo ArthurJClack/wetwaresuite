@@ -360,6 +360,12 @@ View makeView(const Map& map, const RenderOptions& o, std::vector<std::string>& 
         pb.maxX += mx;
         pb.minY -= my;
         pb.maxY += my;
+        // a few places in a north-south line: no taller than wide, so they don't open as a thin strip
+        if (o.height <= 0 && pb.height() > pb.width()) {
+            const double grow = (pb.height() - pb.width()) / 2;
+            pb.minX -= grow;
+            pb.maxX += grow;
+        }
     }
     const double pw = std::max(pb.width(), 1e-9), ph = std::max(pb.height(), 1e-9);
     v.W = std::clamp(o.width, 16, 8000);
@@ -778,9 +784,14 @@ void drawLayer(Scene& sc, const View& v, const Layer& l, std::vector<Label>& lab
             }
         }
     }
-    if (st.labelField.empty()) return;
+    // a handful of named places reads like a map without asking: label them by name
+    std::string field = st.labelField;
+    if (field.empty() && l.features.size() <= 100 &&
+        std::all_of(l.features.begin(), l.features.end(), [](const Feature& f) { return f.geom.type == GeomType::Point && f.props.count("name"); }))
+        field = "name";
+    if (field.empty()) return;
     for (const auto& f : l.features) {
-        auto it = f.props.find(st.labelField);
+        auto it = f.props.find(field);
         if (it == f.props.end() || it->second.isNull() || f.geom.empty()) continue;
         Label lb{0, 0, it->second.text(), st.labelSize, st.labelColor, st.halo, 1};
         if (f.geom.type == GeomType::Point) {

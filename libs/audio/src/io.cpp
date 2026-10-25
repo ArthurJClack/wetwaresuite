@@ -334,6 +334,15 @@ void save(const Buffer& b, const fs::path& path, const SaveOptions& o) {
     }
     args.push_back(path.string());
     auto r = runProgram(args);
+    if (r.exitCode != 0 && e == "ogg" && r.output.find("libvorbis") != std::string::npos) {
+        // some ffmpeg builds (Homebrew's) leave libvorbis out: ffmpeg's own Vorbis encoder is stereo-only and marked experimental
+        auto codec = std::find(args.begin(), args.end(), "libvorbis");
+        *codec = "vorbis";
+        args.erase(codec + 1, args.end() - 1);  // its quality scale differs, so the default bitrate
+        args.insert(args.end() - 1, {"-strict", "-2", "-ac", "2"});
+        if (!kbps.empty()) args.insert(args.end() - 1, {"-b:a", kbps});
+        r = runProgram(args);
+    }
     if (r.exitCode != 0) throw std::runtime_error("ffmpeg couldn't write " + path.string() + ": " + r.output);
 }
 

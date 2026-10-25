@@ -10,8 +10,16 @@
 
 namespace wetwaresuite {
 
-// Finds an executable on PATH (adds .exe on Windows). Empty if missing.
+// Finds an executable on PATH (adds .exe on Windows), then in the suite's own
+// tools folder and where package managers usually put programs (Homebrew,
+// winget, Chocolatey, Scoop...), since an app started from the desktop often
+// gets a shorter PATH than a terminal. Empty if missing.
 std::optional<std::filesystem::path> findProgram(const std::string& name);
+
+// Where the suite keeps helper programs it downloads itself (ffmpeg):
+// %LOCALAPPDATA%\wetwaresuite\tools, ~/Library/Application Support/wetwaresuite/tools
+// or ~/.local/share/wetwaresuite/tools. WETWARESUITE_TOOLS_DIR overrides it.
+std::filesystem::path suiteToolsDir();
 
 struct ProcessResult {
     int exitCode = -1;  // -1 when the program couldn't start

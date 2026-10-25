@@ -410,7 +410,8 @@ void testCommands() {
     // presets list
     r = run(s, "cut.presets");
     CHECK(r.ok && contains(r.message, "youtube_1080p") && contains(text(r, "presets"), "vertical"));
-    fs::remove_all(dir);
+    std::error_code ec;
+    fs::remove_all(dir, ec);  // windows: a cached decoder may still hold a source open
 }
 
 // Real exports, only when ffmpeg is installed.
@@ -506,7 +507,8 @@ void testWithFfmpeg() {
     CHECK(r.ok && text(r, "has_audio") == "false");
     r = run(s, "cut.subtitles input=" + q(a) + " subtitles=" + q(srt) + " output=" + q(dir / "subs.mp4") + " quality=draft");
     CHECK(r.ok && near(num(r, "duration"), 3, 0.1));
-    fs::remove_all(dir);
+    std::error_code ec;
+    fs::remove_all(dir, ec);  // windows: a cached decoder may still hold a source open
 }
 
 void testMcp() {

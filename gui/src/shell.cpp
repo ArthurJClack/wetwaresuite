@@ -189,6 +189,7 @@ void Shell::select(const std::string& commandId) {
     form_ = buildForm(*info, docIds(), currentDoc_);
     prefillMadeNames(*form_, madeNames_);
     fillPicked(false);
+    fillAudioRange(false);
     result_.reset();
     pickProps_ = true;
     showProps_ = true;
@@ -199,6 +200,18 @@ void Shell::fillPicked(bool replace) {
     for (auto& f : form_->fields) {
         if (f.spec.name != "shape" && f.spec.name != "shapes") continue;
         if (replace || f.text.empty()) setFieldText(f, canvas_.vecSel);
+    }
+}
+
+void Shell::fillAudioRange(bool replace) {
+    if (!form_ || !audioSel_.any() || audioSel_.doc != currentDoc_) return;
+    if (form_->command.rfind("audio.", 0) != 0) return;
+    char a[32], b[32];
+    std::snprintf(a, sizeof a, "%.3f", audioSel_.a);
+    std::snprintf(b, sizeof b, "%.3f", audioSel_.b);
+    for (auto& f : form_->fields) {
+        if (f.spec.name == "start" && (replace || !f.set || f.text.empty() || f.text == "0")) setFieldText(f, a);
+        if (f.spec.name == "end" && (replace || !f.set || f.text.empty() || f.text == "0")) setFieldText(f, b);
     }
 }
 

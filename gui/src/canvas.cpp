@@ -529,8 +529,11 @@ void Shell::canvasArea() {
     const bool painting = game ? gamePainting() && !ImGui::IsKeyDown(ImGuiKey_Space)
                                : toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
                                      !canvas_.pending;
+    auto shownDoc = session_.workspace().get(currentDoc_);
+    const bool waveform = shownDoc && shownDoc->kind() == "audio";  // left-drag picks a time range instead
     const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
-                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking && ((!circuitEditing() && !mapsEditing()) || ImGui::IsKeyDown(ImGuiKey_Space))));
+                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking &&
+                                     ((!circuitEditing() && !mapsEditing() && !waveform) || ImGui::IsKeyDown(ImGuiKey_Space))));
     if (dragPan) {
         canvas_.pan.x += io.MouseDelta.x;
         canvas_.pan.y += io.MouseDelta.y;
@@ -606,6 +609,7 @@ void Shell::canvasArea() {
     drawRetouch(dl, p0, hovered);
     drawBrushTool(dl, p0, hovered);
 
+    if (waveform) audioCanvas(dl, p0, p1, hovered, active);
     // the playhead over a waveform; a click (not a drag) moves it there
     if (playheadFraction_ >= 0) {
         const float x = p0.x + (p1.x - p0.x) * std::clamp(playheadFraction_, 0.0f, 1.0f);
@@ -620,6 +624,69 @@ void Shell::canvasArea() {
     if (circuitDoc()) circuitCanvas(dl, p0, hovered, ImGui::IsItemClicked(ImGuiMouseButton_Left));
     if (mapsDoc()) mapsCanvas(dl, p0, hovered, ImGui::IsItemClicked(ImGuiMouseButton_Left));
     dl->PopClipRect();
+}
+
+// Audacity's way: drag over the waveform to pick a time range (shaded), then any action
+// with start/end gets it; Delete cuts it, a click clears it and moves the playhead.
+void Shell::audioCanvas(ImDrawList* dl, ImVec2 p0, ImVec2 p1, bool hovered, bool active) {
+    AudioSelection& sel = audioSel_;
+    if (sel.doc != currentDoc_) sel = {currentDoc_};
+    if (sel.seen != changes_ || sel.lengthDoc != currentDoc_) {
+        sel.seen = changes_;
+        sel.lengthDoc = currentDoc_;
+        Result info = query("audio.info", {{"doc", currentDoc_}});
+        sel.length = 0;
+        if (const Value* v = info.ok ? info.field("seconds") : nullptr) {
+            if (auto d = std::get_if<double>(v)) sel.length = *d;
+            if (auto i = std::get_if<std::int64_t>(v)) sel.length = static_cast<double>(*i);
+        }
+        if (sel.b > sel.length) sel.b = sel.length;
+        if (sel.a >= sel.b) sel.a = sel.b = -1;
+    }
+    if (sel.length <= 0 || p1.x - p0.x < 4) return;
+    ImGuiIO& io = ImGui::GetIO();
+    auto timeAt = [&](float x) { return std::clamp((x - p0.x) / (p1.x - p0.x), 0.0f, 1.0f) * sel.length; };
+    if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsKeyDown(ImGuiKey_Space)) {
+        sel.dragging = true;
+        sel.a = sel.b = timeAt(io.MousePos.x);
+    }
+    static double anchor = 0;
+    if (sel.dragging) {
+        if (ImGui::IsItemActivated()) anchor = sel.a;
+        const double t = timeAt(io.MousePos.x);
+        sel.a = std::min(anchor, t);
+        sel.b = std::max(anchor, t);
+        if (!active) {
+            sel.dragging = false;
+            const double minSpan = sel.length * 3.0 / (p1.x - p0.x);  // under 3 px is a click
+            if (sel.b - sel.a < minSpan) {
+                seekTo(anchor);
+                sel.a = sel.b = -1;
+            } else {
+                fillAudioRange(true);
+                char text[96];
+                std::snprintf(text, sizeof text, "Selected %.2f s to %.2f s (%.2f s). Pick an action, or Delete to cut it.", sel.a, sel.b,
+                              sel.b - sel.a);
+                result_ = Result::success(text);
+                resultFor_ = "Selection";
+            }
+        }
+    }
+    if (sel.any() && hovered && !io.WantTextInput && (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace))) {
+        Result r = run("audio.cut", {{"doc", currentDoc_}, {"start", sel.a}, {"end", sel.b}});
+        resultFor_ = "Cut";
+        r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+        result_ = std::move(r);
+        sel.a = sel.b = -1;
+    }
+    if (sel.any() || sel.dragging) {
+        const float x0 = p0.x + static_cast<float>(sel.a / sel.length) * (p1.x - p0.x);
+        const float x1 = p0.x + static_cast<float>(sel.b / sel.length) * (p1.x - p0.x);
+        ImVec4 c = accent_;
+        dl->AddRectFilled({x0, p0.y}, {x1, p1.y}, ImGui::ColorConvertFloat4ToU32({c.x, c.y, c.z, 0.28f}));
+        dl->AddLine({x0, p0.y}, {x0, p1.y}, ImGui::ColorConvertFloat4ToU32(c), 1.5f);
+        dl->AddLine({x1, p0.y}, {x1, p1.y}, ImGui::ColorConvertFloat4ToU32(c), 1.5f);
+    }
 }
 
 }  // namespace wetwaresuite::gui

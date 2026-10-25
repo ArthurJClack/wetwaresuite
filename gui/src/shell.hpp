@@ -598,6 +598,18 @@ private:
     Canvas canvas_;
     Transport transport_;
     float playheadFraction_ = -1;  // where to draw the playhead over a waveform, 0..1
+    // a time range dragged over a waveform, as in Audacity: forms with start/end get it
+    struct AudioSelection {
+        std::string doc;
+        double a = -1, b = -1;    // seconds; a < 0 = none
+        bool dragging = false;
+        double length = 0;        // the clip's length in seconds
+        std::uint64_t seen = ~0ull;
+        std::string lengthDoc;
+        bool any() const { return a >= 0 && b > a; }
+    } audioSel_;
+    void audioCanvas(ImDrawList* dl, ImVec2 p0, ImVec2 p1, bool hovered, bool active);
+    void fillAudioRange(bool replace);
     TimelineState timeline_;
     GridState grid_;
     CircuitCanvas circuit_;

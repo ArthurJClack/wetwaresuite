@@ -258,7 +258,7 @@ int main() {
     CHECK(th.ok && intField(th, "made") + intField(th, "cached") >= 7);
     CHECK(fs::exists(dir / "sheet.png") && th.attachments.size() == 1);
     CHECK(fs::exists(assets / library::kThumbDir));
-    if (haveFfmpeg) CHECK(intField(th, "missing") == 1);  // only readme.txt
+    if (haveFfmpeg) CHECK(intField(th, "missing") == (findProgram("pdftoppm") ? 1 : 2));  // readme.txt, and sheet.pdf without poppler
     if (findProgram("pdftoppm")) {
         auto c = library::Catalog::load(assets / library::kCatalogName);
         CHECK(fs::exists(library::thumbPath(c, *c.find(library::normPath(assets / "sheet.pdf")), 256)));

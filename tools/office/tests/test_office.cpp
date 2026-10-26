@@ -759,6 +759,10 @@ void testChart() {
 }
 
 std::string txt(const Result& r) { return toText(r.value); }
+std::string txt(const Result& r, const char* key) {
+    const Value* v = r.field(key);
+    return v ? toText(*v) : std::string();
+}
 
 Params P(std::initializer_list<std::pair<const std::string, Value>> l) { return Params(l); }
 
@@ -948,6 +952,24 @@ void testDeckAndPdfCommands() {
     CHECK(r.ok && r.message.find("image 60x30") != std::string::npos);
     r = s.run("office.deck_move_slide", P({{"slide", std::int64_t{5}}, {"to", std::int64_t{1}}}));
     CHECK(r.ok);
+    CHECK(s.history().undo());
+    // clicking a slide finds the part under the mouse
+    auto hitAt = [&](std::int64_t slide, double x, double y) { return s.run("office.deck_hit", P({{"slide", slide}, {"x", x}, {"y", y}})); };
+    r = hitAt(1, 480, 220);
+    CHECK(r.ok && txt(r, "kind") == "title" && txt(r, "text") == "Launch plan");
+    r = hitAt(2, 300, 60);
+    CHECK(r.ok && txt(r, "kind") == "title" && txt(r, "text") == "Goals");
+    r = hitAt(2, 200, 200);
+    CHECK(r.ok && txt(r, "kind") == "bullets" && txt(r, "text").find("Ship it") != std::string::npos);
+    r = hitAt(3, 700, 200);
+    CHECK(r.ok && txt(r, "kind") == "right" && txt(r, "text").find("right") != std::string::npos);
+    CHECK(s.run("office.deck_text_box", P({{"slide", std::int64_t{2}}, {"text", std::string("Note")}, {"x", 600.0}, {"y", 300.0}, {"w", 200.0}})).ok);
+    r = hitAt(2, 650, 310);
+    CHECK(r.ok && txt(r, "kind") == "object" && txt(r, "text") == "Note");
+    CHECK(s.history().undo());
+    CHECK(s.run("office.deck_add_slide", P({{"layout", std::string("content")}})).ok);
+    r = hitAt(6, 300, 60);  // an empty title still takes a click, like "click to add title"
+    CHECK(r.ok && txt(r, "kind") == "title" && txt(r, "text").empty());
     CHECK(s.history().undo());
     r = s.run("office.deck_theme", P({{"theme", std::string("#aa3300")}}));
     CHECK(r.ok);

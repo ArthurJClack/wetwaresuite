@@ -140,6 +140,7 @@ void Shell::refreshCanvas() {
     std::string png = gamePicture();
     const bool game = !png.empty();
     // anything else: the document's own preview, else the tool's preview command
+    if (png.empty() && deckDoc()) png = deckPicture();  // the slide shown big, not the sorter
     if (png.empty() && doc->kind() == "vector" && find("vector.preview")) {  // sharper than the small built-in preview, for zooming in
         Result r = session_.run("vector.preview", {{"doc", currentDoc_}, {"size", std::int64_t{1400}}});
         if (r.ok && !r.attachments.empty()) png = r.attachments[0].bytes;
@@ -249,7 +250,8 @@ void Shell::railTools() {
 
 void Shell::canvasToolbar() {
     if (canvas_.is3d) {
-        orbitToolbar();
+        if (sketchActive()) sketchToolbar();
+        else orbitToolbar();
         return;
     }
     if (ImGui::Button("Fit")) canvas_.fit = true;
@@ -469,6 +471,19 @@ void Shell::onEvent(const SDL_Event& e) {
 }
 
 void Shell::canvasView() {
+    if (deckDoc()) {
+        // slides: the slide strip on the left, like PowerPoint
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        const float side = std::min(ImGui::GetFontSize() * 13, avail.x * 0.3f);
+        ImGui::BeginChild("deck_side", {side, avail.y}, ImGuiChildFlags_Borders);
+        deckStrip();
+        ImGui::EndChild();
+        ImGui::SameLine();
+        ImGui::BeginChild("deck_canvas", {0, avail.y}, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        canvasArea();
+        ImGui::EndChild();
+        return;
+    }
     if (!gameActive()) {
         canvasArea();
         return;
@@ -502,7 +517,8 @@ void Shell::canvasArea() {
     dl->AddRectFilled(v0, v1, darkLook() ? IM_COL32(40, 42, 46, 255) : IM_COL32(200, 202, 206, 255));
 
     if (canvas_.is3d) {
-        orbitCanvas(dl, v0, size, hovered, active);
+        if (sketchActive()) sketchCanvas(dl, v0, size, hovered, active);
+        else orbitCanvas(dl, v0, size, hovered, active);
         dl->PopClipRect();
         return;
     }
@@ -541,9 +557,10 @@ void Shell::canvasArea() {
                                : toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
                                      !canvas_.pending;
     const bool waveform = shownDoc && shownDoc->kind() == "audio";  // left-drag picks a time range instead
+    const bool slides = shownDoc && shownDoc->kind() == "deck" && deckDoc();  // left-drag moves objects, a click edits
     const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
                                     (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking &&
-                                     ((!circuitEditing() && !mapsEditing() && !waveform) || ImGui::IsKeyDown(ImGuiKey_Space))));
+                                     ((!circuitEditing() && !mapsEditing() && !waveform && !slides) || ImGui::IsKeyDown(ImGuiKey_Space))));
     if (dragPan) {
         canvas_.pan.x += io.MouseDelta.x;
         canvas_.pan.y += io.MouseDelta.y;
@@ -621,6 +638,7 @@ void Shell::canvasArea() {
 
     if (waveform) audioCanvas(dl, p0, p1, hovered, active);
     if (shownDoc && shownDoc->kind() == "doc" && !painting) docCanvas(dl, p0, hovered);
+    if (slides) deckCanvas(dl, p0, hovered, active);
     // the playhead over a waveform; a click (not a drag) moves it there
     if (playheadFraction_ >= 0) {
         const float x = p0.x + (p1.x - p0.x) * std::clamp(playheadFraction_, 0.0f, 1.0f);

@@ -736,6 +736,54 @@ void registerSketchEditCommands(Session& session) {
                 attachSketch(r, doc, *f, p);
                 return r;
             }, false));
+
+    reg.add({"cad.sketch_geometry", "Sketch Geometry",
+             "A sketch's solved geometry as numbers, for drawing it in a window: lines = x1,y1,x2,y2,... segments (arcs and "
+             "circles as short segments), construction = the same for construction geometry, points = x,y of every point, "
+             "free = points that can still move, profiles = each closed region as a count then x,y pairs. Without sketch= it "
+             "uses the last sketch; sketches lists them all.",
+             {docParam(), {"sketch", ParamType::String, "name of a sketch feature (default: the last one)", false}}, false, true},
+            cadCommand(session, [](CadDoc& doc, const Params& p) {
+                std::string sketches, name = stringParam(p, "sketch");
+                for (const auto& f : doc.features) {
+                    if (f.type != "sketch") continue;
+                    sketches += (sketches.empty() ? "" : ",") + f.name;
+                    if (!has(p, "sketch")) name = f.name;
+                }
+                const Feature* f = doc.findFeature(name);
+                if (!f || f->type != "sketch") return Result::failure(name.empty() ? "the part has no sketches yet" : "no sketch called '" + name + "'");
+                const FeatureExtra* x = doc.featureExtra(name);
+                if (!x || !x->sketch) return Result::failure(name + " isn't built (suppressed?)");
+                const SolvedSketch& s = *x->sketch;
+                NumberList lines, construction, points, free, profiles;
+                for (const auto& e : f->sketch.entities) {
+                    const auto pts = detail::entityOutline(e, s, 64);
+                    NumberList& out = e.construction ? construction : lines;
+                    for (std::size_t i = 0; i + 1 < pts.size(); ++i) out.insert(out.end(), {pts[i].x, pts[i].y, pts[i + 1].x, pts[i + 1].y});
+                }
+                for (const auto& [id, q] : s.points) {
+                    const bool loose = std::find(s.underDefined.begin(), s.underDefined.end(), id) != s.underDefined.end();
+                    (loose ? free : points).insert((loose ? free : points).end(), {q.x, q.y});
+                }
+                for (const auto& region : s.regions) {
+                    profiles.push_back(static_cast<double>(region.outer.size()));
+                    for (const auto& q : region.outer) profiles.insert(profiles.end(), {q.x, q.y});
+                }
+                Result r = Result::success(name + ": " + s.status(), name);
+                r.with("doc", stringParam(p, "doc"))
+                    .with("sketch", name)
+                    .with("sketches", sketches)
+                    .with("status", s.status())
+                    .with("dof", static_cast<std::int64_t>(s.dof))
+                    .with("regions", static_cast<std::int64_t>(s.regions.size()))
+                    .with("lines", lines)
+                    .with("construction", construction)
+                    .with("points", points)
+                    .with("free", free)
+                    .with("profiles", profiles)
+                    .with("units", doc.units);
+                return r;
+            }, false));
 }
 
 }  // namespace wetwaresuite::cad

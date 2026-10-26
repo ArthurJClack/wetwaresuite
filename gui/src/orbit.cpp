@@ -48,6 +48,24 @@ void Shell::orbitToolbar() {
     ImGui::SetItemTooltip("Show the whole model (or double-click it)");
     ImGui::SameLine();
     auto doc = session_.workspace().get(currentDoc_);
+    if (doc && doc->kind() == "cad" && find("cad.sketch_geometry")) {
+        // open the last sketch for drawing, or start one
+        static std::string lastFor, lastName;  // asked again only after a change
+        const std::string key = currentDoc_ + "|" + std::to_string(changes_);
+        if (key != lastFor) {
+            lastFor = key;
+            const Result last = query("cad.sketch_geometry", {{"doc", currentDoc_}});
+            const auto* n = last.ok ? std::get_if<std::string>(&last.value) : nullptr;
+            lastName = n ? *n : std::string();
+        }
+        const std::string* name = lastName.empty() ? nullptr : &lastName;
+        if (ImGui::Button(name ? ("Edit " + *name).c_str() : "New sketch")) {
+            if (name) enterSketch(currentDoc_, *name);
+            else select("cad.sketch");
+        }
+        ImGui::SetItemTooltip(name ? "Draw on the sketch with the mouse: lines, rectangles, circles" : "Start a sketch on a plane, then draw on it with the mouse");
+        ImGui::SameLine();
+    }
     if (doc && doc->kind() == "model" && canvas_.grab) {
         const char* what = canvas_.grab == 'G' ? "Moving" : canvas_.grab == 'R' ? "Rotating" : "Scaling";
         ImGui::Text("%s%s%s: move the mouse, click to keep, Esc to undo; X Y Z lock an axis", what,

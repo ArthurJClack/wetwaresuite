@@ -3,6 +3,7 @@
 // rail on the left, Properties / Layers / History tabs on the right and a status
 // bar. Every button still runs a command through Session::run.
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <filesystem>
 
@@ -429,7 +430,7 @@ void Shell::docTabs() {
         if (!panelForDoc(id).empty()) continue;  // code files and terminals live in their panel
         auto doc = session_.workspace().get(id);
         // a dot marks changes that aren't saved yet, like most editors
-        tabs.emplace_back(id, (doc && !doc->path.empty() ? fileName(doc->path) : id) + (unsaved_.count(id) ? " \xe2\x80\xa2" : ""));
+        tabs.emplace_back(id, docTitle(id) + (unsaved_.count(id) ? " \xe2\x80\xa2" : ""));
     }
     std::string clicked, closing;
     if (ImGui::BeginTabBar("files", ImGuiTabBarFlags_FittingPolicyScroll | ImGuiTabBarFlags_NoTooltip)) {
@@ -493,6 +494,20 @@ std::string Shell::docOpener(const std::string& id) const {
     if (it != docOpener_.end()) return it->second;
     auto t = docTool_.find(id);
     return t != docTool_.end() ? t->second + ".open" : std::string();
+}
+
+// A file's name, or "Untitled map 1" for one never saved (its id, map1, stays what commands use).
+std::string Shell::docTitle(const std::string& id) const {
+    auto doc = session_.workspace().get(id);
+    if (!doc) return id;
+    if (!doc->path.empty()) return fileName(doc->path);
+    static const std::map<std::string, std::string> words = {{"vector", "drawing"}, {"cad", "part"},       {"deck", "slides"},
+                                                             {"doc", "document"},   {"sheet", "spreadsheet"}, {"audio", "sound"}};
+    const std::string kind = doc->kind();
+    const auto w = words.find(kind);
+    std::size_t digits = id.size();
+    while (digits > 0 && std::isdigit(static_cast<unsigned char>(id[digits - 1]))) --digits;
+    return "Untitled " + (w != words.end() ? w->second : kind) + (digits < id.size() ? " " + id.substr(digits) : "");
 }
 
 // ---- tool rail ---------------------------------------------------------------------
@@ -740,10 +755,7 @@ bool Shell::requestQuit() {
 void Shell::askSavePopup() {
     if (!ImGui::BeginPopupModal("Save changes?", nullptr, ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings)) return;
     const float unit = ImGui::GetFontSize();
-    auto name = [this](const std::string& id) {
-        auto doc = session_.workspace().get(id);
-        return doc && !doc->path.empty() ? fileName(doc->path) : id;
-    };
+    auto name = [this](const std::string& id) { return docTitle(id); };
     if (askQuit_) {
         std::string list;
         for (const auto& id : unsaved_) list += (list.empty() ? "" : ", ") + name(id);

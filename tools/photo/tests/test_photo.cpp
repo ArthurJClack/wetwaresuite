@@ -1,3 +1,4 @@
+#include <fstream>
 #include <filesystem>
 
 #include "wetwaresuite/photo/photo.hpp"
@@ -277,6 +278,19 @@ int main() {
     CHECK(raster::load(dir / "in" / "a.png").width() == 200);  // the original is never replaced
     CHECK(inPlace.ok && intField(inPlace, "processed") == 1);   // b.jpg -> b.png is fine
     CHECK(s.run("photo.save", {{"doc", id}, {"path", (dir / "new" / "deep" / "x.png").string()}}).ok);
+
+    // an SVG opens as pixels, scaled up when small
+    {
+        std::ofstream(dir / "logo.svg") << "<svg xmlns='http://www.w3.org/2000/svg' width='64' height='32'>"
+                                           "<rect x='0' y='0' width='32' height='32' fill='#ff0000'/></svg>";
+        Result svg = s.run("photo.open", {{"path", (dir / "logo.svg").string()}});
+        CHECK(svg.ok && intField(svg, "width") == 1024 && intField(svg, "height") == 512);
+        const std::string sid = docOf(svg);
+        CHECK(s.run("photo.save", {{"doc", sid}, {"path", (dir / "logo.png").string()}}).ok);
+        CHECK(fs::exists(dir / "logo.png"));
+        const raster::Image back = raster::load(dir / "logo.png");
+        CHECK(back.at(100, 100).r == 255 && back.at(100, 100).g == 0);
+    }
 
     fs::remove_all(dir);
     testSelections(dir);

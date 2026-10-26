@@ -1,7 +1,7 @@
 add_library(wetwaresuite_photo src/photo.cpp src/heal.cpp src/select.cpp src/adjust_cmds.cpp src/filter_cmds.cpp)
 add_library(wetwaresuite::photo ALIAS wetwaresuite_photo)
 target_include_directories(wetwaresuite_photo PUBLIC include)
-target_link_libraries(wetwaresuite_photo PUBLIC wetwaresuite::raster)
+target_link_libraries(wetwaresuite_photo PUBLIC wetwaresuite::raster PRIVATE wetwaresuite::vector)
 
 if(WETWARESUITE_BUILD_TESTS)
   add_executable(test_photo tests/test_photo.cpp)

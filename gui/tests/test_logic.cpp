@@ -82,7 +82,7 @@ void testKinds() {
 }
 
 void testForms() {
-    CommandInfo info = cmd("demo.go", "Go", "Does a thing.",
+    CommandInfo info = cmd("demo.new", "New", "Does a thing.",
                            {{"doc", ParamType::String, "id of an open image, e.g. img1", true},
                             {"width", ParamType::Int, "width in px", true},
                             {"quality", ParamType::Int, "JPEG quality 1..100", false, {}, std::int64_t{90}},
@@ -96,6 +96,11 @@ void testForms() {
     CHECK(form.fields.size() == 9);
     CHECK(fieldNamed(form, "doc")->text == "img2");
     CHECK(fieldNamed(form, "width")->number == 1920);  // a sensible start for a required size
+    // a shape on a page starts small enough to see whole, pixel art smaller still
+    Form rect = buildForm(cmd("vector.rect", "Rectangle", "", {{"width", ParamType::Number, "width", true}}), {}, "");
+    CHECK(fieldNamed(rect, "width")->number == 200);
+    Form sprite = buildForm(cmd("forge.sprite_new", "Sprite", "", {{"width", ParamType::Int, "width", true}}), {}, "");
+    CHECK(fieldNamed(sprite, "width")->number == 32);
     CHECK(fieldNamed(form, "quality")->number == 90 && fieldNamed(form, "quality")->min == 1.0);
     CHECK(!fieldNamed(form, "amount")->set);  // optional, no default: the command decides
     CHECK(fieldNamed(form, "mode")->text == "good");

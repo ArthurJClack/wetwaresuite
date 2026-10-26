@@ -6,6 +6,8 @@
 #include <chrono>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <functional>
 
 #include "wetwaresuite/raster/codec.hpp"
@@ -18,6 +20,7 @@
 #include "select.hpp"
 #include "commands.hpp"
 #include "wetwaresuite/raster/simd.hpp"
+#include "wetwaresuite/vector/vector.hpp"
 
 namespace wetwaresuite::photo {
 
@@ -158,6 +161,34 @@ Result runBenchmark(const Params& p) {
         .with("simd", std::string(useSimd ? simdName() : "scalar"));
 }
 
+bool isSvg(const std::string& path) {
+    std::string e = std::filesystem::path(path).extension().string();
+    for (auto& c : e) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return e == ".svg";
+}
+
+// SVG drawn into pixels, as Photoshop does when it opens one: at its own size, scaled up when
+// small so icons don't open as a blur. Saving goes to a .png beside it (pixels can't go back to SVG).
+std::shared_ptr<ImageDoc> openSvg(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) throw std::runtime_error("can't read " + path);
+    std::stringstream text;
+    text << in.rdbuf();
+    auto vec = vector::fromSvg(text.str());
+    const double longest = std::max(vec->width, vec->height);
+    const double scale = longest > 0 && longest < 1024 ? 1024 / longest : 1.0;
+    Image img = vector::render(*vec, scale);
+    auto doc = std::make_shared<ImageDoc>();
+    doc->image.width = img.width();
+    doc->image.height = img.height();
+    doc->image.layers.push_back({"Background", std::move(img)});
+    doc->active = 0;
+    std::filesystem::path png = std::filesystem::path(path).replace_extension(".png");
+    if (std::filesystem::exists(png)) png.replace_filename(png.stem().string() + "-pixels.png");
+    doc->path = png.string();
+    return doc;
+}
+
 }  // namespace
 
 void registerCommands(Session& session) {
@@ -166,16 +197,18 @@ void registerCommands(Session& session) {
 
     reg.add({"photo.open",
              "Open image",
-             "Open an image file as a new document. Reads PNG, JPEG, BMP, TGA, GIF, HDR, PNM, layered OpenRaster (.ora, "
-             "everything kept) and Photoshop .psd (layers, groups, masks, blend modes; flattened when it can't read the layers). "
+             "Open an image file as a new document. Reads PNG, JPEG, BMP, TGA, GIF, HDR, PNM, WebP, TIFF, layered OpenRaster (.ora, "
+             "everything kept), Photoshop .psd (layers, groups, masks, blend modes; flattened when it can't read the layers) "
+             "and SVG (turned into pixels at its own size, at least 1024 pixels across; saves as .png next to it). "
              "Returns the document id to use with other commands.",
              {{"path", ParamType::String, "path to the image file", true}},
              false, true},
             [s](const Params& p) {
                 return std::make_unique<FunctionAction>([s, path = stringParam(p, "path")] {
-                    if (!canOpenImage(path)) return Result::failure("can't open " + path + ": unsupported format");
+                    const bool svg = isSvg(path);
+                    if (!svg && !canOpenImage(path)) return Result::failure("can't open " + path + ": unsupported format");
                     try {
-                        auto doc = openImage(path);
+                        auto doc = svg ? openSvg(path) : openImage(path);
                         std::string id = s->workspace().add(doc, "img");
                         Result r = Result::success("opened " + path + " as " + id);
                         return r.with("doc", id)

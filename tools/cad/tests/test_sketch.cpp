@@ -67,6 +67,14 @@ void testDegreesOfFreedom() {
     Result info = run(s, "cad.sketch_info doc=cad1 sketch=sketch1");
     NumberList end = list(info, "p2");
     CHECK(end.size() == 2 && near(end[0], 10) && near(end[1], 0));
+    // the window draws it from numbers: one segment, two points, no profile yet
+    Result geo = run(s, "cad.sketch_geometry doc=cad1");
+    CHECK(geo.ok && list(geo, "lines").size() == 4 && list(geo, "points").size() + list(geo, "free").size() >= 4);
+    CHECK(list(geo, "profiles").empty() && geo.field("sketches") && toText(*geo.field("sketches")) == "sketch1");
+    CHECK(run(s, "cad.sketch_rect doc=cad1 sketch=sketch1 x=20 y=0 width=5 height=5").ok);
+    CHECK(list(run(s, "cad.sketch_geometry doc=cad1 sketch=sketch1"), "profiles").size() == 1 + 2 * 4 ||
+          list(run(s, "cad.sketch_geometry doc=cad1 sketch=sketch1"), "profiles").size() == 1 + 2 * 5);
+    CHECK(s.history().undo());
     // conflicting constraints are refused and change nothing
     r = run(s, "cad.sketch_constrain doc=cad1 sketch=sketch1 type=vertical refs=l1");
     CHECK(!r.ok && r.message.find("conflict") != std::string::npos);

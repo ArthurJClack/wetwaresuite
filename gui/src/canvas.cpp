@@ -143,6 +143,16 @@ void Shell::refreshCanvas() {
     const bool game = !png.empty();
     // anything else: the document's own preview, else the tool's preview command
     if (png.empty() && deckDoc()) png = deckPicture();  // the slide shown big, not the sorter
+    if (png.empty() && doc->kind() == "audio" && find("audio.preview") && canvas_.viewSize.x > 64 && canvas_.viewSize.y > 64) {
+        // drawn to fill the view, so the whole length is wide and easy to select in
+        canvas_.waveSize = canvas_.viewSize;
+        const auto px = [](float v, float lo, float hi) { return static_cast<std::int64_t>(std::clamp(v * 0.95f, lo, hi)); };
+        Result r = session_.run("audio.preview", {{"doc", currentDoc_},
+                                                  {"width", px(canvas_.viewSize.x, 300, 4000)},
+                                                  {"height", px(canvas_.viewSize.y, 120, 2000)}});
+        if (r.ok && !r.attachments.empty()) png = r.attachments[0].bytes;
+        canvas_.fit = true;
+    }
     if (png.empty() && doc->kind() == "vector" && find("vector.preview")) {  // sharper than the small built-in preview, for zooming in
         Result r = session_.run("vector.preview", {{"doc", currentDoc_}, {"size", std::int64_t{1400}}});
         if (r.ok && !r.attachments.empty()) png = r.attachments[0].bytes;
@@ -517,6 +527,10 @@ void Shell::canvasArea() {
     const bool hovered = ImGui::IsItemHovered(), active = ImGui::IsItemActive();
     canvas_.viewMin = ImGui::GetItemRectMin();
     canvas_.viewSize = size;
+    if (auto d = session_.workspace().get(currentDoc_); d && d->kind() == "audio" &&
+        (std::abs(size.x - canvas_.waveSize.x) > 24 || std::abs(size.y - canvas_.waveSize.y) > 24)) {
+        canvas_.dirty = true;  // the waveform is redrawn at the new size next frame
+    }
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 v0 = canvas_.viewMin, v1{v0.x + size.x, v0.y + size.y};
     dl->PushClipRect(v0, v1, true);

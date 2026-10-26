@@ -434,8 +434,12 @@ void splitDescription(const std::string& text, std::string& lead, std::string& r
     if (start < text.size()) sentences.push_back(text.substr(start));
     lead.clear();
     rest.clear();
-    for (const auto& s : sentences) {
+    for (auto s : sentences) {
         if (s.rfind("Returns ", 0) == 0 || s.rfind("Return ", 0) == 0) continue;  // what a script gets back
+        // "... and return its id (e.g. map1)." is for scripts too
+        for (const char* tail : {" and return ", " and returns "}) {
+            if (auto at = s.find(tail); at != std::string::npos) s = s.substr(0, at) + ".";
+        }
         // the first sentence, and the next while the lead is still short
         std::string& to = rest.empty() && (lead.empty() || (lead.size() < 60 && lead.size() + s.size() < 140)) ? lead : rest;
         to += (to.empty() ? "" : " ") + s;

@@ -33,9 +33,42 @@ void registerAdd(Session& session, int& counter) {
         });
 }
 
+struct NoteDoc : Document {
+    std::string kind() const override { return "note"; }
+    std::string summary() const override { return "a note"; }
+};
+
+// Runs `fn` once; undo does nothing.
+class OnceAction : public Action {
+public:
+    explicit OnceAction(std::function<Result()> fn) : fn_(std::move(fn)) {}
+    Result apply() override { return fn_(); }
+    void revert() override {}
+
+private:
+    std::function<Result()> fn_;
+};
+
 }  // namespace
 
 int main() {
+    // a required doc left out means the one the same tool used last
+    {
+        Session s;
+        s.registry().add({"note.new", "New", "makes a note", {}, false}, [&s](const Params&) {
+            return std::make_unique<OnceAction>([&s] { return Result::success("made").with("doc", s.workspace().add(std::make_shared<NoteDoc>(), "note")); });
+        });
+        s.registry().add({"note.read", "Read", "reads a note", {{"doc", ParamType::String, "which", true}}, false}, [](const Params& p) {
+            const std::string doc = stringParam(p, "doc");
+            return std::make_unique<OnceAction>([doc] { return Result::success("read", doc); });
+        });
+        CHECK(!s.run("note.read", {}).ok);
+        CHECK(s.run("note.new", {}).ok);
+        CHECK(s.run("note.new", {}).ok);
+        CHECK(toText(s.run("note.read", {}).value) == "note2");
+        CHECK(toText(s.run("note.read", {{"doc", std::string("note1")}}).value) == "note1");
+    }
+
     int counter = 0;
     Session session;
     registerAdd(session, counter);

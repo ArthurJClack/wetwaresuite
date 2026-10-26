@@ -103,6 +103,8 @@ void testForms() {
     CHECK(rest == "Then extrude it.");
     splitDescription("Open an image.", lead, rest);
     CHECK(lead == "Open an image." && rest.empty());
+    splitDescription("Create an empty map document and return its id (e.g. map1).", lead, rest);
+    CHECK(lead == "Create an empty map document.");
     // a shape on a page starts small enough to see whole, pixel art smaller still
     Form rect = buildForm(cmd("vector.rect", "Rectangle", "", {{"width", ParamType::Number, "width", true}}), {}, "");
     CHECK(fieldNamed(rect, "width")->number == 200);

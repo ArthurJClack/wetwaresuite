@@ -128,7 +128,10 @@ void Shell::mapsToolbar() {
         Result r = query("maps.search", {{"doc", currentDoc_}, {"query", maps_.search}});
         if (r.ok) {
             const double lat = tp::number(r, "lat"), lon = tp::number(r, "lon");
-            Result v = run("maps.view", {{"doc", currentDoc_}, {"center", std::vector<double>{lat, lon}}, {"radius_km", 1.5}});
+            // street level for the map's own places, the region around a built-in city, a whole country
+            const std::string layer = tp::text(r, "layer");
+            const double km = layer == "countries (built in)" ? 900.0 : layer == "places (built in)" ? 150.0 : 1.5;
+            Result v = run("maps.view", {{"doc", currentDoc_}, {"center", std::vector<double>{lat, lon}}, {"radius_km", km}});
             if (!v.ok) r = v;
             canvas_.fit = true;
         }

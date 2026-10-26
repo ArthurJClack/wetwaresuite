@@ -4,6 +4,11 @@ https://github.com/nvkelso/natural-earth-vector). Only the NAME, ISO_A3
 (ADM0_A3 where ISO_A3 is -99), CONTINENT and POP_EST attributes were kept
 and coordinates were rounded to 3 decimals.
 
+places.geojson is derived from Natural Earth's "Populated Places" (simple) at
+1:50m scale (ne_50m_populated_places_simple, same source). Only the name,
+country (ADM0NAME), whether it is a national capital and POP_MAX were kept,
+and coordinates were rounded to 4 decimals.
+
 Natural Earth is in the public domain:
 
   "All versions of Natural Earth raster + vector map data found on this

@@ -101,7 +101,7 @@ void registerEditCommands(Session& session, const std::shared_ptr<State>& state)
              true},
             regionCommand(session, [](AudioDoc& d, const Params& p, Range r, const Channels& ch) {
                 const double in = numberParam(p, "in", 0.0), out = numberParam(p, "out", 0.0);
-                if (in <= 0 && out <= 0) return failed("give in= and/or out= in seconds");
+                if (in <= 0 && out <= 0) return failed("set a fade-in or fade-out length in seconds (in= or out=)");
                 FadeCurve c = FadeCurve::Linear;
                 parseFadeCurve(stringParam(p, "curve", "linear"), c);
                 if (in > 0) fadeIn(d.audio, in, r, c, ch);

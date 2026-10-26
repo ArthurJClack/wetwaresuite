@@ -159,6 +159,7 @@ struct Canvas {
     ImVec2 pan{0, 0};       // offset of the image's top-left from the view's top-left, in screen px
     ImVec2 viewMin{0, 0};   // last frame's view rectangle
     ImVec2 viewSize{0, 0};
+    ImVec2 waveSize{0, 0};  // the view size a waveform was last drawn for
     std::string summary;  // for documents with no picture
 
     CanvasTool tool = CanvasTool::Move;

@@ -456,7 +456,11 @@ void testRouting(const fs::path& dir) {
     CHECK(r.ok && str(r, "name") == "Switzerland" && near(num(r, "lat"), 46.8, 1));
     r = run(s, "maps.search query=\"Germny\"");
     CHECK(r.ok && str(r, "name") == "Germany");
-    CHECK(!run(s, "maps.search query=Atlantis").ok);
+    CHECK(!run(s, "maps.search query=Xyzzyville").ok);
+    // built-in cities, and a typo near the start of a longer name is not a match
+    r = run(s, "maps.search query=Paris");
+    CHECK(r.ok && str(r, "name") == "Paris" && str(r, "layer") == "places (built in)" && near(num(r, "lat"), 48.87, 0.2));
+    CHECK(run(s, "maps.search query=Paris").message.find("Pakistan") == std::string::npos);
     // the building was a polygon with its tag
     CHECK(mapOf(s, m).layer("town areas")->features[0].props.at("building").str == "yes");
 }

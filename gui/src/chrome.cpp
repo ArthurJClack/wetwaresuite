@@ -845,6 +845,19 @@ void Shell::shortcutsPopup() {
 
 void Shell::rootPopups() {
     if (openNew_) {
+        // only one kind of new file: straight to its settings, not a one-item menu
+        std::vector<std::string> kinds;
+        for (const auto& tool : tools_) {
+            for (const auto& c : commands_) {
+                if (c.id.compare(0, tool.size() + 1, tool + ".") == 0 && commandVerb(c.id) == "new") kinds.push_back(c.id);
+            }
+        }
+        if (kinds.size() == 1) {
+            openNew_ = false;
+            select(kinds.front());
+        }
+    }
+    if (openNew_) {
         ImGui::OpenPopup("new");
         ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, {0.5f, 0.5f});
         openNew_ = false;

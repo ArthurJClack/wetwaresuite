@@ -202,7 +202,14 @@ void Shell::timelineView(const TimelineLayout& layout) {
     if (ImGui::Button("Fit")) st.zoom = 0;
     ImGui::SetItemTooltip("Show the whole timeline");
     ImGui::SameLine();
-    ImGui::TextDisabled("cursor %s   drag clips to move, edges to trim, arrows step a frame, Ctrl+scroll to zoom", clockText(st.cursor).c_str());
+    {
+        // the tips only when they fit, else they hover over the cursor time
+        const std::string at = "cursor " + clockText(st.cursor);
+        const char* tips = "drag clips to move, edges to trim, arrows step a frame, Ctrl+scroll to zoom";
+        const bool room = ImGui::CalcTextSize((at + "   " + tips).c_str()).x <= ImGui::GetContentRegionAvail().x;
+        ImGui::TextDisabled("%s", room ? (at + "   " + tips).c_str() : at.c_str());
+        if (!room) ImGui::SetItemTooltip("%s", tips);
+    }
 
     // geometry
     std::size_t toggleCount = 0;

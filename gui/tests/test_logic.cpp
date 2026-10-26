@@ -96,6 +96,13 @@ void testForms() {
     CHECK(form.fields.size() == 9);
     CHECK(fieldNamed(form, "doc")->text == "img2");
     CHECK(fieldNamed(form, "width")->number == 1920);  // a sensible start for a required size
+    // long command descriptions: a short lead, the rest behind "More", no "Returns ..." for scripts
+    std::string lead, rest;
+    splitDescription("Start a 2D sketch on a plane (e.g. xy). Add lines with Sketch Line. Then extrude it. Returns the feature name.", lead, rest);
+    CHECK(lead == "Start a 2D sketch on a plane (e.g. xy). Add lines with Sketch Line.");
+    CHECK(rest == "Then extrude it.");
+    splitDescription("Open an image.", lead, rest);
+    CHECK(lead == "Open an image." && rest.empty());
     // a shape on a page starts small enough to see whole, pixel art smaller still
     Form rect = buildForm(cmd("vector.rect", "Rectangle", "", {{"width", ParamType::Number, "width", true}}), {}, "");
     CHECK(fieldNamed(rect, "width")->number == 200);

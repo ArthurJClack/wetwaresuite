@@ -420,6 +420,28 @@ std::string firstSentence(const std::string& text) {
     return text;
 }
 
+void splitDescription(const std::string& text, std::string& lead, std::string& rest) {
+    // sentences end at ". " before a capital letter ("e.g. cad1" and "x.y" don't)
+    std::vector<std::string> sentences;
+    std::size_t start = 0;
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        const bool end = (text[i] == '.' || text[i] == '!' || text[i] == '?') &&
+                         (i + 1 == text.size() || (i + 2 < text.size() && text[i + 1] == ' ' && std::isupper(static_cast<unsigned char>(text[i + 2]))));
+        if (!end) continue;
+        sentences.push_back(text.substr(start, i + 1 - start));
+        start = i + 2;
+    }
+    if (start < text.size()) sentences.push_back(text.substr(start));
+    lead.clear();
+    rest.clear();
+    for (const auto& s : sentences) {
+        if (s.rfind("Returns ", 0) == 0 || s.rfind("Return ", 0) == 0) continue;  // what a script gets back
+        // the first sentence, and the next while the lead is still short
+        std::string& to = rest.empty() && (lead.empty() || (lead.size() < 60 && lead.size() + s.size() < 140)) ? lead : rest;
+        to += (to.empty() ? "" : " ") + s;
+    }
+}
+
 bool needsDocument(const CommandInfo& c) {
     return std::any_of(c.params.begin(), c.params.end(), [&](const ParamSpec& p) {
         return p.required && kindFor(p, c.id) == FieldKind::Document;
@@ -435,6 +457,7 @@ std::string runLabel(const std::string& id) {
     if (verb == "import") return "Import";
     if (verb == "save" || verb == "save_as") return "Save";
     if (verb == "export") return "Export";
+    if (id == "cad.sketch") return "Start sketch";
     return "Apply";
 }
 

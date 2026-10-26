@@ -223,7 +223,7 @@ void Shell::sketchCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, b
     for (std::size_t i = 0; i + 1 < k.free.size(); i += 2) dl->AddCircleFilled(toScreen(k.free[i], k.free[i + 1]), 3.0f, IM_COL32(60, 120, 230, 255));
 
     // tools' letters
-    if (hovered && !io.WantTextInput && !io.KeyCtrl) {
+    if (!io.WantTextInput && !io.KeyCtrl && !io.KeyAlt) {
         for (const auto& t : kSketchTools) {
             if (ImGui::IsKeyPressed(t.key, false)) {
                 k.tool = t.tool;
@@ -302,13 +302,13 @@ void Shell::sketchCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, b
             k.drawing = true;
             k.ax = k.chainX = mx;
             k.ay = k.chainY = my;
-            k.pressAt = io.MousePos;
         } else {
             finishShape(mx, my);
         }
+        k.pressAt = io.MousePos;
     }
-    // a drag (rather than two clicks) makes rectangles and circles in one go
-    if (k.drawing && k.tool != SketchEdit::Tool::Line && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+    // a drag (rather than two clicks) makes a shape in one go; a dragged line keeps going from its end
+    if (k.drawing && ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
         const float dx = io.MousePos.x - k.pressAt.x, dy = io.MousePos.y - k.pressAt.y;
         if (dx * dx + dy * dy > 64) finishShape(mx, my);
     }

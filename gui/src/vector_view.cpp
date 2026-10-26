@@ -10,6 +10,7 @@
 #include <cstdlib>
 
 #include "shell.hpp"
+#include "imgui_stdlib.h"
 
 namespace wetwaresuite::gui {
 
@@ -141,6 +142,23 @@ void Shell::vectorPress(ImVec2 screen) {
     const float reach = 6 * u / std::max(canvas_.zoom, 0.01f);  // 6 screen px in drawing units
     canvas_.vecStart = canvas_.vecNow = at;
     canvas_.vecDrag = 0;
+    if (canvas_.tool == CanvasTool::VecPen) {  // a corner, or back on the first one: a closed shape
+        auto& pts = canvas_.penPoints;
+        if (pts.size() >= 3 && std::hypot(pts[0].x - at.x, pts[0].y - at.y) < reach * 1.5f) {
+            penFinish(true);
+        } else if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && pts.size() >= 2) {
+            penFinish(false);
+        } else {
+            pts.push_back(at);
+        }
+        return;
+    }
+    if (canvas_.tool == CanvasTool::VecText) {  // the words go here: see vectorTextBox
+        canvas_.textOpen = true;
+        canvas_.textAt = at;
+        canvas_.textDraft.clear();
+        return;
+    }
     if (vectorDrawTool(canvas_.tool)) {  // drawing a new shape: see vectorRelease
         canvas_.vecDrag = 4;
         return;
@@ -209,9 +227,19 @@ void Shell::vectorDrag(ImVec2 screen) {
 
 // the shape being drawn, before the command runs
 void Shell::drawVectorDraft(ImDrawList* dl, ImVec2 p0) const {
-    if (canvas_.vecDrag != 4) return;
     const float u = unitsPerPx(canvas_.summary, canvas_.texture);
     auto screen = [&](ImVec2 at) { return ImVec2{p0.x + at.x / u * canvas_.zoom, p0.y + at.y / u * canvas_.zoom}; };
+    if (canvas_.tool == CanvasTool::VecPen && !canvas_.penPoints.empty()) {
+        const ImU32 col = ImGui::ColorConvertFloat4ToU32(accent_);
+        std::vector<ImVec2> pts;
+        for (const auto& q : canvas_.penPoints) pts.push_back(screen(q));
+        dl->AddPolyline(pts.data(), static_cast<int>(pts.size()), col, ImDrawFlags_None, 2);
+        dl->AddLine(pts.back(), ImGui::GetIO().MousePos, col, 1);
+        for (const auto& q : pts) dl->AddRectFilled({q.x - 3, q.y - 3}, {q.x + 3, q.y + 3}, col);
+        if (pts.size() >= 3) dl->AddCircle(pts[0], 7, col, 0, 1.5f);  // click here to close
+        return;
+    }
+    if (canvas_.vecDrag != 4) return;
     const ImVec2 a = screen(canvas_.vecStart), b = screen(vectorDrawEnd());
     const ImU32 col = ImGui::ColorConvertFloat4ToU32(accent_);
     if (canvas_.tool == CanvasTool::VecLine) {
@@ -308,6 +336,76 @@ void Shell::vectorRelease() {
     resultFor_ = title;
     r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
     result_ = std::move(r);
+}
+
+void Shell::penFinish(bool closed) {
+    auto pts = std::move(canvas_.penPoints);
+    canvas_.penPoints.clear();
+    if (pts.size() < 2) return;
+    std::string d;
+    char buf[64];
+    for (std::size_t i = 0; i < pts.size(); ++i) {
+        std::snprintf(buf, sizeof buf, "%s%.2f %.2f ", i ? "L" : "M", pts[i].x, pts[i].y);
+        d += buf;
+    }
+    if (closed) d += "Z";
+    const std::string colour = toHex({canvas_.color[0], canvas_.color[1], canvas_.color[2], canvas_.color[3]});
+    Params p{{"doc", currentDoc_}, {"d", d}};
+    if (closed) {
+        p["fill"] = colour;
+    } else {
+        p["fill"] = std::string("none");
+        p["stroke"] = colour;
+        p["stroke_width"] = 3.0;
+    }
+    Result r = run("vector.add_path", p);
+    resultFor_ = "Pen";
+    if (r.ok) canvas_.vecSel = fieldText(r, "shape");
+    canvas_.vecLoaded = ~0ull;
+    r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+    result_ = std::move(r);
+}
+
+void Shell::vectorPenKeys() {
+    if (canvas_.tool != CanvasTool::VecPen || canvas_.penPoints.empty() || ImGui::GetIO().WantTextInput) return;
+    if (ImGui::IsKeyPressed(ImGuiKey_Enter) || ImGui::IsKeyPressed(ImGuiKey_KeypadEnter)) penFinish(false);
+    else if (ImGui::IsKeyPressed(ImGuiKey_Escape)) canvas_.penPoints.clear();
+    else if (ImGui::IsKeyPressed(ImGuiKey_Backspace) || ImGui::IsKeyPressed(ImGuiKey_Delete)) canvas_.penPoints.pop_back();
+}
+
+// Text tool: a small box where you clicked; Enter puts the words on the drawing
+void Shell::vectorTextBox(ImVec2 p0) {
+    if (canvas_.tool != CanvasTool::VecText) canvas_.textOpen = false;
+    if (!canvas_.textOpen) return;
+    const float u = unitsPerPx(canvas_.summary, canvas_.texture);
+    const ImVec2 at{p0.x + canvas_.textAt.x / u * canvas_.zoom, p0.y + canvas_.textAt.y / u * canvas_.zoom};
+    ImGui::SetNextWindowPos(at, ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize({ImGui::GetFontSize() * 18, 0}, ImGuiCond_Appearing);
+    bool open = true;
+    if (ImGui::Begin("Text###vectortext", &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
+        if (ImGui::IsWindowAppearing()) ImGui::SetKeyboardFocusHere();
+        ImGui::SetNextItemWidth(-1);
+        const bool enter = ImGui::InputTextWithHint("##words", "type, then Enter", &canvas_.textDraft, ImGuiInputTextFlags_EnterReturnsTrue);
+        if (ImGui::IsKeyPressed(ImGuiKey_Escape)) open = false;
+        if (enter && !canvas_.textDraft.empty()) {
+            // a size that reads well on this drawing: a twelfth of its height
+            const double size = std::clamp(static_cast<double>(canvas_.texture.srcHeight) * u / 12.0, 6.0, 200.0);
+            Result r = run("vector.add_text", {{"doc", currentDoc_},
+                                               {"text", canvas_.textDraft},
+                                               {"x", static_cast<double>(canvas_.textAt.x)},
+                                               {"y", static_cast<double>(canvas_.textAt.y) + size * 0.8},
+                                               {"size", size},
+                                               {"fill", toHex({canvas_.color[0], canvas_.color[1], canvas_.color[2], canvas_.color[3]})}});
+            resultFor_ = "Text";
+            if (r.ok) canvas_.vecSel = fieldText(r, "shape");
+            canvas_.vecLoaded = ~0ull;
+            r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+            result_ = std::move(r);
+            open = false;
+        }
+    }
+    ImGui::End();
+    if (!open) canvas_.textOpen = false;
 }
 
 void Shell::vectorKeys() {

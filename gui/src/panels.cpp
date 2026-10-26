@@ -72,6 +72,13 @@ void applyTheme(ImGuiStyle& s, const Theme& th) {
     c[ImGuiCol_TextSelectedBg] = im(th.selection);
     c[ImGuiCol_NavCursor] = im(th.focus);
     c[ImGuiCol_ResizeGrip] = c[ImGuiCol_ResizeGripHovered] = c[ImGuiCol_ResizeGripActive] = im(th.border);
+    // tabs and floating editors' title bars follow the palette too, not ImGui's blue
+    c[ImGuiCol_Tab] = c[ImGuiCol_TabDimmed] = im(th.button);
+    c[ImGuiCol_TabHovered] = im(th.buttonHover);
+    c[ImGuiCol_TabSelected] = c[ImGuiCol_TabDimmedSelected] = im(th.header);
+    c[ImGuiCol_TabSelectedOverline] = c[ImGuiCol_TabDimmedSelectedOverline] = im(th.accent);
+    c[ImGuiCol_TitleBg] = c[ImGuiCol_TitleBgCollapsed] = im(th.button);
+    c[ImGuiCol_TitleBgActive] = im(th.header);
 }
 
 }  // namespace
@@ -113,6 +120,13 @@ void Shell::applyStyle(float dpiScale) {
         c[ImGuiCol_CheckMark] = c[ImGuiCol_SliderGrab] = dark_ ? mix(accent, {1, 1, 1, 1}, 0.25f) : accent;
         c[ImGuiCol_SliderGrabActive] = accent;
         c[ImGuiCol_NavCursor] = accent;
+        // tabs and floating editors' title bars in the app's colour, not ImGui's blue
+        c[ImGuiCol_Tab] = c[ImGuiCol_TabDimmed] = c[ImGuiCol_Button];
+        c[ImGuiCol_TabHovered] = c[ImGuiCol_ButtonHovered];
+        c[ImGuiCol_TabSelected] = c[ImGuiCol_TabDimmedSelected] = mix(bg, accent, dark_ ? 0.55f : 0.35f);
+        c[ImGuiCol_TabSelectedOverline] = c[ImGuiCol_TabDimmedSelectedOverline] = accent;
+        c[ImGuiCol_TitleBg] = c[ImGuiCol_TitleBgCollapsed] = mix(bg, accent, 0.25f);
+        c[ImGuiCol_TitleBgActive] = mix(bg, accent, 0.50f);
         accent_ = accent;
         accentHover_ = mix(accent, {1, 1, 1, 1}, 0.2f);
         accentActive_ = mix(accent, {0, 0, 0, 1}, 0.2f);
@@ -418,7 +432,7 @@ void Shell::formPanel() {
         if (doc && !showHome_ && panel_.empty()) {
             heading(docTitle(currentDoc_), 1.1f);
             wrappedMuted(doc->summary());
-            if (!doc->path.empty()) wrappedMuted(doc->path);
+            if (!doc->path.empty() && doc->summary().find(doc->path) == std::string::npos) wrappedMuted(doc->path);
             if (handoff_ && session_.registry().find("app.targets") && ImGui::Button("Send to another app...")) openSend_ = true;
             ImGui::Spacing();
         }
@@ -428,7 +442,17 @@ void Shell::formPanel() {
         return;
     }
     heading(form_->title, 1.25f);
-    wrappedMuted(readableDescription(form_->description, commands_));
+    {
+        std::string lead, rest;
+        splitDescription(readableDescription(form_->description, commands_), lead, rest);
+        wrappedMuted(lead);
+        if (!rest.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            const bool open = ImGui::TreeNodeEx("More about this", ImGuiTreeNodeFlags_NoTreePushOnOpen | ImGuiTreeNodeFlags_SpanAvailWidth);
+            ImGui::PopStyleColor();
+            if (open) wrappedMuted(rest);
+        }
+    }
     ImGui::Spacing();
     bool needsDoc = false;
     for (std::size_t i = 0; i < form_->fields.size(); ++i) {

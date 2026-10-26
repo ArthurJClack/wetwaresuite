@@ -247,7 +247,7 @@ void Shell::runForm() {
         }
     }
     r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
-    const bool done = r.ok && oneShotCommand(form_->command);
+    const bool done = r.ok && (oneShotCommand(form_->command) || form_->command == "cad.sketch");  // a sketch opens for drawing
     result_ = std::move(r);
     scrollToResult_ = true;
     if (done) {  // like a New or Save dialog's OK: the panel goes back to the file

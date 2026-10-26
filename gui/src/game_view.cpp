@@ -606,16 +606,20 @@ void Shell::gameSpriteSide() {
     const float swatch = unit * 1.3f;
     const int perRow = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / (swatch + ImGui::GetStyle().ItemSpacing.x)));
     int shownCount = 0;
-    for (std::size_t i = 0; i < g.palette.size(); ++i) {
+    // no palette of its own yet: PICO-8's 16 colours to pick from, as Aseprite starts with one
+    static const std::vector<std::string> starter = {"#000000", "#1d2b53", "#7e2553", "#008751", "#ab5236", "#5f574f", "#c2c3c7", "#fff1e8",
+                                                     "#ff004d", "#ffa300", "#ffec27", "#00e436", "#29adff", "#83769c", "#ff77a8", "#ffccaa"};
+    const std::vector<std::string>& colours = g.palette.empty() ? starter : g.palette;
+    for (std::size_t i = 0; i < colours.size(); ++i) {
         float c[4];
-        if (!parseHex(g.palette[i], c)) continue;
+        if (!parseHex(colours[i], c)) continue;
         if (shownCount++ % perRow) ImGui::SameLine();
         ImGui::PushID(static_cast<int>(i));
         if (ImGui::ColorButton("##swatch", {c[0], c[1], c[2], c[3]}, ImGuiColorEditFlags_AlphaPreviewHalf, {swatch, swatch})) std::copy(c, c + 4, g.color);
-        ImGui::SetItemTooltip("%zu: %s", i, g.palette[i].c_str());
+        ImGui::SetItemTooltip("%zu: %s", i, colours[i].c_str());
         ImGui::PopID();
     }
-    if (g.palette.empty()) tp::muted("No palette: Sprite palette loads one (pico8, db16, db32, gameboy...).");
+    if (g.palette.empty()) tp::muted("Sprite palette (ribbon) loads others: db16, db32, gameboy...");
 }
 
 }  // namespace wetwaresuite::gui

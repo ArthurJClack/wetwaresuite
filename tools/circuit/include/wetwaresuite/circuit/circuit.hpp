@@ -388,6 +388,9 @@ struct SheetStyle {
     bool pinNumbers = true;
     bool titleBlock = true;
     std::string highlightNet;
+    // the window's sheet: at least 60 x 40 grid units from the origin, so the first parts placed
+    // don't change its size (and the picture under the mouse doesn't jump)
+    bool roomy = false;
 };
 // The schematic as a page in points (1 grid unit = 7.2 pt, i.e. true size), for PDF, PNG and SVG.
 pdf::Page schematicPage(const Circuit& c, const SheetStyle& style = {});

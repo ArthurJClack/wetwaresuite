@@ -269,10 +269,21 @@ std::vector<std::vector<Pt>> strokeText(const std::string& text, double x, doubl
 
 double strokeTextWidth(const std::string& text, double h) { return text.empty() ? 0 : (static_cast<double>(text.size()) * 6 - 2) * h / 6; }
 
+namespace {
+
+void pageBounds(const Circuit& c, bool roomy, double& x0, double& y0, double& x1, double& y1) {
+    sheetBounds(c, x0, y0, x1, y1);
+    if (!roomy) return;
+    x0 = std::min(x0, 0.0), y0 = std::min(y0, 0.0);
+    x1 = std::max(x1, 60.0), y1 = std::max(y1, 40.0);
+}
+
+}  // namespace
+
 pdf::Page schematicPage(const Circuit& c, const SheetStyle& style) {
     const Netlist nl = buildNetlist(c);
     double x0, y0, x1, y1;
-    sheetBounds(c, x0, y0, x1, y1);
+    pageBounds(c, style.roomy, x0, y0, x1, y1);
     const double margin = 2;
     const double titleH = style.titleBlock ? 3 : 0;
     pdf::Page page;
@@ -750,9 +761,11 @@ ViewFrame viewFrame(const Circuit& c, const std::string& view) {
         f.scale = 0;
     } else {
         f.view = "schematic";
-        const pdf::Page page = schematicPage(c);
+        SheetStyle roomy;
+        roomy.roomy = true;
+        const pdf::Page page = schematicPage(c, roomy);
         double x0, y0, x1, y1;
-        sheetBounds(c, x0, y0, x1, y1);
+        pageBounds(c, true, x0, y0, x1, y1);
         f.origin = {x0 - 2, y0 - 2};
         f.scale = schematicPreviewScale(page) * kUnit;
     }
@@ -762,7 +775,10 @@ ViewFrame viewFrame(const Circuit& c, const std::string& view) {
 raster::Image viewImage(const Circuit& c, const std::string& view) {
     if (view == "pcb") return renderPcb(c, buildNetlist(c), pcbPreviewScale(c));
     if (view == "3d") return renderBoard3d(c, buildNetlist(c), 1200, 900);
-    const pdf::Page page = schematicPage(c);
+    SheetStyle roomy;
+    roomy.roomy = true;
+    roomy.grid = true;  // the grid parts and wires snap to, as in KiCad
+    const pdf::Page page = schematicPage(c, roomy);
     return pdf::renderPage(page, schematicPreviewScale(page));
 }
 

@@ -76,6 +76,8 @@ bool Shell::toolAvailable(CanvasTool tool) const {
     if (tool == CanvasTool::VecRect) return vectorDoc() && find("vector.add_rect");
     if (tool == CanvasTool::VecEllipse) return vectorDoc() && find("vector.add_ellipse");
     if (tool == CanvasTool::VecLine) return vectorDoc() && find("vector.add_line");
+    if (tool == CanvasTool::VecPen) return vectorDoc() && find("vector.add_path");
+    if (tool == CanvasTool::VecText) return vectorDoc() && find("vector.add_text");
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc || doc->kind() != "image") return false;
     switch (tool) {
@@ -205,6 +207,10 @@ const CanvasToolDef kCanvasTools[] = {
     {"Rectangle", CanvasTool::VecRect, "M", "Drag to draw a rectangle (Shift makes a square)"},
     {"Ellipse", CanvasTool::VecEllipse, "L", "Drag to draw an ellipse (Shift makes a circle)"},
     {"Line", CanvasTool::VecLine, "", "Drag to draw a straight line"},
+    {"Pen", CanvasTool::VecPen, "P",
+     "Click to put down corners. Click the first one again to close the shape (filled); Enter or double-click ends an "
+     "open line; Esc throws it away"},
+    {"Text", CanvasTool::VecText, "T", "Click where the words go, type, press Enter"},
     {"Select", CanvasTool::Select, "M",
      "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
      "Alt takes away. Edits then only change inside it"},
@@ -294,7 +300,7 @@ void Shell::canvasToolbar() {
         return;
     }
     if (vectorDrawTool(canvas_.tool)) {
-        barLabel(canvas_.tool == CanvasTool::VecLine ? "Colour" : "Fill");
+        barLabel(canvas_.tool == CanvasTool::VecLine || canvas_.tool == CanvasTool::VecPen || canvas_.tool == CanvasTool::VecText ? "Colour" : "Fill");
         ImGui::ColorEdit4("##shapecolour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
         return;
     }
@@ -600,8 +606,10 @@ void Shell::canvasArea() {
         if (canvas_.vecDrag) vectorDrag(io.MousePos);
         if (canvas_.vecDrag && !active) vectorRelease();
         if (hovered) vectorKeys();
+        vectorPenKeys();
     }
     drawVectorDraft(dl, p0);
+    if (vectorTool) vectorTextBox(p0);
     if (painting && canvas_.tool == CanvasTool::Fill && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         const ImVec2 img = toImage(io.MousePos);
         if (img.x >= 0 && img.y >= 0 && img.x < w && img.y < h && find("paint.fill")) {

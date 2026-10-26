@@ -60,7 +60,7 @@ struct Texture {
     ImTextureID id() const { return static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(tex)); }
 };
 
-enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur, Pick, Anchor, VecRect, VecEllipse, VecLine };
+enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur, Pick, Anchor, VecRect, VecEllipse, VecLine, VecPen, VecText };
 enum class SelectShape { Rect, Ellipse, Lasso, Wand };
 
 // Click tools for game levels (levels.*) and pixel-art sprites (forge.sprite_*), game_view.cpp.
@@ -223,6 +223,10 @@ struct Canvas {
     int vecDrag = 0;                  // 0 none, 1 move, 2 scale handle, 3 anchor part, 4 drawing a new shape
     int vecHandle = 0;                // scale: handle 0..7; anchor: node * 3 + part (0 anchor, 1 in, 2 out)
     ImVec2 vecStart{0, 0}, vecNow{0, 0};
+    std::vector<ImVec2> penPoints;   // Pen: the corners clicked so far, in drawing units
+    bool textOpen = false;           // Text: a box is waiting for words at textAt
+    ImVec2 textAt{0, 0};
+    std::string textDraft;
 
     GameCanvas game;
 };
@@ -399,6 +403,9 @@ private:
     void writeBar();
     ImVec2 vectorDrawEnd() const;
     void drawVectorDraft(ImDrawList* dl, ImVec2 p0) const;
+    void penFinish(bool closed);
+    void vectorPenKeys();
+    void vectorTextBox(ImVec2 p0);
     void vectorDrawRelease();
     void saveDocTo(const std::string& command, const std::string& doc, const std::string& path);
     void closeDoc(const std::string& id);  // asks first when it has unsaved changes
@@ -474,7 +481,8 @@ private:
     // the retouch brushes (brush_tools.cpp) and the layers panel (layers_view.cpp)
     static bool brushTool(CanvasTool tool);
     static bool vectorDrawTool(CanvasTool tool) {
-        return tool == CanvasTool::VecRect || tool == CanvasTool::VecEllipse || tool == CanvasTool::VecLine;
+        return tool == CanvasTool::VecRect || tool == CanvasTool::VecEllipse || tool == CanvasTool::VecLine || tool == CanvasTool::VecPen ||
+               tool == CanvasTool::VecText;
     }
     void brushToolSettings();
     bool brushToolPress(ImVec2 screen);  // true when the click picked a clone source

@@ -237,6 +237,9 @@ std::string openerStem(const std::string& opener);
 std::string commandVerb(const std::string& id);
 // a command's description for people: command ids it names (cad.sketch_line) become their titles
 std::string readableDescription(const std::string& text, const std::vector<CommandInfo>& commands);
+// A long description split for a form: the first sentence or two up front, the rest behind
+// "More"; sentences only a script needs ("Returns the feature name.") are left out.
+void splitDescription(const std::string& text, std::string& lead, std::string& rest);
 // up to the first full stop, for tooltips
 std::string firstSentence(const std::string& text);
 // whether a command works on an open file (a required document field)

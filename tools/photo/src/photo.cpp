@@ -175,6 +175,7 @@ std::shared_ptr<ImageDoc> openSvg(const std::string& path) {
     std::stringstream text;
     text << in.rdbuf();
     auto vec = vector::fromSvg(text.str());
+    vec->background = {0, 0, 0, 0};  // see-through where the SVG draws nothing
     const double longest = std::max(vec->width, vec->height);
     const double scale = longest > 0 && longest < 1024 ? 1024 / longest : 1.0;
     Image img = vector::render(*vec, scale);

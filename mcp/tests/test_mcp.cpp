@@ -103,5 +103,20 @@ int main() {
         CHECK(missing["error"]["code"] == -32602);
     }
 
+    // doc= may be left out (the session fills in the one used last), so the schema doesn't demand it
+    {
+        Session docs;
+        docs.registry().add({"note.read", "Read", "reads a note", {{"doc", ParamType::String, "which note", true}}, false},
+                            [](const Params&) { return std::make_unique<FunctionAction>([] { return Result::success("read"); }); });
+        mcp::Server docServer(docs, "docs", "0.0.0");
+        json l = call(docServer, {{"jsonrpc", "2.0"}, {"id", 1}, {"method", "tools/list"}});
+        json schema;
+        for (const auto& t : l["result"]["tools"]) {
+            if (t["name"] == "note_read") schema = t["inputSchema"];
+        }
+        CHECK(schema["required"].empty());
+        CHECK(schema["properties"]["doc"]["description"].get<std::string>().find("used last") != std::string::npos);
+    }
+
     return check::summary("mcp");
 }

@@ -305,7 +305,28 @@ void testRoundTrips() {
 
 }  // namespace
 
+// Clicking on the page: doc_hit finds the block under a point, on any page of the stacked picture.
+void testHit() {
+    Session s;
+    registerCommands(s);
+    run(s, "office.doc_new", {});
+    run(s, "office.doc_add", P({{"kind", S("heading")}, {"text", S("Top")}}));
+    for (int i = 0; i < 60; ++i) run(s, "office.doc_add", P({{"text", S("A paragraph that is long enough to wrap onto a second line of the page, more or less.")}}));
+    run(s, "office.doc_add", P({{"kind", S("list")}, {"text", S("one\ntwo")}}));
+    const auto boxes = blockBoxes(docOf(s));
+    CHECK(!boxes.empty() && boxes.front().block == 1 && boxes.front().page == 1);
+    CHECK(boxes.back().block == 62 && boxes.back().page >= 2);
+    Result r = run(s, "office.doc_hit", P({{"page", I(1)}, {"x", 100.0}, {"y", (boxes.front().y0 + boxes.front().y1) / 2}}));
+    CHECK(r.ok && r.field("block") && std::get<std::int64_t>(*r.field("block")) == 1 && std::get<std::string>(*r.field("kind")) == "heading");
+    const BlockBox& last = boxes.back();
+    const double sheetY = (last.page - 1) * (docOf(s).page.height * kSheetScale + kSheetGap) + (last.y0 + last.y1) / 2 * kSheetScale;
+    r = run(s, "office.doc_hit", P({{"sheet_y", sheetY}}));
+    CHECK(r.ok && std::get<std::int64_t>(*r.field("block")) == 62 && std::get<std::string>(*r.field("text")) == "- one\n- two\n");
+    CHECK(!s.run("office.doc_hit", P({{"page", I(1)}, {"y", 5.0}})).ok);  // the top margin
+}
+
 int main() {
+    testHit();
     testFormatting();
     testTables();
     testReview();

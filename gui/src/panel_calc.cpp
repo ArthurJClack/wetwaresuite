@@ -5,6 +5,8 @@
 #include <cmath>
 
 #include "tool_panels.hpp"
+
+#include "imgui_internal.h"
 // after imgui.h
 #include "imgui_stdlib.h"
 
@@ -74,9 +76,16 @@ void Shell::calcKeypad() {
         ImGui::SetKeyboardFocusHere();
         c.focusInput = false;
     }
-    if (ImGui::InputTextWithHint("##expr", "type a calculation, e.g. 12% of 80 or 5 km to mi", &c.input, ImGuiInputTextFlags_EnterReturnsTrue)) {
+    // the box stays active after Enter, so the next sum can be typed straight away (refocusing
+    // a frame later dropped the first key typed)
+    ImGuiIO& io = ImGui::GetIO();
+    const bool keep = io.ConfigInputTextEnterKeepActive;
+    io.ConfigInputTextEnterKeepActive = true;
+    const bool entered = ImGui::InputTextWithHint("##expr", "type a calculation, e.g. 12% of 80 or 5 km to mi", &c.input, ImGuiInputTextFlags_EnterReturnsTrue);
+    io.ConfigInputTextEnterKeepActive = keep;
+    if (entered) {
         calcEvaluate();
-        c.focusInput = true;
+        if (ImGuiInputTextState* box = ImGui::GetInputTextState(ImGui::GetItemID())) box->ReloadUserBufAndMoveToEnd();
     }
     if (!c.asked.empty() && !c.error) {
         const float aw = ImGui::CalcTextSize(c.asked.c_str()).x;

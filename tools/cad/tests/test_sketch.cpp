@@ -67,6 +67,14 @@ void testDegreesOfFreedom() {
     Result info = run(s, "cad.sketch_info doc=cad1 sketch=sketch1");
     NumberList end = list(info, "p2");
     CHECK(end.size() == 2 && near(end[0], 10) && near(end[1], 0));
+    // the window draws it from numbers: one segment, two points, no profile yet
+    Result geo = run(s, "cad.sketch_geometry doc=cad1");
+    CHECK(geo.ok && list(geo, "lines").size() == 4 && list(geo, "points").size() + list(geo, "free").size() >= 4);
+    CHECK(list(geo, "profiles").empty() && geo.field("sketches") && toText(*geo.field("sketches")) == "sketch1");
+    CHECK(run(s, "cad.sketch_rect doc=cad1 sketch=sketch1 x=20 y=0 width=5 height=5").ok);
+    CHECK(list(run(s, "cad.sketch_geometry doc=cad1 sketch=sketch1"), "profiles").size() == 1 + 2 * 4 ||
+          list(run(s, "cad.sketch_geometry doc=cad1 sketch=sketch1"), "profiles").size() == 1 + 2 * 5);
+    CHECK(s.history().undo());
     // conflicting constraints are refused and change nothing
     r = run(s, "cad.sketch_constrain doc=cad1 sketch=sketch1 type=vertical refs=l1");
     CHECK(!r.ok && r.message.find("conflict") != std::string::npos);
@@ -425,7 +433,32 @@ void testFilesUndoMcp() {
 
 }  // namespace
 
+void testSketchesShowInTheView() {
+    Session s;
+    registerCommands(s);
+    run(s, "cad.new");
+    run(s, "cad.sketch doc=cad1");
+    auto doc = s.workspace().getAs<CadDoc>("cad1");
+    // an empty sketch: the axes still draw, so the view isn't blank
+    CHECK(doc && doc->sketchLines().empty());
+    std::vector<std::uint8_t> rgba;
+    auto inked = [&] {
+        int n = 0;
+        for (std::size_t i = 0; i + 3 < rgba.size(); i += 4)
+            if (rgba[i] > 200 && rgba[i + 1] < 150 && rgba[i + 2] < 100) ++n;  // sketch orange or the red axis
+        return n;
+    };
+    CHECK(doc->renderView(OrbitView{}, 120, 90, rgba) && inked() > 5);
+    run(s, "cad.sketch_rect doc=cad1 sketch=sketch1 width=40 height=20");
+    CHECK(doc->sketchLines().size() == 4);
+    CHECK(doc->renderView(OrbitView{}, 120, 90, rgba) && inked() > 40);
+    // once extruded the sketch has done its job and hides
+    run(s, "cad.sketch_extrude doc=cad1 sketch=sketch1 depth=10");
+    CHECK(doc->sketchLines().empty());
+}
+
 int main() {
+    testSketchesShowInTheView();
     testDegreesOfFreedom();
     testExtrudeFromSketch();
     testSketchShapes();

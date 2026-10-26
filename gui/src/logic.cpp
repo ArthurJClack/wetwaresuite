@@ -263,8 +263,15 @@ Form buildForm(const CommandInfo& info, const std::vector<std::string>& docs, co
             f.set = true;
             const std::string name = lower(spec.name);
             if (f.kind == FieldKind::Integer || f.kind == FieldKind::Number) {
-                if (name == "width") f.number = 1920;
-                else if (name == "height") f.number = 1080;
+                // pixel art starts small; new pictures, videos and renders start at full HD;
+                // a shape drawn on a page (a rectangle, a frame) starts a size you can see whole
+                const std::string& id = info.id;
+                const bool small = id.find("sprite") != std::string::npos;
+                const bool page = id.find("new") != std::string::npos || id.find("resize") != std::string::npos ||
+                                  id.find("canvas") != std::string::npos || id.find("render") != std::string::npos ||
+                                  id.find("export") != std::string::npos || id.find("capture") != std::string::npos;
+                if (name == "width") f.number = small ? 32 : page ? 1920 : 200;
+                else if (name == "height") f.number = small ? 32 : page ? 1080 : 120;
                 else if (f.min) f.number = std::max(0.0, *f.min);
             } else if (f.kind == FieldKind::Choice) {
                 f.text = spec.choices.front();
@@ -387,7 +394,9 @@ std::vector<std::string> beginnerCommands(const std::string& tool, const std::ve
         for (const auto* c : mine) {
             const std::string verb = suffixOf(c->id);
             // export_status, export_cancel: watching a job isn't a first thing to do
-            if (startsWith(verb, v + "_") && !endsWith(verb, "_status") && !endsWith(verb, "_cancel")) {
+            if (endsWith(verb, "_status") || endsWith(verb, "_cancel")) continue;
+            // open_url, or a family's own: office.doc_open, forge.sprite_new
+            if (startsWith(verb, v + "_") || endsWith(verb, "_" + v)) {
                 take(c);
                 break;  // one variant per verb keeps the list short
             }
@@ -395,7 +404,7 @@ std::vector<std::string> beginnerCommands(const std::string& tool, const std::ve
     }
     for (const auto* c : mine) {
         const std::string verb = suffixOf(c->id);
-        if (verb != "preview" && verb != "close" && !contains(verb, "batch")) take(c);
+        if (verb != "preview" && verb != "close" && !endsWith(verb, "_close") && !contains(verb, "batch")) take(c);
     }
     return out;
 }
@@ -438,6 +447,17 @@ std::vector<std::string> openCandidates(const std::string& path, const std::vect
 std::optional<Rgba> parseHex(const std::string& text) {
     std::string t = lower(trim(text));
     if (t == "transparent" || t == "none") return Rgba{0, 0, 0, 0};
+    // the names and rgb() the commands take too, so the swatch matches the text
+    static const std::map<std::string, std::string> names = {
+        {"white", "#ffffff"}, {"black", "#000000"}, {"red", "#ff0000"},    {"green", "#008000"}, {"lime", "#00ff00"},
+        {"blue", "#0000ff"},  {"yellow", "#ffff00"}, {"orange", "#ffa500"}, {"purple", "#800080"}, {"pink", "#ffc0cb"},
+        {"brown", "#a52a2a"}, {"gray", "#808080"},  {"grey", "#808080"},   {"cyan", "#00ffff"},  {"magenta", "#ff00ff"},
+        {"navy", "#000080"},  {"teal", "#008080"},  {"silver", "#c0c0c0"}, {"gold", "#ffd700"},  {"maroon", "#800000"},
+        {"olive", "#808000"}};
+    if (auto it = names.find(t); it != names.end()) t = it->second;
+    int r = 0, g = 0, b = 0;
+    if (std::sscanf(t.c_str(), "rgb(%d,%d,%d)", &r, &g, &b) == 3 || std::sscanf(t.c_str(), "rgb( %d , %d , %d )", &r, &g, &b) == 3)
+        return Rgba{std::clamp(r, 0, 255) / 255.0f, std::clamp(g, 0, 255) / 255.0f, std::clamp(b, 0, 255) / 255.0f, 1.0f};
     if (t.empty() || t[0] != '#') return std::nullopt;
     t = t.substr(1);
     if (t.size() == 3 || t.size() == 4) {

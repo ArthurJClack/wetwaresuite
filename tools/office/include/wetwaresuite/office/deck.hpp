@@ -116,6 +116,18 @@ std::string writeSlideShow(const Deck& deck, int width = 1600, bool loop = false
 // Text frames that do not fit even when shrunk ("title", "subtitle", "bullets", "right"); empty when all fit.
 std::vector<std::string> slideOverflow(const Deck& deck, std::size_t index);
 
+// What's at (x, y) points on a slide, for clicking it in a window: the topmost free object, else
+// the layout's title, subtitle, bullets or right column (also where an empty one would go, like
+// PowerPoint's "click to add title"). kind is "object", "title", "subtitle", "bullets", "right"
+// or "" for nothing; object is the 1-based object number; text is what to edit.
+struct SlideHit {
+    std::string kind;
+    int object = 0;
+    double x = 0, y = 0, w = 0, h = 0;
+    std::string text;
+};
+SlideHit slideHit(const Deck& deck, std::size_t index, double x, double y);
+
 std::string writePptx(const Deck& deck);
 // Titles, bullets, pictures, text boxes, shapes and lines, notes, transitions, hidden slides,
 // the theme colours and fonts, and the master's shapes and footer.

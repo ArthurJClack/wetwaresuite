@@ -96,20 +96,95 @@ The AppImage on Linux runs everything from inside its one file, which unmounts w
 you started it with closes, so keep the launcher open while you use apps you started from it (or
 start each app with `--run image`, or install the `.deb`).
 
-## 2. The home screen
+## 2. The window
 
-When the window opens you see the home screen:
+Every app window has the same five parts, laid out the way the tool it replaces does it, so if you
+know Photoshop, Word or Onshape you already know where things are:
+
+![The image app: menus and a one-row ribbon on top, tools on the left, the picture in a tab, Layers on the right](images/gui-image-app.jpg)
+
+1. **The menu bar** has **File**, **Edit**, **View**, one menu per tool (in the image app **Photo**
+   and **Paint**) and **Help**. Every action the app has is in a menu: the common ones in titled
+   sections (Image, Adjust, Select, Filters...), the rest under **More ... actions**. The search box
+   and **Undo** / **Redo** sit at its right end.
+2. **The ribbon** under it has a tab per tool with labeled groups of buttons, like Office. It picks
+   the tab that fits the open file by itself, so a spreadsheet shows the **Sheet** tab and a PDF the
+   **PDF** tab. A button that needs nothing but the open file runs at once; one that needs settings
+   shows them on the right first. Photo, drawing, game, map, sound and video apps keep it to one
+   compact row, since their tools and tool options do most of the work.
+3. **The tool rail** on the left holds the click tools of the open file: Move, Select, Brush, Heal...
+   for pictures, Pencil, Bucket... for sprites, Place, Wire... for circuits, Measure, Route... for
+   maps. The letter next to each tool picks it from the keyboard (the same letters as Photoshop where
+   there is one: **V** move, **M** select, **B** brush, **E** eraser, **G** fill, **J** heal, **S** clone).
+   The picked tool's settings (size, opacity, shape...) show in the **options bar** over the picture.
+4. **File tabs** over the middle: **Start** (the start screen) and one tab per open file. Click the
+   **x** on a tab to close that file. A dot after a file's name means it has changes you haven't
+   saved; closing it (or quitting) asks whether to save them first. The system app has a tab per panel instead (Calculator, Code,
+   Files, Terminal, Monitor, Clock).
+5. **The right side** has tabs too: **Properties** (the picked action's settings, or what the open
+   file is), **Layers** for pictures, **Effects** for sound projects and songs, and **History**.
+   **The status bar** at the bottom says what the last action did (click it for the details), what
+   the file is and the zoom.
+
+What each app's window is modeled on:
+
+| app | modeled on | ribbon tabs | tool rail |
+|-----|-----------|-------------|-----------|
+| image | Photoshop, GIMP | Photo, Paint (one row) | Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur |
+| draw | Illustrator, Inkscape | Vector, Fonts, Whiteboard (one row) | Move, Pick, Anchors, Rectangle, Ellipse, Line |
+| model | Blender | Model, Sculpt, Render, Animate | (the 3D view turns with the mouse) |
+| game | Aseprite, Tiled | Sprite, Mesh, Textures, Level, World (one row) | Pencil, Eraser, Line, Box, Ellipse, Bucket, Pick / Paint, Rect, Erase, Fill, Object |
+| cad | Onshape, SolidWorks | Part, Assembly, Drawing, 3D print, Scan fit | (the 3D view turns with the mouse) |
+| electronics | KiCad | Schematic, Board, Flash | Select, Place, Wire, Move, Delete / Trace, Via |
+| sound | Audacity, Ableton | Audio, Project, Beats (one row) | |
+| video | Premiere, Resolve | Edit, Capture (one row) | |
+| office | Word, Excel, PowerPoint, Acrobat | Document, Sheet, Slides, PDF, Layout, Notes | |
+| maps | QGIS | Map (one row) | Pan, Identify, Measure, Point, Line, Area, Move, Delete, Route |
+| system | each panel's own | (menus only) | |
+| files | | Toolkit, Convert, Library, Automate | |
+
+**View** turns each part on or off, and **Ctrl+Space** hides them all so the picture gets the whole
+window (press it again to bring them back). Tool letters keep working while the panels are hidden.
+
+### The start screen
+
+The **Start** tab is what you see first:
 
 - **Open a file** shows your computer's normal "open" window. Pick a picture (or any file the app
   understands) and it opens.
 - **Start something new** lists the things you can create, such as a blank canvas to paint on.
 - **Find an action** jumps to the search box (see below).
-- **Recent files** lists what you opened before. Click one to open it again.
+- **Recent files** lists what you opened before. Click one to open it again (also **File > Open recent**).
 - One **card per tool** says in a sentence what it does, with buttons for its most common actions.
+  **More...** shows that tool's ribbon tab.
 - When another app has **sent you a file**, a banner at the top says what is waiting, with an
   **Open it** button (see [Sending your work to another app](#8-sending-your-work-to-another-app)).
 
-You can always get back here with the **Home** button at the top left.
+### Keyboard shortcuts
+
+**F1** (or **Help > Keyboard shortcuts**) lists them in the window.
+
+| keys | what |
+|------|------|
+| Ctrl+N | start something new |
+| Ctrl+O | open a file |
+| Ctrl+S / Ctrl+Shift+S | save / save as |
+| Ctrl+W | close the file |
+| Ctrl+Tab / Ctrl+Shift+Tab | next / previous file |
+| Ctrl+Z / Ctrl+Y | undo / redo |
+| Ctrl+K | find any action by typing |
+| Ctrl+Enter | run the action on the right |
+| Ctrl+0 | fit the picture to the window |
+| Ctrl+Space | hide or show the panels |
+| a letter | pick the rail tool with that letter |
+| Space | play or pause sound and video |
+| Ctrl+Q | quit |
+
+On a Mac, Cmd works wherever Ctrl is written.
+
+**Save** uses the save action of the kind of file you have open (Save image, Save Spreadsheet, Save
+Part...) and writes it back where it came from. A file that was never saved, and **Save as**, show
+the save action's settings on the right first so you can pick where.
 
 ## 3. Find any action by typing
 
@@ -120,8 +195,11 @@ type. You don't have to spell them exactly: `brsh` finds "Brush stroke". Use the
 
 ## 4. Fill in the form and press Run
 
-Picking an action, from search, the list on the left or a card, shows its form on the right. Every
-box is already filled with a sensible value, so often you only press **Run** (or **Ctrl+Enter**).
+Picking an action, from search, a menu, the ribbon or a card, shows its form on the right. Every
+box is already filled with a sensible value, so often you only press the big button at the bottom of
+the panel (or **Ctrl+Enter**). It says what it does: **Create** for something new, **Open**, **Save**,
+**Export**, or **Apply** for everything else, and it stays in the same place however long the form is.
+Buttons that need an open file are greyed out until you open or make one.
 
 - **Numbers with a known range** (like opacity 0 to 100) are sliders. Drag them, or Ctrl+click one
   to type a value.
@@ -133,18 +211,17 @@ box is already filled with a sensible value, so often you only press **Run** (or
   can also type or paste a path.
 - **Document** picks which open file the action works on. It starts on the file you are looking at.
 
-After you press Run, the result shows under the form: **Done** in green with what happened, or
+After you press it, the result shows under the form: **Done** in green with what happened, or
 **That didn't work** in red with the reason in plain words, for example *Please fill in "Height".*
 Nothing changes when an action fails.
 
-## 5. Simple and Advanced
+## 5. Advanced options
 
-The left side lists actions for each tool. In **Simple** mode (the default) it shows only the most
-common ones, about eight per tool, and every box in a form has a short explanation under it.
-
-Press **Mode: Simple** at the top to switch to **Advanced**: every action of every tool is listed, and
-the explanations move into tooltips (hover over a box's name to read it).
-Both modes are free and can do the same things; Advanced just shows more at once.
+**View > Show advanced options** shows more at once: the explanation under each box in a form moves
+into a tooltip (hover over the box's name to read it), and the system panels show their extra
+columns and buttons (per-core meters, process ids, git branches, the calculator's Stats, Solve and
+Bases tabs). It is off at first. Both ways are free and can do the same things; every action is in
+the menus either way.
 
 ## 6. Looking at your picture
 
@@ -153,7 +230,7 @@ When a file is open, the middle of the window shows it.
 - **Scroll** the mouse wheel to zoom in and out around the mouse pointer.
 - **Drag** with the right or middle mouse button (or hold the **Space** bar and drag) to move around.
 - **Fit** shows the whole picture, **100%** shows it at its real size.
-- The list of **Open files** on the left switches between files.
+- The **file tabs** over the picture switch between open files (or **Ctrl+Tab**).
 
 3D files (cad parts, models, sculpts, scan fits, prints) open in a **3D view** you can turn around:
 
@@ -193,6 +270,18 @@ Video edits add an editor's tools:
 
 Every drag is one ordinary command (`cut.move_clip`, `cut.trim_clip`, `audio.clip_set`, `audio.clip_trim`, `audio.clip_split`...), so it shows in the history and **Undo** takes it back, and a script or Claude can do exactly the same.
 
+### Documents: type to add a paragraph
+
+A Word-style document (in the office app) has a **write bar** over the page: pick what to add
+(paragraph, heading, list item...), type the text and press **Enter**. It goes in at the end and the
+box empties, ready for the next one, so you can keep typing paragraph after paragraph.
+
+### Drawings: drag out shapes
+
+In the draw app, **Rectangle** (**M**), **Ellipse** (**L**) and **Line** on the tool rail draw a shape
+where you drag, in the colour on the options bar. Hold **Shift** for a square or a circle. The new
+shape is picked when you let go, so you can move it or change it on the right at once.
+
 ### Spreadsheets: type into the cells
 
 A spreadsheet (in the office app) opens as a grid of cells instead of a picture, with a tab for each
@@ -222,10 +311,11 @@ The [office tutorial](office.md#task-7-a-sales-tracker-the-excel-way) has an exa
 
 ## 7. Painting
 
-In the image app (or any app with the paint tool), pictures get painting tools above the canvas:
+In the image app (or any app with the paint tool), pictures get painting tools in the tool rail on the
+left, and the picked tool's settings in the options bar over the picture:
 
-1. Choose **Brush**.
-2. Click the colour swatch next to it and pick a colour.
+1. Choose **Brush** (or press **B**).
+2. Click the colour swatch on the options bar and pick a colour.
 3. Pick a **Brush** style (pen, pencil, ink, marker, airbrush, soft, round), a **Size** and an
    **Opacity**.
 4. Draw on the picture with the mouse. You see the line while you draw; when you let go it is painted
@@ -239,7 +329,7 @@ Each stroke is one step in the history, so Ctrl+Z takes back exactly one stroke.
 
 ### Retouching: Heal and Remove
 
-Two more tools sit next to Fill in the image app. They fix pictures by painting, with no numbers to type,
+Two more tools sit under Fill in the rail (**J** and **R**). They fix pictures by painting, with no numbers to type,
 and work with the mouse or a pen just like the Brush.
 
 - **Heal** makes spots, pimples, dust and scratches disappear. Pick a **Size** a bit bigger than the
@@ -255,9 +345,9 @@ While it works the picture shows **Working...**; a moment later it is redrawn. E
 Remove is one step in the history, so Ctrl+Z takes back exactly one. The
 [photo tutorial](photo.md#task-7-retouching-remove-spots-blend-in-erase-objects) has more tips.
 
-To start a fresh canvas: **Start something new**, then **New canvas (Paint)**, set the width and
-height, and press Run. To keep your work, search for **save**, pick **Save image**, press
-**Browse...** to choose where, and Run. Saving as `.ora` keeps the layers.
+To start a fresh canvas: **File > New...** (Ctrl+N), then **New canvas (Paint)**, set the width and
+height, and press Run. To keep your work press **Ctrl+S**: the first time, the save settings show on
+the right; press **Browse...** to choose where, and Run. Saving as `.ora` keeps the layers.
 
 ### Selecting part of the picture
 
@@ -295,7 +385,8 @@ script or Claude would, so you can mix clicking, forms and batch scripts on one 
 The apps are separate programs, but you can hand work from one to the next without hunting for
 files. For example: paint a texture in **image**, then put it on a model in **model**.
 
-1. With your picture open, press **Send to...** next to the file's name at the top of the picture.
+1. With your picture open, pick **File > Send to another app...** (or the **Send to another app...**
+   button on the Properties tab).
 2. A list of the apps that can use this kind of file appears. Apps you haven't installed are greyed
    out and marked *not installed*.
 3. Click one, for example **Model**. The app saves the picture in the format that app wants (here a
@@ -337,13 +428,14 @@ More on handoffs, with whole walkthroughs: [Workflows](workflows.md).
 ## 9. Undo, redo and history
 
 - **Undo** (Ctrl+Z) takes back the last change. **Redo** (Ctrl+Y or Ctrl+Shift+Z) puts it back.
-- The **History** list on the right shows every change in order; the last one is marked `<- now`.
+- The **History** tab on the right (or **Edit > History**) shows every change in order; the last one is marked `<- now`.
+- **Edit > Undo** names the change it takes back.
 
 Opening, looking and saving are not changes, so they don't appear in the history.
 
 ## 10. Text size and colours
 
-Press **Aa** at the top right:
+Pick **Edit > Text size and colours...**:
 
 - **Text size** makes everything bigger or smaller (the window already follows your screen's scale
   setting).
@@ -360,7 +452,7 @@ Under **Colours** you can pick three colours. They are shared: every wetwaresuit
 | **Panels** | secondary | the boxes and panels. A dark colour gives a dark look, a pale one a light look |
 | **Details** | tertiary | links, borders, selected text and the keyboard focus |
 
-1. Press **Aa**.
+1. Pick **Edit > Text size and colours...**.
 2. Click the colour swatch next to **Main colour** and pick a colour (or type its code, like
    `#ff8800`). The window changes as you go.
 3. Do the same for **Panels** and **Details** if you like.
@@ -489,7 +581,7 @@ This is optional: nothing in the window needs it.
   through `apps::runGui` with the name, tools and accent colour from the app table
   (`apps/common/apps.cpp`). `wetwaresuite-gui` goes through the same `runGui`.
 - `wetwaresuite-image gui --screenshot shot.bmp` works on every app, like the launcher's.
-  `--action settings` starts with the **Aa** menu open (handy for screenshots of the colours).
+  `--action settings` starts with the text size and colours window open (handy for screenshots of the colours).
 - The palette logic (parsing colours, the file, contrast and shades) is window-free in
   `gui/include/wetwaresuite/gui/palette.hpp`, tested by `test_gui_palette`; the `app.palette_*`
   commands are in `apps/common/palette_commands.cpp`, tested in `test_apps`. The window reads the

@@ -10,6 +10,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -22,6 +23,33 @@
 
 namespace wetwaresuite::gui {
 
+// Adds one typed character (a code point) to UTF-8 text.
+inline void appendUtf8(std::string& out, unsigned c) {
+    if (c < 0x80) {
+        out += static_cast<char>(c);
+    } else if (c < 0x800) {
+        out += static_cast<char>(0xC0 | (c >> 6));
+        out += static_cast<char>(0x80 | (c & 0x3F));
+    } else if (c < 0x10000) {
+        out += static_cast<char>(0xE0 | (c >> 12));
+        out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (c & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (c >> 18));
+        out += static_cast<char>(0x80 | ((c >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (c & 0x3F));
+    }
+}
+
+// An options-bar label in front of its control, the way Photoshop's bar reads ("Size [12 px]").
+// Call it before SetNextItemWidth, and give the control a "##" label.
+inline void barLabel(const char* text) {
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted(text);
+    ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+}
+
 // An RGBA texture on the renderer, remade when its picture changes.
 struct Texture {
     SDL_Texture* tex = nullptr;
@@ -32,7 +60,7 @@ struct Texture {
     ImTextureID id() const { return static_cast<ImTextureID>(reinterpret_cast<std::intptr_t>(tex)); }
 };
 
-enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur, Pick, Anchor };
+enum class CanvasTool { Move, Select, Brush, Eraser, Fill, Heal, Remove, Clone, Dodge, Burn, Sponge, Smudge, Blur, Pick, Anchor, VecRect, VecEllipse, VecLine, VecPen, VecText };
 enum class SelectShape { Rect, Ellipse, Lasso, Wand };
 
 // Click tools for game levels (levels.*) and pixel-art sprites (forge.sprite_*), game_view.cpp.
@@ -66,6 +94,53 @@ struct GameCanvas {
     int pictureW = 0, pictureH = 0;
 };
 
+// A cad sketch open for drawing with the mouse (sketch_view.cpp). Geometry comes from
+// cad.sketch_geometry in sketch units; the view is a centre and pixels per unit.
+struct SketchEdit {
+    enum class Tool { Line, Rect, Circle };
+    std::string doc, sketch;
+    bool active = false;
+    std::uint64_t seen = ~0ull;
+    std::string status, units = "mm";
+    NumberList lines, construction, points, free, profiles;
+    Tool tool = Tool::Line;
+    double cx = 0, cy = 0, ppm = 8;
+    bool fit = true;
+    bool drawing = false;
+    double ax = 0, ay = 0;          // where the shape started
+    double chainX = 0, chainY = 0;  // a line chain's first point: clicking it closes the shape
+    ImVec2 pressAt{0, 0};
+};
+
+// Slides (deck_view.cpp): which slide is shown big, the strip of thumbnails, the part of the
+// slide being typed into and an object being dragged. Boxes are in slide points (x, y, w, h).
+struct DeckView {
+    std::string doc;
+    int slide = 1, slides = 0;
+    double pointsWide = 960;
+    std::uint64_t seen = ~0ull;  // Shell change count the thumbnails were drawn at
+    std::string thumbsFor;
+    std::vector<Texture> thumbs;
+    bool scrollToSlide = false;
+    // hover
+    ImVec2 hoverAt{-1, -1};
+    std::string hoverKind;
+    int hoverObject = 0;
+    ImVec4 hover{0, 0, 0, 0};
+    bool hoverEmpty = false;
+    // press / drag
+    std::string pressKind, pressText;
+    int pressObject = 0;
+    ImVec4 press{0, 0, 0, 0};
+    ImVec2 pressAt{0, 0};
+    bool moving = false;
+    // the part being edited
+    bool editing = false, focus = false;
+    std::string kind, text;
+    int object = 0;
+    ImVec4 box{0, 0, 0, 0};
+};
+
 // A retouch command waiting to run: it runs on the frame after it is queued, so the
 // window first shows "Working..." over the canvas.
 struct PendingRetouch {
@@ -84,6 +159,7 @@ struct Canvas {
     ImVec2 pan{0, 0};       // offset of the image's top-left from the view's top-left, in screen px
     ImVec2 viewMin{0, 0};   // last frame's view rectangle
     ImVec2 viewSize{0, 0};
+    ImVec2 waveSize{0, 0};  // the view size a waveform was last drawn for
     std::string summary;  // for documents with no picture
 
     CanvasTool tool = CanvasTool::Move;
@@ -118,6 +194,12 @@ struct Canvas {
     bool orbitDirty = true;
     bool orbitDragging = false;
     bool orbitSharpPending = false;
+    // G / R / S in a model: move, rotate or scale the selection with the mouse (model.drag)
+    char grab = 0;             // 'G', 'R', 'S' while dragging, 0 otherwise
+    bool grabApplied = false;  // a model.drag of this grab is in the history (undone before the next one)
+    ImVec2 grabStart{0, 0};
+    std::string grabAxis;      // "", "x", "y" or "z"
+    bool grabEndClick = false; // the click that kept it isn't also a click to select
     int orbitW = 0, orbitH = 0;
 
     // selecting (selection_view.cpp)
@@ -139,9 +221,13 @@ struct Canvas {
     bool vecHasBox = false;
     float vecBox[4] = {0, 0, 0, 0};  // x, y, w, h
     std::vector<float> vecNodes;      // per anchor: x, y, in x, in y, out x, out y
-    int vecDrag = 0;                  // 0 none, 1 move, 2 scale handle, 3 anchor part
+    int vecDrag = 0;                  // 0 none, 1 move, 2 scale handle, 3 anchor part, 4 drawing a new shape
     int vecHandle = 0;                // scale: handle 0..7; anchor: node * 3 + part (0 anchor, 1 in, 2 out)
     ImVec2 vecStart{0, 0}, vecNow{0, 0};
+    std::vector<ImVec2> penPoints;   // Pen: the corners clicked so far, in drawing units
+    bool textOpen = false;           // Text: a box is waiting for words at textAt
+    ImVec2 textAt{0, 0};
+    std::string textDraft;
 
     GameCanvas game;
 };
@@ -221,6 +307,7 @@ struct GridState {
     bool caretToEnd = false;  // started by typing: keep the typed text, caret after it
     bool scrollToSel = false;
     bool textInput = false;  // we turned SDL text input on
+    int editCount = 0;       // each edit gets a fresh editor, so the last one's text can't come back
     std::string buffer;   // the cell editor's text
     std::string formula;  // the formula bar's text
     int formulaRow = -1, formulaCol = -1, formulaSheet = -1;
@@ -253,9 +340,10 @@ struct MapsCanvas {
 struct ToolPanels;  // tool_panels.hpp
 
 struct DialogTarget {
-    enum Kind { OpenDocument, FormField, PanelFolder, AddMedia } kind = OpenDocument;
-    std::string command;  // FormField: the form it belongs to; PanelFolder: what the folder is for; AddMedia: the timeline
+    enum Kind { OpenDocument, FormField, PanelFolder, SaveDocument, AddMedia } kind = OpenDocument;
+    std::string command;  // FormField: the form it belongs to; PanelFolder: what the folder is for; SaveDocument: the save command; AddMedia: the timeline
     std::size_t field = 0;
+    std::string doc;  // SaveDocument: the file to save
 };
 
 class Shell {
@@ -274,21 +362,70 @@ public:
         openPanelFor(commandId);
     }
     bool wantsQuit() const { return quit_; }
+    // the window's close button or Ctrl+Q: true when nothing unsaved stands in the way, else it asks
+    bool requestQuit();
     int tickMs() const;  // > 0: wake the window this often (timers, running programs, live graphs)
     bool animating() const { return animating_; }  // something on screen moves (the selection outline)
+    // true once after the window's state changed (a file made, opened, closed or shown), so the
+    // loop draws a few more frames: new tabs and views take a frame or two to settle
+    bool settling();
 
     static Uint32 wakeEvent;  // pushed from dialog threads to wake the event loop
     static ImFont* monoFont;  // a fixed-width font for code and terminals (null: the UI font)
 
 private:
+    // the window's frame (chrome.cpp): menu bar, ribbon, file tabs, tool rail,
+    // properties tabs and status bar, laid out per app like the tool it replaces
+    void menuBar();
+    void fileMenu();
+    void editMenu();
+    void viewMenu();
+    void toolMenu(const std::string& tool);
+    void helpMenu();
+    void searchBox();
+    void ribbon();
+    void docTabs();
+    void toolRail();
+    bool railItem(const char* label, const char* key, const char* tip, bool on);  // a rail button; its letter picks it too
+    void railTools();     // the current document's click tools (canvas.cpp)
+    void canvasTools();
+    void circuitTools();  // panel_circuit.cpp
+    void mapsTools();     // maps_view.cpp
+    void gameTools();     // game_view.cpp
+    void propertiesPanel();
+    void statusBar();
+    void shortcuts();
+    void shortcutsPopup();
+    void rootPopups();
+    void pick(const std::string& commandId);  // a menu or ribbon button: runs at once, or shows its settings first
+    bool runOnDoc(const std::string& commandId, const std::string& doc);
+    void saveDoc(bool askWhere);
+    void askSavePath(const std::string& command, const std::string& doc, const std::string& start);
+    void writeBar();
+    ImVec2 vectorDrawEnd() const;
+    void drawVectorDraft(ImDrawList* dl, ImVec2 p0) const;
+    void penFinish(bool closed);
+    void vectorPenKeys();
+    void vectorTextBox(ImVec2 p0);
+    void vectorDrawRelease();
+    void saveDocTo(const std::string& command, const std::string& doc, const std::string& path);
+    void closeDoc(const std::string& id);  // asks first when it has unsaved changes
+    void closeDocNow(const std::string& id);
+    void askSavePopup();
+    void noteChange(const std::string& id, const Params& params, const Result& r);
+    void showDoc(const std::string& id);
+    void nextTab(int step);
+    std::string docOpener(const std::string& id) const;
+    bool hasLayers() const;   // layers_view.cpp
+    bool hasEffects() const;  // sound_view.cpp
+
     // panels (panels.cpp)
-    void topBar();
-    void leftPanel();
     void rightPanel();
     void homeView();
     void documentView();
     void formPanel();
     void historyPanel();
+    void resultView();
     void searchPopup();
     void newPopup();
     void settingsPopup();
@@ -344,6 +481,10 @@ private:
     bool pictureSize(int& width, int& height) const;
     // the retouch brushes (brush_tools.cpp) and the layers panel (layers_view.cpp)
     static bool brushTool(CanvasTool tool);
+    static bool vectorDrawTool(CanvasTool tool) {
+        return tool == CanvasTool::VecRect || tool == CanvasTool::VecEllipse || tool == CanvasTool::VecLine || tool == CanvasTool::VecPen ||
+               tool == CanvasTool::VecText;
+    }
     void brushToolSettings();
     bool brushToolPress(ImVec2 screen);  // true when the click picked a clone source
     void runBrushTool();
@@ -408,6 +549,7 @@ private:
     // actions (shell.cpp)
     Result run(const std::string& id, const Params& params);
     void select(const std::string& commandId);
+    void fillPicked(bool replace);  // the shape picked on the canvas goes into the form's shape box
     void runForm();
     void undo();
     void redo();
@@ -441,7 +583,6 @@ private:
     void openPanel(const std::string& tool);
     void openPanelFor(const std::string& commandId);
     bool openFolder(const std::string& path);
-    void panelList();
     void toolPanelView();
     void backgroundTicks();
     void beforeHistoryStep();
@@ -495,7 +636,6 @@ private:
 
     // handing work to other apps (handoff_panels.cpp), all through the app.* commands
     void refreshInbox();
-    void sendButton();
     void sendPopup();
     void inboxBannerView();
     void suggestionBannerView();
@@ -535,10 +675,35 @@ private:
     float textScale_ = 1.0f;
     float dpi_ = 1.0f;
     bool quit_ = false;
+    std::set<std::string> unsaved_;  // files changed since they were opened or saved
+    std::string askClose_;           // the file the "save changes?" question is about
+    std::string closeAfterSave_;     // close this file once its save goes through
+    bool askQuit_ = false, openAskSave_ = false;
     bool animating_ = false;
+    std::string settledKey_;
+    std::string propsForm_;
+    std::string writeText_, writeKind_ = "paragraph";  // the text document's write bar
+    std::vector<std::string> madeNames_;  // features and layers the last actions made (sketch1...), newest last  // the form the properties tab last showed
     bool showHome_ = true;
     std::string currentDoc_;
     std::map<std::string, std::string> docTool_;  // doc id -> tool that made it
+    std::map<std::string, std::string> docOpener_;  // doc id -> command that made it (office.sheet_open)
+
+    // the frame (chrome.cpp)
+    AppLayout layout_;
+    std::vector<RibbonTab> ribbonTabs_;
+    int ribbonPick_ = -1;          // select this ribbon tab on the next frame
+    std::string ribbonFor_;        // the document the ribbon last picked its tab for
+    bool showRibbon_ = true, showRail_ = true, showProps_ = true, showStatus_ = true;
+    bool focusMode_ = false;       // Ctrl+Space: only the canvas
+    int railCount_ = 0;            // rail buttons last frame (0: no rail)
+    bool railWas_ = false;
+    bool railDraw_ = false;        // railItem draws (false: only its shortcut letter works)
+    std::string tabShown_;         // what the file tabs last showed: "" start, "panel:<tool>" or a doc id
+    int tabForce_ = 0;             // frames to ignore the tab bar's own pick after we picked for it
+    bool pickProps_ = false;       // bring the Properties tab forward
+    bool pickHistory_ = false;
+    bool openNew_ = false, openSend_ = false, openShortcuts_ = false;
 
     std::string query_;
     bool focusSearch_ = false;
@@ -564,6 +729,43 @@ private:
     bool stripsPending_ = false;                     // some clip's thumbnails are still being read
     ExportJob exportJob_;                            // an export running in the background
     float playheadFraction_ = -1;  // where to draw the playhead over a waveform, 0..1
+    // a time range dragged over a waveform, as in Audacity: forms with start/end get it
+    struct AudioSelection {
+        std::string doc;
+        double a = -1, b = -1;    // seconds; a < 0 = none
+        bool dragging = false;
+        double length = 0;        // the clip's length in seconds
+        std::uint64_t seen = ~0ull;
+        std::string lengthDoc;
+        bool any() const { return a >= 0 && b > a; }
+    } audioSel_;
+    void audioCanvas(ImDrawList* dl, ImVec2 p0, ImVec2 p1, bool hovered, bool active);
+    void fillAudioRange(bool replace);
+    // documents: click a paragraph (or list, table...) on the page to change it in place
+    struct DocBlockEdit {
+        std::string doc;
+        int block = 0;  // 0: nothing open
+        std::string kind, text;
+        float top = 0, bottom = 0;  // in the page picture's pixels
+        bool focus = false;
+    } docEdit_;
+    void docCanvas(ImDrawList* dl, ImVec2 p0, bool hovered);
+    // cad: drawing a sketch with the mouse (sketch_view.cpp)
+    SketchEdit sketch_;
+    bool sketchActive() const;
+    std::string docTitle(const std::string& id) const;  // file name, or "Untitled part 1"
+    void enterSketch(const std::string& doc, const std::string& name);
+    void leaveSketch();
+    void refreshSketch();
+    void sketchToolbar();
+    void sketchCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bool active);
+    // slides: thumbnails on the left, click a part of the slide to type, drag objects (deck_view.cpp)
+    DeckView deck_;
+    bool deckDoc() const;
+    std::string deckPicture();  // the shown slide as PNG for the canvas
+    void showSlide(int n);
+    void deckStrip();
+    void deckCanvas(ImDrawList* dl, ImVec2 p0, bool hovered, bool active);
     TimelineState timeline_;
     GridState grid_;
     CircuitCanvas circuit_;

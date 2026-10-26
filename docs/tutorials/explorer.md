@@ -23,7 +23,7 @@ Wherever a command takes `paths=`, you can give one path or several. Separate se
 
 ## The Files window
 
-Start the window with `wetwaresuite-system` and click **Open** on the **Files** card (called **File manager** in Advanced mode). To open a folder straight away:
+Start the window with `wetwaresuite-system` and click **Open** on the **Files** card (called **File manager** in the advanced view). To open a folder straight away:
 
 ```sh
 wetwaresuite-system ~/Pictures
@@ -36,7 +36,7 @@ wetwaresuite-system ~/Pictures
   - **Opening.** Double-click to open. Folders open in the list. Archives open as a list of what is inside, with **Extract here**. Pictures, documents and other files that another tool in the app knows open in that tool. Text and code open in the code editor. Anything else opens in its usual app.
   - **Right-click menu**: Open, Open with its usual app, Copy, Cut, Move to trash, Extract here and Info.
 - **Buttons**: **New folder**, **New file**, **Copy**, **Cut**, **Paste**, **Rename**, **Delete** (to the trash), **Zip** (pack the selected files), **Extract** (when an archive is selected), **Terminal here** and **Open as project** (opens the folder in the code editor).
-- **Advanced mode** adds:
+- **The advanced view** (View > Show advanced options) adds:
   - **Hidden**, which shows dot-files;
   - **Find...**: search below this folder by name (`*.pdf`) and by text inside, with **Find in subfolders**;
   - **Checksum** for the selected files;

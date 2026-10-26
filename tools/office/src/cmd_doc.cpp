@@ -124,6 +124,23 @@ bool separatorRow(const std::string& line) {
     return t.find('-') != std::string::npos;
 }
 
+
+// A block's content the way doc_edit text= takes it back.
+std::string editableText(const Block& b) {
+    if (b.kind == Block::List) return bulletText(b.items, b.ordered);
+    if (b.kind == Block::Table) {
+        std::string t;
+        for (const auto& row : b.rows) {
+            std::string line;
+            for (const auto& c : row) line += (line.empty() ? "| " : " | ") + inlineMarkdown(c);
+            t += line + " |\n";
+        }
+        return t;
+    }
+    if (b.kind == Block::Code) return plainText(b.runs);
+    return inlineMarkdown(b.runs);
+}
+
 // Builds the blocks for doc_add / doc_edit from kind + text (+ image path).
 bool makeBlocks(const std::string& kind, const Params& p, std::vector<Block>& out, std::string& error) {
     const std::string text = textParam(p, "text", kind != "code");
@@ -590,20 +607,7 @@ void registerDocCommands(Session& session) {
                 if (kind == "markdown") return Result::failure("use doc_delete + doc_add kind=markdown to replace a block with Markdown");
                 if (hasText(p, "text") || has(p, "kind") || (kind == "image" && has(p, "path"))) {
                     Params q = p;
-                    if (!hasText(p, "text")) {
-                        // converting kinds keeps the text
-                        if (b.kind == Block::List) q["text"] = bulletText(b.items, b.ordered);
-                        else if (b.kind == Block::Table) {
-                            std::string t;
-                            for (const auto& row : b.rows) {
-                                std::string line;
-                                for (const auto& c : row) line += (line.empty() ? "| " : " | ") + inlineMarkdown(c);
-                                t += line + " |\n";
-                            }
-                            q["text"] = t;
-                        } else if (b.kind == Block::Code) q["text"] = plainText(b.runs);
-                        else q["text"] = inlineMarkdown(b.runs);
-                    }
+                    if (!hasText(p, "text")) q["text"] = editableText(b);  // converting kinds keeps the text
                     if (kind == "heading" && !has(p, "level")) q["level"] = static_cast<std::int64_t>(b.kind == Block::Heading ? b.level : 1);
                     if (kind == "image" && !has(p, "path")) {
                         if (b.kind != Block::Image) return Result::failure("kind=image needs path=");
@@ -840,6 +844,44 @@ static void registerDocToolCommands(Session& session) {
                     .with("characters_no_spaces", static_cast<std::int64_t>(c.charsNoSpaces))
                     .with("paragraphs", static_cast<std::int64_t>(c.paragraphs))
                     .with("pages", static_cast<std::int64_t>(pages));
+            }));
+
+    reg.add({"office.doc_hit", "Block At Point",
+             "Which block is at a spot on a page (x, y in points from the top left, as doc_preview draws it): its number, kind and "
+             "its text the way doc_edit text= takes it. Lets a click on the page edit that block.",
+             {doc(), integer("page", "page number", false, std::int64_t{1}), number("x", "points from the left"), number("y", "points from the top"),
+              number("sheet_y", "instead of page and y: pixels down the document's picture (its pages one under another)")},
+             false, true},
+            read(session, [](TextDoc& d, const Params& p, const std::string&) -> Result {
+                int pg = static_cast<int>(intParam(p, "page", 1));
+                double y = numberParam(p, "y");
+                const double pageStep = d.data.page.height * kSheetScale + kSheetGap;
+                if (has(p, "sheet_y")) {
+                    const double sy = std::max(0.0, numberParam(p, "sheet_y"));
+                    pg = 1 + static_cast<int>(sy / pageStep);
+                    y = (sy - (pg - 1) * pageStep) / kSheetScale;
+                } else if (!has(p, "y")) {
+                    return Result::failure("give y (points from the top of the page) or sheet_y");
+                }
+                const BlockBox* best = nullptr;
+                double bestDist = 1e18;
+                const auto boxes = blockBoxes(d.data);
+                for (const auto& bx : boxes) {
+                    if (bx.page != pg) continue;
+                    const double dist = y < bx.y0 ? bx.y0 - y : y > bx.y1 ? y - bx.y1 : 0;
+                    if (dist < bestDist) bestDist = dist, best = &bx;
+                }
+                if (!best || bestDist > 20) return Result::failure("nothing there; click on some text, or add a block");
+                const Block& b = d.data.blocks[static_cast<std::size_t>(best->block - 1)];
+                std::string kind = kindName(b.kind);
+                if (b.kind == Block::List) kind = b.ordered ? "numbered" : "list";
+                else if (b.kind == Block::PageBreak) kind = "pagebreak";
+                const std::string text = editableText(b);
+                Result r = Result::success(describe(b, static_cast<std::size_t>(best->block - 1)), text);
+                r.with("block", static_cast<std::int64_t>(best->block)).with("kind", kind).with("text", text)
+                 .with("page", static_cast<std::int64_t>(pg)).with("top", best->y0).with("bottom", best->y1)
+                 .with("sheet_top", (pg - 1) * pageStep + best->y0 * kSheetScale).with("sheet_bottom", (pg - 1) * pageStep + best->y1 * kSheetScale);
+                return r;
             }));
 
     reg.add({"office.doc_preview", "Preview Document", "Render one page as a PNG, exactly as the PDF export lays it out.",

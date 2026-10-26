@@ -30,6 +30,13 @@ struct Orbit {
     double panY = 0;
 };
 
+// A line drawn over the shaded model (sketches, axes); hidden where the model is in front of it.
+struct Line3 {
+    std::vector<Vec3> points;
+    raster::Color color{230, 110, 30, 255};
+    bool closed = false;
+};
+
 struct RenderOptions {
     View view = View::Iso;
     std::optional<Orbit> orbit;  // overrides view
@@ -42,6 +49,8 @@ struct RenderOptions {
     // one colour per triangle (overrides `color`), for highlighting parts or
     // gap maps; ignored unless it has exactly triangleCount() entries
     std::vector<raster::Color> faceColors;
+    // lines over the model; they count when fitting the camera, so lines alone still show
+    std::vector<Line3> lines;
 };
 
 raster::Image render(const Mesh& mesh, int width, int height, const RenderOptions& options = {});

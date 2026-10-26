@@ -92,12 +92,15 @@ ImVec4 toColour(const std::string& hex, ImVec4 fallback) {
 
 }  // namespace
 
+bool Shell::hasLayers() const {
+    if (showHome_ || !panel_.empty()) return false;
+    auto doc = std::dynamic_pointer_cast<raster::ImageDoc>(session_.workspace().get(currentDoc_));
+    return doc && !doc->image.layers.empty() && find("paint.layer_set");
+}
+
 void Shell::layersPanel() {
     auto doc = std::dynamic_pointer_cast<raster::ImageDoc>(session_.workspace().get(currentDoc_));
     if (!doc || doc->image.layers.empty() || !find("paint.layer_set")) return;
-    ImGui::Spacing();
-    ImGui::Separator();
-    if (!ImGui::CollapsingHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen)) return;
     ImGui::PushID("layers");
     const std::string id = currentDoc_;
     // runs a layer command; only failures are shown, so clicking around stays quiet

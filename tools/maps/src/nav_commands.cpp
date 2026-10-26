@@ -272,7 +272,8 @@ int matchScore(const std::string& textFolded, const std::string& q, const std::v
         if (!ok && qw.size() >= 4) {
             const std::size_t cap = qw.size() >= 8 ? 2 : 1;
             for (const auto& w : tw) {
-                if (editDistance(qw, w, cap) <= cap || (w.size() > qw.size() && editDistance(qw, w.substr(0, qw.size()), cap) <= cap)) {
+                // a typo in the start of a longer word only counts for long queries ("paris" is not "pakistan")
+                if (editDistance(qw, w, cap) <= cap || (qw.size() >= 7 && w.size() > qw.size() && editDistance(qw, w.substr(0, qw.size()), cap) <= cap)) {
                     ok = true;
                     break;
                 }
@@ -300,11 +301,12 @@ void registerSearch(Session& session) {
     auto& reg = session.registry();
     reg.add({"maps.search", "Search Places",
              "Find places by name, offline: searches the text fields of every vector layer (or layer=) and the built-in "
-             "countries, ignoring case and accents, allowing a typo or two. Best matches first (exact, then starting with, then "
-             "containing); near=lat,lon puts closer ones first among equals. Without doc= it searches the countries only.",
-             {{"doc", ParamType::String, "map id (default: the countries only)", false}, {"query", ParamType::String, "what to look for, e.g. 'cafe flore'", true},
+             "countries and about 1,250 cities, ignoring case and accents, allowing a typo or two. Best matches first (exact, then "
+             "starting with, then containing); near=lat,lon puts closer ones first among equals. Without doc= it searches the "
+             "built-in countries and cities only.",
+             {{"doc", ParamType::String, "map id (default: the built-in countries and cities only)", false}, {"query", ParamType::String, "what to look for, e.g. 'cafe flore'", true},
               layerParam("only this layer"), {"near", ParamType::NumberList, "lat,lon: prefer places close to here", false},
-              {"countries", ParamType::Bool, "also search the built-in countries", false, {}, true},
+              {"countries", ParamType::Bool, "also search the built-in countries and cities", false, {}, true},
               {"limit", ParamType::Int, "how many to list", false, {}, std::int64_t{10}}},
              false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
@@ -363,7 +365,10 @@ void registerSearch(Session& session) {
                                 }
                             }
                         }
-                        if (boolParam(p, "countries", true) && !has(p, "layer")) scan("countries (built in)", countries());
+                        if (boolParam(p, "countries", true) && !has(p, "layer")) {
+                            scan("places (built in)", places());
+                            scan("countries (built in)", countries());
+                        }
                         std::stable_sort(hits.begin(), hits.end(), [](const Hit& a, const Hit& b) {
                             if (a.score != b.score) return a.score > b.score;
                             return a.distance < b.distance;

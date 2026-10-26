@@ -90,6 +90,8 @@ Shell::Shell(Session& session, const AppInfo& app, SDL_Window* window, SDL_Rende
     panels_ = std::make_unique<ToolPanels>();
     hasClock_ = find("clock.due") != nullptr;
     loadPalette();
+    layout_ = appLayout(app_.id);
+    ribbonTabs_ = ribbonTabs(app_.id, tools_, commands_);
 }
 
 Shell::~Shell() {
@@ -115,8 +117,48 @@ void Shell::syncDocs() {
     canvas_.dirty = true;
 }
 
+void Shell::noteChange(const std::string& id, const Params& params, const Result& r) {
+    std::string doc;
+    if (auto it = params.find("doc"); it != params.end()) {
+        if (auto s = std::get_if<std::string>(&it->second)) doc = *s;
+    }
+    if (doc.empty()) {
+        if (const Value* v = r.field("doc")) {
+            if (auto s = std::get_if<std::string>(v)) doc = *s;
+        }
+    }
+    if (doc.empty()) return;
+    const std::string verb = commandVerb(id);
+    if (verb == "save" || verb == "save_as" || verb == "new" || verb == "open" || verb == "load" || verb == "import") {
+        unsaved_.erase(doc);
+        if (closeAfterSave_ == doc && (verb == "save" || verb == "save_as")) {
+            closeAfterSave_.clear();
+            closeDocNow(doc);
+        }
+        return;
+    }
+    const CommandInfo* info = find(id);
+    if (verb.empty() && info && !info->readOnly && session_.workspace().get(doc)) unsaved_.insert(doc);
+}
+
 Result Shell::run(const std::string& id, const Params& params) {
     Result r = session_.run(id, params);
+    if (r.ok) noteChange(id, params, r);
+    if (r.ok) {  // names of things just made, so the next form can offer them
+        for (const auto& [key, v] : r.data) {
+            auto s = std::get_if<std::string>(&v);
+            if (!s || s->empty() || !std::isdigit(static_cast<unsigned char>(s->back())) || session_.workspace().get(*s)) continue;
+            madeNames_.push_back(*s);
+        }
+        if (madeNames_.size() > 64) madeNames_.erase(madeNames_.begin(), madeNames_.end() - 64);
+    }
+    if (r.ok && id == "cad.sketch") {  // a new sketch opens for drawing, as in Onshape
+        if (auto name = std::get_if<std::string>(&r.value); name && !name->empty()) {
+            auto it = params.find("doc");
+            if (it != params.end())
+                if (auto doc = std::get_if<std::string>(&it->second)) enterSketch(*doc, *name);
+        }
+    }
     if (r.ok) {
         const CommandInfo* info = find(id);
         if (!info || !info->readOnly) ++changes_;
@@ -130,6 +172,10 @@ Result Shell::run(const std::string& id, const Params& params) {
                 if (*s != currentDoc_) canvas_.fit = true;
                 currentDoc_ = *s;
                 if (!docTool_.count(*s)) docTool_[*s] = id.substr(0, id.find('.'));
+                // what made it decides its ribbon tab and its save and close commands
+                const std::string verb = id.substr(id.find('.') + 1);
+                const bool opener = verb == "open" || verb == "new" || verb == "load" || openerStem(id) != "";
+                if (opener || !docOpener_.count(*s)) docOpener_[*s] = id;
                 showHome_ = false;
                 panel_ = panelForDoc(*s);  // code and terminals open in their panel
             }
@@ -150,7 +196,32 @@ void Shell::select(const std::string& commandId) {
     const CommandInfo* info = find(commandId);
     if (!info) return;
     form_ = buildForm(*info, docIds(), currentDoc_);
+    prefillMadeNames(*form_, madeNames_);
+    fillPicked(false);
+    fillAudioRange(false);
     result_.reset();
+    pickProps_ = true;
+    showProps_ = true;
+}
+
+void Shell::fillPicked(bool replace) {
+    if (!form_ || canvas_.vecSel.empty()) return;
+    for (auto& f : form_->fields) {
+        if (f.spec.name != "shape" && f.spec.name != "shapes") continue;
+        if (replace || f.text.empty()) setFieldText(f, canvas_.vecSel);
+    }
+}
+
+void Shell::fillAudioRange(bool replace) {
+    if (!form_ || !audioSel_.any() || audioSel_.doc != currentDoc_) return;
+    if (form_->command.rfind("audio.", 0) != 0) return;
+    char a[32], b[32];
+    std::snprintf(a, sizeof a, "%.3f", audioSel_.a);
+    std::snprintf(b, sizeof b, "%.3f", audioSel_.b);
+    for (auto& f : form_->fields) {
+        if (f.spec.name == "start" && (replace || !f.set || f.text.empty() || f.text == "0")) setFieldText(f, a);
+        if (f.spec.name == "end" && (replace || !f.set || f.text.empty() || f.text == "0")) setFieldText(f, b);
+    }
 }
 
 void Shell::runForm() {
@@ -176,8 +247,13 @@ void Shell::runForm() {
         }
     }
     r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+    const bool done = r.ok && (oneShotCommand(form_->command) || form_->command == "cad.sketch");  // a sketch opens for drawing
     result_ = std::move(r);
     scrollToResult_ = true;
+    if (done) {  // like a New or Save dialog's OK: the panel goes back to the file
+        form_.reset();
+        return;
+    }
     // documents may have changed: refresh document pickers to what's open now
     const auto ids = docIds();
     for (auto& f : form_->fields) {
@@ -228,6 +304,7 @@ void Shell::undo() {
     beforeHistoryStep();
     ++changes_;
     if (session_.history().undo()) {
+        if (!currentDoc_.empty()) unsaved_.insert(currentDoc_);
         result_ = Result::success("Undone.");
         resultFor_ = "Undo";
     }
@@ -238,6 +315,7 @@ void Shell::redo() {
     beforeHistoryStep();
     ++changes_;
     if (session_.history().redo()) {
+        if (!currentDoc_.empty()) unsaved_.insert(currentDoc_);
         result_ = Result::success("Redone.");
         resultFor_ = "Redo";
     }
@@ -247,8 +325,31 @@ void Shell::redo() {
 void Shell::openFile(const std::string& path) {
     if (!app_.launcher.empty()) return launcherOpen(path);  // the launcher hands every file to its own app
     if (openFolder(path)) return;  // a folder opens in the file manager (or as a code project)
-    const auto candidates = openCandidates(path, tools_, commands_);
+    auto candidates = openCandidates(path, tools_, commands_);
     resultFor_ = "Open a file";
+    // the suite's own file table knows best (notes.md is a document, not slides)
+    if (handoff_ && session_.registry().find("app.open_with")) {
+        const Result route = session_.run("app.open_with", {{"path", path}});
+        const std::string command = fieldText(route, "command");
+        if (fieldText(route, "app") == self_ && !command.empty()) {
+            auto it = std::find(candidates.begin(), candidates.end(), command);
+            if (it != candidates.end()) std::rotate(candidates.begin(), it, it + 1);
+        }
+    }
+    if (candidates.empty() && find("toolkit.inspect")) {
+        // the files app: say what the file is and get it ready to convert
+        Result r = run("toolkit.inspect", {{"path", path}});
+        if (r.ok && find("convert.file")) {
+            select("convert.file");
+            for (auto& f : form_->fields)
+                if (f.spec.name == "input") setFieldText(f, path);
+        }
+        r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+        result_ = std::move(r);
+        resultFor_ = "Open a file";
+        suggestOtherApp(path, true);
+        return;
+    }
     if (candidates.empty()) {
         result_ = Result::failure("This app can't open files. Try \"New\" instead.");
         suggestOtherApp(path, false);
@@ -315,6 +416,11 @@ void Shell::showOpenDialog() {
     SDL_ShowOpenFileDialog(onDialog, req, window_, nullptr, 0, nullptr, false);
 }
 
+void Shell::askSavePath(const std::string& command, const std::string& doc, const std::string& start) {
+    auto* req = new DialogRequest{{DialogTarget::SaveDocument, command, 0, doc}};
+    SDL_ShowSaveFileDialog(onDialog, req, window_, nullptr, 0, start.empty() ? nullptr : start.c_str());
+}
+
 void Shell::showAddMediaDialog() {
     auto* req = new DialogRequest{{DialogTarget::AddMedia, currentDoc_, 0}};
     static const SDL_DialogFileFilter filters[] = {
@@ -371,6 +477,8 @@ void Shell::drainDialogs() {
     for (const auto& [target, path] : results) {
         if (target.kind == DialogTarget::OpenDocument) {
             openFile(path);
+        } else if (target.kind == DialogTarget::SaveDocument) {
+            saveDocTo(target.command, target.doc, path);
         } else if (target.kind == DialogTarget::AddMedia) {
             if (target.command == currentDoc_) dropFile(path);
         } else if (target.kind == DialogTarget::PanelFolder) {

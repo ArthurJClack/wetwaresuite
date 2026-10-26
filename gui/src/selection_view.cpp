@@ -70,13 +70,15 @@ void Shell::selectSettings() {
     const float unit = ImGui::GetFontSize();
     const char* shapes[] = {"Box", "Oval", "Lasso", "Wand"};
     int shape = static_cast<int>(canvas_.selectShape);
+    barLabel("Shape");
     ImGui::SetNextItemWidth(unit * 6);
-    if (ImGui::Combo("Shape", &shape, shapes, 4)) canvas_.selectShape = static_cast<SelectShape>(shape);
+    if (ImGui::Combo("##shape", &shape, shapes, 4)) canvas_.selectShape = static_cast<SelectShape>(shape);
     ImGui::SetItemTooltip("Box and Oval: drag. Lasso: drag around the part you want. Wand: click a colour to take the area like it.");
     if (canvas_.selectShape == SelectShape::Wand) {
         ImGui::SameLine();
+        barLabel("Tolerance");
         ImGui::SetNextItemWidth(unit * 6);
-        ImGui::SliderFloat("Tolerance", &canvas_.tolerance, 0, 255, "%.0f");
+        ImGui::SliderFloat("##tolerance", &canvas_.tolerance, 0, 255, "%.0f");
         ImGui::SameLine();
         ImGui::Checkbox("Touching only", &canvas_.contiguous);
         ImGui::SetItemTooltip("Only take pixels joined to the one you click (off: every pixel of that colour)");
@@ -105,7 +107,7 @@ void Shell::selectSettings() {
         ImGui::SetItemTooltip("Make the selected pixels of the current layer see-through (Delete)");
     }
     ImGui::PushTextWrapPos(0.0f);
-    ImGui::TextDisabled("Shift adds to the selection, Alt takes away. Actions on the left (curves, transform, mask...) then only change what's selected.");
+    ImGui::TextDisabled("Shift adds to the selection, Alt takes away. Ribbon actions (Curves, Levels, Fill selection...) then only change what's selected.");
     ImGui::PopTextWrapPos();
     // shortcuts while the picture is up and no text box has the keyboard
     if (!ImGui::GetIO().WantTextInput) {

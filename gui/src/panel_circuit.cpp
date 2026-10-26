@@ -26,6 +26,34 @@ bool Shell::circuitDoc() const {
 
 bool Shell::circuitEditing() const { return circuitDoc() && circuit_.tool != "select" && circuit_.view != "3d"; }
 
+void Shell::circuitTools() {
+    if (circuit_.doc != currentDoc_ || circuit_.view == "3d") return;  // the toolbar reads the view first
+    struct ToolDef {
+        const char* label;
+        const char* tool;
+        const char* key;
+        const char* tip;
+    };
+    const ToolDef sheetTools[] = {{"Select", "select", "V", "Click anything to see what it is (pin, net, part); drag to move around"},
+                                  {"Place", "place", "P", "Click to place the part chosen on the options bar"},
+                                  {"Wire", "wire", "W", "Click where a wire starts, then at each corner; right-click or Esc ends it"},
+                                  {"Move", "move", "M", "Click a part, then where it should go"},
+                                  {"Delete", "delete", "D", "Click a part or a wire to remove it"}};
+    const ToolDef boardTools[] = {{"Select", "select", "V", "Click a pad, trace or footprint to see what it is"},
+                                  {"Move", "move", "M", "Click a footprint, then where it should go"},
+                                  {"Trace", "trace", "X", "Click a pad, then each corner; right-click or Esc ends it"},
+                                  {"Via", "via", "Y", "Click to drop a via (it takes the net of the copper there)"}};
+    const bool board = circuit_.view == "pcb";
+    for (const auto& t : board ? std::vector<ToolDef>(std::begin(boardTools), std::end(boardTools))
+                               : std::vector<ToolDef>(std::begin(sheetTools), std::end(sheetTools))) {
+        if (railItem(t.label, t.key, t.tip, circuit_.tool == t.tool)) {
+            circuit_.tool = t.tool;
+            circuit_.hasStart = false;
+            circuit_.moving.clear();
+        }
+    }
+}
+
 void Shell::circuitToolbar() {
     if (circuit_.doc != currentDoc_) {
         // what the document shows (another client may have switched it): circuit.hit says, read-only
@@ -64,33 +92,8 @@ void Shell::circuitToolbar() {
         ImGui::TextDisabled("(drag to move around)");
         return;
     }
-    // the click tools for this view
-    struct ToolDef {
-        const char* label;
-        const char* tool;
-        const char* tip;
-    };
-    const ToolDef sheetTools[] = {{"Select", "select", "Click anything to see what it is (pin, net, part); drag to move around"},
-                                  {"Place", "place", "Click to place the part chosen on the right"},
-                                  {"Wire", "wire", "Click where a wire starts, then at each corner; right-click or Esc ends it"},
-                                  {"Move", "move", "Click a part, then where it should go"},
-                                  {"Delete", "delete", "Click a part or a wire to remove it"}};
-    const ToolDef boardTools[] = {{"Select", "select", "Click a pad, trace or footprint to see what it is"},
-                                  {"Move", "move", "Click a footprint, then where it should go"},
-                                  {"Trace", "trace", "Click a pad, then each corner; right-click or Esc ends it"},
-                                  {"Via", "via", "Click to drop a via (it takes the net of the copper there)"}};
+    ImGui::SameLine();
     const bool board = circuit_.view == "pcb";
-    ImGui::TextUnformatted("Tool:");
-    for (const auto& t : board ? std::vector<ToolDef>(std::begin(boardTools), std::end(boardTools))
-                               : std::vector<ToolDef>(std::begin(sheetTools), std::end(sheetTools))) {
-        ImGui::SameLine();
-        if (ImGui::RadioButton(t.label, circuit_.tool == t.tool)) {
-            circuit_.tool = t.tool;
-            circuit_.hasStart = false;
-            circuit_.moving.clear();
-        }
-        ImGui::SetItemTooltip("%s", t.tip);
-    }
     const float unit = ImGui::GetFontSize();
     if (circuit_.tool == "place") {
         ImGui::SameLine();
@@ -137,7 +140,22 @@ void Shell::circuitToolbar() {
 }
 
 void Shell::circuitClick(ImVec2 picture) {
+    // the sheet grows to fit what's on it, which moves its corner: shift the view to match,
+    // so what was under the mouse stays there
+    double ox = 0, oy = 0, unit = 0;
     auto show = [&](Result r, const std::string& what) {
+        if (r.ok && unit > 0) {
+            Result after = query("circuit.hit", {{"doc", currentDoc_}, {"x", 0.0}, {"y", 0.0},
+                                                 {"view", circuit_.view == "pcb" ? std::string("pcb") : std::string("schematic")}});
+            if (after.ok && std::abs(tp::number(after, "scale") - unit) < 1e-9) {
+                const float dx = static_cast<float>((tp::number(after, "origin_x") - ox) * unit) * canvas_.zoom;
+                const float dy = static_cast<float>((tp::number(after, "origin_y") - oy) * unit) * canvas_.zoom;
+                canvas_.pan.x += dx;
+                canvas_.pan.y += dy;
+                circuit_.startPx.x -= dx / canvas_.zoom;
+                circuit_.startPx.y -= dy / canvas_.zoom;
+            }
+        }
         resultFor_ = what;
         r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
         result_ = std::move(r);
@@ -148,6 +166,7 @@ void Shell::circuitClick(ImVec2 picture) {
                                        {"y", static_cast<double>(picture.y)},
                                        {"view", circuit_.view == "pcb" ? std::string("pcb") : std::string("schematic")}});
     if (!hit.ok) return show(hit, "Click");
+    ox = tp::number(hit, "origin_x"), oy = tp::number(hit, "origin_y"), unit = tp::number(hit, "scale");
     const std::string kind = tp::text(hit, "kind"), part = tp::text(hit, "part");
     const double x = tp::number(hit, "x"), y = tp::number(hit, "y");
     const bool board = circuit_.view == "pcb";

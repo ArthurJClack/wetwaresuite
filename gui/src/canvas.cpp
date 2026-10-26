@@ -9,6 +9,9 @@
 #include <map>
 
 #include "shell.hpp"
+// after imgui.h
+#include "imgui_internal.h"
+#include "imgui_stdlib.h"
 #include "wetwaresuite/raster/codec.hpp"
 #include "wetwaresuite/raster/document.hpp"
 #include "wetwaresuite/raster/pyramid.hpp"
@@ -70,6 +73,11 @@ bool showLevel(SDL_Renderer* renderer, Texture& tex, MipCache& mc, float zoom, b
 bool Shell::toolAvailable(CanvasTool tool) const {
     if (tool == CanvasTool::Move) return true;
     if (tool == CanvasTool::Pick || tool == CanvasTool::Anchor) return vectorDoc();
+    if (tool == CanvasTool::VecRect) return vectorDoc() && find("vector.add_rect");
+    if (tool == CanvasTool::VecEllipse) return vectorDoc() && find("vector.add_ellipse");
+    if (tool == CanvasTool::VecLine) return vectorDoc() && find("vector.add_line");
+    if (tool == CanvasTool::VecPen) return vectorDoc() && find("vector.add_path");
+    if (tool == CanvasTool::VecText) return vectorDoc() && find("vector.add_text");
     auto doc = session_.workspace().get(currentDoc_);
     if (!doc || doc->kind() != "image") return false;
     switch (tool) {
@@ -134,6 +142,17 @@ void Shell::refreshCanvas() {
     std::string png = gamePicture();
     const bool game = !png.empty();
     // anything else: the document's own preview, else the tool's preview command
+    if (png.empty() && deckDoc()) png = deckPicture();  // the slide shown big, not the sorter
+    if (png.empty() && doc->kind() == "audio" && find("audio.preview") && canvas_.viewSize.x > 64 && canvas_.viewSize.y > 64) {
+        // drawn to fill the view, so the whole length is wide and easy to select in
+        canvas_.waveSize = canvas_.viewSize;
+        const auto px = [](float v, float lo, float hi) { return static_cast<std::int64_t>(std::clamp(v * 0.95f, lo, hi)); };
+        Result r = session_.run("audio.preview", {{"doc", currentDoc_},
+                                                  {"width", px(canvas_.viewSize.x, 300, 4000)},
+                                                  {"height", px(canvas_.viewSize.y, 120, 2000)}});
+        if (r.ok && !r.attachments.empty()) png = r.attachments[0].bytes;
+        canvas_.fit = true;
+    }
     if (png.empty() && doc->kind() == "vector" && find("vector.preview")) {  // sharper than the small built-in preview, for zooming in
         Result r = session_.run("vector.preview", {{"doc", currentDoc_}, {"size", std::int64_t{1400}}});
         if (r.ok && !r.attachments.empty()) png = r.attachments[0].bytes;
@@ -178,9 +197,77 @@ void Shell::refreshCanvas() {
     }
 }
 
+namespace {
+
+// The picture and drawing tools in the rail, with their Photoshop letters.
+struct CanvasToolDef {
+    const char* name;
+    CanvasTool tool;
+    const char* key;
+    const char* tip;
+};
+const CanvasToolDef kCanvasTools[] = {
+    {"Move", CanvasTool::Move, "V", "Drag to move around, scroll to zoom"},
+    {"Pick", CanvasTool::Pick, "Q",
+     "Click a shape to pick it, drag to move it, drag a corner or edge handle to resize (Shift keeps the "
+     "proportions). Arrow keys nudge, Delete removes"},
+    {"Anchors", CanvasTool::Anchor, "A",
+     "Click a path to show its anchors and handles, drag them to reshape it (Alt breaks a smooth pair). "
+     "Alt+click on the path adds an anchor"},
+    {"Rectangle", CanvasTool::VecRect, "M", "Drag to draw a rectangle (Shift makes a square)"},
+    {"Ellipse", CanvasTool::VecEllipse, "L", "Drag to draw an ellipse (Shift makes a circle)"},
+    {"Line", CanvasTool::VecLine, "", "Drag to draw a straight line"},
+    {"Pen", CanvasTool::VecPen, "P",
+     "Click to put down corners. Click the first one again to close the shape (filled); Enter or double-click ends an "
+     "open line; Esc throws it away"},
+    {"Text", CanvasTool::VecText, "T", "Click where the words go, type, press Enter"},
+    {"Select", CanvasTool::Select, "M",
+     "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
+     "Alt takes away. Edits then only change inside it"},
+    {"Brush", CanvasTool::Brush, "B", "Paint with the mouse or a pen (pressure works)"},
+    {"Eraser", CanvasTool::Eraser, "E", "Rub out paint on the current layer"},
+    {"Fill", CanvasTool::Fill, "G", "Click to fill an area with the colour, like a paint bucket"},
+    {"Heal", CanvasTool::Heal, "J",
+     "Paint over a spot, pimple or scratch to make it disappear. To copy texture from a clean spot, "
+     "Alt+click it first (Option+click on a Mac)"},
+    {"Remove", CanvasTool::Remove, "R",
+     "Paint over something you don't want (a person, a sign, a wire), then press Remove: the gap is filled "
+     "from the picture around it"},
+    {"Clone", CanvasTool::Clone, "S",
+     "Paint with a copy of another part of the picture: Alt+click (Option+click on a Mac) the spot to copy "
+     "from, then paint"},
+    {"Dodge", CanvasTool::Dodge, "O", "Paint to lighten (like dodging a print)"},
+    {"Burn", CanvasTool::Burn, "", "Paint to darken"},
+    {"Sponge", CanvasTool::Sponge, "", "Paint to wash the colour out"},
+    {"Smudge", CanvasTool::Smudge, "W", "Drag colours along like a finger in wet paint"},
+    {"Blur", CanvasTool::Blur, "U", "Paint to soften (or sharpen) just there"}};
+
+}  // namespace
+
+void Shell::canvasTools() {
+    const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
+                                  CanvasTool::Remove, CanvasTool::Clone, CanvasTool::Dodge, CanvasTool::Smudge, CanvasTool::Blur};
+    if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
+    for (const auto& t : kCanvasTools) {
+        if (!toolAvailable(t.tool)) continue;
+        if (railItem(t.name, t.key, t.tip, canvas_.tool == t.tool)) canvas_.tool = t.tool;
+    }
+}
+
+void Shell::railTools() {
+    auto doc = session_.workspace().get(currentDoc_);
+    if (!doc || canvas_.is3d) return;
+    if (doc->kind() == "pdf" && find("pdf.view")) return;  // the PDF editor has its own tools
+    if (circuitDoc()) return circuitTools();
+    if (mapsDoc()) return mapsTools();
+    if (gameActive()) return gameTools();
+    canvasTools();
+}
+
 void Shell::canvasToolbar() {
     if (canvas_.is3d) {
-        orbitToolbar();
+        if (sketchActive()) sketchToolbar();
+        else orbitToolbar();
         return;
     }
     if (ImGui::Button("Fit")) canvas_.fit = true;
@@ -198,6 +285,10 @@ void Shell::canvasToolbar() {
         circuitToolbar();
         return;
     }
+    if (const std::string opener = docOpener(currentDoc_); opener == "office.doc_new" || opener == "office.doc_open") {
+        writeBar();
+        return;
+    }
     if (mapsDoc()) {
         mapsToolbar();
         return;
@@ -206,55 +297,21 @@ void Shell::canvasToolbar() {
         gameToolbar();
         return;
     }
-    const CanvasTool editing[] = {CanvasTool::Pick, CanvasTool::Anchor, CanvasTool::Select, CanvasTool::Brush, CanvasTool::Eraser, CanvasTool::Fill, CanvasTool::Heal,
-                                  CanvasTool::Remove, CanvasTool::Clone, CanvasTool::Dodge, CanvasTool::Smudge, CanvasTool::Blur};
-    if (std::none_of(std::begin(editing), std::end(editing), [this](CanvasTool t) { return toolAvailable(t); })) return;
-    ImGui::SameLine();
-    ImGui::TextUnformatted("  Tool:");
-    const struct {
-        const char* name;
-        CanvasTool tool;
-        const char* tip;
-    } tools[] = {{"Move", CanvasTool::Move, "Drag to move around, scroll to zoom"},
-                 {"Pick", CanvasTool::Pick,
-                  "Click a shape to pick it, drag to move it, drag a corner or edge handle to resize (Shift keeps the "
-                  "proportions). Arrow keys nudge, Delete removes"},
-                 {"Anchors", CanvasTool::Anchor,
-                  "Click a path to show its anchors and handles, drag them to reshape it (Alt breaks a smooth pair). "
-                  "Alt+click on the path adds an anchor"},
-                 {"Select", CanvasTool::Select,
-                  "Choose the part of the picture to change: drag a box, oval or lasso, or click with the wand. Shift adds, "
-                  "Alt takes away. Edits then only change inside it"},
-                 {"Brush", CanvasTool::Brush, "Paint with the mouse or a pen (pressure works)"},
-                 {"Eraser", CanvasTool::Eraser, "Rub out paint on the current layer"},
-                 {"Fill", CanvasTool::Fill, "Click to fill an area with the colour, like a paint bucket"},
-                 {"Heal", CanvasTool::Heal,
-                  "Paint over a spot, pimple or scratch to make it disappear. To copy texture from a clean spot, "
-                  "Alt+click it first (Option+click on a Mac)"},
-                 {"Remove", CanvasTool::Remove,
-                  "Paint over something you don't want (a person, a sign, a wire), then press Remove: the gap is filled "
-                  "from the picture around it"},
-                 {"Clone", CanvasTool::Clone,
-                  "Paint with a copy of another part of the picture: Alt+click (Option+click on a Mac) the spot to copy "
-                  "from, then paint"},
-                 {"Dodge", CanvasTool::Dodge, "Paint to lighten (like dodging a print)"},
-                 {"Burn", CanvasTool::Burn, "Paint to darken"},
-                 {"Sponge", CanvasTool::Sponge, "Paint to wash the colour out"},
-                 {"Smudge", CanvasTool::Smudge, "Drag colours along like a finger in wet paint"},
-                 {"Blur", CanvasTool::Blur, "Paint to soften (or sharpen) just there"}};
-    for (const auto& t : tools) {
-        if (!toolAvailable(t.tool)) continue;
-        ImGui::SameLine();
-        // wrap onto the next line instead of running off a narrow window
-        const ImGuiStyle& style = ImGui::GetStyle();
-        const float need = ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(t.name).x;
-        if (ImGui::GetContentRegionAvail().x < need) ImGui::NewLine();
-        if (ImGui::RadioButton(t.name, canvas_.tool == t.tool)) canvas_.tool = t.tool;
-        ImGui::SetItemTooltip("%s", t.tip);
-    }
     if (canvas_.tool == CanvasTool::Move || !toolAvailable(canvas_.tool)) return;
+    for (const auto& t : kCanvasTools) {
+        if (t.tool != canvas_.tool) continue;
+        ImGui::SameLine();
+        ImGui::AlignTextToFramePadding();
+        ImGui::TextUnformatted((std::string("   ") + t.name + ":").c_str());  // the options bar names its tool, like Photoshop's
+        ImGui::SameLine();
+    }
     if (canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor) {
         vectorSettings();
+        return;
+    }
+    if (vectorDrawTool(canvas_.tool)) {
+        barLabel(canvas_.tool == CanvasTool::VecLine || canvas_.tool == CanvasTool::VecPen || canvas_.tool == CanvasTool::VecText ? "Colour" : "Fill");
+        ImGui::ColorEdit4("##shapecolour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
         return;
     }
     if (canvas_.tool == CanvasTool::Heal || canvas_.tool == CanvasTool::Remove) {
@@ -269,24 +326,26 @@ void Shell::canvasToolbar() {
         brushToolSettings();
         return;
     }
-    // the tool's settings go on their own line so narrow windows still show them
+    // the tool's settings follow its name on the options bar
     const float unit = ImGui::GetFontSize();
-    bool first = true;
+    bool first = false;
     auto next = [&first] {
         if (!first) ImGui::SameLine();
         first = false;
     };
     if (canvas_.tool == CanvasTool::Brush || canvas_.tool == CanvasTool::Fill) {
         next();
-        ImGui::ColorEdit4("Colour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
+        barLabel("Colour");
+        ImGui::ColorEdit4("##colour", canvas_.color, ImGuiColorEditFlags_NoInputs | ImGuiColorEditFlags_AlphaBar);
     }
     if (canvas_.tool == CanvasTool::Fill) return;
     if (const CommandInfo* stroke = find("paint.stroke")) {
         for (const auto& p : stroke->params) {
             if (p.name != "brush" || p.choices.empty()) continue;
             next();
+            barLabel("Tip");
             ImGui::SetNextItemWidth(unit * 6);
-            if (ImGui::BeginCombo("Brush", canvas_.brush.c_str())) {
+            if (ImGui::BeginCombo("##tip", canvas_.brush.c_str())) {
                 for (const auto& c : p.choices) {
                     if (ImGui::Selectable(c.c_str(), c == canvas_.brush)) canvas_.brush = c;
                 }
@@ -295,11 +354,49 @@ void Shell::canvasToolbar() {
         }
     }
     next();
-    ImGui::SetNextItemWidth(unit * 7);
-    ImGui::SliderFloat("Size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
+    barLabel("Size");
+    ImGui::SetNextItemWidth(unit * 5.5f);
+    ImGui::SliderFloat("##size", &canvas_.size, 1, 300, "%.0f px", ImGuiSliderFlags_Logarithmic);
     next();
-    ImGui::SetNextItemWidth(unit * 6);
-    ImGui::SliderFloat("Opacity", &canvas_.opacity, 1, 100, "%.0f%%");
+    barLabel("Opacity");
+    ImGui::SetNextItemWidth(unit * 4.5f);
+    ImGui::SliderFloat("##opacity", &canvas_.opacity, 1, 100, "%.0f%%");
+}
+
+// A text document: type a paragraph under the toolbar and Enter adds it to the end, so writing
+// doesn't need the Add form every time.
+void Shell::writeBar() {
+    const float unit = ImGui::GetFontSize();
+    static const char* kinds[] = {"paragraph", "heading", "list", "numbered", "quote"};
+    ImGui::SameLine(0, unit);
+    ImGui::SetNextItemWidth(unit * 6.5f);
+    if (ImGui::BeginCombo("##kind", writeKind_.c_str())) {
+        for (const char* k : kinds) {
+            if (ImGui::Selectable(k, writeKind_ == k)) writeKind_ = k;
+        }
+        ImGui::EndCombo();
+    }
+    ImGui::SetItemTooltip("What the next line adds");
+    ImGui::SameLine();
+    ImGui::SetNextItemWidth(-1);
+    // the box stays active after Enter, so the next line can be typed straight away
+    ImGuiIO& io = ImGui::GetIO();
+    const bool keep = io.ConfigInputTextEnterKeepActive;
+    io.ConfigInputTextEnterKeepActive = true;
+    const bool entered = ImGui::InputTextWithHint("##write", "Type here, Enter adds it to the end (**bold**, *italic*)", &writeText_,
+                                                  ImGuiInputTextFlags_EnterReturnsTrue);
+    io.ConfigInputTextEnterKeepActive = keep;
+    if (entered && !writeText_.empty()) {
+        Result r = run("office.doc_add", {{"doc", currentDoc_}, {"kind", writeKind_}, {"text", writeText_}});
+        resultFor_ = "Add";
+        r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+        if (r.ok) {
+            writeText_.clear();
+            if (ImGuiInputTextState* box = ImGui::GetInputTextState(ImGui::GetItemID())) box->ReloadUserBufAndMoveToEnd();
+        }
+        result_ = std::move(r);
+        canvas_.dirty = true;
+    }
 }
 
 ImVec2 Shell::toImage(ImVec2 screen) const {
@@ -390,6 +487,19 @@ void Shell::onEvent(const SDL_Event& e) {
 }
 
 void Shell::canvasView() {
+    if (deckDoc()) {
+        // slides: the slide strip on the left, like PowerPoint
+        const ImVec2 avail = ImGui::GetContentRegionAvail();
+        const float side = std::min(ImGui::GetFontSize() * 13, avail.x * 0.3f);
+        ImGui::BeginChild("deck_side", {side, avail.y}, ImGuiChildFlags_Borders);
+        deckStrip();
+        ImGui::EndChild();
+        ImGui::SameLine();
+        ImGui::BeginChild("deck_canvas", {0, avail.y}, ImGuiChildFlags_None, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+        canvasArea();
+        ImGui::EndChild();
+        return;
+    }
     if (!gameActive()) {
         canvasArea();
         return;
@@ -417,13 +527,18 @@ void Shell::canvasArea() {
     const bool hovered = ImGui::IsItemHovered(), active = ImGui::IsItemActive();
     canvas_.viewMin = ImGui::GetItemRectMin();
     canvas_.viewSize = size;
+    if (auto d = session_.workspace().get(currentDoc_); d && d->kind() == "audio" &&
+        (std::abs(size.x - canvas_.waveSize.x) > 24 || std::abs(size.y - canvas_.waveSize.y) > 24)) {
+        canvas_.dirty = true;  // the waveform is redrawn at the new size next frame
+    }
     ImDrawList* dl = ImGui::GetWindowDrawList();
     const ImVec2 v0 = canvas_.viewMin, v1{v0.x + size.x, v0.y + size.y};
     dl->PushClipRect(v0, v1, true);
     dl->AddRectFilled(v0, v1, darkLook() ? IM_COL32(40, 42, 46, 255) : IM_COL32(200, 202, 206, 255));
 
     if (canvas_.is3d) {
-        orbitCanvas(dl, v0, size, hovered, active);
+        if (sketchActive()) sketchCanvas(dl, v0, size, hovered, active);
+        else orbitCanvas(dl, v0, size, hovered, active);
         dl->PopClipRect();
         return;
     }
@@ -437,13 +552,22 @@ void Shell::canvasArea() {
         return;
     }
     const float w = static_cast<float>(t.srcWidth), h = static_cast<float>(t.srcHeight);
+    auto shownDoc = session_.workspace().get(currentDoc_);
+    // documents read like Word: pages fill the width from the top, the wheel scrolls (Ctrl+wheel zooms)
+    const bool pages = shownDoc && shownDoc->kind() == "doc" && h > w * 1.6f;
     if (canvas_.fit) {
         // pixel art is tiny: let fit zoom further in on levels and sprites
         canvas_.zoom = std::min({size.x * 0.95f / w, size.y * 0.95f / h, gameActive() ? 48.0f : 8.0f});
         canvas_.pan = {(size.x - w * canvas_.zoom) / 2, (size.y - h * canvas_.zoom) / 2};
+        if (pages) {
+            canvas_.zoom = std::min(size.x * 0.95f / w, 1.0f);
+            canvas_.pan = {(size.x - w * canvas_.zoom) / 2, 12};
+        }
         canvas_.fit = false;
     }
-    if (hovered && io.MouseWheel != 0 && !canvas_.stroking) {
+    if (pages && hovered && io.MouseWheel != 0 && !io.KeyCtrl) {
+        canvas_.pan.y = std::clamp(canvas_.pan.y + io.MouseWheel * ImGui::GetFontSize() * 5, size.y * 0.5f - h * canvas_.zoom, 12.0f);
+    } else if (hovered && io.MouseWheel != 0 && !canvas_.stroking) {
         const ImVec2 img = toImage(io.MousePos);
         canvas_.zoom = std::clamp(canvas_.zoom * std::pow(1.15f, io.MouseWheel), 0.02f, 64.0f);
         canvas_.pan = {io.MousePos.x - v0.x - img.x * canvas_.zoom, io.MousePos.y - v0.y - img.y * canvas_.zoom};
@@ -452,8 +576,11 @@ void Shell::canvasArea() {
     const bool painting = game ? gamePainting() && !ImGui::IsKeyDown(ImGuiKey_Space)
                                : toolAvailable(canvas_.tool) && canvas_.tool != CanvasTool::Move && !ImGui::IsKeyDown(ImGuiKey_Space) &&
                                      !canvas_.pending;
+    const bool waveform = shownDoc && shownDoc->kind() == "audio";  // left-drag picks a time range instead
+    const bool slides = shownDoc && shownDoc->kind() == "deck" && deckDoc();  // left-drag moves objects, a click edits
     const bool dragPan = active && (ImGui::IsMouseDown(ImGuiMouseButton_Middle) || ImGui::IsMouseDown(ImGuiMouseButton_Right) ||
-                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking && ((!circuitEditing() && !mapsEditing()) || ImGui::IsKeyDown(ImGuiKey_Space))));
+                                    (ImGui::IsMouseDown(ImGuiMouseButton_Left) && !painting && !canvas_.stroking &&
+                                     ((!circuitEditing() && !mapsEditing() && !waveform && !slides) || ImGui::IsKeyDown(ImGuiKey_Space))));
     if (dragPan) {
         canvas_.pan.x += io.MouseDelta.x;
         canvas_.pan.y += io.MouseDelta.y;
@@ -480,20 +607,23 @@ void Shell::canvasArea() {
         const bool pen = io.MouseSource == ImGuiMouseSource_Pen || penDown_;
         beginStroke(io.MousePos, pen ? penPressure_ : 1.0f, pen, pen && penEraser_);
     }
-    if (canvas_.stroking && active) addStrokePoint(io.MousePos, canvas_.usedPen ? penPressure_ : 1.0f);
+    if (canvas_.stroking) addStrokePoint(io.MousePos, canvas_.usedPen ? penPressure_ : 1.0f);
     if (canvas_.stroking && !active) endStroke();
     if (painting && canvas_.tool == CanvasTool::Select) {
         if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) selectPress(io.MousePos);
         if (canvas_.selecting && active) selectDrag(io.MousePos);
         if (canvas_.selecting && !active) selectRelease(io.MousePos);
     }
-    const bool vectorTool = canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor;
+    const bool vectorTool = canvas_.tool == CanvasTool::Pick || canvas_.tool == CanvasTool::Anchor || vectorDrawTool(canvas_.tool);
     if (painting && vectorTool) {
         if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left)) vectorPress(io.MousePos);
-        if (canvas_.vecDrag && active) vectorDrag(io.MousePos);
+        if (canvas_.vecDrag) vectorDrag(io.MousePos);
         if (canvas_.vecDrag && !active) vectorRelease();
         if (hovered) vectorKeys();
+        vectorPenKeys();
     }
+    drawVectorDraft(dl, p0);
+    if (vectorTool) vectorTextBox(p0);
     if (painting && canvas_.tool == CanvasTool::Fill && ImGui::IsItemClicked(ImGuiMouseButton_Left)) {
         const ImVec2 img = toImage(io.MousePos);
         if (img.x >= 0 && img.y >= 0 && img.x < w && img.y < h && find("paint.fill")) {
@@ -528,6 +658,9 @@ void Shell::canvasArea() {
     drawRetouch(dl, p0, hovered);
     drawBrushTool(dl, p0, hovered);
 
+    if (waveform) audioCanvas(dl, p0, p1, hovered, active);
+    if (shownDoc && shownDoc->kind() == "doc" && !painting) docCanvas(dl, p0, hovered);
+    if (slides) deckCanvas(dl, p0, hovered, active);
     // the playhead over a waveform; a click (not a drag) moves it there
     if (playheadFraction_ >= 0) {
         const float x = p0.x + (p1.x - p0.x) * std::clamp(playheadFraction_, 0.0f, 1.0f);
@@ -542,6 +675,163 @@ void Shell::canvasArea() {
     if (circuitDoc()) circuitCanvas(dl, p0, hovered, ImGui::IsItemClicked(ImGuiMouseButton_Left));
     if (mapsDoc()) mapsCanvas(dl, p0, hovered, ImGui::IsItemClicked(ImGuiMouseButton_Left));
     dl->PopClipRect();
+}
+
+// Audacity's way: drag over the waveform to pick a time range (shaded), then any action
+// with start/end gets it; Delete cuts it, a click clears it and moves the playhead.
+void Shell::audioCanvas(ImDrawList* dl, ImVec2 p0, ImVec2 p1, bool hovered, bool active) {
+    AudioSelection& sel = audioSel_;
+    if (sel.doc != currentDoc_) sel = {currentDoc_};
+    if (sel.seen != changes_ || sel.lengthDoc != currentDoc_) {
+        sel.seen = changes_;
+        sel.lengthDoc = currentDoc_;
+        Result info = query("audio.info", {{"doc", currentDoc_}});
+        sel.length = 0;
+        if (const Value* v = info.ok ? info.field("seconds") : nullptr) {
+            if (auto d = std::get_if<double>(v)) sel.length = *d;
+            if (auto i = std::get_if<std::int64_t>(v)) sel.length = static_cast<double>(*i);
+        }
+        if (sel.b > sel.length) sel.b = sel.length;
+        if (sel.a >= sel.b) sel.a = sel.b = -1;
+    }
+    if (sel.length <= 0 || p1.x - p0.x < 4) return;
+    ImGuiIO& io = ImGui::GetIO();
+    auto timeAt = [&](float x) { return std::clamp((x - p0.x) / (p1.x - p0.x), 0.0f, 1.0f) * sel.length; };
+    if (ImGui::IsItemActivated() && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !ImGui::IsKeyDown(ImGuiKey_Space)) {
+        sel.dragging = true;
+        sel.a = sel.b = timeAt(io.MousePos.x);
+    }
+    static double anchor = 0;
+    if (sel.dragging) {
+        if (ImGui::IsItemActivated()) anchor = sel.a;
+        const double t = timeAt(io.MousePos.x);
+        sel.a = std::min(anchor, t);
+        sel.b = std::max(anchor, t);
+        if (!active) {
+            sel.dragging = false;
+            const double minSpan = sel.length * 3.0 / (p1.x - p0.x);  // under 3 px is a click
+            if (sel.b - sel.a < minSpan) {
+                seekTo(anchor);
+                sel.a = sel.b = -1;
+            } else {
+                fillAudioRange(true);
+                char text[96];
+                std::snprintf(text, sizeof text, "Selected %.2f s to %.2f s (%.2f s). Pick an action, or Delete to cut it.", sel.a, sel.b,
+                              sel.b - sel.a);
+                result_ = Result::success(text);
+                resultFor_ = "Selection";
+            }
+        }
+    }
+    if (sel.any() && hovered && !io.WantTextInput && (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_Backspace))) {
+        Result r = run("audio.cut", {{"doc", currentDoc_}, {"start", sel.a}, {"end", sel.b}});
+        resultFor_ = "Cut";
+        r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+        result_ = std::move(r);
+        sel.a = sel.b = -1;
+    }
+    if (sel.any() || sel.dragging) {
+        const float x0 = p0.x + static_cast<float>(sel.a / sel.length) * (p1.x - p0.x);
+        const float x1 = p0.x + static_cast<float>(sel.b / sel.length) * (p1.x - p0.x);
+        ImVec4 c = accent_;
+        dl->AddRectFilled({x0, p0.y}, {x1, p1.y}, ImGui::ColorConvertFloat4ToU32({c.x, c.y, c.z, 0.28f}));
+        dl->AddLine({x0, p0.y}, {x0, p1.y}, ImGui::ColorConvertFloat4ToU32(c), 1.5f);
+        dl->AddLine({x1, p0.y}, {x1, p1.y}, ImGui::ColorConvertFloat4ToU32(c), 1.5f);
+    }
+}
+
+// Word's way, roughly: click a paragraph on the page and type. The block is framed and its
+// text (inline Markdown for styles) opens in a box beside it; Save puts it back as one undo step.
+void Shell::docCanvas(ImDrawList* dl, ImVec2 p0, bool hovered) {
+    DocBlockEdit& e = docEdit_;
+    if (e.doc != currentDoc_) e = {currentDoc_};
+    ImGuiIO& io = ImGui::GetIO();
+    if (hovered && ImGui::IsMouseReleased(ImGuiMouseButton_Left) && io.MouseDragMaxDistanceSqr[ImGuiMouseButton_Left] < 16 &&
+        !ImGui::IsKeyDown(ImGuiKey_Space) && find("office.doc_hit")) {
+        const ImVec2 img = toImage(io.MousePos);
+        Result r = query("office.doc_hit", {{"doc", currentDoc_}, {"sheet_y", static_cast<double>(img.y)}});
+        auto num = [&r](const char* key) {
+            const Value* v = r.field(key);
+            if (auto d = v ? std::get_if<double>(v) : nullptr) return *d;
+            if (auto i = v ? std::get_if<std::int64_t>(v) : nullptr) return static_cast<double>(*i);
+            return 0.0;
+        };
+        auto text = [&r](const char* key) {
+            const Value* v = r.field(key);
+            auto s = v ? std::get_if<std::string>(v) : nullptr;
+            return s ? *s : std::string();
+        };
+        if (r.ok && text("kind") != "image" && text("kind") != "pagebreak" && text("kind") != "toc") {
+            e.block = static_cast<int>(num("block"));
+            e.kind = text("kind");
+            e.text = text("text");
+            while (!e.text.empty() && e.text.back() == '\n') e.text.pop_back();
+            e.top = static_cast<float>(num("sheet_top"));
+            e.bottom = static_cast<float>(num("sheet_bottom"));
+            e.focus = true;
+        } else {
+            e.block = 0;
+            if (r.ok) {
+                result_ = Result::success("That block can't be typed into here; use the " + text("kind") + " actions on the right.");
+                resultFor_ = "Edit";
+            }
+        }
+    }
+    if (e.block <= 0) return;
+    const Texture& t = canvas_.texture;
+    const ImVec2 a{p0.x - 4, p0.y + e.top * canvas_.zoom - 3}, b{p0.x + static_cast<float>(t.srcWidth) * canvas_.zoom + 4, p0.y + e.bottom * canvas_.zoom + 3};
+    const ImVec4 c = accent_;
+    dl->AddRectFilled(a, b, ImGui::ColorConvertFloat4ToU32({c.x, c.y, c.z, 0.08f}));
+    dl->AddRect(a, b, ImGui::ColorConvertFloat4ToU32(c), 3, 0, 2);
+
+    // the editor floats just under the block (above it near the bottom of the view)
+    const float unit = ImGui::GetFontSize();
+    const float boxW = std::min(unit * 34, canvas_.viewSize.x - unit * 2);
+    const float boxH = unit * 12;
+    float x = std::clamp(a.x + unit * 2, canvas_.viewMin.x + 8, canvas_.viewMin.x + canvas_.viewSize.x - boxW - 8);
+    float y = b.y + 6;
+    if (y + boxH > canvas_.viewMin.y + canvas_.viewSize.y) y = std::max(canvas_.viewMin.y + 8, a.y - boxH - 6);
+    ImGui::SetNextWindowPos({x, y}, e.focus ? ImGuiCond_Always : ImGuiCond_Appearing);  // a new block: move next to it
+    ImGui::SetNextWindowSize({boxW, 0}, ImGuiCond_Appearing);
+    bool open = true;
+    const std::string title = "Edit block " + std::to_string(e.block) + " (" + e.kind + ")###docblockedit";
+    if (ImGui::Begin(title.c_str(), &open, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings)) {
+        if (e.focus) {
+            ImGui::SetKeyboardFocusHere();
+            e.focus = false;
+        }
+        ImGui::InputTextMultiline("##blocktext", &e.text, {-1, unit * 7}, ImGuiInputTextFlags_WordWrap);
+        const bool save = ImGui::Button("Save") || (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && io.KeyCtrl &&
+                                                    ImGui::IsKeyPressed(ImGuiKey_Enter));
+        ImGui::SetItemTooltip("Put the new text in (Ctrl+Enter)");
+        ImGui::SameLine();
+        const bool cancel = ImGui::Button("Cancel") || (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) && ImGui::IsKeyPressed(ImGuiKey_Escape));
+        ImGui::SameLine();
+        const bool remove = ImGui::Button("Delete block");
+        ImGui::SameLine();
+        ImGui::TextDisabled(e.kind == "list" || e.kind == "numbered" ? "one item per line"
+                            : e.kind == "table"                      ? "one row per line, cells split by |"
+                                                                     : "**bold**, *italic*, [link](url)");
+        if (save) {
+            Result r = run("office.doc_edit", {{"doc", currentDoc_}, {"block", static_cast<std::int64_t>(e.block)}, {"text", e.text}});
+            resultFor_ = "Edit";
+            r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+            if (r.ok) e.block = 0;
+            result_ = std::move(r);
+            canvas_.dirty = true;
+        } else if (remove) {
+            Result r = run("office.doc_delete", {{"doc", currentDoc_}, {"block", static_cast<std::int64_t>(e.block)}});
+            resultFor_ = "Delete";
+            r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
+            e.block = 0;
+            result_ = std::move(r);
+            canvas_.dirty = true;
+        } else if (cancel) {
+            e.block = 0;
+        }
+    }
+    ImGui::End();
+    if (!open) e.block = 0;
 }
 
 }  // namespace wetwaresuite::gui

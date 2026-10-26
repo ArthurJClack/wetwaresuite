@@ -116,14 +116,28 @@ std::vector<std::string> History::labels() const {
 }
 
 Result Session::run(const std::string& id, const Params& params) {
+    const std::string tool = id.substr(0, id.find('.'));
+    const auto* info = registry_.find(id);
+    Params filled = params;
+    if (info && !filled.count("doc")) {
+        auto last = lastDoc_.find(tool);
+        for (const auto& spec : info->params) {
+            if (spec.name == "doc" && spec.required && last != lastDoc_.end() && workspace_.get(last->second)) {
+                filled["doc"] = last->second;
+            }
+        }
+    }
     std::unique_ptr<Action> action;
     try {
-        action = registry_.create(id, params);
+        action = registry_.create(id, filled);
     } catch (const ParamError& e) {
         return Result::failure(e.what());
     }
-    const auto* info = registry_.find(id);
-    return history_.execute(std::move(action), info->title, info->undoable);
+    Result r = history_.execute(std::move(action), info->title, info->undoable);
+    if (const Value* doc = r.ok ? r.field("doc") : nullptr) {
+        if (auto name = std::get_if<std::string>(doc); name && workspace_.get(*name)) lastDoc_[tool] = *name;
+    }
+    return r;
 }
 
 std::string stringParam(const Params& p, const std::string& key, const std::string& fallback) {

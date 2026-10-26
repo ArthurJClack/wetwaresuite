@@ -17,7 +17,7 @@ Each task is shown in the window, on the command line, in batch scripts (see [he
 
 ## The window
 
-Start the window with `wetwaresuite-system` and click **Open** on the **This computer** card (called **System monitor** in Advanced mode). To open it at the program list:
+Start the window with `wetwaresuite-system` and click **Open** on the **This computer** card (called **System monitor** in the advanced view). To open it at the program list:
 
 ```sh
 wetwaresuite-system gui --action monitor.processes
@@ -29,19 +29,19 @@ It updates about once a second while it is on screen. It has two tabs.
 
 - the system and how long it has been up;
 - live charts of processor and memory use over the last two minutes;
-- the processor model, with one "In use" meter in Simple mode, or a meter per core in Advanced mode;
+- the processor model, with one "In use" meter in the simple view, or a meter per core in the advanced view;
 - memory and swap;
-- each disk with how much is free (Advanced mode adds the file system);
+- each disk with how much is free (the advanced view adds the file system);
 - the battery, when there is one;
-- network connections. Simple mode lists the connections that are up, with download and upload speed. Advanced mode shows every interface with its totals.
+- network connections. The simple view lists the connections that are up, with download and upload speed. The advanced view shows every interface with its totals.
 
-**Programs** (called **Processes** in Advanced mode) lists every running program:
+**Programs** (called **Processes** in the advanced view) lists every running program:
 
-- **The columns.** It shows the program's name, processor and memory use. Advanced mode adds the PID, threads, user and full command line.
+- **The columns.** It shows the program's name, processor and memory use. The advanced view adds the PID, threads, user and full command line.
 - **Finding a program.** Type in **find a program** to filter the list.
 - **Sorting.** Pick **busiest first**, **most memory first**, **by name** or **by id**.
 - **Ending a program.** Select a row and press **End program**. It asks before it does anything (**End it** / **Keep it running**). On Linux and macOS this asks the program to quit politely.
-- **Advanced mode** adds **Force end**, which stops a program at once, and **Details**, which shows its parent, the programs it started, and its command line.
+- **The advanced view** (View > Show advanced options) adds **Force end**, which stops a program at once, and **Details**, which shows its parent, the programs it started, and its command line.
 
 ## Task 1: a quick look
 
@@ -183,6 +183,6 @@ Example prompts and the tools Claude calls:
 ## Limitations
 
 - No temperature or fan sensors, and no GPU use.
-- On Linux, program names are the kernel's short names, at most 15 characters (`wetwaresuite-sy`). The full command line is in `rows` and in the Advanced view.
+- On Linux, program names are the kernel's short names, at most 15 characters (`wetwaresuite-sy`). The full command line is in `rows` and in the advanced view.
 - Per-program network and disk use are not shown, only the totals.
 - The numbers come from separate code for each system. The Linux version is the most tested; the Windows and macOS versions build from the same commands, but have had less testing on real machines.

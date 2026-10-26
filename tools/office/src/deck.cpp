@@ -683,6 +683,58 @@ pdf::Page layoutSlide(const Deck& deck, std::size_t index) {
     return page;
 }
 
+SlideHit slideHit(const Deck& deck, std::size_t index, double x, double y) {
+    SlideHit hit;
+    if (index >= deck.slides.size()) return hit;
+    const Slide& s = deck.slides[index];
+    const Plan P = plan(deck, index);
+    auto inside = [&](double bx, double by, double bw, double bh, double pad) {
+        const double x0 = std::min(bx, bx + bw), x1 = std::max(bx, bx + bw), y0 = std::min(by, by + bh), y1 = std::max(by, by + bh);
+        return x >= x0 - pad && x <= x1 + pad && y >= y0 - pad && y <= y1 + pad;
+    };
+    for (std::size_t i = P.front.size(); i-- > 0;) {
+        const Placed& o = P.front[i];
+        if (!inside(o.x, o.y, o.w, o.h, o.o->kind == "line" ? 6 : 0)) continue;
+        hit.kind = "object";
+        hit.object = static_cast<int>(i + 1);
+        hit.x = std::min(o.x, o.x + o.w), hit.y = std::min(o.y, o.y + o.h), hit.w = std::abs(o.w), hit.h = std::abs(o.h);
+        hit.text = o.o->text;
+        return hit;
+    }
+    auto take = [&](const std::string& kind, double bx, double by, double bw, double bh) {
+        hit.kind = kind;
+        hit.x = bx, hit.y = by, hit.w = bw, hit.h = bh;
+        if (kind == "title") hit.text = s.title;
+        else if (kind == "subtitle") hit.text = s.subtitle;
+        else if (kind == "bullets") hit.text = bulletText(s.bullets, s.numbered);
+        else hit.text = bulletText(s.right);
+        return hit;
+    };
+    for (const auto& f : P.frames) {
+        const std::string kind = f.name == "Title" ? "title" : f.name == "Subtitle" ? "subtitle" : f.name == "Body" ? "bullets" : f.name == "Right" ? "right" : "";
+        if (!kind.empty() && inside(f.x, f.y, f.w, f.h, 0)) return take(kind, f.x, f.y, f.w, f.h);
+    }
+    // the empty placeholders, where the layout puts them
+    const double sx = deck.width / 960.0, sy = deck.height / 540.0;
+    std::string layout = s.layout;
+    if (std::find(slideLayouts().begin(), slideLayouts().end(), layout) == slideLayouts().end()) layout = "content";
+    const bool titleLike = layout == "title" || layout == "section";
+    if (layout == "blank") return hit;
+    if (titleLike) {
+        const bool title = layout == "title";
+        if (s.title.empty() && inside(sx * (title ? 60 : 80), sy * 120, sx * (title ? 840 : 800), sy * 200, 0)) return take("title", sx * (title ? 60 : 80), sy * 120, sx * (title ? 840 : 800), sy * 190);
+        if (s.subtitle.empty() && inside(sx * (title ? 60 : 80), sy * 330, sx * (title ? 840 : 800), sy * 160, 0)) return take("subtitle", sx * (title ? 60 : 80), sy * 342, sx * (title ? 840 : 800), sy * 140);
+        return hit;
+    }
+    if (s.title.empty() && inside(48 * sx, 20 * sy, 864 * sx, 90 * sy, 0)) return take("title", 48 * sx, 26 * sy, 864 * sx, 76 * sy);
+    const bool bodyLayout = layout == "content" || layout == "two_column" || layout == "image_right";
+    if (bodyLayout && inside(48 * sx, 110 * sy, 864 * sx, 382 * sy, 0)) {
+        if (layout == "two_column" && x > 480 * sx) return s.right.empty() ? take("right", 492 * sx, 126 * sy, 420 * sx, 366 * sy) : hit;
+        if (s.bullets.empty()) return take("bullets", 48 * sx, 126 * sy, (layout == "content" ? 864 : layout == "two_column" ? 420 : 500) * sx, 366 * sy);
+    }
+    return hit;
+}
+
 std::vector<std::string> slideOverflow(const Deck& deck, std::size_t index) {
     std::vector<std::string> out;
     const Plan P = plan(deck, index);

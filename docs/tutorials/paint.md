@@ -309,7 +309,7 @@ photo.save doc=$art path=poster.png
 
 Claude calls `paint_new`, `paint_gradient`, `paint_shape_layer`, `paint_text`, `paint_layer_style` (drop_shadow, stroke), `photo_preview` and `photo_save` twice.
 
-**In the window.** With a text layer active, the **Layers** section shows **Text** (type and press Enter), **Font size** and **Text colour**. With any other layer active, type in the box under the buttons and press Enter to add a text layer in the brush colour. Open **Layer style** to tick effects on and off and set each one's colour, size, distance and opacity. Text, shape and style commands are also in **Actions** (switch to **Advanced**) and in the search box (Ctrl+K: type `text`, `shape` or `style`).
+**In the window.** With a text layer active, the **Layers** tab on the right shows **Text** (type and press Enter), **Font size** and **Text colour**. With any other layer active, type in the box under the buttons and press Enter to add a text layer in the brush colour. Open **Layer style** to tick effects on and off and set each one's colour, size, distance and opacity. Text, shape and style commands are also in **Actions** (switch to **Advanced**) and in the search box (Ctrl+K: type `text`, `shape` or `style`).
 
 ## Task 7: brush tips, textures, scatter and symmetry
 

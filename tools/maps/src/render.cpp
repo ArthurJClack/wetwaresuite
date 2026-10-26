@@ -360,6 +360,12 @@ View makeView(const Map& map, const RenderOptions& o, std::vector<std::string>& 
         pb.maxX += mx;
         pb.minY -= my;
         pb.maxY += my;
+        // a few places in a north-south line: no taller than wide, so they don't open as a thin strip
+        if (o.height <= 0 && pb.height() > pb.width()) {
+            const double grow = (pb.height() - pb.width()) / 2;
+            pb.minX -= grow;
+            pb.maxX += grow;
+        }
     }
     const double pw = std::max(pb.width(), 1e-9), ph = std::max(pb.height(), 1e-9);
     v.W = std::clamp(o.width, 16, 8000);
@@ -778,9 +784,14 @@ void drawLayer(Scene& sc, const View& v, const Layer& l, std::vector<Label>& lab
             }
         }
     }
-    if (st.labelField.empty()) return;
+    // a handful of named places reads like a map without asking: label them by name
+    std::string field = st.labelField;
+    if (field.empty() && l.features.size() <= 100 &&
+        std::all_of(l.features.begin(), l.features.end(), [](const Feature& f) { return f.geom.type == GeomType::Point && f.props.count("name"); }))
+        field = "name";
+    if (field.empty()) return;
     for (const auto& f : l.features) {
-        auto it = f.props.find(st.labelField);
+        auto it = f.props.find(field);
         if (it == f.props.end() || it->second.isNull() || f.geom.empty()) continue;
         Label lb{0, 0, it->second.text(), st.labelSize, st.labelColor, st.halo, 1};
         if (f.geom.type == GeomType::Point) {
@@ -1184,6 +1195,45 @@ void countriesBasemap(Scene& sc, const View& v, const RenderOptions& o) {
     }
 }
 
+// The built-in cities over the country outlines, biggest first, as many as fit without overlapping.
+void placesOverlay(Scene& sc, const View& v) {
+    struct Box {
+        double x0, y0, x1, y1;
+    };
+    std::vector<Box> taken;
+    int shown = 0;
+    for (const auto& f : places()) {
+        if (shown >= 40) break;
+        if (f.geom.empty()) continue;
+        const Coord ll = labelPoint(f.geom);
+        if (!v.domain.contains(ll.x, ll.y)) continue;
+        const P at = v.px(ll);
+        if (at.x < 4 || at.y < 14 || at.x > v.W - 4 || at.y > v.H - 4) continue;
+        const auto named = f.props.find("name");
+        if (named == f.props.end() || named->second.str.empty()) continue;
+        const std::string& name = named->second.str;
+        const bool capital = f.props.count("kind") && f.props.at("kind").str == "capital";
+        const double size = capital ? 11 : 10;
+        const double w = textWidth(name, size, capital);
+        Box b{at.x - 3, at.y - size - 2, at.x + 6 + w, at.y + 3};
+        if (b.x1 > v.W - 2) b = {at.x - 6 - w, b.y0, at.x + 3, b.y1};  // near the right edge: name on the left
+        if (std::any_of(taken.begin(), taken.end(), [&](const Box& o) { return b.x0 < o.x1 && o.x0 < b.x1 && b.y0 < o.y1 && o.y0 < b.y1; })) continue;
+        taken.push_back(b);
+        DPath dot;
+        dot.closed = true;
+        dot.fill = Color{0x33, 0x33, 0x33, 255};
+        dot.stroke = Color{255, 255, 255, 255};
+        dot.width = 1;
+        std::vector<P> ring;
+        for (int k = 0; k < 12; ++k) ring.push_back({at.x + 2.5 * std::cos(k * kPi / 6), at.y + 2.5 * std::sin(k * kPi / 6)});
+        dot.parts.push_back(std::move(ring));
+        sc.ops.push_back(std::move(dot));
+        const bool left = b.x1 <= at.x + 3;
+        text(sc, left ? at.x - 5 : at.x + 5, at.y + 3, name, size, {0x22, 0x22, 0x22, 255}, left ? 2 : 0, true, capital);
+        ++shown;
+    }
+}
+
 // Picks and draws the basemap; returns what was drawn: none, countries, osm or pack.
 std::string drawBasemap(Scene& sc, const View& v, const RenderOptions& o, RenderInfo& info) {
     const std::string basemap = lower(trim(o.basemap));
@@ -1240,7 +1290,7 @@ Scene buildScene(const Map& map, const RenderOptions& o, RenderInfo& info) {
     info.width = v.W;
     info.height = v.H;
     info.bbox = viewLonLat(v);
-    drawBasemap(sc, v, o, info);
+    const bool countriesBase = drawBasemap(sc, v, o, info) == "countries";
     std::vector<Label> labels;
     for (const auto& l : map.layers) {
         if (!l.visible) continue;
@@ -1252,6 +1302,7 @@ Scene buildScene(const Map& map, const RenderOptions& o, RenderInfo& info) {
     }
     if (o.graticule) drawGraticule(sc, v, o);
     if (o.labels) placeLabels(sc, labels);
+    if (o.labels && countriesBase) placesOverlay(sc, v);
     if (!o.title.empty()) text(sc, v.W / 2.0, 24, o.title, 18, {0x18, 0x18, 0x18, 255}, 1, true, true);
     if (o.legend) drawLegend(sc, map, o);
     if (o.scaleBar) drawScaleBar(sc, v, info);

@@ -637,7 +637,7 @@ What each one did:
 
 Claude reads the edit with `cut_info`, uses `cut_slip` on the b-roll, `cut_roll` on the cut, and `cut_roll` with `linked=false` on the sound for the J cut, then checks the cut points with `cut_preview`.
 
-**The window.** Dragging a clip's edge trims it (and its linked sound). The trim commands above are actions on the right (switch to Advanced mode to see them all).
+**The window.** Dragging a clip's edge trims it (and its linked sound). The trim commands above are in the **Cut** menu and the ribbon's **Cut** group.
 
 ## Task 9: the playhead, markers, insert and overwrite, razor, lift and extract
 
@@ -1112,7 +1112,7 @@ Claude calls `cut_presets` to see the names, `cut_render` with `preset=youtube_1
 
 ## The window
 
-`wetwaresuite-video` (or `wetwaresuite-video edit.wwcut`) opens the video app: the actions on the left, the preview in the middle with the timeline under it, and the selected action's form on the right.
+`wetwaresuite-video` (or `wetwaresuite-video edit.wwcut`) opens the video app: the menus and the **Edit** ribbon on top, the preview in the middle with the timeline under it, and the selected action's form on the right.
 
 - **Open a video, picture or sound file** straight away (`wetwaresuite-video clip.mp4`, **Open**, or drop it on the window): it becomes a new timeline the size and frame rate of the file, with the file on it. Drop more files, or click **+ Media** over the tracks, to add them at the end of their track (pictures and videos on a video track, sounds on an audio track).
 - Video clips show **thumbnails** along them and sound shows its **waveform**. They're read in the background the first time, so they appear a moment after the clip does.

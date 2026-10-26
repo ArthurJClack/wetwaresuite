@@ -2,7 +2,9 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdint>
 #include <filesystem>
+#include <fstream>
 #include <map>
 
 namespace wetwaresuite::apps {
@@ -56,7 +58,7 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".png", {"image", "photo.open"}}, {".jpg", {"image", "photo.open"}}, {".jpeg", {"image", "photo.open"}},
         {".bmp", {"image", "photo.open"}}, {".tga", {"image", "photo.open"}}, {".ppm", {"image", "photo.open"}},
         {".pgm", {"image", "photo.open"}}, {".ora", {"image", "photo.open"}}, {".gif", {"image", "photo.open"}},
-        {".webp", {"image", ""}}, {".psd", {"image", ""}},
+        {".webp", {"image", "photo.open"}}, {".psd", {"image", "photo.open"}}, {".tif", {"image", "photo.open"}}, {".tiff", {"image", "photo.open"}},
         // draw
         {".svg", {"draw", "vector.open"}}, {".ttf", {"draw", "type.open"}}, {".otf", {"draw", "type.open"}},
         {".woff", {"draw", "type.open"}}, {".ufo", {"draw", "type.open"}}, {".excalidraw", {"draw", "board.open"}},
@@ -95,7 +97,7 @@ const std::map<std::string, OpenRoute>& extensionTable() {
         {".wwlay", {"office", "layout.open"}}, {".achlay", {"office", "layout.open"}},
         // maps
         {".geojson", {"maps", "maps.open"}}, {".kml", {"maps", "maps.open"}}, {".gpx", {"maps", "maps.open"}},
-        {".shp", {"maps", "maps.open"}}, {".tif", {"maps", ""}}, {".tiff", {"maps", ""}}, {".pmtiles", {"maps", ""}},
+        {".shp", {"maps", "maps.open"}}, {".pmtiles", {"maps", ""}},
         {".mbtiles", {"maps", ""}}, {".wwmap", {"maps", "maps.open"}},
         {".achmap", {"maps", "maps.open"}}, {".fit", {"maps", "maps.open"}}, {".osm", {"maps", "maps.open"}},
         // system: source code and config open in the code editor; archives in the file manager
@@ -127,10 +129,38 @@ const std::map<std::string, OpenRoute>& extensionTable() {
     return table;
 }
 
+// A GeoTIFF is a TIFF with map tags (pixel scale, tie points or GeoKeys): those are elevation or
+// satellite tiles for maps; every other TIFF is a picture.
+bool isGeoTiff(const std::string& path) {
+    std::ifstream in(path, std::ios::binary);
+    unsigned char head[8];
+    if (!in.read(reinterpret_cast<char*>(head), 8)) return false;
+    const bool le = head[0] == 'I' && head[1] == 'I';
+    if (!le && !(head[0] == 'M' && head[1] == 'M')) return false;
+    auto u16 = [&](const unsigned char* b) { return le ? b[0] | b[1] << 8 : b[0] << 8 | b[1]; };
+    auto u32 = [&](const unsigned char* b) {
+        return le ? std::uint32_t(b[0]) | std::uint32_t(b[1]) << 8 | std::uint32_t(b[2]) << 16 | std::uint32_t(b[3]) << 24
+                  : std::uint32_t(b[0]) << 24 | std::uint32_t(b[1]) << 16 | std::uint32_t(b[2]) << 8 | std::uint32_t(b[3]);
+    };
+    if (u16(head + 2) != 42) return false;
+    in.seekg(u32(head + 4));
+    unsigned char count[2];
+    if (!in.read(reinterpret_cast<char*>(count), 2)) return false;
+    for (int i = 0, n = std::min(u16(count), 512); i < n; ++i) {
+        unsigned char entry[12];
+        if (!in.read(reinterpret_cast<char*>(entry), 12)) return false;
+        const int tag = u16(entry);
+        if (tag == 33550 || tag == 33922 || tag == 34264 || tag == 34735) return true;
+    }
+    return false;
+}
+
 }  // namespace
 
 OpenRoute routeForFile(const std::string& path) {
     std::string name = lower(std::filesystem::path(path).filename().string());
+    const std::string ext = lower(std::filesystem::path(path).extension().string());
+    if ((ext == ".tif" || ext == ".tiff") && isGeoTiff(path)) return {"maps", ""};
     // try the longest dotted suffix first: "song.beats.json" -> ".beats.json", then ".json"
     for (std::size_t dot = name.find('.'); dot != std::string::npos; dot = name.find('.', dot + 1)) {
         auto it = extensionTable().find(name.substr(dot));

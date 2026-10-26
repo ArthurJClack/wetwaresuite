@@ -73,6 +73,14 @@ Root: HKA; Subkey: "Software\Classes\.ora\OpenWithProgids"; ValueType: string; V
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-image.exe\SupportedTypes"; ValueType: string; ValueName: ".ora"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.gif\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.image"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-image.exe\SupportedTypes"; ValueType: string; ValueName: ".gif"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.webp\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.image"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-image.exe\SupportedTypes"; ValueType: string; ValueName: ".webp"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.psd\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.image"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-image.exe\SupportedTypes"; ValueType: string; ValueName: ".psd"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.tif\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.image"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-image.exe\SupportedTypes"; ValueType: string; ValueName: ".tif"; ValueData: ""; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\.tiff\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.image"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
+Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-image.exe\SupportedTypes"; ValueType: string; ValueName: ".tiff"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.svg\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.draw"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\Applications\wetwaresuite-draw.exe\SupportedTypes"; ValueType: string; ValueName: ".svg"; ValueData: ""; Tasks: filetypes
 Root: HKA; Subkey: "Software\Classes\.ttf\OpenWithProgids"; ValueType: string; ValueName: "wetwaresuite.draw"; ValueData: ""; Flags: uninsdeletevalue; Tasks: filetypes

@@ -65,8 +65,14 @@ json toolResult(const Result& result) {
     return out;
 }
 
+// Session::run fills a missing doc with the one the tool used last, so calls can chain without it.
+bool lastDocDefault(const ParamSpec& p) { return p.required && p.name == "doc"; }
+std::string paramDescription(const ParamSpec& p) {
+    return lastDocDefault(p) ? p.description + " (default: the one this tool used last)" : p.description;
+}
+
 json schemaFor(const ParamSpec& p) {
-    json s = {{"type", toString(p.type)}, {"description", p.description}};
+    json s = {{"type", toString(p.type)}, {"description", paramDescription(p)}};
     if (p.type == ParamType::NumberList) s["items"] = {{"type", "number"}};
     if (!p.choices.empty()) s["enum"] = p.choices;
     if (!std::holds_alternative<std::monostate>(p.defaultValue)) s["default"] = toJson(p.defaultValue);
@@ -78,7 +84,7 @@ json describe(const CommandInfo& info) {
     json required = json::array();
     for (const auto& p : info.params) {
         properties[p.name] = schemaFor(p);
-        if (p.required) required.push_back(p.name);
+        if (p.required && !lastDocDefault(p)) required.push_back(p.name);
     }
     return {{"name", Server::toolName(info.id)},
             {"title", info.title},
@@ -162,7 +168,7 @@ void putTool(std::string& out, const CommandInfo& info) {
             out += ',';
         }
         out += "\"description\":";
-        putString(out, p->description);
+        putString(out, paramDescription(*p));
         if (!p->choices.empty()) {
             out += ",\"enum\":[";
             for (std::size_t i = 0; i < p->choices.size(); ++i) {
@@ -179,7 +185,7 @@ void putTool(std::string& out, const CommandInfo& info) {
     out += "},\"required\":[";
     first = true;
     for (const auto& p : info.params) {
-        if (!p.required) continue;
+        if (!p.required || lastDocDefault(p)) continue;
         if (!first) out += ',';
         first = false;
         putString(out, p.name);

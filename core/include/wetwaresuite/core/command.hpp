@@ -165,12 +165,14 @@ public:
     History& history() { return history_; }
     Workspace& workspace() { return workspace_; }
 
+    // A missing required `doc` is filled with the document the same tool used last.
     Result run(const std::string& id, const Params& params);
 
 private:
     CommandRegistry registry_;
     History history_;
     Workspace workspace_;
+    std::map<std::string, std::string> lastDoc_;  // tool ("audio") -> document id
 };
 
 // Param helpers for action factories (params are already validated).

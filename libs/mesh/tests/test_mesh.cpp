@@ -595,6 +595,10 @@ Connections:  {
         std::vector<std::uint8_t> rgba;
         CHECK(md->renderView(OrbitView{}, 0, 0, rgba) && rgba.empty());
         CHECK(md->renderView(OrbitView{}, 40, 30, rgba) && rgba.size() == 40u * 30u * 4u);
+        // lines alone draw (a sketch on an empty part), and fit the camera
+        RenderOptions lineOnly;
+        lineOnly.lines.push_back({{{0, 0, 0}, {10, 0, 0}, {10, 5, 0}}, {255, 0, 0, 255}});
+        CHECK(nonBackground(render(Mesh{}, 64, 64, lineOnly), lineOnly.background) > 20);
     }
 
     // ---- document + commands ----

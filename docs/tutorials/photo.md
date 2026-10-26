@@ -490,7 +490,7 @@ Run it with `wetwaresuite-image batch filters.txt`, or one filter on its own fro
 
 Claude calls `photo_open`, `photo_select` around the car and `invert`, `photo_blur` with `kind=motion` and the road's `angle`, `photo_select` with `shape=none`, `photo_noise` with `kind=add monochrome=true`, `photo_preview` and `photo_save`.
 
-**In the window.** Switch **Mode** to **Advanced** to see every filter under **Actions**, or press **Ctrl+K** and type its name (`blur`, `sharpen`, `noise`, `emboss`, `oil`, `clouds`, `lens`, `warp`, `liquify`). Fill in the form and press **Run**; **Ctrl+Z** takes it back. Liquify and the custom warp grid take their points as typed numbers; there's no on-canvas liquify brush yet.
+**In the window.** Every filter is in the **Photo** menu (the common ones in its **Filters** section and on the ribbon), or press **Ctrl+K** and type its name (`blur`, `sharpen`, `noise`, `emboss`, `oil`, `clouds`, `lens`, `warp`, `liquify`). Fill in the form and press **Run**; **Ctrl+Z** takes it back. Liquify and the custom warp grid take their points as typed numbers; there's no on-canvas liquify brush yet.
 
 ## Task 11: select subject and refine edge
 

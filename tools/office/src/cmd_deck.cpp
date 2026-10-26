@@ -465,6 +465,25 @@ void registerDeckCommands(Session& session) {
                 return r;
             }));
 
+    reg.add({"office.deck_hit", "Slide Part At Point",
+             "What is at a spot on a slide (x, y in points from the top left; the slide is 960 x 540 at 16:9): the topmost text "
+             "box, shape, line or picture (kind=object with its number), else the title, subtitle, bullets or right column "
+             "(also where an empty one would go), with its box and its text the way deck_edit_slide / deck_object_edit take it. "
+             "Lets a click on the slide edit that part.",
+             {doc(), integer("slide", "slide number", true), number("x", "points from the left", true), number("y", "points from the top", true)},
+             false, true},
+            read(session, [](DeckDoc& d, const Params& p, const std::string&) -> Result {
+                std::size_t i;
+                std::string error;
+                if (!slideArg(d.data, p, "slide", i, error)) return Result::failure(error);
+                const SlideHit h = slideHit(d.data, i, numberParam(p, "x"), numberParam(p, "y"));
+                if (h.kind.empty()) return Result::failure("nothing there on slide " + std::to_string(i + 1));
+                Result r = Result::success(h.kind == "object" ? "object " + std::to_string(h.object) : h.kind);
+                r.with("kind", h.kind).with("text", h.text).with("x", h.x).with("y", h.y).with("w", h.w).with("h", h.h);
+                if (h.object) r.with("object", static_cast<std::int64_t>(h.object));
+                return r;
+            }));
+
     reg.add({"office.deck_info", "Deck Info",
              "List the slides with their layouts, titles, bullet counts, pictures and notes, and warn about slides with too much text.",
              {doc(), fileSpec("slide deck"), flag("outline", "also return the whole deck as a Markdown outline", false)}, false, true},
@@ -560,7 +579,7 @@ void registerDeckCommands(Session& session) {
                 if (boolParam(p, "all", false)) {
                     for (std::size_t i = 0; i < d.data.slides.size() && i < 60; ++i) r.attach(slidePng(d.data, i, width));
                     r.message = "previews of " + std::to_string(std::min<std::size_t>(d.data.slides.size(), 60)) + " slides";
-                    return r;
+                    return r.with("slides", static_cast<std::int64_t>(d.data.slides.size()));
                 }
                 std::size_t i;
                 std::string error;
@@ -569,7 +588,8 @@ void registerDeckCommands(Session& session) {
                 if (!slideArg(d.data, q, "slide", i, error)) return Result::failure(error);
                 r.message = "slide " + describe(d.data, i);
                 r.attach(slidePng(d.data, i, width));
-                return r;
+                // so a click on the picture can be turned into slide points (deck_hit)
+                return r.with("slides", static_cast<std::int64_t>(d.data.slides.size())).with("points_wide", d.data.width);
             }));
 
     reg.add({"office.deck_close", "Close Slide Deck", "Close a deck without saving (undo reopens it).", {doc()}, true},

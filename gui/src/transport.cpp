@@ -158,15 +158,27 @@ void Shell::transportBar() {
     ImGui::SetItemTooltip("Play the sound over and over");
     ImGui::SameLine();
 
-    const double length = ours && t.length > 0 ? t.length : 0;
-    const double shown = ours && (t.playing || t.paused) ? t.position : t.cue;
+    // a timeline keeps its own playhead: the bar shows and moves that one while stopped
+    auto doc = session_.workspace().get(currentDoc_);
+    TimelineLayout layout;
+    const bool ownPlayhead = doc && doc->timeline(layout) && layout.cursor >= 0;
+    const bool running = ours && (t.playing || t.paused);
+    double length = ours && t.length > 0 ? t.length : 0;
+    if (ownPlayhead && length <= 0) {
+        for (const auto& tr : layout.tracks)
+            for (const auto& c : tr.clips) length = std::max(length, c.start + c.length);
+    }
+    const double shown = running ? t.position : ownPlayhead ? layout.cursor : t.cue;
     ImGui::TextUnformatted((clock(shown) + (length > 0 ? " / " + clock(length) : std::string())).c_str());
     ImGui::SameLine();
     const float volumeWidth = ImGui::GetFontSize() * 7;
     ImGui::SetNextItemWidth(std::max(ImGui::GetFontSize() * 6, ImGui::GetContentRegionAvail().x - volumeWidth - ImGui::GetStyle().ItemSpacing.x));
     float pos = static_cast<float>(shown);
     const float maxPos = static_cast<float>(length > 0 ? length : std::max(1.0, shown));
-    if (ImGui::SliderFloat("##playhead", &pos, 0.0f, maxPos, "", ImGuiSliderFlags_NoInput)) seekTo(pos);
+    if (ImGui::SliderFloat("##playhead", &pos, 0.0f, maxPos, "", ImGuiSliderFlags_NoInput)) {
+        if (ownPlayhead && !running) runTimelineEdit(layout, {TimelineEditKind::Cursor, {}, {}, {}, 0, 0, pos});
+        else seekTo(pos);
+    }
     ImGui::SetItemTooltip("Drag to move the playhead");
     ImGui::SameLine();
     ImGui::SetNextItemWidth(volumeWidth);
@@ -175,7 +187,6 @@ void Shell::transportBar() {
     if (ours && t.silent) ImGui::TextDisabled("No sound device found, so it plays silently.");
 
     // the playhead line only lines up with a clip's waveform
-    auto doc = session_.workspace().get(currentDoc_);
     playheadFraction_ = doc && doc->kind() == "audio" && length > 0 ? static_cast<float>(shown / length) : -1;
 }
 

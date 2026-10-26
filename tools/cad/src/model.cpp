@@ -353,6 +353,81 @@ std::string CadDoc::summary() const {
     return s;
 }
 
+std::vector<mesh::Line3> CadDoc::sketchLines() const {
+    std::vector<mesh::Line3> lines;
+    for (std::size_t i = 0; i < features.size(); ++i) {
+        const Feature& f = features[i];
+        if (f.type != "sketch" || f.suppressed) continue;
+        const FeatureExtra* x = featureExtra(f.name);
+        if (!x || !x->sketch) continue;
+        // a sketch a later feature already uses has done its job: hide it, as Onshape does
+        bool used = false;
+        for (std::size_t j = i + 1; j < features.size() && !used; ++j) {
+            if (features[j].suppressed) continue;
+            for (const auto& [field, value] : features[j].values)
+                if (value == f.name) used = true;
+        }
+        if (used) continue;
+        const SolvedSketch& sk = *x->sketch;
+        auto at = [&](const std::string& id) {
+            auto it = sk.points.find(id);
+            const mesh::Vec2 p = it == sk.points.end() ? mesh::Vec2{} : it->second;
+            return sk.frame.at(p.x, p.y);
+        };
+        auto point2 = [&](const std::string& id) {
+            auto it = sk.points.find(id);
+            return it == sk.points.end() ? mesh::Vec2{} : it->second;
+        };
+        for (const SketchEntity& e : f.sketch.entities) {
+            mesh::Line3 ln;
+            ln.color = e.construction ? raster::Color{150, 150, 160, 255} : raster::Color{230, 110, 30, 255};
+            if (e.kind == "line" && e.points.size() >= 2) {
+                ln.points = {at(e.points[0]), at(e.points[1])};
+            } else if (e.kind == "circle" && !e.points.empty()) {
+                auto r = sk.radii.find(e.id);
+                const double radius = r != sk.radii.end() ? r->second : e.radius;
+                const mesh::Vec2 c = point2(e.points[0]);
+                for (int k = 0; k < 64; ++k) {
+                    const double a = 2 * mesh::kPi * k / 64;
+                    ln.points.push_back(sk.frame.at(c.x + radius * std::cos(a), c.y + radius * std::sin(a)));
+                }
+                ln.closed = true;
+            } else if (e.kind == "arc" && e.points.size() >= 3) {
+                const mesh::Vec2 c = point2(e.points[0]), a = point2(e.points[1]), b = point2(e.points[2]);
+                const double radius = std::hypot(a.x - c.x, a.y - c.y);
+                const double a0 = std::atan2(a.y - c.y, a.x - c.x);
+                double a1 = std::atan2(b.y - c.y, b.x - c.x);
+                if (a1 <= a0) a1 += 2 * mesh::kPi;  // counter-clockwise from start to end
+                for (int k = 0; k <= 48; ++k) {
+                    const double t = a0 + (a1 - a0) * k / 48;
+                    ln.points.push_back(sk.frame.at(c.x + radius * std::cos(t), c.y + radius * std::sin(t)));
+                }
+            } else if (e.kind == "spline" && e.points.size() >= 2) {
+                for (const auto& id : e.points) ln.points.push_back(at(id));
+                ln.closed = e.closed;
+            }
+            if (!ln.points.empty()) lines.push_back(std::move(ln));
+        }
+    }
+    return lines;
+}
+
+bool CadDoc::renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const {
+    mesh::RenderOptions o = previewOptions;
+    o.lines = sketchLines();
+    if (mesh.empty()) {
+        // an empty part: the axes show which way is up and where the sketch plane is
+        double size = 10;
+        for (const auto& ln : o.lines)
+            for (const auto& p : ln.points) size = std::max({size, std::fabs(p.x), std::fabs(p.y), std::fabs(p.z)});
+        const double len = o.lines.empty() ? size : size * 0.3;
+        o.lines.push_back({{{0, 0, 0}, {len, 0, 0}}, {220, 60, 60, 255}});
+        o.lines.push_back({{{0, 0, 0}, {0, len, 0}}, {60, 170, 80, 255}});
+        o.lines.push_back({{{0, 0, 0}, {0, 0, len}}, {60, 110, 220, 255}});
+    }
+    return mesh::renderOrbit(mesh, view, width, height, rgba, o);
+}
+
 const Parameter* CadDoc::findParam(const std::string& name) const {
     for (const auto& p : params) {
         if (p.name == name) return &p;

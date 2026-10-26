@@ -34,11 +34,11 @@ wetwaresuite-system gui --action calc.graph
 The left half is the calculator:
 
 - **The display.** Type a calculation into the box at the top and press **Enter**. The answer shows large underneath, with what you asked shown small above it. Below the answer is a line with its other forms: the exact fraction, hex, or the unit.
-- **The keys.** In Simple mode there are digits, `+ - * /`, brackets, `sqrt(`, `^`, `%`, `ans`, `pi`, **C** (clear), **Back** and **=**.
+- **The keys.** In the simple view there are digits, `+ - * /`, brackets, `sqrt(`, `^`, `%`, `ans`, `pi`, **C** (clear), **Back** and **=**.
 - **Carrying on.** After an answer, a calculation that starts with an operator carries on from it. Type `* 2` and press Enter: you get `ans * 2`.
 - **Mistakes.** Mistakes are explained in plain words, for example *can't divide by zero*.
 
-Advanced mode (the toggle at the top of the window) adds:
+The advanced view (View > Show advanced options) adds:
 
 - four more rows of keys: `sin cos tan ln log asin acos atan exp !`, the memory keys **MC MR M+ M- MS**, and `e x abs( mod ,`;
 - an **Angles** picker (deg, rad, grad);
@@ -50,9 +50,9 @@ The right half has tabs:
 - **History**: every calculation so far. Click one to use it again. **Clear history** empties it.
 - **Graph**: type `y = ...` (several curves separated by `;`), set **from x** and **to x**, and press **Draw** or Enter. **Zoom in** and **Zoom out** halve or double the range. The picture redraws itself to fit when you resize the window, and follows the light or dark theme.
 - **Convert**: pick a kind (Length, Weight, Temperature, Volume, Speed, Area, Time, Data, Energy, Pressure). Type an amount and pick or type both units; the answer updates as you type. **Swap** turns the conversion around.
-- **Stats** (Advanced): paste numbers separated by commas, spaces or new lines and press **Describe**.
-- **Solve** (Advanced): type an equation or a system like `2x + 3y = 7; x - y = 1` and press **Solve**.
-- **Bases** (Advanced): type a number (`0xff`, `0b1010` or an expression). It shows the number in decimal, hex, binary and octal as you type.
+- **Stats** (advanced view): paste numbers separated by commas, spaces or new lines and press **Describe**.
+- **Solve** (advanced view): type an equation or a system like `2x + 3y = 7; x - y = 1` and press **Solve**.
+- **Bases** (advanced view): type a number (`0xff`, `0b1010` or an expression). It shows the number in decimal, hex, binary and octal as you type.
 
 Every key press that calculates runs `calc.eval`, so the history in the window is the same one scripts and Claude see.
 

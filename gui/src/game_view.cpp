@@ -176,47 +176,49 @@ void Shell::gameRun(const std::string& id, Params params, const std::string& tit
     canvas_.dirty = true;
 }
 
-void Shell::gameToolbar() {
+void Shell::gameTools() {
     GameCanvas& g = canvas_.game;
     gameSync();
     struct Item {
         const char* name;
         GameTool tool;
+        const char* key;
         const char* tip;
     };
+    // Tiled and Aseprite letters where they have one
     static const Item level[] = {
-        {"Move", GameTool::Move, "Drag to move around, scroll to zoom"},
-        {"Paint", GameTool::Paint, "Click or drag to put the chosen tile in cells"},
-        {"Rect", GameTool::Rect, "Drag a rectangle of the chosen tile"},
-        {"Erase", GameTool::Erase, "Drag over cells to clear them"},
-        {"Fill", GameTool::Fill, "Click to flood-fill the area with the chosen tile"},
-        {"Object", GameTool::Object, "Drag a box (or click for a point) on the object layer"},
-        {"Pick", GameTool::Pick, "Click a cell to choose its tile"}};
+        {"Move", GameTool::Move, "V", "Drag to move around, scroll to zoom"},
+        {"Paint", GameTool::Paint, "B", "Click or drag to put the chosen tile in cells"},
+        {"Rect", GameTool::Rect, "R", "Drag a rectangle of the chosen tile"},
+        {"Erase", GameTool::Erase, "E", "Drag over cells to clear them"},
+        {"Fill", GameTool::Fill, "G", "Click to flood-fill the area with the chosen tile"},
+        {"Object", GameTool::Object, "O", "Drag a box (or click for a point) on the object layer"},
+        {"Pick", GameTool::Pick, "I", "Click a cell to choose its tile"}};
     static const Item sprite[] = {
-        {"Move", GameTool::Move, "Drag to move around, scroll to zoom"},
-        {"Pencil", GameTool::Pencil, "Draw single pixels; drag for a freehand line"},
-        {"Eraser", GameTool::Eraser, "Rub pixels out to transparent"},
-        {"Line", GameTool::Line, "Drag a straight line"},
-        {"Box", GameTool::Box, "Drag a rectangle"},
-        {"Ellipse", GameTool::Ellipse, "Drag an ellipse"},
-        {"Bucket", GameTool::Bucket, "Click to fill the touching pixels of one colour"},
-        {"Pick", GameTool::Pick, "Click a pixel to take its colour"}};
+        {"Move", GameTool::Move, "V", "Drag to move around, scroll to zoom"},
+        {"Pencil", GameTool::Pencil, "B", "Draw single pixels; drag for a freehand line"},
+        {"Eraser", GameTool::Eraser, "E", "Rub pixels out to transparent"},
+        {"Line", GameTool::Line, "L", "Drag a straight line"},
+        {"Box", GameTool::Box, "U", "Drag a rectangle"},
+        {"Ellipse", GameTool::Ellipse, "O", "Drag an ellipse"},
+        {"Bucket", GameTool::Bucket, "G", "Click to fill the touching pixels of one colour"},
+        {"Pick", GameTool::Pick, "I", "Click a pixel to take its colour"}};
     const bool isLevel = g.kind == "level";
     const Item* items = isLevel ? level : sprite;
     const std::size_t count = isLevel ? std::size(level) : std::size(sprite);
-    ImGui::SameLine();
-    ImGui::TextUnformatted("  Tool:");
     for (std::size_t i = 0; i < count; ++i) {
-        ImGui::SameLine();
-        const float need = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(items[i].name).x;
-        if (ImGui::GetContentRegionAvail().x < need) ImGui::NewLine();
-        if (ImGui::RadioButton(items[i].name, g.tool == items[i].tool)) {
+        if (railItem(items[i].name, items[i].key, items[i].tip, g.tool == items[i].tool)) {
             g.tool = items[i].tool;
             g.dragging = false;
             g.points.clear();
         }
-        ImGui::SetItemTooltip("%s", items[i].tip);
     }
+}
+
+void Shell::gameToolbar() {
+    GameCanvas& g = canvas_.game;
+    gameSync();
+    const bool isLevel = g.kind == "level";
     if (!isLevel && (g.tool == GameTool::Box || g.tool == GameTool::Ellipse)) {
         ImGui::SameLine();
         ImGui::Checkbox("Filled", &g.filled);
@@ -261,8 +263,8 @@ void Shell::gameInput(ImDrawList* dl, ImVec2 origin, bool hovered, bool active) 
         g.dragFrom = g.dragTo = {static_cast<float>(cx), static_cast<float>(cy)};
         g.points = {static_cast<double>(cx), static_cast<double>(cy)};
     }
-    // drag
-    if (g.dragging && active) {
+    // drag (also on the release frame, so a fast flick keeps its last cells)
+    if (g.dragging) {
         const int ex = std::clamp(cx, 0, std::max(0, cols - 1)), ey = std::clamp(cy, 0, std::max(0, rows - 1));
         g.dragTo = {static_cast<float>(ex), static_cast<float>(ey)};
         const bool path = g.tool == GameTool::Paint || g.tool == GameTool::Pencil || g.tool == GameTool::Eraser;
@@ -604,16 +606,20 @@ void Shell::gameSpriteSide() {
     const float swatch = unit * 1.3f;
     const int perRow = std::max(1, static_cast<int>(ImGui::GetContentRegionAvail().x / (swatch + ImGui::GetStyle().ItemSpacing.x)));
     int shownCount = 0;
-    for (std::size_t i = 0; i < g.palette.size(); ++i) {
+    // no palette of its own yet: PICO-8's 16 colours to pick from, as Aseprite starts with one
+    static const std::vector<std::string> starter = {"#000000", "#1d2b53", "#7e2553", "#008751", "#ab5236", "#5f574f", "#c2c3c7", "#fff1e8",
+                                                     "#ff004d", "#ffa300", "#ffec27", "#00e436", "#29adff", "#83769c", "#ff77a8", "#ffccaa"};
+    const std::vector<std::string>& colours = g.palette.empty() ? starter : g.palette;
+    for (std::size_t i = 0; i < colours.size(); ++i) {
         float c[4];
-        if (!parseHex(g.palette[i], c)) continue;
+        if (!parseHex(colours[i], c)) continue;
         if (shownCount++ % perRow) ImGui::SameLine();
         ImGui::PushID(static_cast<int>(i));
         if (ImGui::ColorButton("##swatch", {c[0], c[1], c[2], c[3]}, ImGuiColorEditFlags_AlphaPreviewHalf, {swatch, swatch})) std::copy(c, c + 4, g.color);
-        ImGui::SetItemTooltip("%zu: %s", i, g.palette[i].c_str());
+        ImGui::SetItemTooltip("%zu: %s", i, colours[i].c_str());
         ImGui::PopID();
     }
-    if (g.palette.empty()) tp::muted("No palette: Sprite palette loads one (pico8, db16, db32, gameboy...).");
+    if (g.palette.empty()) tp::muted("Sprite palette (ribbon) loads others: db16, db32, gameboy...");
 }
 
 }  // namespace wetwaresuite::gui

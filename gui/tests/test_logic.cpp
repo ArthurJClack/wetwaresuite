@@ -82,7 +82,7 @@ void testKinds() {
 }
 
 void testForms() {
-    CommandInfo info = cmd("demo.go", "Go", "Does a thing.",
+    CommandInfo info = cmd("demo.new", "New", "Does a thing.",
                            {{"doc", ParamType::String, "id of an open image, e.g. img1", true},
                             {"width", ParamType::Int, "width in px", true},
                             {"quality", ParamType::Int, "JPEG quality 1..100", false, {}, std::int64_t{90}},
@@ -96,6 +96,20 @@ void testForms() {
     CHECK(form.fields.size() == 9);
     CHECK(fieldNamed(form, "doc")->text == "img2");
     CHECK(fieldNamed(form, "width")->number == 1920);  // a sensible start for a required size
+    // long command descriptions: a short lead, the rest behind "More", no "Returns ..." for scripts
+    std::string lead, rest;
+    splitDescription("Start a 2D sketch on a plane (e.g. xy). Add lines with Sketch Line. Then extrude it. Returns the feature name.", lead, rest);
+    CHECK(lead == "Start a 2D sketch on a plane (e.g. xy). Add lines with Sketch Line.");
+    CHECK(rest == "Then extrude it.");
+    splitDescription("Open an image.", lead, rest);
+    CHECK(lead == "Open an image." && rest.empty());
+    splitDescription("Create an empty map document and return its id (e.g. map1).", lead, rest);
+    CHECK(lead == "Create an empty map document.");
+    // a shape on a page starts small enough to see whole, pixel art smaller still
+    Form rect = buildForm(cmd("vector.rect", "Rectangle", "", {{"width", ParamType::Number, "width", true}}), {}, "");
+    CHECK(fieldNamed(rect, "width")->number == 200);
+    Form sprite = buildForm(cmd("forge.sprite_new", "Sprite", "", {{"width", ParamType::Int, "width", true}}), {}, "");
+    CHECK(fieldNamed(sprite, "width")->number == 32);
     CHECK(fieldNamed(form, "quality")->number == 90 && fieldNamed(form, "quality")->min == 1.0);
     CHECK(!fieldNamed(form, "amount")->set);  // optional, no default: the command decides
     CHECK(fieldNamed(form, "mode")->text == "good");
@@ -207,7 +221,9 @@ void testColoursRecentMessages() {
     CHECK(parseHex("#f80") && toHex(*parseHex("#f80")) == "#ff8800");
     CHECK(toHex(*parseHex("#11223344")) == "#11223344");
     CHECK(parseHex("transparent")->a == 0.0f);
-    CHECK(!parseHex("red") && !parseHex("#12345") && !parseHex("#gg0000"));
+    CHECK(!parseHex("#12345") && !parseHex("#gg0000") && !parseHex("reddish"));
+    CHECK(toHex(*parseHex("White")) == "#ffffff" && toHex(*parseHex("red")) == "#ff0000");  // the swatch shows a named colour
+    CHECK(toHex(*parseHex("rgb(0, 128, 255)")) == "#0080ff");
     CHECK(toHex(fromRgb24(0x3d7eff)) == "#3d7eff");
 
     std::vector<std::string> recent = {"a", "b", "c"};

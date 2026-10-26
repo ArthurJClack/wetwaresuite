@@ -30,12 +30,12 @@ wetwaresuite-system gui --action code.open
 
 Opening a file also opens its folder in the tree.
 
-- **Toolbar**: **Open folder...**, **Open file...**, **New**, **Save**, **Run** (F5), **Build** (Ctrl+B), **Find** (Ctrl+F) and **Go to line** (Ctrl+G). In Advanced mode you also get **Test**, **Clean**, **Stop** and **Format**. Format tidies the file with clang-format, rustfmt, gofmt, black or prettier, when one is installed.
+- **Toolbar**: **Open folder...**, **Open file...**, **New**, **Save**, **Run** (F5), **Build** (Ctrl+B), **Find** (Ctrl+F) and **Go to line** (Ctrl+G). In the advanced view (View > Show advanced options) you also get **Test**, **Clean**, **Stop** and **Format**. Format tidies the file with clang-format, rustfmt, gofmt, black or prettier, when one is installed.
 - **Left side**: four sections.
   - **Files**: the project tree. Click a file to open it.
   - **Outline**: the functions, classes and headings in the file. Click one to jump to it.
-  - **Find**: search every file in the project. Click a hit to open it at that line. In Advanced mode there is a replace box and a **Replace in all files** button. Undo puts every file back.
-  - **Changes** (called **Git** in Advanced mode): see the git panel below.
+  - **Find**: search every file in the project. Click a hit to open it at that line. In the advanced view there is a replace box and a **Replace in all files** button. Undo puts every file back.
+  - **Changes** (called **Git** in the advanced view): see the git panel below.
 - **Tabs**: one per open file. A `*` marks unsaved changes. Drag tabs to reorder them, and close one with its x.
 - **The editor**: line numbers and highlighting in a monospace font.
   - Errors from the last run or build are marked in the margin.
@@ -48,7 +48,7 @@ Opening a file also opens its folder in the tree.
   - **Ctrl+Z** undoes, and **Ctrl+Y** or **Ctrl+Shift+Z** redoes.
   - **Ctrl+Home** and **Ctrl+End** go to the start and end of the file (Cmd on a Mac).
   - What you type is saved into the document about half a second after you stop typing. That way, scripts and Claude see the same text.
-- **Find bar** (Ctrl+F): **<** and **>** step through the matches (or **F3** and **Shift+F3**). **Aa** matches case and **Word** matches whole words. In Advanced mode, **.\*** turns on regular expressions. **Replace** replaces on the current line, and **Replace all** replaces everywhere in the file.
+- **Find bar** (Ctrl+F): **<** and **>** step through the matches (or **F3** and **Shift+F3**). **Aa** matches case and **Word** matches whole words. In the advanced view, **.\*** turns on regular expressions. **Replace** replaces on the current line, and **Replace all** replaces everywhere in the file.
 - **Bottom**: the **Output** tab shows what the program or build printed.
   - While a program is running, an input box under the output sends it what you type, and **Stop** ends it.
   - The **Problems** tab lists errors and warnings. Click one to open the file at that line.
@@ -292,7 +292,7 @@ The git commands use the `git` installed on your computer:
 | `code.git_log` | history (`count=`, `file=`) |
 | `code.git_branches`, `code.git_switch` | list, switch to or create (`create=true`) a branch |
 
-In the window, the **Changes** section shows every changed file with a tick box. Ticking it stages the file. Click a file name to see its diff in the output area. Type a message and press **Commit**. With nothing ticked, the button reads **Commit all changes**. Below that are the last 15 commits. In Advanced mode there is also a branch picker and **Create branch**. A folder that isn't tracked yet gets a **Start tracking changes (git init)** button.
+In the window, the **Changes** section shows every changed file with a tick box. Ticking it stages the file. Click a file name to see its diff in the output area. Type a message and press **Commit**. With nothing ticked, the button reads **Commit all changes**. Below that are the last 15 commits. In the advanced view there is also a branch picker and **Create branch**. A folder that isn't tracked yet gets a **Start tracking changes (git init)** button.
 
 Pushing and pulling are left to your usual git tools, because they need the network and your sign-in.
 

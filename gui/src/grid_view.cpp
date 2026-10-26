@@ -26,24 +26,6 @@ std::string columnName(int col) {
 
 std::string cellName(int row, int col) { return columnName(col) + std::to_string(row + 1); }
 
-void appendUtf8(std::string& out, unsigned c) {
-    if (c < 0x80) {
-        out += static_cast<char>(c);
-    } else if (c < 0x800) {
-        out += static_cast<char>(0xC0 | (c >> 6));
-        out += static_cast<char>(0x80 | (c & 0x3F));
-    } else if (c < 0x10000) {
-        out += static_cast<char>(0xE0 | (c >> 12));
-        out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
-        out += static_cast<char>(0x80 | (c & 0x3F));
-    } else {
-        out += static_cast<char>(0xF0 | (c >> 18));
-        out += static_cast<char>(0x80 | ((c >> 12) & 0x3F));
-        out += static_cast<char>(0x80 | ((c >> 6) & 0x3F));
-        out += static_cast<char>(0x80 | (c & 0x3F));
-    }
-}
-
 int caretToEnd(ImGuiInputTextCallbackData* data) {
     auto* st = static_cast<GridState*>(data->UserData);
     if (st && st->caretToEnd) {
@@ -312,6 +294,7 @@ void Shell::gridView(const CellGrid& layout) {
     auto startEdit = [&](std::string initial, bool typed) {
         st.editing = true;
         st.focusEdit = true;
+        ++st.editCount;
         st.caretToEnd = true;
         if (typed) {
             st.buffer = std::move(initial);
@@ -354,7 +337,7 @@ void Shell::gridView(const CellGrid& layout) {
         const bool tab = ImGui::IsKeyPressed(ImGuiKey_Tab, false);
         if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
             st.editing = false;
-        } else if ((enter || tab) && !st.focusEdit) {
+        } else if ((enter || tab) && (!st.focusEdit || !st.buffer.empty())) {  // fast typists press Enter before the box is up
             commitCell(layout, st.sheet, st.row, st.col, st.buffer);
             st.editing = false;
             if (enter) move(io.KeyShift ? -1 : 1, 0);
@@ -375,7 +358,9 @@ void Shell::gridView(const CellGrid& layout) {
                 st.caretToEnd = true;
                 ImGui::SetKeyboardFocusHere();
             }
+            ImGui::PushID(st.editCount);
             ImGui::InputText("##cell", &st.buffer, ImGuiInputTextFlags_CallbackAlways, caretToEnd, &st);
+            ImGui::PopID();
             if (ImGui::IsItemActive()) st.focusEdit = false;
             if (ImGui::IsItemDeactivated() && !st.focusEdit) {  // clicked away: keep what was typed
                 commitCell(layout, st.sheet, st.row, st.col, st.buffer);

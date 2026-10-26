@@ -329,6 +329,8 @@ std::vector<StyleClass> styleClasses(const Layer& layer);
 
 // The embedded Natural Earth 110m countries (public domain): name, iso_a3, continent, pop_est.
 const std::vector<Feature>& countries();
+// The embedded Natural Earth 1:50m populated places, biggest first: name, country, kind (capital/city), pop.
+const std::vector<Feature>& places();
 
 // ---- files (io.cpp) -------------------------------------------------------------------
 

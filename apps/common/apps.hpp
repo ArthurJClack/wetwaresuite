@@ -12,7 +12,12 @@
 
 namespace wetwaresuite::apps {
 
-inline constexpr const char* kVersion = "0.7.0";
+// set by CMake (WETWARESUITE_VERSION); release builds get the release's version
+#ifdef WETWARESUITE_VERSION
+inline constexpr const char* kVersion = WETWARESUITE_VERSION;
+#else
+inline constexpr const char* kVersion = "0.0.0";
+#endif
 
 struct App {
     std::string id;       // "image"

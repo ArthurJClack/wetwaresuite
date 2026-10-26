@@ -1,7 +1,9 @@
 // The cut tool: the model and its JSON, export planning, the basic commands,
 // MCP, and real exports when ffmpeg is installed. Pixels, sound and the editing
 // tools are in test_render.cpp and test_edits.cpp.
+#include <chrono>
 #include <fstream>
+#include <thread>
 
 #include "support.hpp"
 #include "wetwaresuite/core/process.hpp"
@@ -239,7 +241,8 @@ void testPlan() {
     rq.end = -1;
 
     // presets
-    CHECK(findPreset("shorts") && findPreset("shorts")->name == "vertical" && findPreset("4k")->width == 3840 && !findPreset("nope"));
+    CHECK(findPreset("shorts") && findPreset("shorts")->name == "youtube_shorts" && findPreset("4k")->width == 3840 && !findPreset("nope"));
+    CHECK(findPreset("Reels")->name == "instagram_reels" && findPreset("twitter")->name == "x" && findPreset("9:16")->name == "vertical");
     CHECK(presets().size() >= 8);
     rq.preset = "vertical";
     plan = planExport(tl, rq, true);
@@ -253,6 +256,43 @@ void testPlan() {
     CHECK(after(plan.args, "-c:v") == "prores_ks" && after(plan.args, "-c:a") == "pcm_s16le");
     rq.preset = "nope";
     CHECK(throws([&] { planExport(tl, rq, true); }, "preset"));
+
+    // platform limits: length, frame rate and file size
+    rq.output = "/out/x.mp4";
+    rq.preset = "discord";
+    plan = planExport(tl, rq, true);  // 8 s fits 10 MB easily: full 720p, capped bitrate
+    CHECK(plan.width == 1280 && plan.height == 720 && near(plan.maxBytes, 10e6) && plan.videoKbps == 9072);
+    CHECK(after(plan.args, "-maxrate") == "9072k" && after(plan.args, "-b:a") == "128k");
+    Timeline longer = tl;
+    longer.track("v1")->clips[1].out = 296;  // 5 minutes
+    plan = planExport(longer, rq, true);
+    CHECK(plan.width == 640 && plan.height == 360 && after(plan.args, "-maxrate") == "181k" && after(plan.args, "-b:a") == "64k");
+    rq.shrink = 0.5;  // a retry after missing the limit
+    CHECK(throws([&] { planExport(longer, rq, true); }, "can't fit"));
+    rq.shrink = 1;
+    longer.track("v1")->clips[1].out = 1000;
+    CHECK(throws([&] { planExport(longer, rq, true); }, "can't fit"));
+    rq.preset = "tiktok";
+    longer.track("v1")->clips[1].out = 700;
+    CHECK(throws([&] { planExport(longer, rq, true); }, "up to 10:00"));
+    rq.end = 590;  // a part that fits
+    CHECK(planExport(longer, rq, true).height == 1920);
+    rq.end = -1;
+    tl.settings.fps = 60;
+    rq.preset = "x";
+    CHECK(near(planExport(tl, rq, true).fps, 40));
+    rq.preset = "youtube_shorts";
+    CHECK(near(planExport(tl, rq, true).fps, 60));
+    tl.settings.fps = 30;
+    rq.output = "/out/a.gif";
+    rq.preset = "gif_discord";
+    plan = planExport(tl, rq, true);
+    CHECK(plan.width == 480 && near(plan.fps, 15) && near(plan.maxBytes, 10e6) && plan.videoKbps == 0);
+    rq.shrink = 0.5;
+    plan = planExport(tl, rq, true);
+    CHECK(plan.width == 240 && near(plan.fps, 11));
+    rq.shrink = 1;
+    CHECK(presetLimits(*findPreset("tiktok")) == "up to 10:00, 287 MB, 60 fps" && presetLimits(*findPreset("prores")).empty());
     rq.preset.clear();
 
     // gif, webm, sound only
@@ -372,7 +412,8 @@ void testCommands() {
     // presets list
     r = run(s, "cut.presets");
     CHECK(r.ok && contains(r.message, "youtube_1080p") && contains(text(r, "presets"), "vertical"));
-    fs::remove_all(dir);
+    std::error_code ec;
+    fs::remove_all(dir, ec);  // windows: a cached decoder may still hold a source open
 }
 
 // Real exports, only when ffmpeg is installed.
@@ -407,6 +448,20 @@ void testWithFfmpeg() {
     auto tl = s.workspace().getAs<Timeline>("cut1");
     CHECK(tl->track("a1") && tl->track("a1")->clips.size() == 2 && !tl->findClip("c1")->ownSound && tl->findClip("c1")->link == tl->findClip("c2")->link);
     CHECK(!run(s, "cut.add_clip doc=cut1 path=" + q(a) + " out=9").ok);  // past the end of the source
+
+    // scrubbing: quick frames (from small copies read in the background) that look like the exact ones
+    {
+        auto player = tl->player();
+        int w = 0, h = 0, ew = 0, eh = 0;
+        std::vector<std::uint8_t> quick, exact;
+        CHECK(player->scrub(1.0, 160, w, h, quick) && w == 160 && h == 120);
+        std::this_thread::sleep_for(std::chrono::seconds(2));  // the scrub cache fills (keyframes, then 10 a second)
+        CHECK(player->scrub(1.0, 160, w, h, quick) && player->frame(1.0, 160, ew, eh, exact) && w == ew && h == eh);
+        double diff = 0;
+        for (std::size_t i = 0; i < quick.size() && i < exact.size(); ++i) diff += std::abs(quick[i] - exact[i]);
+        CHECK(quick.size() == exact.size() && diff / static_cast<double>(quick.size()) < 12);
+        CHECK(player->scrub(2.97, 160, w, h, quick) && w == 160);  // past the last small copy: the nearest one
+    }
     r = run(s, "cut.transition doc=cut1 clip=c3 type=crossfade duration=0.5 preview=true");
     CHECK(r.ok && r.attachments.size() == 1 && r.attachments[0].mime == "image/png");
     CHECK(near(tl->findClip("c3")->start, 1.5) && near(tl->duration(), 3.5));
@@ -468,7 +523,8 @@ void testWithFfmpeg() {
     CHECK(r.ok && text(r, "has_audio") == "false");
     r = run(s, "cut.subtitles input=" + q(a) + " subtitles=" + q(srt) + " output=" + q(dir / "subs.mp4") + " quality=draft");
     CHECK(r.ok && near(num(r, "duration"), 3, 0.1));
-    fs::remove_all(dir);
+    std::error_code ec;
+    fs::remove_all(dir, ec);  // windows: a cached decoder may still hold a source open
 }
 
 void testMcp() {

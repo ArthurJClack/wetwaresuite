@@ -61,6 +61,7 @@ struct FrameContext::Impl {
     std::map<std::string, std::unique_ptr<VideoReader>> readers;
     std::map<std::string, long> readerUse;
     long useCounter = 0;
+    bool approximate = false;  // scrubbing: a nearby frame from the scrub cache beats waiting for the exact one
     std::map<std::string, std::shared_ptr<const TitleImage>> titles;
     std::map<std::string, std::shared_ptr<const Lut3d>> luts;
 
@@ -74,5 +75,10 @@ struct FrameContext::Impl {
 FrameContext& previewContext();
 // Forgets the decoded sound of every source (part of clearCaches).
 void clearSoundCache();
+// Forgets the thumbnails and waveforms read for the timeline (part of clearCaches).
+void clearStrips();
+// The scrub cache's frame of a video source nearest to sourceTime, resized to width x height.
+// False while nothing has been read yet (the first ask starts reading it in the background).
+bool scrubFrame(const std::string& path, double sourceTime, int width, int height, raster::Image& out);
 
 }  // namespace wetwaresuite::cut

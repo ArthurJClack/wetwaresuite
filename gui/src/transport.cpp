@@ -95,14 +95,27 @@ void Shell::startPlaying(double from) {
 void Shell::togglePlay() {
     Transport& t = transport_;
     const bool ours = t.doc == currentDoc_ && t.source == currentDoc_;
+    // a timeline has its own playhead: play starts there, and pausing leaves it where the picture stopped
+    TimelineLayout layout;
+    auto doc = session_.workspace().get(currentDoc_);
+    const bool ownPlayhead = doc && doc->timeline(layout) && layout.cursor >= 0;
     if (ours && t.playing) {
         session_.run(t.tool + ".pause", {});
+        pollTransport();
+        if (ownPlayhead) runTimelineEdit(layout, {TimelineEditKind::Cursor, {}, {}, {}, 0, 0, t.position});
     } else if (ours && t.paused) {
         session_.run(t.tool + ".resume", {});
     } else {
         // start from where the playhead was left, unless it ran to the end
         const bool atEnd = !ours || t.length <= 0 || t.position >= t.end - 0.01;
-        startPlaying(atEnd ? t.cue : t.position);
+        double from = atEnd ? t.cue : t.position;
+        if (atEnd && ownPlayhead) {
+            double end = 0;
+            for (const auto& tr : layout.tracks)
+                for (const auto& c : tr.clips) end = std::max(end, c.start + c.length);
+            from = layout.cursor < end - 0.05 ? layout.cursor : 0.0;  // from the top once it reached the end
+        }
+        startPlaying(from);
     }
     pollTransport();
 }

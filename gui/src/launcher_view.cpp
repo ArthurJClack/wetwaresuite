@@ -69,6 +69,13 @@ void Shell::launcherFrame() {
     if (accentButton("Open a file...", {unit * 10, unit * 2.2f})) showOpenDialog();
     ImGui::SetItemTooltip("Opens it in the app made for it (Ctrl+O). You can also drop files on this window.");
     ImGui::SameLine();
+    if (ImGui::Button("Updates", {0, unit * 2.2f})) ImGui::OpenPopup("updates");
+    ImGui::SetItemTooltip("Whether wetwaresuite updates by itself, and checking now");
+    if (ImGui::BeginPopup("updates")) {
+        updatesSettings();
+        ImGui::EndPopup();
+    }
+    ImGui::SameLine();
     ImGui::AlignTextToFramePadding();
     if (!launcherNote_.empty()) {
         if (launcherNoteOk_) ImGui::TextUnformatted(launcherNote_.c_str());

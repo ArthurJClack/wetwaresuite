@@ -236,7 +236,7 @@ Form buildForm(const CommandInfo& info, const std::vector<std::string>& docs, co
         f.label = labelFor(spec.name);
         f.help = capitalise(spec.description);
         f.required = spec.required;
-        f.hidden = spec.name == "preview" && spec.type == ParamType::Bool;
+        f.hidden = (spec.name == "preview" || spec.name == "background") && spec.type == ParamType::Bool;
         double lo, hi;
         if (parseRange(spec.description, lo, hi)) {
             f.min = lo;
@@ -263,10 +263,15 @@ Form buildForm(const CommandInfo& info, const std::vector<std::string>& docs, co
             f.set = true;
             const std::string name = lower(spec.name);
             if (f.kind == FieldKind::Integer || f.kind == FieldKind::Number) {
-                // pixel art starts small; pictures and videos start at full HD
-                const bool small = info.id.find("sprite") != std::string::npos;
-                if (name == "width") f.number = small ? 32 : 1920;
-                else if (name == "height") f.number = small ? 32 : 1080;
+                // pixel art starts small; new pictures, videos and renders start at full HD;
+                // a shape drawn on a page (a rectangle, a frame) starts a size you can see whole
+                const std::string& id = info.id;
+                const bool small = id.find("sprite") != std::string::npos;
+                const bool page = id.find("new") != std::string::npos || id.find("resize") != std::string::npos ||
+                                  id.find("canvas") != std::string::npos || id.find("render") != std::string::npos ||
+                                  id.find("export") != std::string::npos || id.find("capture") != std::string::npos;
+                if (name == "width") f.number = small ? 32 : page ? 1920 : 200;
+                else if (name == "height") f.number = small ? 32 : page ? 1080 : 120;
                 else if (f.min) f.number = std::max(0.0, *f.min);
             } else if (f.kind == FieldKind::Choice) {
                 f.text = spec.choices.front();
@@ -387,8 +392,11 @@ std::vector<std::string> beginnerCommands(const std::string& tool, const std::ve
             if (suffixOf(c->id) == v) take(c);
         }
         for (const auto* c : mine) {
+            const std::string verb = suffixOf(c->id);
+            // export_status, export_cancel: watching a job isn't a first thing to do
+            if (endsWith(verb, "_status") || endsWith(verb, "_cancel")) continue;
             // open_url, or a family's own: office.doc_open, forge.sprite_new
-            if (startsWith(suffixOf(c->id), v + "_") || endsWith(suffixOf(c->id), "_" + v)) {
+            if (startsWith(verb, v + "_") || endsWith(verb, "_" + v)) {
                 take(c);
                 break;  // one variant per verb keeps the list short
             }

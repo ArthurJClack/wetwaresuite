@@ -308,6 +308,7 @@ bool FrameContext::Impl::video(const std::string& path, double sourceTime, int w
         std::lock_guard<std::mutex> g(hookLock());
         if (hook()) return hook()(path, sourceTime, width, height, out);
     }
+    if (approximate && scrubFrame(path, sourceTime, width, height, out)) return true;
     const std::string key = path + "|" + std::to_string(width) + "x" + std::to_string(height);
     auto it = readers.find(key);
     if (it == readers.end()) {
@@ -371,6 +372,7 @@ void clearCaches() {
     impl.readers.clear();
     impl.readerUse.clear();
     clearSoundCache();
+    clearStrips();
 }
 
 namespace {

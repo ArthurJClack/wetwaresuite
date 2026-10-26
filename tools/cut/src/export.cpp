@@ -43,11 +43,36 @@ std::string filter(const std::string& name, const std::vector<std::pair<std::str
 }
 
 const std::vector<Preset>& presets() {
+    // the platforms' limits as of 2026, kept a little under the real ones so uploads don't bounce
+    auto platform = [](std::string name, std::string desc, std::string ext, int w, int h, std::string reframe, std::string vcodec,
+                       std::string acodec, int crf, int fps, double maxSeconds, double maxMB, int maxFps) {
+        Preset p{std::move(name), std::move(desc), std::move(ext), w, h, std::move(reframe), std::move(vcodec), std::move(acodec), crf,
+                 vcodec == "h264" ? "veryfast" : "", fps};
+        p.maxSeconds = maxSeconds;
+        p.maxMB = maxMB;
+        p.maxFps = maxFps;
+        return p;
+    };
     static const std::vector<Preset> p = {
         {"youtube_1080p", "YouTube / Vimeo 1080p: H.264 + AAC, 1920x1080", "mp4", 1920, 1080, "fit", "h264", "aac", 18, "veryfast", 0},
         {"youtube_4k", "YouTube 4K: H.264 + AAC, 3840x2160", "mp4", 3840, 2160, "fit", "h264", "aac", 18, "veryfast", 0},
         {"youtube_720p", "720p for quick uploads: H.264 + AAC, 1280x720", "mp4", 1280, 720, "fit", "h264", "aac", 20, "veryfast", 0},
-        {"vertical", "Shorts / Reels / TikTok: 1080x1920 (9:16), a landscape edit is cropped to fill", "mp4", 1080, 1920, "fill", "h264", "aac", 20,
+        platform("youtube_shorts", "YouTube Shorts: 1080x1920 (9:16), a landscape edit is cropped to fill", "mp4", 1080, 1920, "fill", "h264", "aac",
+                 20, 0, 180, 0, 60),
+        platform("tiktok", "TikTok: 1080x1920 (9:16), cropped to fill", "mp4", 1080, 1920, "fill", "h264", "aac", 20, 0, 600, 287, 60),
+        platform("instagram_reels", "Instagram Reels: 1080x1920 (9:16), cropped to fill", "mp4", 1080, 1920, "fill", "h264", "aac", 20, 0, 180, 0, 30),
+        platform("instagram_story", "Instagram / Facebook Stories: 1080x1920 (9:16), cropped to fill", "mp4", 1080, 1920, "fill", "h264", "aac", 20, 0,
+                 60, 0, 30),
+        platform("instagram_feed", "Instagram feed post: 1080x1350 (4:5), cropped to fill", "mp4", 1080, 1350, "fill", "h264", "aac", 20, 0, 3600, 0,
+                 30),
+        platform("facebook", "Facebook feed: 1080x1080 square, cropped to fill", "mp4", 1080, 1080, "fill", "h264", "aac", 20, 0, 14400, 0, 30),
+        platform("x", "X (Twitter): 1280x720 H.264 + AAC", "mp4", 1280, 720, "fit", "h264", "aac", 21, 0, 140, 512, 40),
+        platform("linkedin", "LinkedIn: 1920x1080 H.264 + AAC", "mp4", 1920, 1080, "fit", "h264", "aac", 20, 0, 900, 5000, 30),
+        platform("discord", "Discord without Nitro: 1280x720, squeezed under the 10 MB upload limit", "mp4", 1280, 720, "fit", "h264", "aac", 23, 0, 0,
+                 10, 30),
+        platform("whatsapp", "WhatsApp: 1280x720, squeezed under the 16 MB limit for videos", "mp4", 1280, 720, "fit", "h264", "aac", 23, 0, 0, 16, 30),
+        platform("email", "Email attachment: 1280x720, under 25 MB (Gmail, Outlook)", "mp4", 1280, 720, "fit", "h264", "aac", 23, 0, 0, 25, 30),
+        {"vertical", "Any 9:16 phone video: 1080x1920, a landscape edit is cropped to fill", "mp4", 1080, 1920, "fill", "h264", "aac", 20,
          "veryfast", 0},
         {"square", "Square 1080x1080 for feeds, cropped to fill", "mp4", 1080, 1080, "fill", "h264", "aac", 20, "veryfast", 0},
         {"high_quality", "Master copy: H.264 at near-lossless quality (big files), the timeline's size", "mp4", 0, 0, "fit", "h264", "aac", 12,
@@ -55,6 +80,10 @@ const std::vector<Preset>& presets() {
         {"prores", "ProRes 422 HQ in .mov with uncompressed sound, for handing to other editors", "mov", 0, 0, "fit", "prores", "pcm", 0, "", 0},
         {"webm", "WebM for the web: VP9 + Opus", "webm", 0, 0, "fit", "vp9", "opus", 32, "", 0},
         {"gif", "Animated GIF, 480 px wide at 15 fps, no sound", "gif", 480, 0, "fit", "gif", "none", 0, "", 15},
+        platform("gif_discord", "GIF for Discord, Slack or GitHub: 480 px wide, made smaller until it's under 10 MB", "gif", 480, 0, "fit", "gif",
+                 "none", 0, 15, 0, 10, 0),
+        platform("gif_x", "GIF for X (Twitter): 640 px wide, under 15 MB", "gif", 640, 0, "fit", "gif", "none", 0, 15, 0, 15, 0),
+        platform("gif_small", "Small reaction GIF: 320 px wide at 12 fps, under 2 MB", "gif", 320, 0, "fit", "gif", "none", 0, 12, 0, 2, 0),
         {"draft", "Quick review copy: 640 px wide, fast and small", "mp4", 640, 0, "fit", "h264", "aac", 30, "ultrafast", 0},
         {"audio_wav", "Sound only: 16-bit WAV (no ffmpeg needed)", "wav", 0, 0, "fit", "none", "pcm", 0, "", 0},
         {"audio_mp3", "Sound only: MP3", "mp3", 0, 0, "fit", "none", "mp3", 0, "", 0},
@@ -66,7 +95,11 @@ const std::vector<Preset>& presets() {
 const Preset* findPreset(const std::string& name) {
     std::string n;
     for (char c : name) n += c == '-' || c == ' ' ? '_' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    if (n == "shorts" || n == "reels" || n == "tiktok" || n == "9:16" || n == "vertical_9x16") n = "vertical";
+    if (n == "shorts" || n == "youtube_short") n = "youtube_shorts";
+    if (n == "reels" || n == "instagram" || n == "ig" || n == "ig_reels") n = "instagram_reels";
+    if (n == "story" || n == "stories" || n == "instagram_stories") n = "instagram_story";
+    if (n == "twitter" || n == "x_twitter") n = "x";
+    if (n == "9:16" || n == "vertical_9x16") n = "vertical";
     if (n == "youtube" || n == "1080p") n = "youtube_1080p";
     if (n == "4k" || n == "uhd") n = "youtube_4k";
     if (n == "master") n = "high_quality";
@@ -74,6 +107,19 @@ const Preset* findPreset(const std::string& name) {
         if (p.name == n) return &p;
     }
     return nullptr;
+}
+
+std::string presetLimits(const Preset& p) {
+    std::string out;
+    auto add = [&out](const std::string& s) { out += (out.empty() ? "" : ", ") + s; };
+    if (p.maxSeconds > 0) {
+        char buf[32];
+        std::snprintf(buf, sizeof buf, "up to %d:%02d", static_cast<int>(p.maxSeconds) / 60, static_cast<int>(p.maxSeconds) % 60);
+        add(buf);
+    }
+    if (p.maxMB > 0) add(std::to_string(static_cast<int>(p.maxMB)) + " MB");
+    if (p.maxFps > 0) add(std::to_string(p.maxFps) + " fps");
+    return out;
 }
 
 namespace {
@@ -110,6 +156,13 @@ int even(double v) {
 bool isVideoExt(const std::string& e) { return e == "mp4" || e == "mov" || e == "mkv" || e == "m4v" || e == "webm" || e == "gif"; }
 bool isAudioExt(const std::string& e) {
     return e == "mp3" || e == "wav" || e == "m4a" || e == "aac" || e == "flac" || e == "ogg" || e == "opus";
+}
+
+std::string clockOf(double seconds) {
+    const int s = static_cast<int>(std::ceil(seconds - 1e-6));
+    char buf[32];
+    std::snprintf(buf, sizeof buf, "%d:%02d", s / 60, s % 60);
+    return buf;
 }
 
 std::vector<std::string> head() { return {"ffmpeg", "-hide_banner", "-nostats", "-loglevel", "error", "-y"}; }
@@ -216,6 +269,10 @@ EncodePlan planExport(const Timeline& tl, const ExportRequest& rq, bool hasSound
     const double end = rq.end < 0 ? total : std::min(rq.end, total);
     if (end <= plan.start + 1e-3) throw std::runtime_error("the range to export is empty (start " + t(plan.start) + "s, end " + t(end) + "s)");
     plan.duration = end - plan.start;
+    if (preset && preset->maxSeconds > 0 && plan.duration > preset->maxSeconds + 0.05) {
+        throw std::runtime_error(preset->name + " takes videos up to " + clockOf(preset->maxSeconds) + " and this is " + clockOf(plan.duration) +
+                                 "; export a part (start/end, or range=in_out) or trim the edit");
+    }
     const bool whole = plan.start < kEps && std::abs(end - total) < kEps;
 
     // stream copy: cuts of identical sources, no re-encoding
@@ -283,6 +340,28 @@ EncodePlan planExport(const Timeline& tl, const ExportRequest& rq, bool hasSound
     } else if (w <= 0) {
         w = static_cast<int>(std::lround(h * TW / TH));
     }
+    if (vcodec == "gif" && rq.shrink < 1) w = static_cast<int>(w * rq.shrink), h = static_cast<int>(h * rq.shrink);
+    // a file size limit: the bitrate that fits it, and a smaller picture when that bitrate is low
+    const double maxBytes = preset && preset->maxMB > 0 ? preset->maxMB * 1e6 : 0;
+    int audioKbps = 0;
+    if (maxBytes > 0 && vcodec == "h264") {
+        const double budget = maxBytes * 8 / 1000 * 0.92 * std::clamp(rq.shrink, 0.1, 1.0) / plan.duration;  // kbit/s for everything
+        audioKbps = hasSound ? (budget < 700 ? 64 : 128) : 0;
+        plan.videoKbps = static_cast<int>(budget) - audioKbps;
+        if (plan.videoKbps < 120) {
+            throw std::runtime_error(preset->name + " allows " + std::to_string(static_cast<int>(preset->maxMB)) + " MB, and " + clockOf(plan.duration) +
+                                     " of video can't fit in that; export a shorter part (about " + clockOf(maxBytes * 8 / 1000 * 0.92 * std::clamp(rq.shrink, 0.1, 1.0) / 300) +
+                                     " fits)");
+        }
+        const int longSide = plan.videoKbps < 500 ? 640 : plan.videoKbps < 1000 ? 854 : plan.videoKbps < 2500 ? 1280 : 1920;
+        const double ow = w > 0 ? w : TW, oh = h > 0 ? h : TH;
+        if (std::max(ow, oh) > longSide) {
+            const double k = longSide / std::max(ow, oh);
+            w = static_cast<int>(ow * k);
+            h = static_cast<int>(oh * k);
+        }
+    }
+    plan.maxBytes = maxBytes;
     plan.width = even(w);
     plan.height = even(h);
     plan.reframe = !rq.reframe.empty() ? rq.reframe : preset ? preset->reframe : "fit";
@@ -290,6 +369,8 @@ EncodePlan planExport(const Timeline& tl, const ExportRequest& rq, bool hasSound
     plan.fps = tl.settings.fps;
     if (vcodec == "gif") plan.fps = preset && preset->fps > 0 ? preset->fps : std::clamp(rq.gifFps, 1, 50);
     else if (preset && preset->fps > 0) plan.fps = preset->fps;
+    if (preset && preset->maxFps > 0) plan.fps = std::min(plan.fps, static_cast<double>(preset->maxFps));
+    if (vcodec == "gif" && rq.shrink < 1) plan.fps = std::max(8.0, std::round(plan.fps * std::sqrt(rq.shrink)));
     plan.frames = plan.video ? std::max(1L, static_cast<long>(std::ceil(plan.duration * plan.fps - 1e-6))) : 0;
 
     plan.args = head();
@@ -316,11 +397,14 @@ EncodePlan planExport(const Timeline& tl, const ExportRequest& rq, bool hasSound
             const int crf = preset ? preset->crf : draft ? 28 : best ? 18 : 22;
             const std::string speed = preset && !preset->speed.empty() ? preset->speed : draft ? "ultrafast" : best ? "slow" : "veryfast";
             plan.args.insert(plan.args.end(), {"-c:v", "libx264", "-preset", speed, "-crf", std::to_string(crf), "-pix_fmt", "yuv420p"});
+            if (plan.videoKbps > 0) {
+                plan.args.insert(plan.args.end(), {"-maxrate", std::to_string(plan.videoKbps) + "k", "-bufsize", std::to_string(plan.videoKbps) + "k"});
+            }
         }
     }
     if (plan.audio) {
         plan.args.insert(plan.args.end(), {"-map", std::to_string(audioInput) + ":a"});
-        const std::string rate = draft ? "128k" : best ? "256k" : "192k";
+        const std::string rate = audioKbps > 0 ? std::to_string(audioKbps) + "k" : draft ? "128k" : best ? "256k" : "192k";
         if (acodec == "aac") plan.args.insert(plan.args.end(), {"-c:a", "aac", "-b:a", rate});
         else if (acodec == "opus") plan.args.insert(plan.args.end(), {"-c:a", "libopus", "-b:a", rate});
         else if (acodec == "mp3") plan.args.insert(plan.args.end(), {"-c:a", "libmp3lame", "-q:a", draft ? "6" : best ? "0" : "2"});

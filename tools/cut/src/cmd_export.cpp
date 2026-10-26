@@ -3,7 +3,12 @@
 // piped to ffmpeg with the mixed sound, stream copy for plain cuts, or WAV
 // written directly.
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <cstdlib>
+#include <map>
+#include <mutex>
+#include <thread>
 
 #include "internal.hpp"
 #include "media.hpp"
@@ -54,9 +59,43 @@ Result writeFrame(const Timeline& tl, double at, const fs::path& output, int wid
         .with("height", static_cast<std::int64_t>(img.height())).with("bytes", static_cast<std::int64_t>(fs::file_size(output, ec)));
 }
 
+// Exports running in the background (cut.render background=true), watched with cut.export_status.
+struct Job {
+    std::atomic<double> progress{0};
+    std::atomic<bool> cancel{false}, done{false};
+    std::mutex lock;
+    Result result;  // set when done
+    std::string output;
+};
+
+std::mutex& jobsLock() {
+    static std::mutex m;
+    return m;
+}
+std::map<std::string, std::shared_ptr<Job>>& jobs() {
+    static auto* j = new std::map<std::string, std::shared_ptr<Job>>;  // never destroyed: jobs may outlive main
+    return *j;
+}
+
+std::shared_ptr<Job> findJob(const Params& p) {
+    const std::string id = stringParam(p, "job");
+    std::lock_guard<std::mutex> g(jobsLock());
+    if (id.empty()) {  // the latest one
+        std::shared_ptr<Job> last;
+        int best = 0;
+        for (const auto& [k, j] : jobs()) {
+            const int n = std::atoi(k.c_str() + 6);
+            if (n > best) best = n, last = j;
+        }
+        return last;
+    }
+    auto it = jobs().find(id);
+    return it == jobs().end() ? nullptr : it->second;
+}
+
 }  // namespace
 
-Result exportTimeline(const Timeline& tl, const fs::path& output, const Params& p, ExportRequest rq) {
+Result exportTimeline(const Timeline& tl, const fs::path& output, const Params& p, ExportRequest rq, const std::function<bool(double)>& progress) {
     if (std::string m = missingSource(tl); !m.empty()) return Result::failure(m);
     const std::string ext = extOf(output);
     if (std::string err = checkOutput(output, p); !err.empty()) return Result::failure(err);
@@ -86,21 +125,23 @@ Result exportTimeline(const Timeline& tl, const fs::path& output, const Params& 
     rq.listPath = (tmp.path() / "list.txt").string();
     rq.audioPath = (tmp.path() / "mix.wav").string();
     EncodePlan plan;
-    try {
-        plan = planExport(*src, rq, hasSound(*src));
-    } catch (const std::exception& e) {
-        return Result::failure(e.what());
-    }
-    if (plan.streamCopy) {
-        if (!writeFile(rq.listPath, plan.concatList)) return Result::failure("can't write a temporary file");
-        if (std::string err = runFfmpeg(plan.args); !err.empty()) return Result::failure(err);
-    } else {
-        if (plan.audio) {
+    std::uintmax_t size = 0;
+    // a platform's file size limit can take a few tries: each one with less bitrate (gifs: smaller and fewer frames)
+    for (int attempt = 0;; ++attempt) {
+        try {
+            plan = planExport(*src, rq, hasSound(*src));
+        } catch (const std::exception& e) {
+            return Result::failure(e.what());
+        }
+        if (attempt == 0 && plan.audio) {
             audio::SaveOptions o;
             o.format = audio::SampleFormat::Float32;
             audio::save(mixAudio(*src, plan.start, plan.start + plan.duration), rq.audioPath, o);
         }
-        if (!plan.video) {
+        if (plan.streamCopy) {
+            if (!writeFile(rq.listPath, plan.concatList)) return Result::failure("can't write a temporary file");
+            if (std::string err = runFfmpeg(plan.args); !err.empty()) return Result::failure(err);
+        } else if (!plan.video) {
             if (std::string err = runFfmpeg(plan.args); !err.empty()) return Result::failure(err);
         } else {
             Stream enc;
@@ -130,15 +171,32 @@ Result exportTimeline(const Timeline& tl, const fs::path& output, const Params& 
                     img = std::move(fixed);
                 }
                 ok = enc.write(img.data(), bytes);
+                if (progress && !progress((attempt + static_cast<double>(i + 1) / plan.frames) / (attempt + 1))) {
+                    enc.stop();
+                    fs::remove(output, ec);
+                    return Result::failure("export cancelled");
+                }
             }
             enc.closeInput();
             const int code = enc.wait();
             if (!ok || code != 0) return Result::failure("ffmpeg failed: " + enc.error());
         }
+        size = fs::file_size(output, ec);
+        if (plan.maxBytes <= 0 || static_cast<double>(size) <= plan.maxBytes) break;
+        if (attempt == 3) {
+            fs::remove(output, ec);
+            return Result::failure("couldn't get it under " + num(plan.maxBytes / 1e6) + " MB (the last try was " + num(std::round(size / 1e5) / 10) +
+                                   " MB); export a shorter part");
+        }
+        rq.shrink *= std::clamp(plan.maxBytes / static_cast<double>(size) * 0.9, 0.3, 0.85);
     }
-    Result r = written("exported " + output.string() + (plan.streamCopy ? " by stream copy (no re-encoding)" : ""), output);
+    if (progress) progress(1);
+    Result r = written("exported " + output.string() + (plan.streamCopy ? " by stream copy (no re-encoding)" : "") +
+                           (plan.maxBytes > 0 ? " (" + num(std::round(size / 1e5) / 10) + " MB, under the " + num(plan.maxBytes / 1e6) + " MB limit)" : ""),
+                       output);
     r.with("mode", std::string(plan.streamCopy ? "copy" : "encode"));
-    if (plan.video) r.with("frames", static_cast<std::int64_t>(plan.frames));
+    if (plan.video) r.with("frames", static_cast<std::int64_t>(plan.frames)).with("fps", plan.fps);
+    if (plan.maxBytes > 0) r.with("limit_mb", plan.maxBytes / 1e6);
     return r;
 }
 
@@ -177,14 +235,17 @@ void registerExportCommands(Session& session) {
                 return writeFrame(tl, numberParam(p, "t", tl.cursor), out, static_cast<int>(intParam(p, "width", 0)), boolParam(p, "transparent", false));
             }, false));
 
-    reg.add({"cut.presets", "Export Presets", "List the export presets cut.render takes (preset=...): size, shape, codecs and extension.",
+    reg.add({"cut.presets", "Export Presets",
+             "List the export presets cut.render takes (preset=...): size, shape, codecs, extension and the platform's limits "
+             "(length, file size, frame rate).",
              {}, false, true},
             [](const Params&) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([] {
                     std::string text;
                     std::string names;
                     for (const auto& pr : presets()) {
-                        text += (text.empty() ? "" : "\n") + pr.name + " (." + pr.ext + "): " + pr.description;
+                        const std::string limits = presetLimits(pr);
+                        text += (text.empty() ? "" : "\n") + pr.name + " (." + pr.ext + "): " + pr.description + (limits.empty() ? "" : " [" + limits + "]");
                         names += (names.empty() ? "" : ",") + pr.name;
                     }
                     Result r = Result::success(text);
@@ -196,9 +257,10 @@ void registerExportCommands(Session& session) {
     for (const auto& pr : presets()) presetNames.push_back(pr.name);
     reg.add({"cut.render", "Export",
              "Export the timeline: .mp4/.mov/.mkv (H.264 + AAC), .webm (VP9 + Opus), .gif, sound only (.wav needs no "
-             "ffmpeg; .mp3, .m4a, .flac, .ogg) or one frame (.png/.jpg at `at`). preset picks ready-made settings "
-             "(youtube_1080p, youtube_4k, vertical 9:16 for shorts/reels, square, high_quality, prores, gif, draft, "
-             "audio_*; cut.presets lists them). range=in_out (or start/end) exports a part. Frames come from the "
+             "ffmpeg; .mp3, .m4a, .flac, .ogg) or one frame (.png/.jpg at `at`). preset picks ready-made settings, "
+             "including each platform's size, length and file size limits (tiktok, instagram_reels, youtube_shorts, x, "
+             "discord under 10 MB, whatsapp, email, gif_discord, gif_small, youtube_1080p, prores, draft, audio_*; "
+             "cut.presets lists them with their limits). range=in_out (or start/end) exports a part. Frames come from the "
              "built-in compositor and are encoded by ffmpeg; mode=auto stream-copies when the timeline is only plain "
              "cuts of identical sources (fast, lossless, cuts snap to keyframes).",
              {docParam(), {"output", ParamType::String, "file to write; the extension picks the format", true},
@@ -213,7 +275,9 @@ void registerExportCommands(Session& session) {
               {"at", ParamType::Number, "png/jpg: time of the frame", false, {}, 0.0},
               {"subtitles", ParamType::String, "burn the captions of this .srt/.vtt file into the picture", false},
               {"gif_fps", ParamType::Int, "gif: frames per second", false, {}, std::int64_t{15}},
-              {"gif_width", ParamType::Int, "gif: width in px", false, {}, std::int64_t{480}}, overwriteParam()},
+              {"gif_width", ParamType::Int, "gif: width in px", false, {}, std::int64_t{480}}, overwriteParam(),
+              {"background", ParamType::Bool,
+               "return right away and export in the background; cut.export_status shows how far it got (the window does this)", false, {}, false}},
              false},
             cutCommand(session, [](Timeline& tl, const Params& p) {
                 ExportRequest rq;
@@ -237,8 +301,65 @@ void registerExportCommands(Session& session) {
                 if (out.extension().empty() && !rq.preset.empty()) {
                     if (const Preset* pr = findPreset(rq.preset)) out += "." + pr->ext;
                 }
-                return exportTimeline(tl, out, p, rq);
+                if (!boolParam(p, "background", false)) return exportTimeline(tl, out, p, rq);
+                // a copy of the edit, so it can keep changing while this runs
+                auto job = std::make_shared<Job>();
+                job->output = out.string();
+                std::string id;
+                {
+                    static int counter = 0;
+                    std::lock_guard<std::mutex> g(jobsLock());
+                    id = "export" + std::to_string(++counter);
+                    jobs()[id] = job;
+                }
+                std::thread([job, copy = std::make_shared<Timeline>(tl), out, p, rq] {
+                    Result r;
+                    try {
+                        r = exportTimeline(*copy, out, p, rq, [&job](double f) {
+                            job->progress = f;
+                            return !job->cancel.load();
+                        });
+                    } catch (const std::exception& e) {
+                        r = Result::failure(e.what());
+                    }
+                    std::lock_guard<std::mutex> g(job->lock);
+                    job->result = std::move(r);
+                    job->done = true;
+                }).detach();
+                Result r = Result::success("exporting " + out.string() + " in the background (" + id + "; cut.export_status shows how far it got)", id);
+                return r.with("job", id).with("output", out.string());
             }, false));
+
+    reg.add({"cut.export_status", "Export Progress",
+             "How far a background export (cut.render background=true) got: progress 0..1, and once done its result "
+             "(the file, or why it failed).",
+             {{"job", ParamType::String, "the job id cut.render returned (default the latest)", false}}, false, true},
+            [](const Params& p) -> std::unique_ptr<Action> {
+                return std::make_unique<FunctionAction>([p] {
+                    auto job = findJob(p);
+                    if (!job) return Result::failure("no background export called '" + stringParam(p, "job") + "'");
+                    if (!job->done) {
+                        const double f = job->progress;
+                        Result r = Result::success("exporting " + job->output + ": " + std::to_string(static_cast<int>(f * 100)) + "%");
+                        return r.with("progress", f).with("done", false).with("output", job->output);
+                    }
+                    std::lock_guard<std::mutex> g(job->lock);
+                    Result r = job->result;
+                    return r.with("progress", 1.0).with("done", true);
+                });
+            });
+
+    reg.add({"cut.export_cancel", "Cancel Export", "Stop a background export (cut.render background=true); the half-written file is removed.",
+             {{"job", ParamType::String, "the job id (default the latest)", false}}, false, true},
+            [](const Params& p) -> std::unique_ptr<Action> {
+                return std::make_unique<FunctionAction>([p] {
+                    auto job = findJob(p);
+                    if (!job) return Result::failure("no background export called '" + stringParam(p, "job") + "'");
+                    if (job->done) return Result::success("that export already finished");
+                    job->cancel = true;
+                    return Result::success("cancelling the export of " + job->output);
+                });
+            });
 }
 
 }  // namespace wetwaresuite::cut

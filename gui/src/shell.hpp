@@ -4,12 +4,15 @@
 
 #include <SDL3/SDL.h>
 
+#include <condition_variable>
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "imgui.h"
@@ -89,6 +92,53 @@ struct GameCanvas {
     float color[4] = {0, 0, 0, 1};
     std::vector<std::uint8_t> picture;  // the frame on the canvas, RGBA, for the colour picker
     int pictureW = 0, pictureH = 0;
+};
+
+// A cad sketch open for drawing with the mouse (sketch_view.cpp). Geometry comes from
+// cad.sketch_geometry in sketch units; the view is a centre and pixels per unit.
+struct SketchEdit {
+    enum class Tool { Line, Rect, Circle };
+    std::string doc, sketch;
+    bool active = false;
+    std::uint64_t seen = ~0ull;
+    std::string status, units = "mm";
+    NumberList lines, construction, points, free, profiles;
+    Tool tool = Tool::Line;
+    double cx = 0, cy = 0, ppm = 8;
+    bool fit = true;
+    bool drawing = false;
+    double ax = 0, ay = 0;          // where the shape started
+    double chainX = 0, chainY = 0;  // a line chain's first point: clicking it closes the shape
+    ImVec2 pressAt{0, 0};
+};
+
+// Slides (deck_view.cpp): which slide is shown big, the strip of thumbnails, the part of the
+// slide being typed into and an object being dragged. Boxes are in slide points (x, y, w, h).
+struct DeckView {
+    std::string doc;
+    int slide = 1, slides = 0;
+    double pointsWide = 960;
+    std::uint64_t seen = ~0ull;  // Shell change count the thumbnails were drawn at
+    std::string thumbsFor;
+    std::vector<Texture> thumbs;
+    bool scrollToSlide = false;
+    // hover
+    ImVec2 hoverAt{-1, -1};
+    std::string hoverKind;
+    int hoverObject = 0;
+    ImVec4 hover{0, 0, 0, 0};
+    bool hoverEmpty = false;
+    // press / drag
+    std::string pressKind, pressText;
+    int pressObject = 0;
+    ImVec4 press{0, 0, 0, 0};
+    ImVec2 pressAt{0, 0};
+    bool moving = false;
+    // the part being edited
+    bool editing = false, focus = false;
+    std::string kind, text;
+    int object = 0;
+    ImVec4 box{0, 0, 0, 0};
 };
 
 // A retouch command waiting to run: it runs on the frame after it is queued, so the
@@ -177,6 +227,49 @@ struct Canvas {
     GameCanvas game;
 };
 
+// A timeline's moving picture while it plays (video_play.cpp): frames drawn on a worker
+// thread by the document's FramePlayer, newest request first.
+class VideoPlayback {
+public:
+    VideoPlayback(std::string doc, std::unique_ptr<FramePlayer> player, int maxWidth);
+    ~VideoPlayback();  // stops the worker
+    VideoPlayback(const VideoPlayback&) = delete;
+    VideoPlayback& operator=(const VideoPlayback&) = delete;
+    const std::string& doc() const { return doc_; }
+    // the frame wanted now; fast = a quick, possibly nearby frame (dragging the playhead)
+    void request(double seconds, bool fast = false);
+    // A frame drawn since the last call: true with its pixels.
+    bool take(std::vector<std::uint8_t>& rgba, int& width, int& height);
+    bool pending();  // a frame is wanted or drawn but not taken yet
+
+private:
+    void work();
+    std::string doc_;
+    std::unique_ptr<FramePlayer> player_;
+    int maxWidth_;
+    std::mutex lock_;
+    std::condition_variable wake_;
+    double want_ = -1, drawn_ = -1;
+    bool wantFast_ = false, drawnFast_ = false;
+    bool stop_ = false, fresh_ = false;
+    std::vector<std::uint8_t> rgba_;
+    int width_ = 0, height_ = 0;
+    std::thread worker_;
+};
+
+// Thumbnails and a waveform for one timeline clip, from Document::clipMedia (timeline_view.cpp).
+struct ClipStrip {
+    MediaStrip media;
+    std::vector<Texture> frames;
+};
+
+// An export running in the background (<tool>.render background=true), polled for progress.
+struct ExportJob {
+    std::string tool, id, output;
+    double progress = 0;
+    std::uint64_t polledAt = 0;  // SDL ticks
+};
+
 // The play bar's view of playback (transport.cpp), read back from <tool>.playhead.
 struct Transport {
     std::string tool;  // audio, beats or cut
@@ -242,8 +335,8 @@ struct MapsCanvas {
 struct ToolPanels;  // tool_panels.hpp
 
 struct DialogTarget {
-    enum Kind { OpenDocument, FormField, PanelFolder, SaveDocument } kind = OpenDocument;
-    std::string command;  // FormField: the form it belongs to; PanelFolder: what the folder is for; SaveDocument: the save command
+    enum Kind { OpenDocument, FormField, PanelFolder, SaveDocument, AddMedia } kind = OpenDocument;
+    std::string command;  // FormField: the form it belongs to; PanelFolder: what the folder is for; SaveDocument: the save command; AddMedia: the timeline
     std::size_t field = 0;
     std::string doc;  // SaveDocument: the file to save
 };
@@ -329,6 +422,9 @@ private:
     void newPopup();
     void settingsPopup();
     void coloursSettings();  // colours.cpp
+    void updatesSettings();  // updates.cpp, through the app.update_* commands
+    void readUpdates(bool now);
+    void runUpdate(const std::string& command, const Params& params);
 
     // the shared colour palette (colours.cpp), through the app.palette_* commands
     bool loadPalette();  // true when the colours changed
@@ -449,6 +545,19 @@ private:
     void undo();
     void redo();
     void showOpenDialog();
+    void showAddMediaDialog();  // files to put on the open timeline
+    // A file dropped on the window: onto the open timeline when it takes it, else opened.
+    void dropFile(const std::string& path);
+    // the moving picture while a timeline plays (video_play.cpp); true when it drew the canvas
+    bool videoPlaybackFrame();
+    bool timelinePlaying() const;  // the current timeline is playing or paused
+    // a timeline's still picture at its playhead, drawn on the worker too (false: not a timeline)
+    bool timelineCanvas(const std::shared_ptr<Document>& doc);
+    // the selected timeline clip's everyday settings as sliders (timeline_view.cpp); false when none
+    bool clipPanel();
+    void exportProgress();  // the bar and Cancel button of a background export
+    void pollExport();
+    const ClipStrip* clipStrip(const std::string& clipId);
     void showFieldDialog(std::size_t index);
     void drainDialogs();
     void loadRecent();
@@ -548,6 +657,11 @@ private:
     std::string paletteNote_;      // the last palette command's answer or error
     bool paletteNoteOk_ = true;
     bool openSettings_ = false;
+    struct Updates {
+        std::string version, status, note, why;
+        bool on = true, canAuto = false;
+    } updates_;
+    double updatesRead_ = -10;
     ImVec4 accent_{0.24f, 0.49f, 1, 1}, accentHover_, accentActive_, accentText_{1, 1, 1, 1}, title_;
     float textScale_ = 1.0f;
     float dpi_ = 1.0f;
@@ -597,6 +711,14 @@ private:
 
     Canvas canvas_;
     Transport transport_;
+    std::unique_ptr<VideoPlayback> video_;           // a timeline's picture: playing, scrubbed or still
+    double scrubTime_ = -1;                          // where the playhead is being dragged (-1: it isn't)
+    std::uint64_t scrubMovedAt_ = 0;                 // SDL ticks of the drag's last move
+    bool liveVideo_ = false;                         // last frame was playing or scrubbing
+    std::map<std::string, float> clipEdits_;         // clip panel sliders being dragged, applied on release
+    std::map<std::string, ClipStrip> strips_;        // by doc + clip id
+    bool stripsPending_ = false;                     // some clip's thumbnails are still being read
+    ExportJob exportJob_;                            // an export running in the background
     float playheadFraction_ = -1;  // where to draw the playhead over a waveform, 0..1
     // a time range dragged over a waveform, as in Audacity: forms with start/end get it
     struct AudioSelection {
@@ -619,6 +741,22 @@ private:
         bool focus = false;
     } docEdit_;
     void docCanvas(ImDrawList* dl, ImVec2 p0, bool hovered);
+    // cad: drawing a sketch with the mouse (sketch_view.cpp)
+    SketchEdit sketch_;
+    bool sketchActive() const;
+    std::string docTitle(const std::string& id) const;  // file name, or "Untitled part 1"
+    void enterSketch(const std::string& doc, const std::string& name);
+    void leaveSketch();
+    void refreshSketch();
+    void sketchToolbar();
+    void sketchCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bool active);
+    // slides: thumbnails on the left, click a part of the slide to type, drag objects (deck_view.cpp)
+    DeckView deck_;
+    bool deckDoc() const;
+    std::string deckPicture();  // the shown slide as PNG for the canvas
+    void showSlide(int n);
+    void deckStrip();
+    void deckCanvas(ImDrawList* dl, ImVec2 p0, bool hovered, bool active);
     TimelineState timeline_;
     GridState grid_;
     CircuitCanvas circuit_;

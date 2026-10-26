@@ -67,6 +67,33 @@ std::vector<double> editPoints(const Timeline& tl) {
     return v;
 }
 
+// A new timeline holding one file: a video (with its sound) at its own size and rate,
+// a still for five seconds, or a sound on a1.
+std::shared_ptr<Timeline> timelineFor(const std::string& path) {
+    Clip c;
+    try {
+        c = clipForFile(path, false);
+    } catch (const std::exception& picture) {
+        try {
+            c = clipForFile(path, true);  // a sound file
+        } catch (const std::exception&) {
+            throw std::runtime_error(picture.what());
+        }
+    }
+    auto tl = std::make_shared<Timeline>();
+    if (c.kind != "audio" && c.sourceWidth > 0 && c.sourceHeight > 0) {
+        // even sizes (encoders want them), at most 4K on the long side
+        const double shrink = std::min(1.0, 3840.0 / std::max(c.sourceWidth, c.sourceHeight));
+        tl->settings.width = std::max(2, static_cast<int>(c.sourceWidth * shrink) / 2 * 2);
+        tl->settings.height = std::max(2, static_cast<int>(c.sourceHeight * shrink) / 2 * 2);
+    }
+    if (c.sourceFps >= 1 && c.sourceFps <= 240) tl->settings.fps = c.sourceFps;
+    Params q;
+    if (c.kind == "image") q["duration"] = 5.0;
+    addClip(*tl, q, c, c.kind == "audio" ? "a1" : "v1", c.kind);
+    return tl;
+}
+
 }  // namespace
 
 void registerDocumentCommands(Session& session) {
@@ -94,22 +121,24 @@ void registerDocumentCommands(Session& session) {
                 });
             });
 
-    reg.add({"cut.open", "Open Timeline", "Open a .wwcut timeline saved by cut.save (older .achcut files open too). Returns the document id.",
-             {{"path", ParamType::String, "path to a .wwcut file", true}}, false, true},
+    reg.add({"cut.open", "Open Timeline",
+             "Open a .wwcut timeline saved by cut.save (older .achcut files open too), or a video, image or sound "
+             "file as a new timeline with that file on it (the timeline takes the video's size and frame rate). "
+             "Returns the document id.",
+             {{"path", ParamType::String, "a .wwcut file, or a video, image or sound file to start a timeline with", true}}, false, true},
             [&session](const Params& p) -> std::unique_ptr<Action> {
                 return std::make_unique<FunctionAction>([&session, p] {
                     const fs::path path = stringParam(p, "path");
                     std::error_code ec;
                     if (!fs::is_regular_file(path, ec)) return Result::failure("file not found: " + path.string());
                     const std::string ext = extOf(path);
-                    if (ext != "wwcut" && ext != "achcut") {  // achcut: the name before the rename
-                        return Result::failure(path.string() + " isn't a .wwcut timeline; to edit a video file, "
-                                                               "cut.new then cut.add_clip path=" + path.string());
-                    }
                     try {
-                        auto tl = fromJson(readFile(path), fs::absolute(path, ec).parent_path());
-                        tl->path = path.string();
-                        return docCreated(session, tl, "opened");
+                        if (ext == "wwcut" || ext == "achcut") {  // achcut: the name before the rename
+                            auto tl = fromJson(readFile(path), fs::absolute(path, ec).parent_path());
+                            tl->path = path.string();
+                            return docCreated(session, tl, "opened");
+                        }
+                        return docCreated(session, timelineFor(path.string()), "opened " + path.filename().string() + " as");
                     } catch (const std::exception& e) {
                         return Result::failure(e.what());
                     }

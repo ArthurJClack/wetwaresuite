@@ -3,6 +3,8 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cctype>
+#include <iterator>
 #include <filesystem>
 #include <stdexcept>
 
@@ -194,6 +196,10 @@ bool Timeline::timeline(TimelineLayout& out) const {
             tc.start = c.start;
             tc.length = c.length();
             tc.link = c.link;
+            tc.picture = c.kind == "video" || c.kind == "image";
+            tc.sound = c.kind == "audio" || (c.kind == "video" && c.ownSound && c.hasAudio);
+            tc.sourceIn = c.hold ? c.in : c.reverse ? c.out : c.in;
+            tc.speed = c.hold || c.kind == "image" ? 0 : c.reverse ? -c.speed : c.speed;
             const bool fromSource = (c.kind == "video" || c.kind == "audio") && !c.hold && !c.reverse;
             tc.trimStart = c.kind != "nest" || c.in > 0;
             if (fromSource && c.speed > 0) {
@@ -227,6 +233,27 @@ std::string Timeline::timelineCommand(const wetwaresuite::TimelineEdit& e) const
         case TimelineEditKind::Marker: return "cut.add_marker t=" + t4(std::max(0.0, e.at));
         case TimelineEditKind::InPoint: return "cut.set_in_out in=" + t4(std::max(0.0, e.at));
         case TimelineEditKind::OutPoint: return "cut.set_in_out out=" + t4(std::max(0.0, e.at));
+        case TimelineEditKind::AddFile: {
+            // sound files go on an audio track, everything else (video, stills) on a video track
+            std::string ext = fs::path(e.name).extension().string();
+            for (auto& ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+            static const char* sounds[] = {".wav", ".mp3", ".flac", ".ogg", ".oga", ".opus", ".m4a", ".aac", ".wma", ".aif", ".aiff"};
+            const bool sound = std::find(std::begin(sounds), std::end(sounds), ext) != std::end(sounds);
+            std::string path;
+            for (char ch : e.name) {
+                if (ch == '"' || ch == '$' || ch == '#' || std::isspace(static_cast<unsigned char>(ch))) path += '\\';
+                path += ch;
+            }
+            std::string line = std::string(sound ? "cut.add_audio" : "cut.add_clip") + " path=" + path;
+            if (const Track* t = track(e.track); t && (t->kind == "audio") == sound) line += " track=" + t->id;
+            return line;
+        }
+        case TimelineEditKind::SetProperty: {
+            const Clip* c = findClip(e.clip);
+            if (!c || e.name.empty() || e.name.find_first_not_of("abcdefghijklmnopqrstuvwxyz_") != std::string::npos) return {};
+            const bool flag = e.name == "mute" || e.name == "grayscale" || e.name == "flip_h" || e.name == "flip_v";
+            return "cut.set_clip clip=" + c->id + " " + e.name + "=" + (flag ? (e.at != 0 ? "true" : "false") : t4(e.at));
+        }
         case TimelineEditKind::Toggle: {
             const Track* t = track(e.track);
             if (!t || (e.name != "locked" && e.name != "hidden" && e.name != "muted" && e.name != "solo")) return {};
@@ -874,6 +901,50 @@ MediaInfo parseProbe(const std::string& text) {
     m.still = m.hasVideo && !m.hasAudio && imageFormat &&
               std::find(stillCodecs.begin(), stillCodecs.end(), m.videoCodec) != stillCodecs.end();
     return m;
+}
+
+std::vector<ClipProperty> Timeline::clipProperties(const std::string& clipId) const {
+    const Clip* c = findClip(clipId);
+    if (!c) return {};
+    std::vector<ClipProperty> out;
+    auto add = [&](std::string name, std::string label, std::string group, double value, double lo, double hi, std::string format = "%.2f") {
+        ClipProperty p;
+        p.name = std::move(name);
+        p.label = std::move(label);
+        p.group = std::move(group);
+        p.value = value;
+        p.min = lo;
+        p.max = hi;
+        p.format = std::move(format);
+        out.push_back(std::move(p));
+    };
+    auto toggle = [&](std::string name, std::string label, std::string group, bool on) {
+        add(std::move(name), std::move(label), std::move(group), on ? 1 : 0, 0, 1);
+        out.back().toggle = true;
+    };
+    const bool picture = c->kind != "audio";
+    const bool sound = c->kind == "audio" || c->kind == "nest" || (c->kind == "video" && c->ownSound && c->hasAudio);
+    const double len = std::max(0.1, c->length());
+    if (c->kind == "video" || c->kind == "audio" || c->kind == "nest") add("speed", "Speed", "Timing", c->speed, 0.25, 4, "%.2fx");
+    add("fade_in", "Fade in", "Timing", c->fadeIn, 0, std::min(5.0, len), "%.1f s");
+    add("fade_out", "Fade out", "Timing", c->fadeOut, 0, std::min(5.0, len), "%.1f s");
+    if (picture) {
+        add("opacity", "Opacity", "Picture", c->opacity, 0, 1);
+        add("scale", "Scale", "Picture", c->scale, 0.1, 4, "%.2fx");
+        add("rotation", "Rotation", "Picture", c->rotation, -180, 180, "%.0f deg");
+        if (c->kind != "title") {
+            add("brightness", "Brightness", "Colour", c->brightness, -1, 1);
+            add("contrast", "Contrast", "Colour", c->contrast, 0, 3);
+            add("saturation", "Saturation", "Colour", c->saturation, 0, 3);
+            toggle("grayscale", "Black and white", "Colour", c->grayscale);
+        }
+    }
+    if (sound) {
+        add("volume", "Volume", "Sound", c->volume, 0, 2);
+        add("pan", "Pan", "Sound", c->pan, -1, 1);
+        toggle("mute", "Mute", "Sound", c->mute);
+    }
+    return out;
 }
 
 }  // namespace wetwaresuite::cut

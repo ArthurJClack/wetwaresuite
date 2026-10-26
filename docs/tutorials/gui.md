@@ -524,6 +524,12 @@ Over MCP the tools are `app_palette_get`, `app_palette_set`, `app_palette_preset
 `app_palette_reset`, so you can ask Claude, for example, "make all my wetwaresuite apps high
 contrast" or "use a dark green main colour".
 
+### Updates
+
+The **Aa** menu (and the launcher's **Updates** button) also has **Update by itself** (on by default:
+once a day the app quietly installs a new release; apps you have open keep running), **Check now**,
+and **Install update** when one is waiting. It's one setting for every app. See [updates.md](updates.md).
+
 ## 11. Doing the same thing without the window
 
 Every button runs a command, and the same command works from the command line. For example,

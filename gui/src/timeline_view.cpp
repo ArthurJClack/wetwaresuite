@@ -33,12 +33,47 @@ double niceStep(double secondsPerPixel) {
     return 1200.0;
 }
 
+// Rows are taller when clips show thumbnails or waveforms.
+float rowHeight(const TimelineLayout& layout) {
+    for (const auto& t : layout.tracks)
+        for (const auto& c : t.clips)
+            if (c.picture || c.sound) return ImGui::GetFontSize() * 3.6f;
+    return ImGui::GetFontSize() * 2.4f;
+}
+
 }  // namespace
 
 float Shell::timelineHeight(const TimelineLayout& layout) const {
-    const float row = ImGui::GetFontSize() * 2.4f;
-    const float chrome = ImGui::GetFrameHeightWithSpacing() + ImGui::GetFontSize() * 1.6f + 8;
+    const float row = rowHeight(layout);
+    float chrome = ImGui::GetFrameHeightWithSpacing() + ImGui::GetFontSize() * 1.6f + 8;
+    if (!exportJob_.id.empty()) chrome += ImGui::GetFrameHeightWithSpacing();  // the export's progress bar
     return chrome + row * static_cast<float>(std::max<std::size_t>(1, layout.tracks.size()));
+}
+
+const ClipStrip* Shell::clipStrip(const std::string& clipId) {
+    const std::string key = currentDoc_ + "|" + clipId;
+    if (auto it = strips_.find(key); it != strips_.end()) return &it->second;
+    auto doc = session_.workspace().get(currentDoc_);
+    MediaStrip m;
+    if (!doc || !doc->clipMedia(clipId, m)) return nullptr;
+    if (m.pending) {  // ask again next frame
+        stripsPending_ = true;
+        return nullptr;
+    }
+    if (strips_.size() > 300) {  // forget the lot now and then (closed documents, deleted clips)
+        for (auto& [k, v] : strips_)
+            for (auto& t : v.frames) t.reset();
+        strips_.clear();
+    }
+    ClipStrip& strip = strips_[key];
+    strip.frames.resize(m.frames.size());
+    for (std::size_t i = 0; i < m.frames.size(); ++i) {
+        if (m.frames[i].size() >= static_cast<std::size_t>(m.frameWidth) * m.frameHeight * 4)
+            strip.frames[i].upload(renderer_, m.frames[i].data(), m.frameWidth, m.frameHeight);
+    }
+    m.frames.clear();  // the textures have them now
+    strip.media = std::move(m);
+    return &strip;
 }
 
 void Shell::runTimelineEdit(const TimelineLayout& layout, const TimelineEdit& edit) {
@@ -72,7 +107,14 @@ void Shell::timelineView(const TimelineLayout& layout) {
     // a document with its own playhead keeps the cursor (the window follows it, and moves it with cut.set_cursor)
     if (layout.cursor >= 0 && st.drag != TimelineState::Drag::Cursor) st.cursor = layout.cursor;
 
+    stripsPending_ = false;
+    if (!exportJob_.id.empty()) exportProgress();
     // toolbar
+    if (layout.tools) {
+        if (ImGui::Button("+ Media")) showAddMediaDialog();
+        ImGui::SetItemTooltip("Put videos, pictures or sound on the timeline (or drop files on the window)");
+        ImGui::SameLine();
+    }
     const TimelineClip* sel = nullptr;
     const TimelineTrack* selTrack = nullptr;
     double end = 1;
@@ -135,11 +177,32 @@ void Shell::timelineView(const TimelineLayout& layout) {
             runTimelineEdit(layout, e);
         }
     }
+    // stepping the playhead like other editors: Left/Right one frame (Shift: one second), Home/End
+    if (layout.cursor >= 0 && !io.WantTextInput && !io.KeyCtrl && !timelinePlaying()) {
+        double to = -1;
+        const bool left = ImGui::IsKeyPressed(ImGuiKey_LeftArrow), right = ImGui::IsKeyPressed(ImGuiKey_RightArrow);
+        if (left || right) {
+            auto doc = session_.workspace().get(currentDoc_);
+            auto player = doc ? doc->player() : nullptr;
+            const double frame = player && player->fps() > 0 ? 1.0 / player->fps() : 1.0 / 30;
+            to = layout.cursor + (right ? 1 : -1) * (io.KeyShift ? 1.0 : frame);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_Home, false)) to = 0;
+        if (ImGui::IsKeyPressed(ImGuiKey_End, false)) to = end;
+        if (to >= 0 || left || right) {
+            to = std::clamp(to, 0.0, end);
+            if (std::fabs(to - layout.cursor) < 1e-9) to = -1;
+        }
+        if (to >= 0) {
+            st.cursor = to;
+            runTimelineEdit(layout, {TimelineEditKind::Cursor, {}, {}, {}, 0, 0, to});
+        }
+    }
     ImGui::SameLine();
     if (ImGui::Button("Fit")) st.zoom = 0;
     ImGui::SetItemTooltip("Show the whole timeline");
     ImGui::SameLine();
-    ImGui::TextDisabled("cursor %s   drag clips to move, edges to trim, Ctrl+scroll to zoom", clockText(st.cursor).c_str());
+    ImGui::TextDisabled("cursor %s   drag clips to move, edges to trim, arrows step a frame, Ctrl+scroll to zoom", clockText(st.cursor).c_str());
 
     // geometry
     std::size_t toggleCount = 0;
@@ -147,7 +210,7 @@ void Shell::timelineView(const TimelineLayout& layout) {
     const float toggleW = ImGui::GetFontSize() * 1.35f;
     const float nameW = ImGui::GetFontSize() * (toggleCount ? 3.5f : 6.5f) + toggleW * static_cast<float>(toggleCount);
     const float rulerH = ImGui::GetFontSize() * 1.4f;
-    const float rowH = ImGui::GetFontSize() * 2.4f;
+    const float rowH = rowHeight(layout);
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     const ImVec2 size{std::max(avail.x, 64.0f), rulerH + rowH * static_cast<float>(std::max<std::size_t>(1, layout.tracks.size()))};
     ImGui::InvisibleButton("timeline", size, ImGuiButtonFlags_MouseButtonLeft);
@@ -244,9 +307,16 @@ void Shell::timelineView(const TimelineLayout& layout) {
             if (st.drag == TimelineState::Drag::Cursor) st.selClip.clear();
         }
     }
-    if (active && st.drag == TimelineState::Drag::Cursor) st.cursor = std::max(0.0, hoverT);
+    if (active && st.drag == TimelineState::Drag::Cursor) {
+        st.cursor = std::max(0.0, hoverT);
+        // the picture follows the mouse (video_play.cpp) instead of waiting for the button to come up
+        if (st.cursor != scrubTime_) scrubMovedAt_ = SDL_GetTicks();
+        if (!timelinePlaying()) scrubTime_ = st.cursor;
+    }
     if (ImGui::IsItemDeactivated() && st.drag == TimelineState::Drag::Cursor) {
+        scrubTime_ = -1;
         if (layout.cursor >= 0) runTimelineEdit(layout, {TimelineEditKind::Cursor, {}, {}, {}, 0, 0, st.cursor});
+        if (timelinePlaying()) seekTo(st.cursor);  // the picture and sound jump there too
         st.drag = TimelineState::Drag::None;
     }
 
@@ -351,6 +421,43 @@ void Shell::timelineView(const TimelineLayout& layout) {
             const bool isDragged = isSel && dragging;
             const float x0 = toX(c.start), x1 = std::max(x0 + 2, toX(c.start + c.length));
             dl->AddRectFilled({x0, y0 + 3}, {x1, y1 - 3}, isDragged ? (col & 0x60FFFFFF) : col, 4);
+            if ((c.picture || c.sound) && !isDragged && x1 > o.x + nameW && x0 < o.x + size.x) {
+                if (const ClipStrip* strip = clipStrip(c.id)) {
+                    const float cy0 = y0 + 4, cy1 = y1 - 4, ch = cy1 - cy0;
+                    const float vx0 = std::max(x0 + 1, o.x + nameW), vx1 = std::min(x1 - 1, o.x + size.x);
+                    dl->PushClipRect({vx0, cy0}, {vx1, cy1}, true);
+                    const MediaStrip& m = strip->media;
+                    // where in the source a timeline time falls
+                    auto sourceAt = [&](double t) { return c.sourceIn + (t - c.start) * c.speed; };
+                    if (!strip->frames.empty() && m.frameHeight > 0) {
+                        const float tileW = std::max(8.0f, ch * static_cast<float>(m.frameWidth) / static_cast<float>(m.frameHeight));
+                        const float first = x0 + std::floor(std::max(0.0f, vx0 - x0) / tileW) * tileW;
+                        for (float xs = first; xs < vx1; xs += tileW) {
+                            const double src = sourceAt(toT(xs + tileW / 2));
+                            auto it = std::lower_bound(m.frameTimes.begin(), m.frameTimes.end(), src);
+                            std::size_t i = static_cast<std::size_t>(it - m.frameTimes.begin());
+                            if (i == m.frameTimes.size() || (i > 0 && src - m.frameTimes[i - 1] < m.frameTimes[i] - src)) i = i > 0 ? i - 1 : 0;
+                            if (i < strip->frames.size() && strip->frames[i].tex) dl->AddImage(strip->frames[i].id(), {xs, cy0}, {xs + tileW, cy1});
+                        }
+                    }
+                    if (!m.peaks.empty() && m.peaksPerSecond > 0 && c.speed != 0) {
+                        // the waveform: over the thumbnails' lower half, or the whole clip for sound
+                        const bool under = !strip->frames.empty();
+                        const float mid = under ? cy1 - ch * 0.2f : (cy0 + cy1) / 2, half = under ? ch * 0.18f : ch * 0.45f;
+                        const double perPx = std::fabs(c.speed) / st.zoom * m.peaksPerSecond;
+                        const ImU32 wave = under ? IM_COL32(255, 255, 255, 170) : IM_COL32(20, 60, 35, 200);
+                        for (float px = std::floor(vx0); px < vx1; px += 1.0f) {
+                            const double a = sourceAt(toT(px)) * m.peaksPerSecond;
+                            const long i0 = static_cast<long>(std::floor(std::min(a, a + (c.speed < 0 ? -perPx : perPx))));
+                            const long i1 = std::max(i0, static_cast<long>(std::floor(i0 + perPx)));
+                            float amp = 0;
+                            for (long i = std::max(0L, i0); i <= i1 && i < static_cast<long>(m.peaks.size()); ++i) amp = std::max(amp, m.peaks[static_cast<std::size_t>(i)]);
+                            if (amp > 0.01f) dl->AddLine({px, mid - amp * half}, {px, mid + amp * half}, wave);
+                        }
+                    }
+                    dl->PopClipRect();
+                }
+            }
             if (c.transitionIn > 0) {
                 // the blend with the clip before: a darker wedge over its start
                 const float xt = std::min(x1, toX(c.start + c.transitionIn));
@@ -366,7 +473,15 @@ void Shell::timelineView(const TimelineLayout& layout) {
             if (isSel) dl->AddRect({x0, y0 + 3}, {x1, y1 - 3}, ImGui::ColorConvertFloat4ToU32(accent_), 4, 0, 2.5f);
             else if (linked) dl->AddRect({x0, y0 + 3}, {x1, y1 - 3}, ImGui::ColorConvertFloat4ToU32(accent_), 4, 0, 1.2f);
             dl->PushClipRect({std::max(x0, o.x + nameW), y0}, {x1, y1}, true);
-            dl->AddText({x0 + 6, y0 + (rowH - ImGui::GetFontSize()) / 2}, IM_COL32(255, 255, 255, 235), c.label.c_str());
+            if (c.picture || c.sound) {
+                // over thumbnails the name sits in the top corner, on a dark tab so it reads
+                const ImVec2 ts = ImGui::CalcTextSize(c.label.c_str());
+                const float lx = std::max(x0, o.x + nameW) + 4;
+                dl->AddRectFilled({lx - 2, y0 + 4}, {lx + ts.x + 4, y0 + 5 + ts.y}, IM_COL32(0, 0, 0, 140), 3);
+                dl->AddText({lx + 1, y0 + 4}, IM_COL32(255, 255, 255, 240), c.label.c_str());
+            } else {
+                dl->AddText({x0 + 6, y0 + (rowH - ImGui::GetFontSize()) / 2}, IM_COL32(255, 255, 255, 235), c.label.c_str());
+            }
             dl->PopClipRect();
         }
         if (dragging && t.id == dropTrack) {
@@ -376,7 +491,10 @@ void Shell::timelineView(const TimelineLayout& layout) {
             dl->AddText({x0 + 4, y1 - ImGui::GetFontSize() - 2}, text, clockText(st.drag == TimelineState::Drag::TrimEnd ? dragStart + dragLength : dragStart).c_str());
         }
     }
-    if (layout.tracks.empty()) dl->AddText({o.x + nameW + 8, o.y + rulerH + 8}, muted, "No tracks yet: add one with Clip (or Audio, Title) on the ribbon.");
+    if (layout.tracks.empty()) {
+        dl->AddText({o.x + nameW + 8, o.y + rulerH + 8}, muted,
+                    layout.tools ? "No clips yet: drop videos, pictures or sound here, or press + Media" : "No tracks yet: add one with Clip (or Audio, Title) on the ribbon.");
+    }
 
     // in/out range and markers on the ruler
     if (layout.inPoint >= 0 || layout.outPoint >= 0) {
@@ -396,9 +514,18 @@ void Shell::timelineView(const TimelineLayout& layout) {
         if (hovered && std::fabs(io.MousePos.x - mx) < 5 && io.MousePos.y < o.y + rulerH && !m.name.empty()) ImGui::SetTooltip("%s", m.name.c_str());
     }
 
-    // the cursor
+    // the cursor, and where playback has got to
     const float cx = toX(st.cursor);
     if (cx >= o.x + nameW) dl->AddLine({cx, o.y}, {cx, o.y + size.y}, IM_COL32(240, 80, 70, 255), 2.0f);
+    if (timelinePlaying()) {
+        const float px = toX(transport_.position);
+        if (px >= o.x + nameW) {
+            dl->AddLine({px, o.y}, {px, o.y + size.y}, IM_COL32(255, 255, 255, 230), 2.0f);
+            dl->AddTriangleFilled({px - 6, o.y}, {px + 6, o.y}, {px, o.y + 8}, IM_COL32(255, 255, 255, 230));
+        }
+        // keep it in view while it plays
+        if (transport_.playing && (px > o.x + size.x - 20 || px < o.x + nameW)) st.scroll = std::max(0.0, transport_.position - 1.0);
+    }
 
     // cursor shape over edges
     if (hovered && hoverRow >= 0 && hoverRow < static_cast<int>(layout.tracks.size())) {

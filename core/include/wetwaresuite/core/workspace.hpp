@@ -44,6 +44,10 @@ struct TimelineClip {
     std::vector<double> keyframes;  // timeline seconds of the clip's keyframes, drawn as diamonds
     double transitionIn = 0;        // seconds at its start that blend with the clip before
     std::string link;               // clips with the same non-empty link are selected together
+    // where its media comes from, so the window can draw thumbnails and waveforms (Document::clipMedia)
+    double sourceIn = 0;  // source seconds at the clip's start
+    double speed = 1;     // source seconds per timeline second (negative: plays backwards)
+    bool picture = false, sound = false;  // what clipMedia can show for it
 };
 
 // A switch at the head of a track (lock, mute, solo, hide). Clicking it runs the document's
@@ -81,7 +85,7 @@ struct TimelineLayout {
     std::vector<TimelineMarker> markers;
 };
 
-enum class TimelineEditKind { Move, TrimStart, TrimEnd, Split, Delete, Cursor, Razor, RippleDelete, Toggle, Marker, InPoint, OutPoint, Transition };
+enum class TimelineEditKind { Move, TrimStart, TrimEnd, Split, Delete, Cursor, Razor, RippleDelete, Toggle, Marker, InPoint, OutPoint, Transition, AddFile, SetProperty };
 
 struct TimelineEdit {
     TimelineEditKind kind = TimelineEditKind::Move;
@@ -90,8 +94,45 @@ struct TimelineEdit {
     std::string toTrack;  // Move: the track it lands on (may be the same)
     double start = 0;   // Move/TrimStart: new start; TrimStart keeps the end
     double length = 0;  // TrimEnd: new length
-    double at = 0;      // Split, Cursor, Razor, Marker, InPoint, OutPoint: timeline time
-    std::string name;   // Toggle: which switch; Transition: its type
+    double at = 0;      // Split, Cursor, Razor, Marker, InPoint, OutPoint: timeline time; SetProperty: the new value
+    std::string name;   // Toggle: which switch; Transition: its type; AddFile: the file's path; SetProperty: which one
+};
+
+// One of a selected clip's everyday settings, shown as a slider (or a switch) next to the
+// timeline. Changing it runs TimelineEditKind::SetProperty with its name and the new value.
+struct ClipProperty {
+    std::string name;   // e.g. "volume"
+    std::string label;  // e.g. "Volume"
+    std::string group;  // e.g. "Sound": properties are shown under their group
+    double value = 0, min = 0, max = 1;
+    std::string format = "%.2f";  // how the slider shows the value
+    bool toggle = false;          // on/off (value 0 or 1) instead of a slider
+};
+
+// What a clip's source looks like, for drawing on the timeline: small frames along the
+// source and a loudness envelope. Filled by Document::clipMedia.
+struct MediaStrip {
+    bool pending = false;  // still being read: ask again in a moment
+    int frameWidth = 0, frameHeight = 0;
+    std::vector<double> frameTimes;                  // source seconds of each frame, ascending
+    std::vector<std::vector<std::uint8_t>> frames;   // rgba, frameWidth * frameHeight * 4 bytes each
+    std::vector<float> peaks;                        // 0..1, one per 1 / peaksPerSecond source seconds
+    double peaksPerSecond = 0;
+};
+
+// Plays a document's moving picture: a snapshot taken when it was made, so it can draw frames
+// on another thread while the document keeps changing. Frames come fastest in time order.
+class FramePlayer {
+public:
+    virtual ~FramePlayer() = default;
+    // The picture at `seconds`, at most maxWidth px wide, as rgba. False when it can't be drawn.
+    virtual bool frame(double seconds, int maxWidth, int& width, int& height, std::vector<std::uint8_t>& rgba) = 0;
+    // A quick picture for dragging the playhead: may show a nearby frame of each source
+    // instead of the exact one, so it keeps up with the mouse. Defaults to frame().
+    virtual bool scrub(double seconds, int maxWidth, int& width, int& height, std::vector<std::uint8_t>& rgba) {
+        return frame(seconds, maxWidth, width, height, rgba);
+    }
+    virtual double fps() const = 0;
 };
 
 // Spreadsheet-like documents let the window show an editable cell grid. Cells
@@ -134,6 +175,13 @@ public:
     // The command line that makes an edit, e.g. "cut.move_clip clip=c2 start=3.5 track=v1"
     // (the caller adds the document param); empty when the edit can't be done.
     virtual std::string timelineCommand(const TimelineEdit&) const { return {}; }
+    // A timeline clip's everyday settings for the clip panel; empty when it has none.
+    virtual std::vector<ClipProperty> clipProperties(const std::string& /*clipId*/) const { return {}; }
+    // A timeline clip's thumbnails and waveform. Reading them may take a while: the first calls
+    // return true with `pending` set while that happens elsewhere. False when there's nothing to show.
+    virtual bool clipMedia(const std::string& /*clipId*/, MediaStrip&) const { return false; }
+    // Documents with moving pictures (video timelines) hand out a player; others return null.
+    virtual std::unique_ptr<FramePlayer> player() const { return nullptr; }
     // Grid documents fill in their sheets and return true.
     virtual bool grid(CellGrid&) const { return false; }
     // One cell (0-based); false when it's empty.

@@ -12,6 +12,7 @@
 #include "wetwaresuite/mcp/server.hpp"
 #include "wetwaresuite/playback/player.hpp"
 #include "app_commands.hpp"
+#include "apps.hpp"
 #include "gui_launch.hpp"
 #include "launch.hpp"
 #include "wetwaresuite/mcp/transport.hpp"
@@ -19,7 +20,7 @@
 
 namespace {
 
-constexpr const char* kVersion = "0.7.0";
+using wetwaresuite::apps::kVersion;
 
 constexpr const char* kInstructions =
     "wetwaresuite is a creative suite you drive with tools. Workflow: open or create a document (photo_open, photo_new, "

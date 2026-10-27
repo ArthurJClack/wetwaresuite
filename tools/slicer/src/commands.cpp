@@ -130,6 +130,10 @@ public:
     bool renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const override {
         return mesh::renderOrbit(state.plate(), view, width, height, rgba);
     }
+    bool viewCamera(const OrbitView& view, int width, int height, ViewCamera& camera) const override {
+        camera = mesh::orbitCamera(state.plate(), view, width, height);
+        return true;
+    }
 };
 
 raster::Image renderOnBed(const PrintState& st, mesh::View view, int size, bool bed) {

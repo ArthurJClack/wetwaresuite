@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,18 @@ struct Attachment {
     std::string name;   // suggested file name, may be empty
 };
 
+// The orthographic camera a 3D view is drawn with, so a window can draw handles over the picture
+// and turn mouse positions into model points. World point p lands on pixel
+//   x = (dot(p, right) - cx) * scale + width / 2,  y = height / 2 - (dot(p, up) - cy) * scale
+// and a smaller dot(p, forward) is nearer the viewer.
+struct ViewCamera {
+    double right[3] = {1, 0, 0};
+    double up[3] = {0, 0, 1};
+    double forward[3] = {0, 1, 0};
+    double cx = 0, cy = 0;
+    double scale = 1;  // pixels per model unit
+};
+
 // A camera for documents you can turn around in 3D (meshes, scans, scenes):
 // yaw around the vertical axis and pitch up/down in degrees (0, 0 = front;
 // 45, 35.26 = iso), zoom (1 = fits), pan in model radii.
@@ -27,6 +40,9 @@ struct OrbitView {
     double panX = 0;
     double panY = 0;
     bool antialias = true;  // off while dragging, for speed
+    // set: draw with exactly this camera instead (looking straight at a sketch, or holding the
+    // view still while a handle is dragged and the part changes size)
+    std::optional<ViewCamera> camera;
 };
 
 // Documents laid out in time (a video timeline, an audio project) describe
@@ -170,6 +186,8 @@ public:
     // and return true; everything else returns false. A 0 x 0 call only asks
     // whether the document can (true for 3D documents), without drawing.
     virtual bool renderView(const OrbitView&, int, int, std::vector<std::uint8_t>&) const { return false; }
+    // The camera renderView draws a width x height view with; false for documents that don't draw in 3D.
+    virtual bool viewCamera(const OrbitView&, int /*width*/, int /*height*/, ViewCamera&) const { return false; }
     // Timeline documents fill in their tracks and return true.
     virtual bool timeline(TimelineLayout&) const { return false; }
     // The command line that makes an edit, e.g. "cut.move_clip clip=c2 start=3.5 track=v1"

@@ -87,7 +87,9 @@ public:
     std::string summary() const override;
     // the solid plus its open sketches as lines (and the axes while the part is empty)
     bool renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const override;
+    bool viewCamera(const OrbitView& view, int width, int height, ViewCamera& camera) const override;
     std::vector<mesh::Line3> sketchLines() const;
+    mesh::RenderOptions viewOptions() const;  // how renderView draws it: the solid, its sketches, axes
 
     const Parameter* findParam(const std::string& name) const;
     int featureIndex(const std::string& name) const;  // -1 if missing

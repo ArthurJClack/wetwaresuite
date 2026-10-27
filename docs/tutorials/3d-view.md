@@ -26,6 +26,8 @@ Open a part in the cad app (`wetwaresuite-cad bracket.wwcad`, or double-click it
 
 Edits keep the angle, so you can watch a fillet or a hole appear from the side you're working on.
 
+Cad parts and models also take the mouse: click a face of a part to push/pull it with an arrow, move it or sketch on it, and drag the X, Y, Z arrows of a model's selection to move it. See the [cad](cad.md#in-the-window-work-right-on-the-part) and [model](model.md) tutorials.
+
 ## Task 2: a picture from a given angle
 
 **CLI.** `app.view` works on an open document, so use a batch script (documents only live inside one process):
@@ -71,5 +73,5 @@ Works on: cad parts, meshes (model app, asset forge), sculpts, scan fits and pri
 
 - **Orthographic only** (no perspective), and plain shading: it's for seeing shape, not for pretty pictures. Use the render tool for those.
 - **Big meshes are slower to turn.** Cad parts (a few thousand triangles) turn instantly. A 330,000-triangle mesh redraws about 15 times a second while you drag (about 60 ms a frame on a 4-core cloud machine), and a million-triangle scan a few times a second. Decimate it in forge or fit first if that bothers you.
-- No section views, measuring or picking in the 3D view yet; use the `*.measure*` and section commands of each tool.
+- No section views or measuring in the 3D view yet; use the `*.measure*` and section commands of each tool. Cad parts pick faces (`cad.pick`) and models pick objects and elements (`model.pick`); other 3D files only turn around.
 - Render scenes (the render tool) and level layouts keep their own previews and camera commands.

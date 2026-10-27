@@ -211,6 +211,11 @@ Buttons that need an open file are greyed out until you open or make one.
   can also type or paste a path.
 - **Document** picks which open file the action works on. It starts on the file you are looking at.
 
+Forms that change the open file show a **live preview**: as you change a setting the file shows the
+result (a blurred photo, an extruded part, a modifier on a model), and the big button keeps it and closes the form, like a dialog's OK.
+Ctrl+Z, closing the form or doing something else drops it again. Untick **Live preview** at the top of
+the form to turn it off; slow actions get a **Preview** button instead of running on every change.
+
 After you press it, the result shows under the form: **Done** in green with what happened, or
 **That didn't work** in red with the reason in plain words, for example *Please fill in "Height".*
 Nothing changes when an action fails.
@@ -237,6 +242,7 @@ When a file is open, the middle of the window shows it.
 - **Drag** with the left button to turn the model, **right- or middle-drag** (or Shift+drag) to move it, **scroll** to zoom.
 - **Iso**, **Front**, **Right** and **Top** jump to those angles; **Fit** (or a double-click) shows the whole model again.
 - The angle shows in the bottom-left corner. It stays put while you edit, so you can watch a change from the side you care about.
+- **Arrows** you can drag sit on what you're working on. In a cad part, click a face: drag its arrow to push or pull it, switch to **Move** for X, Y, Z arrows, or **Sketch on it** (see the [cad tutorial](cad.md#in-the-window-work-right-on-the-part)). In a model, the selection gets X, Y, Z arrows: drag one to move it along that axis (the same as G then X, Y or Z).
 
 ![a cad part in the 3D view](images/gui-cad-3d-view.jpg)
 

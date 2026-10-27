@@ -49,30 +49,37 @@ void Shell::orbitToolbar() {
     ImGui::SameLine();
     auto doc = session_.workspace().get(currentDoc_);
     if (doc && doc->kind() == "cad" && find("cad.sketch_geometry")) {
-        // open the last sketch for drawing, or start one
+        // open the last sketch for drawing
         static std::string lastFor, lastName;  // asked again only after a change
         const std::string key = currentDoc_ + "|" + std::to_string(changes_);
         if (key != lastFor) {
             lastFor = key;
             const Result last = query("cad.sketch_geometry", {{"doc", currentDoc_}});
             const auto* n = last.ok ? std::get_if<std::string>(&last.value) : nullptr;
-            lastName = n ? *n : std::string();
+            const Value* used = last.field("used");
+            // a sketch already made into a solid is edited from the tree, not offered here
+            lastName = n && !(used && std::get_if<bool>(used) && *std::get_if<bool>(used)) ? *n : std::string();
         }
-        const std::string* name = lastName.empty() ? nullptr : &lastName;
-        if (ImGui::Button(name ? ("Edit " + *name).c_str() : "New sketch")) {
-            if (name) enterSketch(currentDoc_, *name);
-            else select("cad.sketch");
+        if (!lastName.empty()) {
+            if (ImGui::Button(("Edit " + lastName).c_str())) enterSketch(currentDoc_, lastName);
+            ImGui::SetItemTooltip("Draw on the sketch with the mouse: lines, rectangles, circles");
+            ImGui::SameLine();
         }
-        ImGui::SetItemTooltip(name ? "Draw on the sketch with the mouse: lines, rectangles, circles" : "Start a sketch on a plane, then draw on it with the mouse");
-        ImGui::SameLine();
+        if (find("cad.pick")) {
+            view3dToolbar();
+        } else if (lastName.empty()) {
+            if (ImGui::Button("New sketch")) select("cad.sketch");
+            ImGui::SetItemTooltip("Start a sketch on a plane, then draw on it with the mouse");
+            ImGui::SameLine();
+        }
     }
     if (doc && doc->kind() == "model" && canvas_.grab) {
         const char* what = canvas_.grab == 'G' ? "Moving" : canvas_.grab == 'R' ? "Rotating" : "Scaling";
         ImGui::Text("%s%s%s: move the mouse, click to keep, Esc to undo; X Y Z lock an axis", what,
                     canvas_.grabAxis.empty() ? "" : " along ", canvas_.grabAxis.c_str());
     } else if (doc && doc->kind() == "model") {
-        ImGui::TextDisabled("drag to turn, right-drag to pan, scroll to zoom, click to select; G move, R rotate, S scale");
-    } else {
+        ImGui::TextDisabled("drag to turn, right-drag to pan, scroll to zoom, click to select; drag the arrows or G move, R rotate, S scale");
+    } else if (!(doc && doc->kind() == "cad" && find("cad.pick"))) {  // cad's own row says it (handles.cpp)
         ImGui::TextDisabled("drag to turn, right-drag to move, scroll to zoom, double-click to fit");
     }
 }
@@ -80,7 +87,9 @@ void Shell::orbitToolbar() {
 void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bool active) {
     ImGuiIO& io = ImGui::GetIO();
     OrbitView& o = canvas_.orbit;
-    const bool left = active && ImGui::IsMouseDown(ImGuiMouseButton_Left);
+    // arrows on faces and selections take the mouse first (handles.cpp)
+    const bool onHandle = view3dInput(dl, v0, size, hovered, active);
+    const bool left = active && ImGui::IsMouseDown(ImGuiMouseButton_Left) && !onHandle && view3d_.dragging < 0;
     const bool move = active && (ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsMouseDown(ImGuiMouseButton_Middle) ||
                                  (left && io.KeyShift));
     const float minSide = std::max(1.0f, std::min(size.x, size.y));
@@ -101,7 +110,8 @@ void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bo
         o.zoom = std::clamp(o.zoom * std::pow(1.15, static_cast<double>(io.MouseWheel)), 0.05, 200.0);
         canvas_.orbitDirty = true;
     }
-    if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+    if (hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) && !onHandle) {
+        o.camera.reset();
         o.zoom = 1;
         o.panX = o.panY = 0;
         canvas_.orbitDirty = true;
@@ -134,11 +144,14 @@ void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bo
             }
         }
         const bool cancel = ImGui::IsKeyPressed(ImGuiKey_Escape) || ImGui::IsMouseClicked(ImGuiMouseButton_Right);
-        const bool keep = ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsKeyPressed(ImGuiKey_Enter) ||
-                          ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
+        // an arrow drag keeps it when the mouse is let go; G keeps it on the next click
+        const bool keep = canvas_.grabByHandle ? !ImGui::IsMouseDown(ImGuiMouseButton_Left)
+                                               : ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsKeyPressed(ImGuiKey_Enter) ||
+                                                     ImGui::IsKeyPressed(ImGuiKey_KeypadEnter);
         if (cancel) {
             if (canvas_.grabApplied) session_.history().undo();
             canvas_.grab = 0;
+            canvas_.grabByHandle = false;
             canvas_.orbitDirty = true;
             syncDocs();
         } else if (changed) {
@@ -161,7 +174,8 @@ void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bo
         }
         if (keep && canvas_.grab) {
             canvas_.grab = 0;
-            canvas_.grabEndClick = ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+            canvas_.grabEndClick = canvas_.grabByHandle || ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+            canvas_.grabByHandle = false;
             resultFor_ = "Move";
             result_ = Result::success(canvas_.grabApplied ? "Done. Undo puts it back." : "Nothing moved.");
         }
@@ -197,12 +211,14 @@ void Shell::orbitCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bo
             o.antialias = !canvas_.orbitDragging && io.MouseWheel == 0;
             if (doc->renderView(o, w, h, rgba)) canvas_.texture.upload(renderer_, rgba.data(), w, h);
             if (!o.antialias) canvas_.orbitSharpPending = true;
+            view3dCamera();  // what the arrows are drawn with
         }
     } else if (canvas_.orbitSharpPending && !canvas_.orbitDragging && io.MouseWheel == 0) {
         canvas_.orbitSharpPending = false;
         canvas_.orbitDirty = true;  // the wheel stopped: draw it sharp next frame
     }
     if (canvas_.texture.tex) dl->AddImage(canvas_.texture.id(), v0, {v0.x + size.x, v0.y + size.y});
+    view3dDraw(dl, v0, size);
     char angle[64];
     std::snprintf(angle, sizeof angle, "yaw %.0f  pitch %.0f  zoom %.2g", std::fmod(o.yaw + 3600.0, 360.0), o.pitch, o.zoom);
     dl->AddText({v0.x + 8, v0.y + size.y - ImGui::GetFontSize() - 6}, IM_COL32(110, 110, 120, 255), angle);

@@ -321,7 +321,7 @@ Claude calls `photo_open`, `photo_preview` to find the spot and the wire, `photo
 
 A **selection** is the part of the picture your next edits change. While something is selected, adjustments, effects, curves, colour balance, painting and filling only touch the inside; the rest stays as it was. Soft (feathered) edges blend in.
 
-**In the window.** Pick the **Select** tool above the picture, choose **Box**, **Oval**, **Lasso** or **Wand**, and drag (or click, for the wand). Hold **Shift** to add to the selection and **Alt** to take away. The selection shows as a moving dashed outline. **Deselect** (Ctrl+D), **Invert** (Ctrl+Shift+I), **All** (Ctrl+A) and **Delete** are next to the shapes. Then run any action on the left, such as Curves or Adjust colours, and it only changes what's selected.
+**In the window.** Pick the **Select** tool above the picture, choose **Box**, **Oval**, **Lasso** or **Wand**, and drag (or click, for the wand). Hold **Shift** to add to the selection and **Alt** to take away. The selection shows as a moving dashed outline. **Deselect** (Ctrl+D), **Invert** (Ctrl+Shift+I), **All** (Ctrl+A) and **Delete** are next to the shapes. Then run any action on the left, such as Curves or Adjust colours, and it only changes what's selected. Adjustments and filters preview live, like Photoshop's dialogs: the picture changes as you drag a slider, and **Apply** keeps it (Ctrl+Z or closing the form drops it; untick **Live preview** to compare with the original).
 
 ![a box selection with marching ants in the image app](images/gui-image-select.jpg)
 

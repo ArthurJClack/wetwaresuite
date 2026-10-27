@@ -327,6 +327,15 @@ Projector fit(const Vec3& lo, const Vec3& hi, const OrbitView& view, int width, 
     p.scale = std::min(width, height) * avail / (2 * p.radius) * std::clamp(view.zoom, 1e-3, 1e4);
     p.cx = dot(p.centre, p.right) - view.panX * p.radius;
     p.cy = dot(p.centre, p.up) - view.panY * p.radius;
+    if (view.camera) {  // a camera held still by the window
+        const ViewCamera& c = *view.camera;
+        p.right = {c.right[0], c.right[1], c.right[2]};
+        p.up = {c.up[0], c.up[1], c.up[2]};
+        p.forward = {c.forward[0], c.forward[1], c.forward[2]};
+        p.cx = c.cx;
+        p.cy = c.cy;
+        p.scale = c.scale;
+    }
     return p;
 }
 
@@ -509,6 +518,17 @@ void drawEdge(Canvas& c, const ViewBuffer& b, const Vec3& a, const Vec3& e, rast
 }
 
 }  // namespace
+
+bool ModelDoc::viewCamera(const OrbitView& view, int width, int height, ViewCamera& camera) const {
+    const Projector p = projector(mesh, view, width, height);
+    camera.right[0] = p.right.x, camera.right[1] = p.right.y, camera.right[2] = p.right.z;
+    camera.up[0] = p.up.x, camera.up[1] = p.up.y, camera.up[2] = p.up.z;
+    camera.forward[0] = p.forward.x, camera.forward[1] = p.forward.y, camera.forward[2] = p.forward.z;
+    camera.cx = p.cx;
+    camera.cy = p.cy;
+    camera.scale = p.scale;
+    return true;
+}
 
 bool ModelDoc::renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const {
     if (width == 0 && height == 0) return true;

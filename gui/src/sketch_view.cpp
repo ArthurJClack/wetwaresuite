@@ -80,6 +80,25 @@ void Shell::refreshSketch() {
     k.points = listField(r, "points");
     k.free = listField(r, "free");
     k.profiles = listField(r, "profiles");
+    const NumberList o = listField(r, "origin"), u = listField(r, "u"), v = listField(r, "v"), n = listField(r, "n");
+    if (o.size() == 3 && u.size() == 3 && v.size() == 3 && n.size() == 3) {
+        for (int i = 0; i < 3; ++i) k.origin[i] = o[i], k.u[i] = u[i], k.v[i] = v[i], k.n[i] = n[i];
+    }
+    // the face it was started on, flattened into the sketch: lines to trace and corners to snap to
+    k.faceEdges.clear();
+    for (std::size_t i = 0; i < k.face3d.size();) {
+        const std::size_t count = static_cast<std::size_t>(k.face3d[i++]);
+        std::vector<double> xy;
+        for (std::size_t j = 0; j < count && i + 2 < k.face3d.size() + 1; ++j, i += 3) {
+            double d[3] = {k.face3d[i] - k.origin[0], k.face3d[i + 1] - k.origin[1], k.face3d[i + 2] - k.origin[2]};
+            xy.push_back(d[0] * k.u[0] + d[1] * k.u[1] + d[2] * k.u[2]);
+            xy.push_back(d[0] * k.v[0] + d[1] * k.v[1] + d[2] * k.v[2]);
+        }
+        for (std::size_t j = 0; j + 1 < xy.size(); j += 2) {
+            const std::size_t next = (j + 2) % xy.size();
+            k.faceEdges.insert(k.faceEdges.end(), {xy[j], xy[j + 1], xy[next], xy[next + 1]});
+        }
+    }
 }
 
 void Shell::sketchToolbar() {
@@ -106,17 +125,19 @@ void Shell::sketchToolbar() {
     ImGui::SameLine();
     ImGui::BeginDisabled(k.profiles.empty() || !find("cad.sketch_extrude"));
     if (accentButton("Extrude...")) {
-        const std::string name = k.sketch;
+        const std::string name = k.sketch, body = k.onBody;
         leaveSketch();
         select("cad.sketch_extrude");
         if (form_) {
-            for (auto& f : form_->fields)
+            for (auto& f : form_->fields) {
                 if (f.spec.name == "sketch") setFieldText(f, name);
+                if (f.spec.name == "target" && !body.empty()) setFieldText(f, body);  // a sketch on a face adds to that body
+            }
         }
     }
     ImGui::EndDisabled();
     ImGui::SetItemTooltip(k.profiles.empty() ? "Draw a closed shape first (a rectangle, a circle, or lines that end where they started)"
-                                             : "Pull the closed shapes into a solid");
+                                             : "Pull the closed shapes into a solid: drag the arrow on it or type the depth, and the part shows the result as you go");
     ImGui::SameLine();
     if (ImGui::Button("Finish sketch")) leaveSketch();
     ImGui::SetItemTooltip("Back to the 3D view");
@@ -143,6 +164,7 @@ void Shell::sketchCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, b
         };
         grow(k.lines);
         grow(k.construction);
+        grow(k.faceEdges);
         if (any) {
             const double pad = std::max({x1 - x0, y1 - y0, 10.0}) * 0.15;
             x0 -= pad, x1 += pad, y0 -= pad, y1 += pad;
@@ -207,6 +229,34 @@ void Shell::sketchCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, b
         dl->AddLine({o.x, v0.y}, {o.x, v0.y + size.y}, IM_COL32(60, 170, 80, 200), 1.5f);  // y axis
     }
 
+    // the part behind the sketch, seen straight on (as Onshape turns the view to the sketch plane)
+    if (auto doc = session_.workspace().get(k.doc)) {
+        const int w = static_cast<int>(size.x), h = static_cast<int>(size.y);
+        const bool moving = active && (ImGui::IsMouseDown(ImGuiMouseButton_Right) || ImGui::IsMouseDown(ImGuiMouseButton_Middle));
+        ViewCamera cam;
+        for (int i = 0; i < 3; ++i) cam.right[i] = k.u[i], cam.up[i] = k.v[i], cam.forward[i] = -k.n[i];
+        cam.cx = k.origin[0] * k.u[0] + k.origin[1] * k.u[1] + k.origin[2] * k.u[2] + k.cx;
+        cam.cy = k.origin[0] * k.v[0] + k.origin[1] * k.v[1] + k.origin[2] * k.v[2] + k.cy;
+        cam.scale = k.ppm;
+        char key[160];
+        std::snprintf(key, sizeof key, "%d %d %.9g %.9g %.9g %llu %d", w, h, cam.cx, cam.cy, cam.scale, static_cast<unsigned long long>(changes_), moving ? 0 : 1);
+        if (key != k.backdropKey && w >= 8 && h >= 8) {
+            k.backdropKey = key;
+            OrbitView view;
+            view.camera = cam;
+            view.antialias = !moving && io.MouseWheel == 0;
+            std::vector<std::uint8_t> rgba;
+            if (doc->renderView(view, w, h, rgba)) {
+                // the renderer's light grey background lets the grid show through
+                const std::uint8_t bg[3] = {246, 247, 249};  // mesh::RenderOptions' background
+                for (std::size_t i = 0; i + 3 < rgba.size(); i += 4)
+                    if (rgba[i] == bg[0] && rgba[i + 1] == bg[1] && rgba[i + 2] == bg[2]) rgba[i + 3] = 0;
+                k.backdrop.upload(renderer_, rgba.data(), w, h);
+            }
+        }
+        if (k.backdrop.tex) dl->AddImage(k.backdrop.id(), v0, {v0.x + size.x, v0.y + size.y}, {0, 0}, {1, 1}, IM_COL32(255, 255, 255, 150));
+    }
+
     // closed profiles shaded (what an extrude will use), then the lines and points
     const ImVec4 c = accent_;
     for (std::size_t i = 0; i < k.profiles.size();) {
@@ -219,6 +269,8 @@ void Shell::sketchCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, b
     for (std::size_t i = 0; i + 3 < k.lines.size(); i += 4) dl->AddLine(toScreen(k.lines[i], k.lines[i + 1]), toScreen(k.lines[i + 2], k.lines[i + 3]), ink, 2.0f);
     for (std::size_t i = 0; i + 3 < k.construction.size(); i += 4)
         dl->AddLine(toScreen(k.construction[i], k.construction[i + 1]), toScreen(k.construction[i + 2], k.construction[i + 3]), IM_COL32(60, 120, 230, 200), 1.0f);
+    for (std::size_t i = 0; i + 3 < k.faceEdges.size(); i += 4)
+        dl->AddLine(toScreen(k.faceEdges[i], k.faceEdges[i + 1]), toScreen(k.faceEdges[i + 2], k.faceEdges[i + 3]), IM_COL32(120, 125, 140, 220), 1.5f);
     for (std::size_t i = 0; i + 1 < k.points.size(); i += 2) dl->AddCircleFilled(toScreen(k.points[i], k.points[i + 1]), 3.0f, ink);
     for (std::size_t i = 0; i + 1 < k.free.size(); i += 2) dl->AddCircleFilled(toScreen(k.free[i], k.free[i + 1]), 3.0f, IM_COL32(60, 120, 230, 255));
 
@@ -250,6 +302,7 @@ void Shell::sketchCanvas(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, b
     };
     snapTo(k.points);
     if (!onPoint) snapTo(k.free);
+    if (!onPoint) snapTo(k.faceEdges);  // the corners of the face the sketch is on
     if (!onPoint && k.drawing && k.tool == SketchEdit::Tool::Line) snapTo(NumberList{k.chainX, k.chainY});
     if (!onPoint && !io.KeyAlt) {
         mx = std::round(mx / step) * step;

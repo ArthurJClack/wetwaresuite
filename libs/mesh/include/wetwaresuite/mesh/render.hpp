@@ -37,9 +37,20 @@ struct Line3 {
     bool closed = false;
 };
 
+// The orthographic projection a picture is drawn with (in output pixels): p lands on
+// x = (dot(p, right) - cx) * scale + width / 2, y = height / 2 - (dot(p, up) - cy) * scale.
+struct Projection {
+    Vec3 right{1, 0, 0}, up{0, 0, 1}, forward{0, 1, 0};
+    double cx = 0, cy = 0, scale = 1;
+    Vec2 toScreen(const Vec3& p, int width, int height) const {
+        return {(dot(p, right) - cx) * scale + width / 2.0, height / 2.0 - (dot(p, up) - cy) * scale};
+    }
+};
+
 struct RenderOptions {
     View view = View::Iso;
     std::optional<Orbit> orbit;  // overrides view
+    std::optional<Projection> projection;  // overrides view and orbit: no fitting
     raster::Color background{246, 247, 249, 255};  // alpha 0 gives a transparent background
     raster::Color color{122, 158, 204, 255};       // surface colour
     bool smooth = true;     // smooth normals across shallow edges; false = flat facets
@@ -54,5 +65,7 @@ struct RenderOptions {
 };
 
 raster::Image render(const Mesh& mesh, int width, int height, const RenderOptions& options = {});
+// The projection render() would use for this mesh, size and options (it fits the camera to the mesh and lines).
+Projection fitProjection(const Mesh& mesh, int width, int height, const RenderOptions& options = {});
 
 }  // namespace wetwaresuite::mesh

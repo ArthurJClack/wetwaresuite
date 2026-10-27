@@ -412,7 +412,7 @@ std::vector<mesh::Line3> CadDoc::sketchLines() const {
     return lines;
 }
 
-bool CadDoc::renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const {
+mesh::RenderOptions CadDoc::viewOptions() const {
     mesh::RenderOptions o = previewOptions;
     o.lines = sketchLines();
     if (mesh.empty()) {
@@ -425,7 +425,16 @@ bool CadDoc::renderView(const OrbitView& view, int width, int height, std::vecto
         o.lines.push_back({{{0, 0, 0}, {0, len, 0}}, {60, 170, 80, 255}});
         o.lines.push_back({{{0, 0, 0}, {0, 0, len}}, {60, 110, 220, 255}});
     }
-    return mesh::renderOrbit(mesh, view, width, height, rgba, o);
+    return o;
+}
+
+bool CadDoc::renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const {
+    return mesh::renderOrbit(mesh, view, width, height, rgba, viewOptions());
+}
+
+bool CadDoc::viewCamera(const OrbitView& view, int width, int height, ViewCamera& camera) const {
+    camera = mesh::orbitCamera(mesh, view, width, height, viewOptions());
+    return true;
 }
 
 const Parameter* CadDoc::findParam(const std::string& name) const {

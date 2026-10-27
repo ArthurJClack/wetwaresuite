@@ -367,8 +367,9 @@ Open the model app (or a `.wwmodel`, `.obj` or `.fbx` file) and the model shows 
 
 1. **Look around**: drag to turn, right-drag to move, scroll to zoom, double-click to fit (see [3D view](3d-view.md)).
 2. **Click to select**: in object mode a click selects the object under the mouse; in edit mode it selects the vertex, edge or face under it, depending on the select mode. Hold **Ctrl** to toggle what you click in or out of the selection. Clicking empty space clears it.
-3. **Run an operator**: press **Ctrl+K** and type what you want: "extrude", "loop cut", "bevel", "add modifier", "edit mode". The form shows the same parameters as `help model.extrude`. Selected faces show in orange.
-4. **Undo** with Ctrl+Z as usual: every operator is one step.
+3. **Move it**: whatever is selected gets red, green and blue arrows. Drag one to slide the selection along X, Y or Z, or press **G** (move), **R** (rotate) or **S** (scale) and move the mouse; X, Y or Z then locks an axis, a click keeps it and Esc puts it back. Both run `model.drag`; `model.pivot` says where the arrows go.
+4. **Run an operator**: press **Ctrl+K** and type what you want: "extrude", "loop cut", "bevel", "add modifier", "edit mode". The form shows the same parameters as `help model.extrude`, and the model shows the result live while you change them (untick **Live preview** to stop); the button keeps it. Selected faces show in orange.
+5. **Undo** with Ctrl+Z as usual: every operator is one step.
 
 ## Claude
 

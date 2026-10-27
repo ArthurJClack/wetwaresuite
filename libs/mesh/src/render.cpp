@@ -65,6 +65,47 @@ std::uint8_t clampByte(double v) { return static_cast<std::uint8_t>(std::min(255
 
 }  // namespace
 
+Projection fitProjection(const Mesh& m, int W, int H, const RenderOptions& o) {
+    const Camera cam = o.orbit ? camera(*o.orbit) : camera(o.view);
+    Projection out;
+    out.forward = cam.forward;
+    out.right = cam.right;
+    out.up = cam.up;
+    double minX = 1e300, maxX = -1e300, minY = 1e300, maxY = -1e300;
+    auto add = [&](const Vec3& p) {
+        const double x = dot(p, cam.right), y = dot(p, cam.up);
+        minX = std::min(minX, x); maxX = std::max(maxX, x);
+        minY = std::min(minY, y); maxY = std::max(maxY, y);
+    };
+    for (const Vec3& p : m.positions) add(p);
+    for (const auto& ln : o.lines)
+        for (const Vec3& p : ln.points) add(p);
+    if (minX > maxX) minX = maxX = minY = maxY = 0;
+    const double ex = std::max(maxX - minX, 1e-12), ey = std::max(maxY - minY, 1e-12);
+    const double avail = 1.0 - 2.0 * std::clamp(o.margin, 0.0, 0.45);
+    out.scale = std::min(std::max(W, 1) * avail / ex, std::max(H, 1) * avail / ey);
+    out.cx = (minX + maxX) / 2;
+    out.cy = (minY + maxY) / 2;
+    if (o.orbit) {
+        // fit the bounding sphere, not this view's outline, so orbiting doesn't change the size
+        Vec3 lo{1e300, 1e300, 1e300}, hi{-1e300, -1e300, -1e300};
+        auto grow = [&](const Vec3& p) {
+            lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
+            hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
+        };
+        for (const Vec3& p : m.positions) grow(p);
+        for (const auto& ln : o.lines)
+            for (const Vec3& p : ln.points) grow(p);
+        if (lo.x > hi.x) lo = hi = {0, 0, 0};
+        const Vec3 centre = (lo + hi) * 0.5;
+        const double radius = std::max(length(hi - lo) / 2, 1e-12);
+        out.scale = std::min(std::max(W, 1), std::max(H, 1)) * avail / (2 * radius) * std::clamp(o.orbit->zoom, 1e-3, 1e4);
+        out.cx = dot(centre, cam.right) - o.orbit->panX * radius;
+        out.cy = dot(centre, cam.up) - o.orbit->panY * radius;
+    }
+    return out;
+}
+
 raster::Image render(const Mesh& input, int width, int height, const RenderOptions& o) {
     if (width <= 0 || height <= 0) throw std::invalid_argument("render size must be positive");
     raster::Image out(width, height, o.background);
@@ -72,7 +113,6 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
 
     const int ss = o.antialias ? 2 : 1;
     const int W = width * ss, H = height * ss;
-    const Camera cam = o.orbit ? camera(*o.orbit) : camera(o.view);
 
     Mesh smoothMesh;
     const Mesh* mp = &input;
@@ -84,43 +124,18 @@ raster::Image render(const Mesh& input, int width, int height, const RenderOptio
     const Mesh& m = *mp;
     const bool useVertexNormals = o.smooth && m.hasNormals();
 
-    // Project and fit.
+    // Project (fitted to the mesh and lines unless a projection is given).
+    const Projection proj = o.projection ? *o.projection : fitProjection(input, width, height, o);
+    const Camera cam{proj.forward, proj.right, proj.up};
+    const double scale = proj.scale * ss, cx = proj.cx, cy = proj.cy;
     std::vector<Vec3> scr(m.positions.size());
-    double minX = 1e300, maxX = -1e300, minY = 1e300, maxY = -1e300, minD = 1e300, maxD = -1e300;
+    double minD = 1e300, maxD = -1e300;
     for (std::size_t i = 0; i < m.positions.size(); ++i) {
         const Vec3& p = m.positions[i];
-        const double x = dot(p, cam.right), y = dot(p, cam.up), d = dot(p, cam.forward);
-        scr[i] = {x, y, d};
-        minX = std::min(minX, x); maxX = std::max(maxX, x);
-        minY = std::min(minY, y); maxY = std::max(maxY, y);
-        minD = std::min(minD, d); maxD = std::max(maxD, d);
-    }
-    for (const auto& ln : o.lines) {
-        for (const Vec3& p : ln.points) {
-            const double x = dot(p, cam.right), y = dot(p, cam.up);
-            minX = std::min(minX, x); maxX = std::max(maxX, x);
-            minY = std::min(minY, y); maxY = std::max(maxY, y);
-        }
-    }
-    const double ex = std::max(maxX - minX, 1e-12), ey = std::max(maxY - minY, 1e-12);
-    const double avail = 1.0 - 2.0 * std::clamp(o.margin, 0.0, 0.45);
-    double scale = std::min(W * avail / ex, H * avail / ey);
-    double cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
-    if (o.orbit) {
-        // fit the bounding sphere, not this view's outline, so orbiting doesn't change the size
-        Vec3 lo{1e300, 1e300, 1e300}, hi{-1e300, -1e300, -1e300};
-        auto grow = [&](const Vec3& p) {
-            lo = {std::min(lo.x, p.x), std::min(lo.y, p.y), std::min(lo.z, p.z)};
-            hi = {std::max(hi.x, p.x), std::max(hi.y, p.y), std::max(hi.z, p.z)};
-        };
-        for (const Vec3& p : m.positions) grow(p);
-        for (const auto& ln : o.lines)
-            for (const Vec3& p : ln.points) grow(p);
-        const Vec3 centre = (lo + hi) * 0.5;
-        const double radius = std::max(length(hi - lo) / 2, 1e-12);
-        scale = std::min(W, H) * avail / (2 * radius) * std::clamp(o.orbit->zoom, 1e-3, 1e4);
-        cx = dot(centre, cam.right) - o.orbit->panX * radius;
-        cy = dot(centre, cam.up) - o.orbit->panY * radius;
+        const double d = dot(p, cam.forward);
+        scr[i] = {dot(p, cam.right), dot(p, cam.up), d};
+        minD = std::min(minD, d);
+        maxD = std::max(maxD, d);
     }
     for (auto& s : scr) {
         s.x = (s.x - cx) * scale + W / 2.0;

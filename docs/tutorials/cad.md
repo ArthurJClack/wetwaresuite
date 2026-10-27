@@ -972,6 +972,46 @@ result line shows the degrees of freedom. Ctrl+Z takes back exactly one sketch
 edit. Tick **preview** to see the sketch itself, with its dimensions and the
 points that can still move marked.
 
+### in the window: work right on the part
+
+You don't need the forms for everyday modelling. In the 3D view:
+
+- **Hover** over the part: the face under the mouse lights up. **Click** a face
+  to pick it (Esc lets it go). The bar over the view says which body and face it is.
+- **Push/Pull**: a picked flat face gets an arrow. Drag it out to add material,
+  in to cut. A ghost shows where the face goes, with the distance next to the
+  arrow; it snaps to round numbers (hold **Alt** for free). Hold the mouse
+  still for a moment and the real result appears on the part. Let go to keep
+  it: that's one `cad.push_pull`, so one Ctrl+Z takes it back, and the tree
+  gets an editable sketch plus extrude.
+- **Move**: switch the picked face to **Move** and drag the red, green or blue
+  arrow to slide the whole body along X, Y or Z (a `cad.transform`).
+- **Sketch on it**: starts a sketch right on the picked face. **New sketch**
+  starts one on the clicked face or on the top, front or right plane.
+  While you sketch, the view looks straight at the sketch with the part drawn
+  behind it, and the face's edges are traced so your lines snap to its corners.
+- **Extrude...** from a sketch opens the extrude settings with a live preview:
+  the solid shows on the part at once, and an arrow on it sets the depth as you
+  drag. Change the operation (join, cut, new) or any other setting and the
+  preview follows. **Apply** keeps it, Ctrl+Z or closing the form drops it.
+- **Fillet...** opens the fillet settings for the picked body, previewed live too.
+
+Every form that changes the part previews like that (tick **Live preview** off
+to stop it). Slow ones, like a big fillet, get a **Preview** button instead of
+running on every change. The view holds still while previews come and go, so
+the part doesn't jump around; **Fit** or a double-click shows everything again.
+
+The same works headless: `cad.pick` says what is under a point of a view (or
+along a ray), and `cad.push_pull face=x,y,z distance=5` pulls a face:
+
+```
+cad.new
+cad.box width=40 depth=30 height=10
+cad.pick ray=20,15,100,0,0,-1        # the top face: flat, area 1200, its outline
+cad.push_pull face=20,15,10 distance=5
+cad.push_pull face=20,15,15 distance=-2
+```
+
 ## 14. task: revolve, loft, sweep, draft, rib, thread and reference geometry
 
 Every feature below is parametric: it reads its sketches, parameters and
@@ -1661,6 +1701,32 @@ Rename a feature; features that refer to it follow.
 | `feature` | yes |  | feature name, e.g. plate or hole1 (cad.feature_list shows them) |
 | `to` | yes |  | new name (letters, digits, _ and -) |
 
+#### `cad.pick`: Pick Face
+
+Say what is at a point of the 3D view: the body, the face (point, normal, `flat`, `side`, its outline
+loops as a count then x,y,z points, `area`, `centre`) and the body's `bounds`. Pass the returned
+`face` to `cad.sketch on=<body> face=...` or `cad.push_pull`.
+
+| param | required | default | meaning |
+|---|---|---|---|
+| `doc` | yes |  | id of an open cad document, e.g. cad1 |
+| `u` `v` |  | `0.5` | 0..1 across and down the view |
+| `yaw` `pitch` `zoom` `pan_x` `pan_y` `width` `height` |  | iso, 800 x 600 | the view, as `app.view` |
+| `ray` |  |  | instead of the view: a ray start and direction x,y,z,dx,dy,dz |
+
+#### `cad.push_pull`: Push/Pull Face
+
+Pull a flat face out by `distance` (or push it in with a negative one): it sketches the face's outline
+on it and extrudes that, joined to the body or cut into it, as one undo step.
+
+| param | required | default | meaning |
+|---|---|---|---|
+| `doc` | yes |  | id of an open cad document |
+| `face` | yes |  | a point x,y,z on the face |
+| `distance` | yes |  | positive pulls out, negative pushes in |
+| `target` |  |  | the body (default: the one whose face is nearest the point) |
+| `name` |  |  | name for the extrude |
+
 #### `cad.feature_list`: List Features
 
 List the feature tree in order: name, type, status, every set field (with evaluated values) and bounds.
@@ -2236,8 +2302,9 @@ Make an engineering drawing of a part or assembly: standard views projected from
 ## 19. limits and troubleshooting
 
 **Not there yet.** There is no sheet metal, no drill-point cone at the
-bottom of blind holes, and no sketch dragging with the mouse in the window
-(use `cad.sketch_move`). Drawings show projected views. There are no section
+bottom of blind holes, and sketch points can't be dragged with the mouse in
+the window yet (use `cad.sketch_move`). Push/pull works on flat faces only, and
+the 3D view picks faces, not single edges (fillet edges by kind or `near=`). Drawings show projected views. There are no section
 views or detail views yet, and dimensions are the overall sizes and
 diameters; add more to the blueprint document by hand. Assemblies solve rigid
 mates only: no gears, cams or limits.

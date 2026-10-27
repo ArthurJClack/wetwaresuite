@@ -142,6 +142,7 @@ void Shell::noteChange(const std::string& id, const Params& params, const Result
 }
 
 Result Shell::run(const std::string& id, const Params& params) {
+    if (trial_.applied && !trial_.running) dropTrial();  // doing something else: the preview goes
     Result r = session_.run(id, params);
     if (r.ok) noteChange(id, params, r);
     if (r.ok) {  // names of things just made, so the next form can offer them
@@ -239,7 +240,10 @@ void Shell::runForm() {
         return p.name == "background" && p.type == ParamType::Bool;
     });
     if (background) params["background"] = true;
-    Result r = run(form_->command, params);
+    // a live preview already shows exactly this: keep it instead of doing it again, and close the
+    // form like a dialog's OK (so it doesn't preview a second one)
+    const bool kept = keepTrial(form_->command, params), previewing = live_.on && previewable(form_->command);
+    Result r = kept ? trial_.result : run(form_->command, params);
     if (background && r.ok) {
         if (const Value* job = r.field("job")) {
             exportJob_ = ExportJob{form_->command.substr(0, form_->command.find('.')), toText(*job), {}, 0, 0};
@@ -247,7 +251,7 @@ void Shell::runForm() {
         }
     }
     r.message = r.ok ? sentence(r.message) : friendlyError(r.message);
-    const bool done = r.ok && (oneShotCommand(form_->command) || form_->command == "cad.sketch");  // a sketch opens for drawing
+    const bool done = r.ok && (kept || previewing || oneShotCommand(form_->command) || form_->command == "cad.sketch");  // a sketch opens for drawing
     result_ = std::move(r);
     scrollToResult_ = true;
     if (done) {  // like a New or Save dialog's OK: the panel goes back to the file
@@ -301,6 +305,13 @@ void Shell::exportProgress() {
 }
 
 void Shell::undo() {
+    if (trial_.applied) {  // Ctrl+Z during a live preview cancels it
+        dropTrial();
+        form_.reset();
+        result_ = Result::success("Preview cancelled.");
+        resultFor_ = "Undo";
+        return;
+    }
     beforeHistoryStep();
     ++changes_;
     if (session_.history().undo()) {
@@ -312,6 +323,7 @@ void Shell::undo() {
 }
 
 void Shell::redo() {
+    dropTrial();
     beforeHistoryStep();
     ++changes_;
     if (session_.history().redo()) {

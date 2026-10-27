@@ -527,9 +527,13 @@ int main() {
         auto d = docIn(s);
         const Object* cube = d->object("Cube");
         CHECK(cube->location.x > 1 && std::fabs(cube->location.y) < 1e-9 && std::fabs(cube->location.z) < 1e-9);
+        // the window puts its move arrows where model.pivot says the selection is
+        Result pivot = run(s, "model.pivot", {});
+        CHECK(pivot.ok && pivot.field("centre") && std::get<NumberList>(*pivot.field("centre"))[0] == cube->location.x);
         CHECK(run(s, "model.drag", {{"dx", 100.0}, {"mode", std::string("scale")}}).ok && std::fabs(d->object("Cube")->scale.x - 2) < 1e-9);
         CHECK(run(s, "model.select_object", {{"action", std::string("none")}}).ok);
         CHECK(!run(s, "model.drag", {{"dx", 10.0}}).ok);  // nothing selected
+        CHECK(std::get<std::int64_t>(*run(s, "model.pivot", {}).field("selected")) == 0);
     }
 
     // ---- MCP ----

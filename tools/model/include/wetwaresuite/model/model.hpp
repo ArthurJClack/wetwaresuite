@@ -120,6 +120,7 @@ public:
     std::string summary() const override;
     std::unique_ptr<Attachment> preview() const override;
     bool renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const override;
+    bool viewCamera(const OrbitView& view, int width, int height, ViewCamera& camera) const override;
 
     Object* object(const std::string& name);
     const Object* object(const std::string& name) const;

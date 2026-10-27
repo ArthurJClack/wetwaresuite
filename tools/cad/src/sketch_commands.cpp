@@ -740,7 +740,7 @@ void registerSketchEditCommands(Session& session) {
     reg.add({"cad.sketch_geometry", "Sketch Geometry",
              "A sketch's solved geometry as numbers, for drawing it in a window: lines = x1,y1,x2,y2,... segments (arcs and "
              "circles as short segments), construction = the same for construction geometry, points = x,y of every point, "
-             "free = points that can still move, profiles = each closed region as a count then x,y pairs. Without sketch= it "
+             "free = points that can still move, profiles = each closed region as a count then x,y pairs, origin/u/v/n = its plane in the part, used = a later feature is built from it. Without sketch= it "
              "uses the last sketch; sketches lists them all.",
              {docParam(), {"sketch", ParamType::String, "name of a sketch feature (default: the last one)", false}}, false, true},
             cadCommand(session, [](CadDoc& doc, const Params& p) {
@@ -769,9 +769,19 @@ void registerSketchEditCommands(Session& session) {
                     profiles.push_back(static_cast<double>(region.outer.size()));
                     for (const auto& q : region.outer) profiles.insert(profiles.end(), {q.x, q.y});
                 }
+                // whether a later feature is built from it (fields naming it, alone or in a list)
+                auto mentions = [&name](const std::string& value) {
+                    for (const auto& item : splitList(value))
+                        if (item == name) return true;
+                    return false;
+                };
+                bool used = false;
+                for (std::size_t i = static_cast<std::size_t>(doc.featureIndex(name)) + 1; i < doc.features.size() && !used; ++i)
+                    for (const auto& [field, value] : doc.features[i].values) used = used || mentions(value);
                 Result r = Result::success(name + ": " + s.status(), name);
                 r.with("doc", stringParam(p, "doc"))
                     .with("sketch", name)
+                    .with("used", used)
                     .with("sketches", sketches)
                     .with("status", s.status())
                     .with("dof", static_cast<std::int64_t>(s.dof))
@@ -781,7 +791,12 @@ void registerSketchEditCommands(Session& session) {
                     .with("points", points)
                     .with("free", free)
                     .with("profiles", profiles)
-                    .with("units", doc.units);
+                    .with("units", doc.units)
+                    // where it sits in the part: sketch (x, y) is origin + x*u + y*v, n points the way it extrudes
+                    .with("origin", NumberList{s.frame.origin.x, s.frame.origin.y, s.frame.origin.z})
+                    .with("u", NumberList{s.frame.u.x, s.frame.u.y, s.frame.u.z})
+                    .with("v", NumberList{s.frame.v.x, s.frame.v.y, s.frame.v.z})
+                    .with("n", NumberList{s.frame.n.x, s.frame.n.y, s.frame.n.z});
                 return r;
             }, false));
 }

@@ -110,6 +110,94 @@ struct SketchEdit {
     double ax = 0, ay = 0;          // where the shape started
     double chainX = 0, chainY = 0;  // a line chain's first point: clicking it closes the shape
     ImVec2 pressAt{0, 0};
+    // where the sketch sits in the part (sketch x, y = origin + x*u + y*v), so the part can be drawn
+    // behind it, seen straight on
+    double origin[3] = {0, 0, 0}, u[3] = {1, 0, 0}, v[3] = {0, 1, 0}, n[3] = {0, 0, 1};
+    Texture backdrop;
+    std::string backdropKey;  // view and change count it was drawn for
+    // the outline of the face it was started on, in sketch units (x1,y1,x2,y2,...): drawn faintly and snapped to
+    NumberList faceEdges;
+    std::vector<double> face3d;  // the same outline in the part, x,y,z per point, count first per loop
+    std::string onBody;          // the body whose face it is on: what its extrude joins or cuts
+};
+
+// A point or direction in a 3D view (handles.cpp).
+struct P3 {
+    double x = 0, y = 0, z = 0;
+    P3 operator+(const P3& o) const { return {x + o.x, y + o.y, z + o.z}; }
+    P3 operator-(const P3& o) const { return {x - o.x, y - o.y, z - o.z}; }
+    P3 operator*(double s) const { return {x * s, y * s, z * s}; }
+};
+
+// An arrow drawn on the 3D view: drag it to slide something along dir (handles.cpp).
+struct Handle {
+    enum class Kind { PushPull, Move, Field } kind = Kind::PushPull;
+    P3 base, dir;           // world: where it starts, which way it points (unit length)
+    ImU32 colour = 0;
+    std::string axis;       // Move: x, y or z
+    std::size_t field = 0;  // Field: the form field it sets
+    double start = 0;       // Field: the field's value when the drag began
+    double scale = 1;       // Field: value per model unit along dir (-1 for a field that grows the other way)
+    const char* tip = "";
+};
+
+// Working on a cad part or a model in the 3D view (handles.cpp): the camera of the last picture,
+// the face under the mouse and the one clicked, and the arrows on them.
+struct View3d {
+    std::string doc;
+    ViewCamera cam;
+    bool camOk = false;
+    int camW = 0, camH = 0;
+    // cad: the face under the mouse, and the face clicked (its body, outline, normal)
+    struct Face {
+        bool hit = false, flat = false;
+        std::string body, face, side;
+        P3 point, normal, centre;
+        double area = 0;
+        double bounds[6] = {0, 0, 0, 0, 0, 0};
+        std::vector<std::vector<P3>> loops;
+    };
+    Face hover, picked;
+    ImVec2 hoverAt{-1e9f, -1e9f};
+    std::uint64_t hoverSeen = ~0ull;
+    bool moveMode = false;  // the clicked face's arrows move its body instead of pushing/pulling the face
+    // model: the selection's middle
+    std::uint64_t pivotSeen = ~0ull;
+    bool pivot = false;
+    P3 pivotAt;
+    // the arrows shown, the one under the mouse and the one being dragged
+    std::vector<Handle> handles;
+    int hot = -1, dragging = -1;
+    ImVec2 dragFrom{0, 0};
+    double amount = 0;       // how far it has been dragged along dir, in model units
+    double tryAmount = 0;    // what the trial on the file shows (see Trial)
+    double movedAt = 0;      // seconds: when the amount last changed
+    std::uint64_t pickedSeen = ~0ull;  // changes_ when the face was picked
+    std::string formKey;  // the form's sketch its arrow was placed for
+    P3 formBase, formNormal;
+    bool formHave = false;
+    std::vector<std::vector<P3>> formLoops;  // the profiles being extruded, in the part
+};
+
+// A command run on the file only to show what it would do: undone again when its settings change,
+// when something else is done, or when the form closes; kept when Apply is pressed (preview.cpp).
+struct Trial {
+    bool applied = false;
+    std::string command, doc, key;  // key: the command and its settings
+    std::size_t depth = 0;          // history steps right after it ran, so only it gets undone
+    bool wasUnsaved = false;
+    Result result;
+    bool running = false;           // inside its own run()
+};
+
+// Live previews of forms: the settings run on the file as they change (preview.cpp).
+struct LivePreview {
+    bool on = true;
+    std::string pendingKey;
+    double changedAt = 0;
+    std::string note;  // why the last preview failed
+    std::set<std::string> slow;  // commands that took too long to preview by themselves
+    bool runNow = false;
 };
 
 // Slides (deck_view.cpp): which slide is shown big, the strip of thumbnails, the part of the
@@ -200,6 +288,7 @@ struct Canvas {
     ImVec2 grabStart{0, 0};
     std::string grabAxis;      // "", "x", "y" or "z"
     bool grabEndClick = false; // the click that kept it isn't also a click to select
+    bool grabByHandle = false; // started by dragging an arrow: letting go keeps it
     int orbitW = 0, orbitH = 0;
 
     // selecting (selection_view.cpp)
@@ -750,6 +839,32 @@ private:
         bool focus = false;
     } docEdit_;
     void docCanvas(ImDrawList* dl, ImVec2 p0, bool hovered);
+    // the 3D view's arrows and picking (handles.cpp)
+    View3d view3d_;
+    void view3dCamera();  // read the camera the picture was drawn with
+    bool view3dInput(ImDrawList* dl, ImVec2 v0, ImVec2 size, bool hovered, bool active);  // true: the mouse is on an arrow
+    void view3dDraw(ImDrawList* dl, ImVec2 v0, ImVec2 size);
+    void view3dToolbar();
+    void cadHandles();
+    void modelHandles();
+    void formHandles();
+    View3d::Face cadPickAt(ImVec2 local);  // the face under a point of the view
+    View3d::Face cadPickRay(const P3& from, const P3& dir);
+    void handleRelease();
+    bool handleTrial(bool final);  // runs the dragged arrow's edit: as a trial, or for good
+    void keepView(const ViewCamera& before);  // the part changed size: keep showing what was shown
+    void sketchOnFace(const View3d::Face& f);
+    void sketchOnPlane(const char* plane);
+    // live previews (preview.cpp)
+    Trial trial_;
+    LivePreview live_;
+    bool previewable(const std::string& command) const;
+    bool tryRun(const std::string& command, const Params& params);  // run it as a trial (dropping the last one)
+    void dropTrial();
+    bool keepTrial(const std::string& command, const Params& params);  // true: the trial already shows exactly that
+    static std::string trialKey(const std::string& command, const Params& params);
+    void previewTick();
+    void previewControls();
     // cad: drawing a sketch with the mouse (sketch_view.cpp)
     SketchEdit sketch_;
     bool sketchActive() const;

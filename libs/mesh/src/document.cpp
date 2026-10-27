@@ -37,10 +37,39 @@ std::unique_ptr<Attachment> MeshDoc::preview() const {
     return std::make_unique<Attachment>(Attachment{"image/png", raster::encodePng(render(mesh, 512, 512, previewOptions)), "preview.png"});
 }
 
+ViewCamera toViewCamera(const Projection& p) {
+    ViewCamera c;
+    const Vec3* v[3] = {&p.right, &p.up, &p.forward};
+    double* out[3] = {c.right, c.up, c.forward};
+    for (int i = 0; i < 3; ++i) out[i][0] = v[i]->x, out[i][1] = v[i]->y, out[i][2] = v[i]->z;
+    c.cx = p.cx;
+    c.cy = p.cy;
+    c.scale = p.scale;
+    return c;
+}
+
+Projection toProjection(const ViewCamera& c) {
+    Projection p;
+    p.right = {c.right[0], c.right[1], c.right[2]};
+    p.up = {c.up[0], c.up[1], c.up[2]};
+    p.forward = {c.forward[0], c.forward[1], c.forward[2]};
+    p.cx = c.cx;
+    p.cy = c.cy;
+    p.scale = c.scale;
+    return p;
+}
+
+ViewCamera orbitCamera(const Mesh& mesh, const OrbitView& view, int width, int height, RenderOptions o) {
+    if (view.camera) return *view.camera;
+    o.orbit = Orbit{view.yaw, view.pitch, view.zoom, view.panX, view.panY};
+    return toViewCamera(fitProjection(mesh, width, height, o));
+}
+
 bool renderOrbit(const Mesh& mesh, const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba, RenderOptions o) {
     if (width == 0 && height == 0) return true;  // just asking
     if (width <= 0 || height <= 0) return false;
     o.orbit = Orbit{view.yaw, view.pitch, view.zoom, view.panX, view.panY};
+    if (view.camera) o.projection = toProjection(*view.camera);
     o.antialias = view.antialias;
     o.outline = o.outline && view.antialias;  // outlines and smooth normals cost extra passes; skip them mid-drag
     o.smooth = o.smooth && view.antialias;
@@ -52,6 +81,11 @@ bool renderOrbit(const Mesh& mesh, const OrbitView& view, int width, int height,
 
 bool MeshDoc::renderView(const OrbitView& view, int width, int height, std::vector<std::uint8_t>& rgba) const {
     return renderOrbit(mesh, view, width, height, rgba, previewOptions);
+}
+
+bool MeshDoc::viewCamera(const OrbitView& view, int width, int height, ViewCamera& camera) const {
+    camera = orbitCamera(mesh, view, width, height, previewOptions);
+    return true;
 }
 
 std::shared_ptr<MeshDoc> newMesh(Mesh mesh) {

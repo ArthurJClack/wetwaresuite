@@ -393,10 +393,12 @@ void registerSketchCommands(Session& session);
 void registerSketchConstraintCommands(Session& session);
 void registerAssemblyCommands(Session& session);
 void registerDrawingCommands(Session& session);
+void registerPickCommands(Session& session);
 
 void registerCommands(Session& session) {
     auto& reg = session.registry();
     registerSketchCommands(session);
+    registerPickCommands(session);
     registerSketchConstraintCommands(session);
     registerAssemblyCommands(session);
     registerDrawingCommands(session);

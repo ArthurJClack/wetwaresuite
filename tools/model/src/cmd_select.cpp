@@ -320,6 +320,32 @@ void registerSelectCommands(Session& session) {
                 return done("dragged " + many(objs.size(), "object"), d, p);
             }));
 
+    reg.add({"model.pivot",
+             "Selection centre",
+             "Where the selection is, so a window can put move arrows on it: the middle of the selected vertices in "
+             "edit mode, of the selected objects' origins in object mode. selected=0 when nothing is.",
+             withDoc({}),
+             false,
+             true},
+            query(session, [](ModelDoc& d, const Params&) {
+                d.refresh();
+                Vec3 sum{0, 0, 0};
+                std::size_t n = 0;
+                Object* a = d.activeObject();
+                if (d.scene.editMode && a && d.meshOf(*a)) {
+                    const PolyMesh& m = *d.meshOf(*a);
+                    const Mat4 w = d.world(*a);
+                    for (auto v : selectedVerts(m)) sum = sum + w.point(m.verts[v].p), ++n;
+                } else {
+                    for (const auto& o : d.scene.objects)
+                        if (o.selected) sum = sum + d.world(o).point({0, 0, 0}), ++n;
+                }
+                if (n) sum = sum / static_cast<double>(n);
+                Result r = Result::success(n ? "selection centre " + num(sum.x) + "," + num(sum.y) + "," + num(sum.z) : "nothing selected");
+                r.with("selected", static_cast<std::int64_t>(n)).with("centre", NumberList{sum.x, sum.y, sum.z});
+                return r;
+            }));
+
     reg.add({"model.pick",
              "Click to select",
              "Select what's under a point of the viewport (u,v from 0..1, top left; with view/yaw/pitch/zoom, width and "

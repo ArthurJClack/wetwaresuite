@@ -457,7 +457,52 @@ void testSketchesShowInTheView() {
     CHECK(doc->sketchLines().empty());
 }
 
+// Working in the 3D view: what's under the mouse, pulling faces, the camera the view uses.
+void testPickAndPushPull() {
+    Session s;
+    registerCommands(s);
+    run(s, "cad.new");
+    run(s, "cad.box doc=cad1 width=10 depth=10 height=10");
+    Result r = run(s, "cad.pick doc=cad1 ray=5,5,50,0,0,-1");
+    CHECK(r.ok && flag(r, "hit") && flag(r, "flat"));
+    CHECK(near(num(r, "area"), 100, 1e-6));
+    CHECK(list(r, "normal") == (NumberList{0, 0, 1}));
+    CHECK(list(r, "outline").size() == 13);  // one loop of 4 corners
+    CHECK(r.field("side") && toText(*r.field("side")) == "top");
+    CHECK(!flag(run(s, "cad.pick doc=cad1 ray=50,50,50,0,0,-1"), "hit"));
+    // the view's middle, seen from the top, is the top face too
+    CHECK(flag(run(s, "cad.pick doc=cad1 u=0.5 v=0.5 yaw=0 pitch=89.9 width=200 height=100"), "hit"));
+    auto doc = s.workspace().getAs<CadDoc>("cad1");
+    ViewCamera cam;
+    CHECK(doc->viewCamera(OrbitView{}, 200, 100, cam) && cam.scale > 0);
+    OrbitView held;
+    held.camera = cam;
+    ViewCamera back;
+    CHECK(doc->viewCamera(held, 200, 100, back) && back.scale == cam.scale && back.cx == cam.cx);
+
+    // pull the top up 5, then push 3 back in: one undo step each, still a closed solid
+    CHECK(run(s, "cad.push_pull doc=cad1 face=5,5,10 distance=5").ok);
+    CHECK(near(volumeOf(s), 1500, 1e-3) && watertight(s));
+    CHECK(run(s, "cad.push_pull doc=cad1 face=5,5,15 distance=-3").ok);
+    CHECK(near(volumeOf(s), 1200, 1e-3) && watertight(s));
+    // a side face works too
+    CHECK(run(s, "cad.push_pull doc=cad1 face=10,5,5 distance=2").ok);
+    CHECK(near(volumeOf(s), 1200 + 2 * 10 * 12, 1e-3));
+    s.history().undo();
+    CHECK(near(volumeOf(s), 1200, 1e-3));
+    // the sketch it made sits on the face
+    Result g = run(s, "cad.sketch_geometry doc=cad1 sketch=sketch2");
+    CHECK(g.ok && list(g, "n") == (NumberList{0, 0, 1}) && near(list(g, "origin")[2], 15));
+
+    // curved faces can't be pulled
+    run(s, "cad.cylinder doc=cad1 diameter=6 height=4 x=30");
+    Result c = run(s, "cad.pick doc=cad1 ray=40,0.1,2,-1,0,0");
+    CHECK(c.ok && flag(c, "hit") && !flag(c, "flat"));
+    CHECK(!run(s, "cad.push_pull doc=cad1 face=33,0,2 distance=1").ok);
+}
+
 int main() {
+    testPickAndPushPull();
     testSketchesShowInTheView();
     testDegreesOfFreedom();
     testExtrudeFromSketch();

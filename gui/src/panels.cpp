@@ -163,6 +163,7 @@ void Shell::frame() {
     drainDialogs();
     backgroundTicks();
     pollExport();
+    previewTick();
     if (paletteStale_ && loadPalette()) applyStyle(dpi_);
     paletteStale_ = false;
     if (palettePending_ && !ImGui::IsMouseDown(ImGuiMouseButton_Left)) savePaletteNow();
@@ -454,6 +455,7 @@ void Shell::formPanel() {
         }
     }
     ImGui::Spacing();
+    previewControls();
     bool needsDoc = false;
     for (std::size_t i = 0; i < form_->fields.size(); ++i) {
         Field& f = form_->fields[i];
